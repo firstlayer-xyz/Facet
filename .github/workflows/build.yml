@@ -10,6 +10,8 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+    env:
+      GOFLAGS: -tags=webkit2_41
 
     steps:
       - name: Checkout
@@ -44,7 +46,6 @@ jobs:
         run: cd app && ~/go/bin/wails build -tags webkit2_41
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
-          GOFLAGS: -tags=webkit2_41
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
       - name: Package
@@ -96,6 +97,7 @@ jobs:
         run: cd app && ~/go/bin/wails build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
+          PATH: ${{ github.workspace }}/.go-toolchain/bin:$PATH
 
       - name: Package
         shell: bash
@@ -168,11 +170,6 @@ jobs:
       - name: Clone facetlibs
         run: git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
 
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.14.1
-
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
@@ -192,9 +189,6 @@ jobs:
 
       - name: Run tests
         run: make test
-        env:
-          CC: zig cc
-          CXX: zig c++
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule'
