@@ -15,6 +15,9 @@ detect_host_target() {
   local os arch
   os="$(uname -s | tr '[:upper:]' '[:lower:]')"
   arch="$(uname -m)"
+  case "$os" in
+    mingw*|msys*|cygwin*) os="windows" ;;
+  esac
   case "$arch" in
     x86_64|amd64) arch="amd64" ;;
     arm64|aarch64) arch="arm64" ;;
