@@ -57,17 +57,64 @@ jobs:
           CC: zig cc
           CXX: zig c++
 
-      - name: Package
+      - name: Package binary
         run: |
           mkdir -p dist
           cp app/build/bin/facet dist/Facet-linux-amd64
           chmod +x dist/Facet-linux-amd64
 
+      - name: Package .deb
+        run: |
+          VERSION="0.1.0"
+          PKG="facet_${VERSION}_amd64"
+          mkdir -p "$PKG/DEBIAN"
+          mkdir -p "$PKG/usr/bin"
+          mkdir -p "$PKG/usr/share/applications"
+          mkdir -p "$PKG/usr/share/icons/hicolor/256x256/apps"
+
+          cp app/build/bin/facet "$PKG/usr/bin/facet"
+          chmod +x "$PKG/usr/bin/facet"
+
+          # Resize icon to 256x256 if convert is available, otherwise copy as-is
+          if command -v convert >/dev/null 2>&1; then
+            convert app/build/appicon.png -resize 256x256 "$PKG/usr/share/icons/hicolor/256x256/apps/facet.png"
+          else
+            cp app/build/appicon.png "$PKG/usr/share/icons/hicolor/256x256/apps/facet.png"
+          fi
+
+          cat > "$PKG/usr/share/applications/facet.desktop" << 'EOF'
+          [Desktop Entry]
+          Name=Facet
+          Comment=Code-driven 3D modeling
+          Exec=facet
+          Icon=facet
+          Type=Application
+          Categories=Graphics;3DGraphics;Engineering;
+          EOF
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' "$PKG/usr/share/applications/facet.desktop"
+
+          cat > "$PKG/DEBIAN/control" << EOF
+          Package: facet
+          Version: ${VERSION}
+          Section: graphics
+          Priority: optional
+          Architecture: amd64
+          Maintainer: First Layer <hello@firstlayer.xyz>
+          Description: Code-driven 3D modeling
+           Facet is a desktop CAD application where you write code to describe 3D models.
+          EOF
+          sed -i 's/^          //' "$PKG/DEBIAN/control"
+
+          dpkg-deb --build "$PKG" "dist/facet_${VERSION}_amd64.deb"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: facet-linux
-          path: dist/Facet-linux-amd64
+          path: |
+            dist/Facet-linux-amd64
+            dist/*.deb
 
   build-windows:
     runs-on: windows-latest

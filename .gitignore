@@ -12,7 +12,7 @@ app/third_party/assimp/build*
 app/third_party/assimp/install*
 app/third_party/freetype
 app/third_party/.zig-wrappers*
-app/build/
+app/build/bin/
 /facet
 /facet-mcp
 /facetdoc
