@@ -1,0 +1,28 @@
+# Chess Pawn — demonstrates symmetry and build-half-then-mirror
+fn Main() {
+    # Build the right-half profile, then revolve via CircularPattern
+    # All geometry is placed so CircularPattern around Z works naturally
+    # Base: wide cylinder with a beveled edge
+    var base = Cylinder(bottom: 12 mm, top: 12 mm, height: 4 mm)
+    var bevel = Cylinder(bottom: 13 mm, top: 12 mm, height: 2 mm)
+    var foot = base + bevel
+    # Stem: tapered cylinder rising from the base
+    var stem = Cylinder(bottom: 5 mm, top: 4 mm, height: 16 mm)
+        .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: 4 mm})
+    # Collar: decorative ring where stem meets head
+    var collar = Cylinder(bottom: 6 mm, top: 6 mm, height: 3 mm)
+        .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: 18 mm})
+    # Head: sphere trimmed flat at the bottom
+    var ball = Sphere(radius: 7 mm)
+        .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: 26 mm})
+    var trim = Cube(size: Vec3{x: 20 mm, y: 20 mm, z: 20 mm})
+        .Translate(v: Vec3{x: -10 mm, y: -10 mm, z: -20 mm})
+    var head = ball - trim
+    # Assemble
+    var pawn = foot + stem + collar + head
+    # Cross-shaped notch on top — build one slot, mirror for the cross
+    var slot = Cube(size: Vec3{x: 1 mm, y: 6 mm, z: 2 mm})
+        .Translate(v: Vec3{x: -0.5 mm, y: -3 mm, z: 30 mm})
+    var cross = slot + slot.RotateZ(angle: 90 deg, pivot: WorldOrigin)
+    return pawn - cross
+}

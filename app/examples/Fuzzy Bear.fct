@@ -1,0 +1,75 @@
+# Fuzzy Teddy Bear
+# Demonstrates mesh primitives, vertex normals, and per-part fuzzy skin.
+# ---------------------------------------------------------------------------
+# Fuzzy skin
+# ---------------------------------------------------------------------------
+fn FuzzyHash(x, y, z Number) Number {
+    var v = Sin(a: (x * 127.1 + y * 311.7 + z * 74.7) deg) * 43758.5453
+    return v - Floor(n: v)
+}
+
+fn FuzzySkin(s Solid, amount Length) Solid {
+    var m = s.Mesh()
+    var vn = m.VertexNormals()
+    var amt = Number(from: amount)
+    var new_verts = for i [0:<Size(of: m.vertices)] {
+        var v = m.vertices[i]
+        var n = vn[i]
+        var vx = Number(from: v.x)
+        var vy = Number(from: v.y)
+        var vz = Number(from: v.z)
+        var nx = Number(from: n.x)
+        var ny = Number(from: n.y)
+        var nz = Number(from: n.z)
+        var h = FuzzyHash(x: vx * 10, y: vy * 10, z: vz * 10)
+        var disp = h * amt
+        yield Vec3{x: vx + nx * disp, y: vy + ny * disp, z: vz + nz * disp}
+    }
+    return Mesh{vertices: new_verts, indices: m.indices}.Solid()
+}
+
+# ---------------------------------------------------------------------------
+# Fuzzy sphere helper
+# ---------------------------------------------------------------------------
+fn FuzzySphere(radius, amount Length, detail Number) Solid {
+    var segments = Max(a: Floor(n: detail * Number(from: radius)), b: 8)
+    return FuzzySkin(
+        s: Sphere(radius: radius, segments: segments),
+        amount: amount
+    )
+}
+
+fn Main(
+    fuzz Length = 0.5 mm where [0:2] mm,
+    detail Number = 10 where [1:100],
+) {
+    # Body
+    var bear = FuzzySphere(radius: 30 mm, amount: fuzz, detail: detail)
+    # Head
+    bear = bear + FuzzySphere(radius: 22 mm, amount: fuzz, detail: detail)
+        .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: 40 mm})
+    # Ears
+    bear = bear + FuzzySphere(radius: 10 mm, amount: fuzz, detail: detail)
+        .Translate(v: Vec3{x: -15 mm, y: 0 mm, z: 57 mm})
+    bear = bear + FuzzySphere(radius: 10 mm, amount: fuzz, detail: detail)
+        .Translate(v: Vec3{x: 15 mm, y: 0 mm, z: 57 mm})
+    # Arms
+    bear = bear + FuzzySphere(radius: 12 mm, amount: fuzz, detail: detail)
+        .Translate(v: Vec3{x: -35 mm, y: 0 mm, z: 5 mm})
+    bear = bear + FuzzySphere(radius: 12 mm, amount: fuzz, detail: detail)
+        .Translate(v: Vec3{x: 35 mm, y: 0 mm, z: 5 mm})
+    # Legs (sitting, stretched forward)
+    bear = bear + FuzzySphere(radius: 13 mm, amount: fuzz, detail: detail)
+        .Translate(v: Vec3{x: -15 mm, y: 20 mm, z: -17 mm})
+    bear = bear + FuzzySphere(radius: 13 mm, amount: fuzz, detail: detail)
+        .Translate(v: Vec3{x: 15 mm, y: 20 mm, z: -17 mm})
+    # Snout (smooth, no fuzz)
+    bear = bear + Sphere(radius: 7 mm)
+        .Translate(v: Vec3{x: 0 mm, y: 20 mm, z: 42 mm})
+    # Eyes (smooth, no fuzz)
+    bear = bear + Sphere(radius: 4 mm)
+        .Translate(v: Vec3{x: -8 mm, y: 18 mm, z: 48 mm})
+    bear = bear + Sphere(radius: 4 mm)
+        .Translate(v: Vec3{x: 8 mm, y: 18 mm, z: 48 mm})
+    return bear
+}

@@ -1,0 +1,157 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+)
+
+// SlicerInfo describes a detected slicer application.
+type SlicerInfo struct {
+	Name string `json:"name"` // "BambuStudio", "OrcaSlicer", "PrusaSlicer"
+	ID   string `json:"id"`   // "bambu", "orca", "prusa"
+}
+
+type slicerDef struct {
+	Name string
+	ID   string
+	// macOS
+	MacApp string
+	// Linux
+	LinuxBin string
+	// Windows
+	WinExe string
+}
+
+var slicerDefs = []slicerDef{
+	{
+		Name:     "BambuStudio",
+		ID:       "bambu",
+		MacApp:   "BambuStudio",
+		LinuxBin: "bambu-studio",
+		WinExe:   `BambuStudio\BambuStudio.exe`,
+	},
+	{
+		Name:     "OrcaSlicer",
+		ID:       "orca",
+		MacApp:   "OrcaSlicer",
+		LinuxBin: "orca-slicer",
+		WinExe:   `OrcaSlicer\orca-slicer.exe`,
+	},
+	{
+		Name:     "PrusaSlicer",
+		ID:       "prusa",
+		MacApp:   "PrusaSlicer",
+		LinuxBin: "prusa-slicer",
+		WinExe:   `Prusa3D\PrusaSlicer\prusa-slicer.exe`,
+	},
+	{
+		Name:     "UltiMaker Cura",
+		ID:       "cura",
+		MacApp:   "UltiMaker Cura",
+		LinuxBin: "cura",
+		WinExe:   `UltiMaker Cura\UltiMaker-Cura.exe`,
+	},
+	{
+		Name:     "AnycubicSlicer",
+		ID:       "anycubic",
+		MacApp:   "AnycubicSlicer",
+		LinuxBin: "anycubic-slicer",
+		WinExe:   `AnycubicSlicer\AnycubicSlicer.exe`,
+	},
+	{
+		Name:     "Anycubic Photon Workshop",
+		ID:       "photon-workshop",
+		MacApp:   "Anycubic Photon Workshop",
+		LinuxBin: "photon-workshop",
+		WinExe:   `Anycubic\Anycubic Photon Workshop\Anycubic Photon Workshop.exe`,
+	},
+}
+
+func detectSlicers() []SlicerInfo {
+	var found []SlicerInfo
+	for _, d := range slicerDefs {
+		if slicerExists(d) {
+			found = append(found, SlicerInfo{Name: d.Name, ID: d.ID})
+		}
+	}
+	return found
+}
+
+func slicerExists(d slicerDef) bool {
+	switch runtime.GOOS {
+	case "darwin":
+		_, err := os.Stat(filepath.Join("/Applications", d.MacApp+".app"))
+		return err == nil
+	case "linux":
+		_, err := exec.LookPath(d.LinuxBin)
+		return err == nil
+	case "windows":
+		for _, base := range []string{
+			os.Getenv("ProgramFiles"),
+			os.Getenv("ProgramFiles(x86)"),
+		} {
+			if base == "" {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(base, d.WinExe)); err == nil {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+func slicerDefByID(id string) (slicerDef, bool) {
+	for _, d := range slicerDefs {
+		if d.ID == id {
+			return d, true
+		}
+	}
+	return slicerDef{}, false
+}
+
+func launchSlicer(id string, filePath string) error {
+	d, ok := slicerDefByID(id)
+	if !ok {
+		return fmt.Errorf("unknown slicer: %s", id)
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", "-a", d.MacApp, filePath)
+	case "linux":
+		cmd = exec.Command(d.LinuxBin, filePath)
+	case "windows":
+		var bin string
+		for _, base := range []string{
+			os.Getenv("ProgramFiles"),
+			os.Getenv("ProgramFiles(x86)"),
+		} {
+			if base == "" {
+				continue
+			}
+			p := filepath.Join(base, d.WinExe)
+			if _, err := os.Stat(p); err == nil {
+				bin = p
+				break
+			}
+		}
+		if bin == "" {
+			return fmt.Errorf("%s not found", d.Name)
+		}
+		cmd = exec.Command(bin, filePath)
+	default:
+		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go cmd.Wait() // reap child process to avoid zombie
+	return nil
+}

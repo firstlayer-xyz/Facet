@@ -1,0 +1,131 @@
+# House Keys
+# Kwikset KW1 bitting (pin depths 1-7)
+var kw = [2, 5, 3, 4, 1]
+
+# Schlage SC1 bitting (pin depths 0-9)
+var sc = [3, 7, 2, 5, 1]
+
+# ---------------------------------------------------------------------------
+# Key Struct
+# ---------------------------------------------------------------------------
+type Key {
+    bitting []Number
+    blade_width Length
+    blade_thick Length
+    blade_length Length
+    first_pin Length
+    pin_spacing Length
+    depth_inc Length
+    max_depth Length
+    min_cut Number
+    bow_width Length
+    bow_height Length
+}
+
+# ---------------------------------------------------------------------------
+# Constructors
+# ---------------------------------------------------------------------------
+fn Kwikset(bitting []Number) Key {
+    assert Size(of: bitting) == 5, "Kwikset keys have 5 pins"
+    for i, d bitting {
+        assert d >= 1 && d <= 7, "Kwikset pin depths must be 1-7"
+    }
+    return Key{
+        bitting: bitting,
+        blade_width: 8.560 mm,
+        blade_thick: 2.032 mm,
+        blade_length: 28.575 mm,
+        first_pin: 6.274 mm,
+        pin_spacing: 3.810 mm,
+        depth_inc: 0.584 mm,
+        max_depth: 8.357 mm,
+        min_cut: 1,
+        bow_width: 20 mm,
+        bow_height: 22 mm
+    }
+}
+
+fn Schlage(bitting []Number) Key {
+    assert Size(of: bitting) == 5, "Schlage keys have 5 pins"
+    for i, d bitting {
+        assert d >= 0 && d <= 9, "Schlage pin depths must be 0-9"
+    }
+    return Key{
+        bitting: bitting,
+        blade_width: 8.509 mm,
+        blade_thick: 2.032 mm,
+        blade_length: 26.988 mm,
+        first_pin: 5.867 mm,
+        pin_spacing: 3.962 mm,
+        depth_inc: 0.381 mm,
+        max_depth: 8.509 mm,
+        min_cut: 0,
+        bow_width: 20 mm,
+        bow_height: 22 mm
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Cut Geometry Helpers
+# ---------------------------------------------------------------------------
+fn Key.VCut(x, pin_x Length, pin_val Number) Length {
+    var cut_d = self.blade_width - (self.max_depth - (pin_val - self.min_cut) * self.depth_inc)
+    var dist = Abs(a: x - pin_x)
+    if dist < cut_d {
+        return cut_d - dist
+    }
+    return 0 mm
+}
+
+fn Key.CutAt(x Length) Length {
+    var fp = self.first_pin
+    var ps = self.pin_spacing
+    var cuts = for i, depth self.bitting {
+        yield self.VCut(x: x, pin_x: fp + i * ps, pin_val: depth)
+    }
+    return fold a, b cuts {
+        yield Max(a: a, b: b)
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+fn Key.Build() Solid {
+    var bw = self.blade_width
+    var bt = self.blade_thick
+    var bl = self.blade_length
+    var tip_len = 4 mm
+    var tip_start = bl - tip_len
+    var n = 150
+    var n_total = n + 2
+    var profile_pts = for i [0:<n_total] {
+        if i <= n {
+            var x = i / n * bl
+            var cut_y = self.CutAt(x: x)
+            var tip_y = 0 mm
+            if x > tip_start {
+                tip_y = (x - tip_start) / tip_len * bw
+            }
+            yield Vec2{x: x, y: Max(a: cut_y, b: tip_y)}
+        } else {
+            yield Vec2{x: 0 mm, y: bw}
+        }
+    }
+    var blade = Polygon(points: profile_pts).Extrude(height: bt)
+    var bow_w = self.bow_width
+    var bow_h = self.bow_height
+    var bow_body = Square(x: bow_w, y: bow_h).Fillet(radius: 3 mm)
+        .Extrude(height: bt)
+        .Translate(v: Vec3{x: 1 mm - bow_w / 2, y: bw / 2, z: 0 mm})
+    var hole_r = 3 mm
+    var hole = Cylinder(bottom: hole_r, top: hole_r, height: bt + 1 mm)
+        .Translate(
+        v: Vec3{x: 1 mm - bow_w / 2, y: bw / 2 + bow_h / 4, z: bt / 2}
+    )
+    return blade + (bow_body - hole)
+}
+
+fn Main() {
+    return [Kwikset(bitting: kw).Build(), Schlage(bitting: sc).Build()]
+}

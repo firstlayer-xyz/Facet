@@ -1,0 +1,140 @@
+# Bricks
+# ---------------------------------------------------------------------------
+# Constants — block system dimensions
+# ---------------------------------------------------------------------------
+var STUD_PITCH = 8.0 mm
+var BRICK_HEIGHT = 9.6 mm
+var PLATE_HEIGHT = 3.2 mm
+var STUD_DIAMETER = 4.8 mm
+var STUD_HEIGHT = 1.7 mm
+var WALL = 1.2 mm
+var CLEARANCE = 0.1 mm
+var TUBE_OD = 6.51 mm
+var TUBE_ID = 4.8 mm
+var POST_DIAMETER = 3.2 mm
+
+# ---------------------------------------------------------------------------
+# Brick Struct
+# ---------------------------------------------------------------------------
+type Brick {
+    width Number
+    depth Number
+    kind String
+}
+
+fn NewBrick(w, d Number) Brick {
+    return Brick{width: w, depth: d, kind: "brick"}
+}
+
+fn NewPlate(w, d Number) Brick {
+    return Brick{width: w, depth: d, kind: "plate"}
+}
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+fn Brick.Build() Solid {
+    var w = self.width
+    var d = self.depth
+    var h = PLATE_HEIGHT
+    if self.kind == "brick" {
+        h = BRICK_HEIGHT
+    }
+    var outer_x = w * STUD_PITCH - 2 * CLEARANCE
+    var outer_y = d * STUD_PITCH - 2 * CLEARANCE
+    var shell = Cube(size: Vec3{x: outer_x, y: outer_y, z: h})
+        .Translate(v: Vec3{x: -outer_x / 2, y: -outer_y / 2, z: -h / 2})
+    var inner_x = outer_x - 2 * WALL
+    var inner_y = outer_y - 2 * WALL
+    var inner_h = h - WALL
+    var hollow = Cube(size: Vec3{x: inner_x, y: inner_y, z: inner_h})
+        .Translate(
+        v: Vec3{x: -inner_x / 2, y: -inner_y / 2, z: -inner_h / 2 - WALL / 2}
+    )
+    var body = shell - hollow
+    var stud_r = STUD_DIAMETER / 2
+    var x_start = -(w - 1) / 2 * STUD_PITCH
+    var y_start = -(d - 1) / 2 * STUD_PITCH
+    var n_studs = w * d
+    var studs = for i [0:<n_studs] {
+        var ix = Floor(n: i / d)
+        var iy = i % d
+        var sx = x_start + ix * STUD_PITCH
+        var sy = y_start + iy * STUD_PITCH
+        yield Cylinder(bottom: stud_r, top: stud_r, height: STUD_HEIGHT)
+            .Translate(v: Vec3{x: sx, y: sy, z: h / 2})
+    }
+    var all_studs = fold a, b studs {
+        yield a + b
+    }
+    var with_studs = body + all_studs
+    if w >= 2 && d >= 2 {
+        var tube_or = TUBE_OD / 2
+        var tube_ir = TUBE_ID / 2
+        var tube_h = inner_h
+        var tx_start = -(w - 2) / 2 * STUD_PITCH
+        var ty_start = -(d - 2) / 2 * STUD_PITCH
+        var tw = w - 1
+        var td = d - 1
+        var n_tubes = tw * td
+        var tubes = for i [0:<n_tubes] {
+            var tx = Floor(n: i / td)
+            var ty = i % td
+            var px = tx_start + tx * STUD_PITCH
+            var py = ty_start + ty * STUD_PITCH
+            var outer_tube = Cylinder(
+                bottom: tube_or,
+                top: tube_or,
+                height: tube_h
+            )
+            var inner_tube = Cylinder(
+                bottom: tube_ir,
+                top: tube_ir,
+                height: tube_h + 0.1 mm
+            )
+            yield (outer_tube - inner_tube)
+                .Translate(v: Vec3{x: px, y: py, z: -h / 2})
+        }
+        var all_tubes = fold a, b tubes {
+            yield a + b
+        }
+        return with_studs + all_tubes
+    } else if w == 1 && d >= 2 || d == 1 && w >= 2 {
+        var post_r = POST_DIAMETER / 2
+        var post_h = inner_h
+        var long = d
+        if w > d {
+            long = w
+        }
+        var n_posts = long - 1
+        var p_start = -(long - 2) / 2 * STUD_PITCH
+        var posts = for i [0:<n_posts] {
+            var pp = p_start + i * STUD_PITCH
+            var px = 0 mm
+            if w > d {
+                px = pp
+            }
+            var py = pp
+            if w > d {
+                py = 0 mm
+            }
+            yield Cylinder(bottom: post_r, top: post_r, height: post_h)
+                .Translate(v: Vec3{x: px, y: py, z: -h / 2})
+        }
+        var all_posts = fold a, b posts {
+            yield a + b
+        }
+        return with_studs + all_posts
+    }
+    return with_studs
+}
+
+fn Main() {
+    return [
+        NewBrick(w: 2, d: 4).Build(),
+        NewBrick(w: 1, d: 2).Build(),
+        NewBrick(w: 2, d: 2).Build(),
+        NewPlate(w: 2, d: 4).Build(),
+        NewBrick(w: 1, d: 1).Build()
+    ]
+}

@@ -1,0 +1,58 @@
+# Shark — demonstrates organic shapes with symmetry, hull, and non-uniform scale
+fn Main() {
+    # Body: elongated sphere (ellipsoid via non-uniform scale)
+    var body = Sphere(radius: 20 mm)
+        .Scale(x: 2.5, y: 1, z: 0.8, pivot: WorldOrigin)
+    # Snout: smaller ellipsoid, offset forward and blended
+    var snout = Sphere(radius: 12 mm)
+        .Scale(x: 1.5, y: 1, z: 0.6, pivot: WorldOrigin)
+        .Translate(v: Vec3{x: 40 mm, y: 0 mm, z: 2 mm})
+    # Tail stock: tapered toward the back
+    var tailStock = Sphere(radius: 10 mm)
+        .Scale(x: 2, y: 0.6, z: 0.5, pivot: WorldOrigin)
+        .Translate(v: Vec3{x: -45 mm, y: 0 mm, z: 0 mm})
+    # Smooth body by hulling the pieces together
+    var mainBody = Hull(arr: [body, snout, tailStock])
+    # Dorsal fin: tall thin wedge on top — build from hull of 3 points
+    var finTip = Sphere(radius: 1 mm)
+        .Translate(v: Vec3{x: -5 mm, y: 0 mm, z: 30 mm})
+    var finFront = Sphere(radius: 3 mm)
+        .Translate(v: Vec3{x: 5 mm, y: 0 mm, z: 14 mm})
+    var finBack = Sphere(radius: 2 mm)
+        .Translate(v: Vec3{x: -18 mm, y: 0 mm, z: 14 mm})
+    var dorsalFin = Hull(arr: [finTip, finFront, finBack])
+    # Tail fin (caudal): two lobes, build one and mirror
+    var upperLobe = Hull(
+        arr: [
+            Sphere(radius: 2 mm)
+                .Translate(v: Vec3{x: -55 mm, y: 0 mm, z: 15 mm}),
+            Sphere(radius: 2 mm).Translate(v: Vec3{x: -55 mm, y: 0 mm, z: 0 mm}),
+            Sphere(radius: 1 mm)
+                .Translate(v: Vec3{x: -65 mm, y: 0 mm, z: 18 mm})
+        ]
+    )
+    var tailFin = upperLobe + upperLobe.MirrorZ(offset: 0 mm)
+    # Pectoral fins: one side, then mirror for symmetry
+    var pectFin = Hull(
+        arr: [
+            Sphere(radius: 2 mm)
+                .Translate(v: Vec3{x: 10 mm, y: 18 mm, z: -5 mm}),
+            Sphere(radius: 1 mm)
+                .Translate(v: Vec3{x: 0 mm, y: 35 mm, z: -12 mm}),
+            Sphere(radius: 2 mm)
+                .Translate(v: Vec3{x: -5 mm, y: 18 mm, z: -5 mm})
+        ]
+    )
+    var pectoralFins = pectFin + pectFin.MirrorY(offset: 0 mm)
+    # Eyes: small spheres on the sides of the head
+    var eye = Sphere(radius: 2 mm)
+        .Translate(v: Vec3{x: 30 mm, y: 10 mm, z: 5 mm})
+    var eyes = eye + eye.MirrorY(offset: 0 mm)
+    # Gill slits: thin cuts on each side — build one set, mirror
+    var slit = Cube(size: Vec3{x: 1 mm, y: 8 mm, z: 1 mm})
+        .Translate(v: Vec3{x: 20 mm, y: 12 mm, z: -2 mm})
+    var gill = slit + slit.Translate(v: Vec3{x: -4 mm, y: 0 mm, z: 0 mm}) + slit
+        .Translate(v: Vec3{x: -8 mm, y: 0 mm, z: 0 mm})
+    var gills = gill + gill.MirrorY(offset: 0 mm)
+    return mainBody + dorsalFin + tailFin + pectoralFins + eyes - gills
+}

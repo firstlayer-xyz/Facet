@@ -1,0 +1,85 @@
+# Tutorial — Facet 101
+#
+# Welcome to Facet! This tutorial builds a toy rocket
+# while teaching you the basics of the language.
+# --- FUNCTIONS ---
+# Functions break your model into reusable parts.
+# Parameters have types like Length, Angle, Solid, etc.
+#
+# Tip: click on a face in the 3D viewport to jump to
+# the line of code that produced it!
+#
+# lowercase names = helper functions (private)
+# Uppercase names = entry points (shown in the run menu)
+fn nosecone(r, h Length) Solid {
+    # Cylinder with a tapered top makes a cone
+    return Cylinder(bottom: r, top: 0 mm, height: h)
+}
+
+fn fin(h, w, t Length) Solid {
+    # A simple wedge-shaped fin
+    var body = Cube(size: Vec3{x: t, y: w, z: h})
+    # Carve an angle to make it aerodynamic
+    var cutter = Cube(size: Vec3{x: t + 2 mm, y: w, z: h})
+        .Rotate(rx: -25 deg, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin)
+        .Translate(v: Vec3{x: -1 mm, y: w, z: 0 mm})
+    return body - cutter
+}
+
+fn exhaust(r Length) Solid {
+    # Nozzle bell — a cylinder with a flared bottom
+    return Cylinder(bottom: r * 1.2, top: r * 0.6, height: r)
+}
+
+# --- ENTRY POINT ---
+# Any function starting with a capital letter is an entry
+# point — it appears in the run menu and can be previewed.
+# Entry points must be fully constrained: every parameter
+# needs a default value and optionally a "where" clause.
+#
+# Parameters with "where" become interactive sliders
+# in the panel below. Try adjusting them!
+fn Main(
+    radius Length = 10 mm where [6:20] mm,
+    height Length = 60 mm where [30:100] mm,
+    fins Number = 4 where [3:8:1],
+) Solid {
+    # --- Body tube ---
+    var body = Cylinder(bottom: radius, top: radius, height: height)
+
+    # --- Nosecone on top ---
+    # StackOn places the nose directly on top of the body.
+    var nose = nosecone(r: radius, h: height / 2)
+        .StackOn(with: body)
+
+    # --- UNION (+) ---
+    # The + operator joins solids together (boolean union).
+    var rocket = body + nose
+
+    # --- Fins around the base ---
+    # Build one fin, position it at the edge, then repeat
+    # in a ring with CircularPattern.
+    var f = fin(h: height / 3, w: radius, t: 2 mm)
+        .Translate(v: Vec3{x: -1 mm, y: radius - 1 mm, z: 0 mm})
+        .CircularPattern(count: fins)
+    rocket = rocket + f
+
+    # --- RELATIVE POSITIONING ---
+    # Instead of computing exact coordinates, use Align
+    # methods to describe relationships between parts.
+
+    # --- Exhaust nozzle below the body ---
+    # AlignBottom with a nudge tucks the nozzle just under the body.
+    var nozzle = exhaust(r: radius)
+        .AlignBottom(with: body, nudge: 1 mm)
+    rocket = rocket + nozzle
+
+    # --- DIFFERENCE (-) ---
+    # The - operator cuts one solid from another.
+    # Bore through the nozzle so it's open from the bottom
+    # (no sealed voids — important for 3D printing).
+    var bore = Cylinder(bottom: radius * 0.5, top: radius * 0.5, height: radius * 2)
+        .AlignCenterXY(with: nozzle)
+        .AlignBottom(with: nozzle, nudge: -0.1 mm)
+    return rocket - bore
+}

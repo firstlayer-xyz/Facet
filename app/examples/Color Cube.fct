@@ -1,0 +1,45 @@
+# Color Cube — six colored pyramids joined at center
+# 
+# Each face of the cube is a separate pyramid whose apex meets at
+# the cube center. This ensures each face has a clean, distinct
+# color with no bleeding onto adjacent sides.
+fn Pyramid(size Length) Solid {
+    var h = size / 2
+    var pts = []Vec3[
+        {x: -h, y: -h, z: 0 mm},
+        {x: h, y: -h, z: 0 mm},
+        {x: h, y: h, z: 0 mm},
+        {x: -h, y: h, z: 0 mm},
+        {x: 0 mm, y: 0 mm, z: h}
+    ]
+    return Hull(arr: pts)
+}
+
+fn Main() {
+    var s = 20 mm
+    var half = s / 2
+    var center = Vec3{x: 0 mm, y: 0 mm, z: half}
+    # Bottom face (−Z) — red
+    var bottom = Pyramid(size: s).Color(hex: "#FF0000")
+    # Top face (+Z) — green
+    var top = Pyramid(size: s)
+        .Rotate(rx: 180 deg, ry: 0 deg, rz: 0 deg, pivot: center)
+        .Color(hex: "#00CC00")
+    # Front face (−Y) — blue
+    var front = Pyramid(size: s)
+        .Rotate(rx: -90 deg, ry: 0 deg, rz: 0 deg, pivot: center)
+        .Color(hex: "#0066FF")
+    # Back face (+Y) — yellow
+    var back = Pyramid(size: s)
+        .Rotate(rx: 90 deg, ry: 0 deg, rz: 0 deg, pivot: center)
+        .Color(hex: "#FFCC00")
+    # Left face (−X) — orange
+    var left = Pyramid(size: s)
+        .Rotate(rx: 0 deg, ry: 90 deg, rz: 0 deg, pivot: center)
+        .Color(hex: "#FF6600")
+    # Right face (+X) — purple
+    var right = Pyramid(size: s)
+        .Rotate(rx: 0 deg, ry: -90 deg, rz: 0 deg, pivot: center)
+        .Color(hex: "#9933FF")
+    return bottom + top + front + back + left + right
+}

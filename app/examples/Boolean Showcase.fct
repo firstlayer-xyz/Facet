@@ -1,0 +1,58 @@
+# Boolean Showcase — Exclude, EvenOdd, Pierce
+# ---------------------------------------------------------------------------
+# Exclude: symmetric difference (XOR) with a solid tool
+# 
+# A cylinder excludes through a cube. The result keeps material where inside
+# exactly one of the two shapes — the cube gains a through-hole and the
+# cylinder gains a cubic notch where they overlapped.
+# ---------------------------------------------------------------------------
+fn DemoExclude() Solid {
+    var box = Cube(size: Vec3{x: 30 mm, y: 30 mm, z: 30 mm})
+    var cyl = Cylinder(bottom: 10 mm, top: 10 mm, height: 30 mm)
+    return box.Exclude(with: cyl)
+}
+
+# ---------------------------------------------------------------------------
+# EvenOdd: N-ary XOR fold over an array
+# 
+# Three cylinders in an equilateral triangle, each pair overlapping by ~5 mm.
+# EvenOdd keeps material where an odd number of cylinders cover a point:
+#   - The three outer arcs (covered by 1) → kept
+#   - The three pairwise lens intersections (covered by 2) → carved out
+#   - The small center triangle (covered by all 3) → comes back in
+# The result looks like a three-leaf clover with a small solid core.
+# ---------------------------------------------------------------------------
+fn DemoEvenOdd() Solid {
+    var r = 15 mm # cylinder radius
+    var h = 8 mm # cylinder height
+    var d = 22 mm # center-to-center spacing (< 2r so they overlap)
+    var c1 = Cylinder(bottom: r, top: r, height: h)
+        .Translate(v: Vec3{x: -d / 2, y: 0 mm, z: 0 mm})
+    var c2 = Cylinder(bottom: r, top: r, height: h)
+        .Translate(v: Vec3{x: d / 2, y: 0 mm, z: 0 mm})
+    var c3 = Cylinder(bottom: r, top: r, height: h)
+        .Translate(v: Vec3{x: 0 mm, y: d * 0.866, z: 0 mm})
+    return EvenOdd(solids: [c1, c2, c3])
+}
+
+# ---------------------------------------------------------------------------
+# Insert: hollow tool inserted through a solid wall
+# 
+# A hollow pipe (tube) passes through a flat plate. Plain subtraction would
+# leave a floating bore plug sealed inside the wall. Insert detects and
+# removes that plug, then seats the pipe — the result is a wall with an open
+# bore, with the pipe tube properly joined.
+# ---------------------------------------------------------------------------
+fn DemoInsert() Solid {
+    var wall = Cube(size: Vec3{x: 60 mm, y: 60 mm, z: 20 mm})
+    var pipe = Cylinder(bottom: 9 mm, top: 9 mm, height: 40 mm) - Cylinder(
+        bottom: 6 mm,
+        top: 6 mm,
+        height: 40 mm
+    )
+    return wall | pipe
+}
+
+fn Main() {
+    return [DemoExclude(), DemoEvenOdd(), DemoInsert()]
+}

@@ -1,0 +1,27 @@
+# Metric Fastener Showcase
+var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@main"
+
+fn Main(
+    thread String = "m8" where [
+        "m2",
+        "m2.5",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m8",
+        "m10",
+        "m12",
+        "m16",
+        "m20"
+    ],
+    shaft_len Length = 30 mm where [10:80] mm,
+    standoff_len Length = 20 mm where [5:50] mm,
+) {
+    return F
+        .Showcase(
+        size: thread,
+        shaft_len: shaft_len,
+        standoff_len: standoff_len
+    )
+}

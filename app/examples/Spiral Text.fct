@@ -1,0 +1,19 @@
+# Spiral text — twisted extrusion spinning around center
+fn Main(
+    message String = "SPECIAL" where [],
+    height Length = 40 mm where [10:100] mm,
+    twist Angle = 360 deg where [0:720] deg,
+) Solid {
+    var text = Text(text: message, size: 12 mm)
+    var box = text.Bounds()
+    var centered = text
+        .Translate(v: Vec2{x: -box.Width() / 2, y: -box.Depth() / 2})
+    return centered
+        .Extrude(
+        height: height,
+        slices: 120,
+        twist: twist,
+        taperX: 1,
+        taperY: 1
+    )
+}

@@ -1,0 +1,45 @@
+# Self Portrait of Claude
+# (Print-ready -- all parts overlapping)
+fn Main() {
+    # Monitor / Head
+    var screen = Cube(size: Vec3{x: 50 mm, y: 5 mm, z: 40 mm})
+        .Translate(v: Vec3{x: -25 mm, y: -2.5 mm, z: -20 mm})
+    var bezel = Cube(size: Vec3{x: 54 mm, y: 3 mm, z: 44 mm})
+        .Translate(v: Vec3{x: -27 mm, y: -3.5 mm, z: -22 mm})
+    # Eyes
+    var eyeL = Sphere(radius: 4 mm)
+        .Translate(v: Vec3{x: -12 mm, y: -5 mm, z: 5 mm})
+    var eyeR = Sphere(radius: 4 mm)
+        .Translate(v: Vec3{x: 12 mm, y: -5 mm, z: 5 mm})
+    # Mouth
+    var mouth = Cube(size: Vec3{x: 20 mm, y: 4 mm, z: 3 mm})
+        .Translate(v: Vec3{x: -10 mm, y: -6 mm, z: -9.5 mm})
+    # Neck -- shorter, tighter to head
+    var neck = Cylinder(bottom: 8 mm, top: 16 mm, height: 8 mm)
+        .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: -27 mm})
+    # Body -- raised 10mm
+    var torso = Cube(size: Vec3{x: 60 mm, y: 30 mm, z: 50 mm})
+        .Translate(v: Vec3{x: -30 mm, y: -15 mm, z: -75 mm})
+    # Hollow core
+    var core = Sphere(radius: 8 mm)
+        .Translate(v: Vec3{x: 0 mm, y: -16 mm, z: -45 mm})
+    # Arms -- raised with torso
+    var armL = Cube(size: Vec3{x: 12 mm, y: 12 mm, z: 40 mm})
+        .Translate(v: Vec3{x: -38 mm, y: -6 mm, z: -65 mm})
+    var armR = Cube(size: Vec3{x: 12 mm, y: 12 mm, z: 40 mm})
+        .Translate(v: Vec3{x: 26 mm, y: -6 mm, z: -65 mm})
+    # Hands
+    var handL = Sphere(radius: 8 mm)
+        .Translate(v: Vec3{x: -32 mm, y: 0 mm, z: -68 mm})
+    var handR = Sphere(radius: 8 mm)
+        .Translate(v: Vec3{x: 32 mm, y: 0 mm, z: -68 mm})
+    # Base
+    var base = Cylinder(bottom: 25 mm, top: 12 mm, height: 35 mm)
+        .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: -78 mm})
+    var portrait = bezel - screen
+    portrait = portrait + (eyeL + eyeR + mouth)
+    portrait = portrait + (neck + (torso - core))
+    portrait = portrait + (armL + armR + handL + handR)
+    portrait = portrait + base
+    return portrait
+}

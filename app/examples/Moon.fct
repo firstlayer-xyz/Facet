@@ -1,0 +1,156 @@
+# Cratered Moon with Phase
+# A pocked moon disc showing the correct phase for a given date.
+# Date format: "M/D/YYYY"
+# ---------------------------------------------------------------------------
+# Fuzzy skin
+# ---------------------------------------------------------------------------
+fn FuzzyHash(x, y, z Number) Number {
+    var v = Sin(a: (x * 127.1 + y * 311.7 + z * 74.7) deg) * 43758.5453
+    return v - Floor(n: v)
+}
+
+fn FuzzySkin(s Solid, amount Length) Solid {
+    var m = s.Mesh()
+    var vn = m.VertexNormals()
+    var amt = Number(from: amount)
+    var new_verts = for i [0:<Size(of: m.vertices)] {
+        var v = m.vertices[i]
+        var n = vn[i]
+        var vx = Number(from: v.x)
+        var vy = Number(from: v.y)
+        var vz = Number(from: v.z)
+        var nx = Number(from: n.x)
+        var ny = Number(from: n.y)
+        var nz = Number(from: n.z)
+        var h = FuzzyHash(x: vx * 10, y: vy * 10, z: vz * 10)
+        var disp = h * amt
+        yield Vec3{x: vx + nx * disp, y: vy + ny * disp, z: vz + nz * disp}
+    }
+    return Mesh{vertices: new_verts, indices: m.indices}.Solid()
+}
+
+# ---------------------------------------------------------------------------
+# Pseudo-random hash
+# ---------------------------------------------------------------------------
+fn Hash(a, b Number) Number {
+    var v = Sin(a: (a * 127.1 + b * 311.7) deg) * 43758.5453
+    return v - Floor(n: v)
+}
+
+# ---------------------------------------------------------------------------
+# Moon phase from date string
+# ---------------------------------------------------------------------------
+# Julian Day Number from month, day, year.
+fn JulianDay(m, d, y Number) Number {
+    return 367 * y - Floor(n: 7 * (y + Floor(n: (m + 9) / 12)) / 4) + Floor(
+        n: 275 * m / 9
+    ) + d + 1721013.5
+}
+
+# Returns phase 0..1 (0 = new moon, 0.5 = full moon).
+fn MoonPhase(date String) Number {
+    var parts = date.Split(delimiter: "/")
+    assert Size(of: parts) == 3, "Date must be M/D/YYYY"
+    var m = Number(from: parts[0])
+    var d = Number(from: parts[1])
+    var y = Number(from: parts[2])
+    assert m >= 1 && m <= 12, "Month must be 1-12"
+    assert d >= 1 && d <= 31, "Day must be 1-31"
+    assert y >= 1, "Year must be positive"
+    var jd = JulianDay(m: m, d: d, y: y)
+    var epoch = 2451550.1 # known new moon: Jan 6, 2000
+    var synodic = 29.53059 # synodic period in days
+    var days = jd - epoch
+    var phase = days / synodic - Floor(n: days / synodic)
+    if phase < 0 {
+        return phase + 1
+    }
+    return phase
+}
+
+# ---------------------------------------------------------------------------
+# Shadow cutter for a given phase
+# ---------------------------------------------------------------------------
+fn MoonShadow(r, h Length, phase Number) Solid {
+    var k = Cos(a: (phase * 360) deg)
+    var abs_k = Abs(a: k)
+    var box = Cube(size: Vec3{x: r * 2, y: r * 2, z: h * 4})
+        .Translate(v: Vec3{x: -r, y: -r, z: -h * 2})
+    var ellipse = Cylinder(bottom: r, top: r, height: h * 4)
+        .Scale(x: Max(a: abs_k, b: 0.02), y: 1, z: 1, pivot: WorldOrigin)
+    if phase <= 0.5 {
+        # Waxing: shadow on left
+        var left = box.Translate(v: Vec3{x: -r, y: 0 mm, z: 0 mm})
+        if k >= 0 {
+            return left + ellipse
+        }
+        return left - ellipse
+    }
+    # Waning: shadow on right
+    var right = box.Translate(v: Vec3{x: r, y: 0 mm, z: 0 mm})
+    if k >= 0 {
+        return right + ellipse
+    }
+    return right - ellipse
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+fn Main(
+    date String = UtcDate() where [],
+    radius Length = 40 mm where [20:80] mm,
+    thickness Length = 10 mm where [4:20] mm,
+    roughness Length = 0.1 mm where [0:0.5] mm,
+    num_craters Number = 25 where [1:50],
+) {
+    var phase = MoonPhase(date: date)
+    assert phase > 0.03 && phase < 0.97, "New moon - nothing to see!"
+    # Dome: cylinder intersected with a large sphere
+    var R = radius * 3
+    var dome_off = -R + thickness / 2 + 2 mm
+    var disc = Cylinder(bottom: radius, top: radius, height: thickness) & Sphere(
+        radius: R
+    ).Translate(v: Vec3{x: 0 mm, y: 0 mm, z: dome_off})
+    # Place craters on the curved dome surface using spherical coordinates.
+    # Each crater is built at the pole, then rotated into position so it
+    # follows the curvature.
+    # Raised bumps around each crater
+    var bumps = for i [0:<num_craters] {
+        var ang = Hash(a: i, b: 0) * 360
+        var dist = Hash(a: i, b: 1) * Number(from: radius) * 0.75
+        var cr = (Hash(a: i, b: 2) * Hash(a: i, b: 3) * 8 + 1.5) mm
+        var theta = Asin(n: dist / Number(from: R))
+        yield Sphere(radius: cr * 1.4)
+            .Scale(x: 1, y: 1, z: 0.25, pivot: WorldOrigin)
+            .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: R - cr * 0.3})
+            .Rotate(rx: 0 deg, ry: theta, rz: 0 deg, pivot: WorldOrigin)
+            .Rotate(rx: 0 deg, ry: 0 deg, rz: ang deg, pivot: WorldOrigin)
+            .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: dome_off})
+    }
+    # Crater bowls
+    var bowls = for i [0:<num_craters] {
+        var ang = Hash(a: i, b: 0) * 360
+        var dist = Hash(a: i, b: 1) * Number(from: radius) * 0.75
+        var cr = (Hash(a: i, b: 2) * Hash(a: i, b: 3) * 8 + 1.5) mm
+        var depth = cr * 0.3
+        var theta = Asin(n: dist / Number(from: R))
+        yield Sphere(radius: cr).Scale(x: 1, y: 1, z: 0.4, pivot: WorldOrigin)
+            .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: R + depth})
+            .Rotate(rx: 0 deg, ry: theta, rz: 0 deg, pivot: WorldOrigin)
+            .Rotate(rx: 0 deg, ry: 0 deg, rz: ang deg, pivot: WorldOrigin)
+            .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: dome_off})
+    }
+    var all_bumps = fold a, b bumps {
+        yield a + b
+    }
+    var all_bowls = fold a, b bowls {
+        yield a + b
+    }
+    var moon = disc
+    moon = moon + all_bumps
+    moon = moon - all_bowls
+    # Cut the shadow
+    moon = moon - MoonShadow(r: radius, h: thickness, phase: phase)
+    return FuzzySkin(s: moon, amount: roughness)
+}
