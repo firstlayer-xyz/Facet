@@ -46,10 +46,10 @@ jobs:
         run: make manifold
 
       - name: Build Facet
-        run: cd app && ~/go/bin/wails build
+        run: cd app && ~/go/bin/wails build -tags webkit2_41
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
-          PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/bin
+          PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
       - name: Package
         run: |
@@ -156,7 +156,7 @@ jobs:
         run: cd app && ~/go/bin/wails build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
-          PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/bin
+          PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
       - name: Ad-hoc codesign
         run: codesign -s - --force --deep app/build/bin/Facet.app

@@ -80,30 +80,56 @@ fi
 # --- zig wrapper scripts (cmake needs a single executable, not "zig cc") ---
 WRAPPER_DIR="$THIRD_PARTY/.zig-wrappers-${TARGET}"
 mkdir -p "$WRAPPER_DIR"
-cat > "$WRAPPER_DIR/cc" << ZIGEOF
+
+if [[ "$TARGET" == windows-* ]]; then
+  # Windows: create .cmd wrappers that CMake can execute
+  cat > "$WRAPPER_DIR/cc.cmd" << ZIGEOF
+@echo off
+zig cc --target=${ZIG_TRIPLE} %*
+ZIGEOF
+  cat > "$WRAPPER_DIR/c++.cmd" << ZIGEOF
+@echo off
+zig c++ --target=${ZIG_TRIPLE} %*
+ZIGEOF
+  cat > "$WRAPPER_DIR/ar.cmd" << 'ZIGEOF'
+@echo off
+zig ar %*
+ZIGEOF
+  cat > "$WRAPPER_DIR/ranlib.cmd" << 'ZIGEOF'
+@echo off
+zig ranlib %*
+ZIGEOF
+else
+  cat > "$WRAPPER_DIR/cc" << ZIGEOF
 #!/bin/sh
 exec zig cc --target=${ZIG_TRIPLE} "\$@"
 ZIGEOF
-cat > "$WRAPPER_DIR/c++" << ZIGEOF
+  cat > "$WRAPPER_DIR/c++" << ZIGEOF
 #!/bin/sh
 exec zig c++ --target=${ZIG_TRIPLE} "\$@"
 ZIGEOF
-cat > "$WRAPPER_DIR/ar" << 'ZIGEOF'
+  cat > "$WRAPPER_DIR/ar" << 'ZIGEOF'
 #!/bin/sh
 exec zig ar "$@"
 ZIGEOF
-cat > "$WRAPPER_DIR/ranlib" << 'ZIGEOF'
+  cat > "$WRAPPER_DIR/ranlib" << 'ZIGEOF'
 #!/bin/sh
 exec zig ranlib "$@"
 ZIGEOF
-chmod +x "$WRAPPER_DIR/cc" "$WRAPPER_DIR/c++" "$WRAPPER_DIR/ar" "$WRAPPER_DIR/ranlib"
+  chmod +x "$WRAPPER_DIR/cc" "$WRAPPER_DIR/c++" "$WRAPPER_DIR/ar" "$WRAPPER_DIR/ranlib"
+fi
 
 # Dummy RC compiler for Windows cross-compilation (FreeType tries enable_language(RC))
-cat > "$WRAPPER_DIR/rc" << 'ZIGEOF'
+if [[ "$TARGET" == windows-* ]]; then
+  cat > "$WRAPPER_DIR/rc.cmd" << 'ZIGEOF'
+@echo off
+rem Dummy RC compiler — create empty output for cross-compilation
+exit /b 0
+ZIGEOF
+else
+  cat > "$WRAPPER_DIR/rc" << 'ZIGEOF'
 #!/bin/sh
 # Dummy RC compiler for cross-compilation.
-# cmake invokes: rc <flags> /fo <output> <input>
-# Create an empty output file so ar can link it.
 prev=""
 for arg in "$@"; do
   case "$prev" in
@@ -113,21 +139,25 @@ for arg in "$@"; do
 done
 exit 0
 ZIGEOF
-chmod +x "$WRAPPER_DIR/rc"
+  chmod +x "$WRAPPER_DIR/rc"
+fi
 
 # --- cmake toolchain file ---
 TOOLCHAIN_FILE="$WRAPPER_DIR/toolchain.cmake"
 RC_LINE=""
 if [[ "$TARGET" == windows-* ]]; then
-  RC_LINE="set(CMAKE_RC_COMPILER \"${WRAPPER_DIR}/rc\")"
+  EXT=".cmd"
+  RC_LINE="set(CMAKE_RC_COMPILER \"${WRAPPER_DIR}/rc${EXT}\")"
+else
+  EXT=""
 fi
 cat > "$TOOLCHAIN_FILE" << CMAKEEOF
 set(CMAKE_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
 set(CMAKE_SYSTEM_PROCESSOR ${CMAKE_SYSTEM_PROCESSOR})
-set(CMAKE_C_COMPILER "${WRAPPER_DIR}/cc")
-set(CMAKE_CXX_COMPILER "${WRAPPER_DIR}/c++")
-set(CMAKE_AR "${WRAPPER_DIR}/ar")
-set(CMAKE_RANLIB "${WRAPPER_DIR}/ranlib")
+set(CMAKE_C_COMPILER "${WRAPPER_DIR}/cc${EXT}")
+set(CMAKE_CXX_COMPILER "${WRAPPER_DIR}/c++${EXT}")
+set(CMAKE_AR "${WRAPPER_DIR}/ar${EXT}")
+set(CMAKE_RANLIB "${WRAPPER_DIR}/ranlib${EXT}")
 ${RC_LINE}
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
