@@ -143,15 +143,28 @@ ZIGEOF
 fi
 
 # --- cmake toolchain file ---
-TOOLCHAIN_FILE="$WRAPPER_DIR/toolchain.cmake"
-RC_LINE=""
-if [[ "$TARGET" == windows-* ]]; then
-  EXT=".cmd"
-  RC_LINE="set(CMAKE_RC_COMPILER \"${WRAPPER_DIR}/rc${EXT}\")"
-else
-  EXT=""
+# When building natively (host == target), skip zig wrappers and use system compiler
+HOST_TARGET="$(detect_host_target)"
+USE_TOOLCHAIN=true
+if [[ "$HOST_TARGET" == "$TARGET" ]] && ! command -v zig >/dev/null 2>&1; then
+  # No zig available but building for host — use system compiler
+  USE_TOOLCHAIN=false
+elif [[ "$HOST_TARGET" == "$TARGET" ]] && [[ "$TARGET" == windows-* ]]; then
+  # Native Windows build — use system compiler (MSVC/MinGW), zig wrappers don't work
+  USE_TOOLCHAIN=false
 fi
-cat > "$TOOLCHAIN_FILE" << CMAKEEOF
+
+TOOLCHAIN_FILE="$WRAPPER_DIR/toolchain.cmake"
+TOOLCHAIN_FLAG=()
+if $USE_TOOLCHAIN; then
+  RC_LINE=""
+  if [[ "$TARGET" == windows-* ]]; then
+    EXT=".cmd"
+    RC_LINE="set(CMAKE_RC_COMPILER \"${WRAPPER_DIR}/rc${EXT}\")"
+  else
+    EXT=""
+  fi
+  cat > "$TOOLCHAIN_FILE" << CMAKEEOF
 set(CMAKE_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
 set(CMAKE_SYSTEM_PROCESSOR ${CMAKE_SYSTEM_PROCESSOR})
 set(CMAKE_C_COMPILER "${WRAPPER_DIR}/cc${EXT}")
@@ -163,6 +176,8 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 CMAKEEOF
+  TOOLCHAIN_FLAG=("${TOOLCHAIN_FLAG[@]}")
+fi
 
 # Per-target build/install directories
 ASSIMP_BUILD_DIR="$ASSIMP_DIR/build-${TARGET}"
@@ -181,7 +196,7 @@ if [ ! -f "$ASSIMP_INSTALL_DIR/lib/libassimp.a" ]; then
   cmake "$ASSIMP_DIR" \
     "${CMAKE_GENERATOR_FLAG[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+    "${TOOLCHAIN_FLAG[@]}" \
     -DBUILD_SHARED_LIBS=OFF \
     -DASSIMP_BUILD_TESTS=OFF \
     -DASSIMP_BUILD_SAMPLES=OFF \
@@ -213,7 +228,7 @@ if [ ! -f "$FREETYPE_INSTALL_DIR/lib/libfreetype.a" ]; then
   cmake "$FREETYPE_DIR" \
     "${CMAKE_GENERATOR_FLAG[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+    "${TOOLCHAIN_FLAG[@]}" \
     -DBUILD_SHARED_LIBS=OFF \
     -DFT_DISABLE_BZIP2=ON \
     -DFT_DISABLE_BROTLI=ON \
@@ -247,7 +262,7 @@ mkdir -p "$MANIFOLD_BUILD_DIR" && cd "$MANIFOLD_BUILD_DIR"
 cmake "$MANIFOLD_DIR" \
   "${CMAKE_GENERATOR_FLAG[@]}" \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+  "${TOOLCHAIN_FLAG[@]}" \
   -DBUILD_SHARED_LIBS=OFF \
   -DMANIFOLD_CBIND=ON \
   -DMANIFOLD_TEST=OFF \
@@ -280,7 +295,7 @@ mkdir -p "$FACET_CXX_BUILD_DIR" && cd "$FACET_CXX_BUILD_DIR"
 cmake "$FACET_CXX_DIR" \
   "${CMAKE_GENERATOR_FLAG[@]}" \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+  "${TOOLCHAIN_FLAG[@]}" \
   -DBUILD_SHARED_LIBS=OFF
 cmake --build . --config Release -j "$JOBS"
 echo "facet_cxx build complete."
