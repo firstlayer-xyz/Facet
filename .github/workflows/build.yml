@@ -168,7 +168,11 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "build" build.keychain
 
       - name: Codesign
-        run: codesign -s "Developer ID Application" --force --deep --options runtime app/build/bin/Facet.app
+        run: |
+          # Find the signing identity hash
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+          echo "Signing with: $IDENTITY"
+          codesign -s "$IDENTITY" --force --deep --options runtime --keychain build.keychain app/build/bin/Facet.app
 
       - name: Create DMG
         run: |
