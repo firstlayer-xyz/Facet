@@ -81,11 +81,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.14.1
-
       - name: Cache custom Go toolchain
         id: cache-go
         uses: actions/cache@v4
@@ -105,9 +100,6 @@ jobs:
       - name: Build manifold
         shell: bash
         run: make manifold
-        env:
-          CC: zig cc
-          CXX: zig c++
 
       - name: Add Go toolchain to PATH
         shell: bash
@@ -118,8 +110,6 @@ jobs:
         run: cd app && ~/go/bin/wails build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
-          CC: zig cc
-          CXX: zig c++
 
       - name: Package
         shell: bash
