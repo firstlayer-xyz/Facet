@@ -169,10 +169,19 @@ jobs:
 
       - name: Codesign
         run: |
-          # Find the signing identity hash
-          IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
-          echo "Signing with: $IDENTITY"
-          codesign -s "$IDENTITY" --force --deep --options runtime --keychain build.keychain app/build/bin/Facet.app
+          echo "=== All identities in build.keychain ==="
+          security find-identity -v build.keychain
+          echo "=== Codesigning identities ==="
+          security find-identity -v -p codesigning build.keychain
+          echo "==="
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
+          if [ -z "$IDENTITY" ]; then
+            echo "No signing identity found — falling back to ad-hoc"
+            codesign -s - --force --deep --options runtime app/build/bin/Facet.app
+          else
+            echo "Signing with: $IDENTITY"
+            codesign -s "$IDENTITY" --force --deep --options runtime --keychain build.keychain app/build/bin/Facet.app
+          fi
 
       - name: Create DMG
         run: |
