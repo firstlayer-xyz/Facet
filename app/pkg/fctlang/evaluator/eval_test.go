@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"facet/app/pkg/fctlang/loader"
+	"facet/app/pkg/manifold"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -2970,5 +2971,117 @@ fn Main() {
 	}
 	if mesh == nil || len(mesh.Vertices) == 0 {
 		t.Error("expected non-empty mesh")
+	}
+}
+
+func TestEvalPosMapTransitiveLibrary(t *testing.T) {
+	// Fasteners library imports threads internally.
+	// PosMap should contain entries from both the user file AND the fastener library.
+	src := `
+var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@main";
+
+fn Main() {
+    return F.HexBolt(size: "m8", length: 30 mm).Solid();
+}
+`
+	prog := parseTestProg(t, src)
+	resolveTestProg(t, prog, "", threadResolveOpts())
+
+	result, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+
+	// Collect unique files from posMap with their face counts
+	type fileInfo struct {
+		entries  int
+		faceIDs int
+	}
+	files := make(map[string]*fileInfo)
+	for _, entry := range result.PosMap {
+		fi, ok := files[entry.File]
+		if !ok {
+			fi = &fileInfo{}
+			files[entry.File] = fi
+		}
+		fi.entries++
+		fi.faceIDs += len(entry.FaceIDs)
+	}
+
+	t.Logf("PosMap has %d entries across %d files:", len(result.PosMap), len(files))
+	for f, fi := range files {
+		t.Logf("  file: %s — %d entries, %d faceIDs", f, fi.entries, fi.faceIDs)
+	}
+
+	// Log detailed entries for threads file
+	for _, entry := range result.PosMap {
+		if strings.Contains(entry.File, "threads") {
+			t.Logf("  threads entry: line=%d col=%d faceIDs=%v", entry.Line, entry.Col, entry.FaceIDs)
+		}
+	}
+
+	// Should have entries from the main file
+	if files[testMainKey] == nil {
+		t.Errorf("posMap missing main file %q", testMainKey)
+	}
+
+	// Should have entries from threads (transitive via fasteners)
+	hasThreads := false
+	for f := range files {
+		if strings.Contains(f, "threads") {
+			hasThreads = true
+			break
+		}
+	}
+	if !hasThreads {
+		t.Error("posMap has no threads file entries — transitive tracking not working for thread geometry")
+	}
+
+	// Check that threads entries actually have face IDs
+	for f, fi := range files {
+		if strings.Contains(f, "threads") && fi.faceIDs == 0 {
+			t.Errorf("threads file has %d entries but 0 faceIDs — geometry not tracked", fi.entries)
+		}
+	}
+
+	// Check posMap faceIDs exist in the display mesh's face groups
+	if len(result.Solids) > 0 {
+		dm := manifold.MergeExtractDisplayMeshes(result.Solids)
+		t.Logf("Display mesh: %d verts, %d indices, %d faceGroups", dm.VertexCount, dm.IndexCount, dm.FaceGroupCount)
+		if dm.FaceGroupCount == 0 {
+			t.Error("Display mesh has NO face groups — face-click can't work")
+		}
+	}
+
+	// Check posMap faceIDs exist in the final solid's FaceMap
+	if len(result.Solids) > 0 {
+		// Collect all faceIDs from the final solid(s)
+		solidFaceIDs := make(map[uint32]bool)
+		for _, s := range result.Solids {
+			for id := range s.FaceMap {
+				solidFaceIDs[id] = true
+			}
+		}
+		t.Logf("Final solid(s) have %d unique face IDs in FaceMap", len(solidFaceIDs))
+
+		// Check which posMap faceIDs are in the final solid
+		matched := 0
+		missing := 0
+		for _, entry := range result.PosMap {
+			for _, fid := range entry.FaceIDs {
+				if solidFaceIDs[fid] {
+					matched++
+				} else {
+					missing++
+				}
+			}
+		}
+		t.Logf("PosMap faceIDs: %d matched final solid, %d missing", matched, missing)
+		if missing > 0 {
+			t.Logf("WARNING: %d posMap faceIDs don't match the final solid — these faces won't be clickable", missing)
+		}
+		if matched == 0 {
+			t.Errorf("NO posMap faceIDs match the final solid — face IDs are from different ID spaces")
+		}
 	}
 }

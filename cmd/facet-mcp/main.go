@@ -56,7 +56,7 @@ func main() {
 		}
 		input.OutputPath = cleaned
 
-		src, err := parser.Parse(input.Source)
+		src, err := parser.Parse(input.Source, "", parser.SourceUser)
 		if err != nil {
 			return nil, nil, fmt.Errorf("parse error: %v", err)
 		}
@@ -86,7 +86,7 @@ func main() {
 		Name:        "check_syntax",
 		Description: "Parse and type-check Facet source code without evaluating. Returns validation errors or confirms the code is valid.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input CheckInput) (*mcp.CallToolResult, any, error) {
-		src, err := parser.Parse(input.Source)
+		src, err := parser.Parse(input.Source, "", parser.SourceUser)
 		if err != nil {
 			data, _ := json.Marshal(map[string]interface{}{
 				"valid":  false,

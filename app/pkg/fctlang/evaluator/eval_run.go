@@ -184,7 +184,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 		line, col int
 	}
 	posToIDs := make(map[posKey]map[uint32]bool)
-	for _, track := range e.solidTracks {
+	for _, track := range *e.solidTracks {
 		s, err := track.Future.Resolve()
 		if err != nil || len(s.FaceMap) == 0 {
 			continue

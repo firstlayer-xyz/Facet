@@ -31,7 +31,7 @@ func lexTokenTypes(src string) ([]TokenType, error) {
 // mustParse is a parse-only helper used by table-driven tests.
 func mustParse(t *testing.T, name, src string) *Source {
 	t.Helper()
-	prog, err := Parse(src)
+	prog, err := Parse(src, "", SourceUser)
 	if err != nil {
 		t.Fatalf("%s: unexpected parse error: %v", name, err)
 	}
@@ -40,7 +40,7 @@ func mustParse(t *testing.T, name, src string) *Source {
 
 func mustParseError(t *testing.T, name, src string) error {
 	t.Helper()
-	_, err := Parse(src)
+	_, err := Parse(src, "", SourceUser)
 	if err == nil {
 		t.Fatalf("%s: expected a parse error, got none", name)
 	}

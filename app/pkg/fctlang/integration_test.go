@@ -21,7 +21,7 @@ const testMainKey = "/test/main.fct"
 // Used by test helpers that need stdlib available.
 func testStdlibLibs() loader.Program {
 	prog := loader.NewProgram()
-	stdSrc, err := parser.Parse(stdlib.StdlibSource)
+	stdSrc, err := parser.Parse(stdlib.StdlibSource, "", parser.SourceUser)
 	if err != nil {
 		panic("stdlib parse error: " + err.Error())
 	}
@@ -35,7 +35,7 @@ func testStdlibLibs() loader.Program {
 // with stdlib seeded into Libs so the checker and evaluator can find it.
 func parseTestProg(t *testing.T, src string) loader.Program {
 	t.Helper()
-	s, err := parser.Parse(src)
+	s, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}

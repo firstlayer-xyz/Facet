@@ -130,10 +130,6 @@ export function InstallLibrary(arg1, arg2) {
   return window['go']['main']['App']['InstallLibrary'](arg1, arg2);
 }
 
-export function IsReadOnlyPath(arg1) {
-  return window['go']['main']['App']['IsReadOnlyPath'](arg1);
-}
-
 export function IsScratchFile(arg1) {
   return window['go']['main']['App']['IsScratchFile'](arg1);
 }
@@ -188,6 +184,10 @@ export function RemoveLibrary(arg1, arg2) {
 
 export function RemoveLocalLibrary(arg1) {
   return window['go']['main']['App']['RemoveLocalLibrary'](arg1);
+}
+
+export function RemoveSource(arg1) {
+  return window['go']['main']['App']['RemoveSource'](arg1);
 }
 
 export function ResetRunner() {

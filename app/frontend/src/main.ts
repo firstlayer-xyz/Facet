@@ -33,10 +33,10 @@ import {
   initApp, setEditor, setInitialFile, setEditorWordWrap, setFormatOnSave, setHighlightMode,
   run, autoRun, toggleRun,
   showDebugStep, showDebugStepPrev, showDebugStepNext,
-  loadSource, openFile, openRecentFile, saveFile, saveFileAs, newFile, exportMesh, sendToSlicer,
+  openExample, openFile, openRecentFile, saveFile, saveFileAs, newFile, exportMesh, sendToSlicer,
   reeval, toggleDebug, toggleDocs, openDocsToEntry, openLibraryFile, openLibraryTab,
   switchToTab,
-  getLibrarySources, getActiveTabValue, getMainLabel, getMainSource,
+  getSources, getActiveTabValue, getActiveLabel, getMainSource, restoreTabCursor,
   isPreviewLocked, setPreviewLocked,
   setOnTabChange, setOnSourceChange, setOnDebugFilesChange, setOnEntryPoints,
   setEntryOverrides, refreshEditorUI,
@@ -294,22 +294,31 @@ async function init() {
     compilingOverlay,
   });
 
-  // Determine initial source: reload last file, or show tutorial
-  let initialSource = await GetDefaultSource();
+  // Restore saved tab state or load default tutorial
+  const savedTabs = (settings as any).savedTabs as { path: string; label: string; cursor: { lineNumber: number; column: number } | null }[] | undefined;
+  const savedActiveTab = (settings as any).activeTab as string | undefined;
+  // Legacy fallback
   const lastFile = (settings as any).lastFile as string | undefined;
-  if (lastFile) {
+
+  let initialSource = '';
+  let initialFileKey = 'untitled';
+
+  // Find the first tab to load as the initial editor content
+  const firstTab = savedTabs?.[0] ?? (lastFile ? { path: lastFile, label: '', cursor: null } : null);
+  if (firstTab) {
     try {
-      const result = await OpenRecentFile(lastFile);
+      const result = await OpenRecentFile(firstTab.path);
       if (result?.source) {
         initialSource = result.source;
+        initialFileKey = result.path;
       }
     } catch {
-      // File no longer exists — start with blank editor
-      initialSource = '';
+      initialSource = await GetDefaultSource();
     }
+  } else {
+    initialSource = await GetDefaultSource();
   }
 
-  const initialFileKey = lastFile || 'untitled';
   const editor = createEditor(editorPanel, initialSource, autoRun, async (name) => {
     await openDocsToEntry(name);
     docsBtn.classList.add('active');
@@ -329,34 +338,61 @@ async function init() {
 
   // Wire face-click → source navigation
   viewer.setOnFaceClick(async (file, line, col) => {
-    if (line <= 0) {
+    if (line <= 0 || !file) {
       editor.clearError();
       editor.clearDebugLine();
       return;
     }
-    // Determine which tab to show
-    const sourceFile = file || getActiveTabValue();
-    // Switch tab if needed (but only for files we know about)
-    if (sourceFile !== getActiveTabValue()) {
-      const libs = getLibrarySources();
-      if (libs[sourceFile]) {
-        await openLibraryTab(sourceFile, libs[sourceFile]);
-      } else {
-        // Unknown file (e.g., stdlib internals) — skip navigation
-        return;
-      }
+    // Ensure the correct tab is open and active
+    if (file !== getActiveTabValue()) {
+      const sources = getSources();
+      const text = sources[file]?.text ?? '';
+      await openLibraryTab(file, text);
     }
-    editor.revealLine(line, col || 1);
-    editor.highlightError(line);
+    requestAnimationFrame(() => {
+      editor.revealLine(line, col || 1);
+      editor.highlightError(line);
+    });
   });
 
-  // Set initial file path
-  await setInitialFile(initialFileKey);
+  // Set initial file and show tab
+  setInitialFile(initialFileKey);
+  if (firstTab?.cursor) {
+    editor.revealLine(firstTab.cursor.lineNumber, firstTab.cursor.column);
+  }
+
+  // Restore remaining saved tabs
+  if (savedTabs && savedTabs.length > 1) {
+    for (const saved of savedTabs) {
+      if (saved.path === initialFileKey) continue; // already open
+      try {
+        const result = await OpenRecentFile(saved.path);
+        if (result?.source) {
+          await openLibraryTab(result.path, result.source);
+          // Restore cursor for this tab
+          if (saved.cursor) {
+            restoreTabCursor(saved.path, saved.cursor);
+          }
+        }
+      } catch {
+        // file no longer exists — skip
+      }
+    }
+  }
+  // Switch to the previously active tab
+  if (savedActiveTab && savedActiveTab !== getActiveTabValue()) {
+    switchToTab(savedActiveTab);
+    const savedTab = savedTabs?.find(t => t.path === savedActiveTab);
+    if (savedTab?.cursor) {
+      editor.revealLine(savedTab.cursor.lineNumber, savedTab.cursor.column);
+    }
+  }
 
   // ── File tree panel ────────────────────────────────────────────────────────
   const fileTree = new FileTree({
-    getMainLabel,
-    getLibrarySources,
+    getActiveLabel,
+    getActiveTab: getActiveTabValue,
+    getSources,
     openTab(path, source) {
       openLibraryTab(path, source);
     },
@@ -419,7 +455,7 @@ async function init() {
   function updatePreviewLabel(tab: string) {
     if (selectedFnKey !== null) return; // keep showing function name
     if (tab === '') {
-      previewFileLbl.textContent = getMainLabel();
+      previewFileLbl.textContent = getActiveLabel();
     } else {
       let name = tab.split('/').pop() || tab;
       if (name.endsWith('.fct')) name = name.slice(0, -4);
@@ -542,7 +578,7 @@ async function init() {
   });
 
   // Initial tree render (source is initialSource which was set into editor)
-  fileTree.update(initialSource, initialFileKey, initialFileKey);
+  fileTree.update(initialSource, initialFileKey);
   updatePreviewLabel(initialFileKey);
 
   // Files button toggle
@@ -613,7 +649,7 @@ EventsOn('menu:open-recent', (path: string) => openRecentFile(path));
 EventsOn('menu:open-demo', async (name: string) => {
   try {
     const source = await GetExample(name);
-    loadSource(source, name);
+    openExample(source, name);
   } catch (err) {
     console.error('Failed to load example:', err);
   }
@@ -621,7 +657,7 @@ EventsOn('menu:open-demo', async (name: string) => {
 EventsOn('menu:open-library', async (dir: string) => {
   try {
     const result = await OpenLibraryDir(dir);
-    loadSource(result.source, result.path);
+    openExample(result.source, result.path);
   } catch (err) {
     console.error('Failed to open library:', err);
   }

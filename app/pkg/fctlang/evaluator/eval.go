@@ -121,7 +121,7 @@ type DebugStep struct {
 	Meshes  []DebugMesh  `json:"meshes"`  // populated lazily by ResolveMeshes
 	Line    int          `json:"line"`
 	Col     int          `json:"col"`
-	File    string       `json:"file"` // "" = main, "facet/gears" = library path
+	File    string       `json:"file"` // disk path of the source file
 	entries []debugEntry // unexported — holds shape ptrs, not serialized
 }
 
@@ -147,7 +147,7 @@ type ModelStats struct {
 // PosEntry maps a source position (file+line+col) to the face IDs of solids
 // that were created or operated on at that position.
 type PosEntry struct {
-	File    string   `json:"file"`    // "" = main, "folder/name" = library path
+	File    string   `json:"file"`    // disk path of the source file
 	Line    int      `json:"line"`
 	Col     int      `json:"col"`
 	FaceIDs []uint32 `json:"faceIDs"`
@@ -178,7 +178,8 @@ func Eval(ctx context.Context, prog loader.Program, currentKey string, overrides
 	if entryPoint == "" {
 		return nil, fmt.Errorf("entry point not set")
 	}
-	e := &evaluator{ctx: ctx, prog: prog, currentKey: currentKey, entryPoint: entryPoint, libEvalCache: make(map[string]map[string]value), libLoadStack: make(map[string]bool), libSources: make(map[string]string)}
+	tracks := make([]SolidTrack, 0)
+	e := &evaluator{ctx: ctx, prog: prog, currentKey: currentKey, entryPoint: entryPoint, libEvalCache: make(map[string]map[string]value), libLoadStack: make(map[string]bool), libSources: make(map[string]string), solidTracks: &tracks}
 	if currentKey != "" {
 		e.file = currentKey
 	}
@@ -196,7 +197,8 @@ func EvalDebug(ctx context.Context, prog loader.Program, currentKey string, over
 	if entryPoint == "" {
 		return nil, fmt.Errorf("entry point not set")
 	}
-	e := &evaluator{ctx: ctx, prog: prog, currentKey: currentKey, entryPoint: entryPoint, debug: true, libEvalCache: make(map[string]map[string]value), libLoadStack: make(map[string]bool), libSources: make(map[string]string)}
+	tracks := make([]SolidTrack, 0)
+	e := &evaluator{ctx: ctx, prog: prog, currentKey: currentKey, entryPoint: entryPoint, debug: true, libEvalCache: make(map[string]map[string]value), libLoadStack: make(map[string]bool), libSources: make(map[string]string), solidTracks: &tracks}
 	if currentKey != "" {
 		e.file = currentKey
 	}
@@ -242,7 +244,7 @@ type evaluator struct {
 	steps        []DebugStep
 	libEvalCache map[string]map[string]value  // import path → evaluated globals
 	libLoadStack map[string]bool         // libraries currently being loaded (cycle detection)
-	file         string                  // current file identifier ("" = main)
+	file         string                  // current file disk path
 	yieldTarget  *[]value               // non-nil when inside a for-yield body
 	foldAcc      *value                 // non-nil when inside a fold body; yield writes here
 	libSources   map[string]string      // collected library sources (debug only)
@@ -252,7 +254,7 @@ type evaluator struct {
 	opFuncs      map[opFuncKey]*parser.Function // operator function dispatch table
 	currentLib   *libRef                // non-nil when evaluating inside a library
 	overrides    map[string]value       // slider overrides: varName → value
-	solidTracks  []SolidTrack          // records every Pos that produced/operated on a Solid
+	solidTracks  *[]SolidTrack         // shared across parent/child evaluators
 	callDepth    int                   // current function call nesting depth
 }
 
@@ -269,7 +271,7 @@ type debugRole struct {
 
 // trackSolid records a source position and the SolidFuture produced there.
 func (e *evaluator) trackSolid(pos parser.Pos, sf *manifold.SolidFuture) {
-	e.solidTracks = append(e.solidTracks, SolidTrack{
+	*e.solidTracks = append(*e.solidTracks, SolidTrack{
 		File: e.file, Line: pos.Line, Col: pos.Col, Future: sf,
 	})
 }

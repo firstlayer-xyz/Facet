@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -36,11 +37,12 @@ import (
 // Check data is always present. Eval data is present when an entry point was provided.
 type runResultPayload struct {
 	// Check data (always present)
-	Errors       []parser.SourceError `json:"errors,omitempty"`
-	VarTypes     checker.VarTypeMap   `json:"varTypes,omitempty"`
-	Declarations *checker.DeclResult  `json:"declarations,omitempty"`
-	EntryPoints  []runner.EntryPoint   `json:"entryPoints,omitempty"`
-	DocIndex     []doc.DocEntry       `json:"docIndex,omitempty"`
+	Errors       []parser.SourceError          `json:"errors,omitempty"`
+	Sources      map[string]runner.SourceEntry  `json:"sources,omitempty"`
+	VarTypes     checker.VarTypeMap             `json:"varTypes,omitempty"`
+	Declarations *checker.DeclResult            `json:"declarations,omitempty"`
+	EntryPoints  []runner.EntryPoint             `json:"entryPoints,omitempty"`
+	DocIndex     []doc.DocEntry                 `json:"docIndex,omitempty"`
 
 	// Eval data (present when entry point was provided and eval succeeded)
 	Mesh   *manifold.DisplayMesh `json:"mesh,omitempty"`
@@ -96,6 +98,7 @@ func (a *App) GetExampleList() []string {
 			names = append(names, e.Name())
 		}
 	}
+	sort.Strings(names)
 	return names
 }
 
@@ -845,6 +848,11 @@ func (a *App) UpdateSource(key string, source string) {
 	a.runner.UpdateSource(key, source)
 }
 
+// RemoveSource removes a source from the program if it is not referenced by other sources.
+func (a *App) RemoveSource(key string) {
+	a.runner.RemoveSource(key)
+}
+
 // Run triggers an immediate evaluation from the given source key.
 func (a *App) Run(key string, entryPoint string, overrides map[string]interface{}) {
 	a.runner.Run(key, entryPoint, overrides)
@@ -859,6 +867,7 @@ func (a *App) Debug(key string, entryPoint string, overrides map[string]interfac
 func (a *App) emitRunResult(result *runner.RunResult) {
 	payload := runResultPayload{
 		Errors:       result.Errors,
+		Sources:      result.Sources,
 		VarTypes:     result.VarTypes,
 		Declarations: result.Declarations,
 		EntryPoints:  result.EntryPoints,
@@ -877,7 +886,7 @@ func (a *App) emitRunResult(result *runner.RunResult) {
 
 // FormatCode normalizes the indentation of Facet source code.
 func (a *App) FormatCode(source string) string {
-	src, err := parser.Parse(source)
+	src, err := parser.Parse(source, "", parser.SourceUser)
 	if err != nil {
 		return source
 	}
@@ -1364,34 +1373,6 @@ func (a *App) ForkLibrary(id, ref string) error {
 	return nil
 }
 
-// IsReadOnlyPath returns true if the given path is inside the git cache
-// or the built-in library directory, meaning it should not be user-edited.
-// User-created local libraries (under <libDir>/local/) are writable.
-func (a *App) IsReadOnlyPath(p string) bool {
-	if p == "" {
-		return false
-	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return false
-	}
-	// Git cache is always read-only.
-	if d, err := filepath.Abs(loader.DefaultGitCacheDir()); err == nil {
-		if strings.HasPrefix(abs, d+string(filepath.Separator)) || abs == d {
-			return true
-		}
-	}
-	// Library directory is writable — it contains only user-managed files
-	// (forked libraries and locally created ones).
-	if ld, ldErr := libraryDir(); ldErr == nil {
-		if d, err := filepath.Abs(ld); err == nil {
-			if strings.HasPrefix(abs, d+string(filepath.Separator)) || abs == d {
-				return false
-			}
-		}
-	}
-	return false
-}
 
 // GetLibraryFilePath resolves a library import path to its disk path
 // using the current program's import mapping. Returns empty string if not found.

@@ -572,14 +572,17 @@ export class Viewer {
     }
   }
 
-  /** Set the position map from the evaluator for hover highlighting. */
-  setPosMap(entries: PosEntry[]): void {
+  /** Set the position map from the evaluator for hover highlighting.
+   *  excludeFiles is a set of file paths to exclude from face-click cycling (e.g., stdlib). */
+  setPosMap(entries: PosEntry[], excludeFiles?: Set<string>): void {
     this.posMap = entries;
     // Build reverse index: faceGroupID → source positions (multiple entries per face)
     this.reversePosMap.clear();
     this.lastPickedFaceGroup = -1;
     this.lastPickCycleIndex = 0;
     for (const entry of entries) {
+      // Skip entries from excluded files (stdlib, etc.)
+      if (excludeFiles && excludeFiles.has(entry.file)) continue;
       for (const faceID of entry.faceIDs) {
         let list = this.reversePosMap.get(faceID);
         if (!list) {
@@ -683,7 +686,9 @@ export class Viewer {
       -((e.clientY - rect.top) / rect.height) * 2 + 1,
     );
     this.raycaster.setFromCamera(mouse, this.activeCamera);
-    const intersects = this.raycaster.intersectObjects(this.userMeshes, false);
+    const meshOnly = this.userMeshes.filter(o => o instanceof THREE.Mesh);
+    const intersects = this.raycaster.intersectObjects(meshOnly, false);
+
 
     if (intersects.length === 0) {
       this.clearHighlight();
@@ -701,6 +706,7 @@ export class Viewer {
 
     const faceGroupID = faceGroups[hit.faceIndex];
     const entries = this.reversePosMap.get(faceGroupID);
+
     if (!entries || entries.length === 0) {
       this.clearHighlight();
       return;
@@ -716,9 +722,9 @@ export class Viewer {
 
     const entry = entries[this.lastPickCycleIndex];
     // Highlight the matching faces
-    this.highlightAtPos(entry.file || '', entry.line, entry.col);
+    this.highlightAtPos(entry.file, entry.line, entry.col);
     // Navigate to source
-    this.onFaceClickCb?.(entry.file || '', entry.line, entry.col);
+    this.onFaceClickCb?.(entry.file, entry.line, entry.col);
   }
 
   /** Find the closest posMap entry at or before (line, col) on the same line, filtered by file. */
@@ -729,7 +735,7 @@ export class Viewer {
     let best: PosEntry | null = null;
     let firstAfter: PosEntry | null = null;
     for (const entry of this.posMap) {
-      if ((entry.file || '') !== file) continue;
+      if (entry.file !== file) continue;
       if (entry.line !== line) continue;
       if (entry.col <= col) {
         if (!best || entry.col > best.col) {

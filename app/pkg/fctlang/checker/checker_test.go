@@ -10,7 +10,7 @@ import (
 
 // parse is a test helper wrapping the parser.
 func parse(src string) (*parser.Source, error) {
-	return parser.Parse(src)
+	return parser.Parse(src, "", parser.SourceUser)
 }
 
 const testMainKey = "/test/main.fct"
@@ -18,7 +18,7 @@ const testMainKey = "/test/main.fct"
 // testStdlibLibs returns a Program with stdlib parsed and seeded.
 func testStdlibLibs() loader.Program {
 	prog := loader.NewProgram()
-	stdSrc, err := parser.Parse(stdlib.StdlibSource)
+	stdSrc, err := parser.Parse(stdlib.StdlibSource, "", parser.SourceUser)
 	if err != nil {
 		panic("stdlib parse error: " + err.Error())
 	}

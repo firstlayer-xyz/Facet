@@ -71,7 +71,7 @@ func main() {
 
 	// Format mode: format and print (or write back with -w)
 	if doFmt {
-		src, err := parser.Parse(string(source))
+		src, err := parser.Parse(string(source), "", parser.SourceUser)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "parse error: %v\n", err)
 			os.Exit(1)
@@ -90,7 +90,7 @@ func main() {
 
 	ctx := context.Background()
 
-	prog, err := loader.Load(ctx, string(source), input, libDir, nil)
+	prog, err := loader.Load(ctx, string(source), input, parser.SourceUser, libDir, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

@@ -14,7 +14,7 @@ import (
 // stdlibDocSource returns a parsed stdlib Source.
 // Used by BuildDocIndex when no pre-parsed stdlib is provided.
 func stdlibDocSource() *parser.Source {
-	src, err := parser.Parse(stdlib.StdlibSource)
+	src, err := parser.Parse(stdlib.StdlibSource, "", parser.SourceUser)
 	if err != nil {
 		return &parser.Source{}
 	}
@@ -115,7 +115,7 @@ func BuildLibDocEntries(libDir string) []DocEntry {
 			return nil
 		}
 		src := string(data)
-		libProg, err := parser.Parse(src)
+		libProg, err := parser.Parse(src, "", parser.SourceUser)
 		if err != nil {
 			return nil
 		}
@@ -221,7 +221,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 			return nil
 		}
 		src := string(data)
-		libProg, err := parser.Parse(src)
+		libProg, err := parser.Parse(src, "", parser.SourceUser)
 		if err != nil {
 			return nil
 		}
@@ -268,7 +268,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 	})
 
 	// 3. User-defined functions/methods and structs
-	prog, err := parser.Parse(source)
+	prog, err := parser.Parse(source, "", parser.SourceUser)
 	if err == nil && prog != nil {
 		for _, fn := range prog.Functions {
 			if strings.HasPrefix(fn.Name, "_") {

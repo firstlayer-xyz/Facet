@@ -2,17 +2,6 @@ package parser
 
 import "strings"
 
-// Source is the root AST node representing a single parsed source file.
-type Source struct {
-	Path             string // import path ("main", "facet/gears"); zero after Parse
-	Dir              string // filesystem directory; "" for embedded; zero after Parse
-	Text             string // raw source code; zero after Parse
-	Globals          []*VarStmt
-	Functions        []*Function
-	StructDecls      []*StructDecl
-	TrailingComments []Comment // comments after last declaration
-}
-
 // Function represents a function declaration.
 // ReceiverType is non-empty for method definitions (e.g. "Solid" for Solid.Translate).
 // IsOperator is true for operator functions (e.g. fn +(Vec3 a, b) Vec3 { ... }).

@@ -38,6 +38,7 @@ func (e *evaluator) evalLibExpr(ex *parser.LibExpr) (value, error) {
 		ctx:          e.ctx,
 		prog:         e.prog,
 		currentKey:   diskPath,
+		file:         diskPath,
 		debug:        e.debug,
 		libEvalCache: e.libEvalCache,
 		libLoadStack: e.libLoadStack,
@@ -45,6 +46,7 @@ func (e *evaluator) evalLibExpr(ex *parser.LibExpr) (value, error) {
 		stdFuncs:     e.stdFuncs,
 		stdMethods:   e.stdMethods,
 		structDecls:  buildStructDecls(e.prog, diskPath),
+		solidTracks:  e.solidTracks,
 	}
 	libEval.globals = make(map[string]value)
 	// Pre-create libRef so struct values created during globals eval get lib context

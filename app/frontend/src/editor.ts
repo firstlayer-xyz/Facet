@@ -309,7 +309,8 @@ export interface EditorHandle {
   updateDocIndex(entries: DocEntry[]): void;
   updateVarTypes(types: Record<string, Record<string, string>>): void;
   setCurrentSource(sourceKey: string): void;
-  updateDeclarations(decls: Record<string, { line: number; col: number; file?: string }>, sources?: Record<string, string>): void;
+  updateDeclarations(decls: Record<string, { line: number; col: number; file?: string }>): void;
+  updateFileSources(sources: Record<string, string>): void;
   getCursorPosition(): { lineNumber: number; column: number };
   onCursorChange(cb: (line: number, col: number) => void): void;
   onMouseMove(cb: (line: number, col: number) => void): void;
@@ -1029,9 +1030,12 @@ export function createEditor(
       currentSourceKey = sourceKey;
     },
 
-    updateDeclarations(decls: Record<string, { line: number; col: number; file?: string; kind?: string }>, sources?: Record<string, string>) {
+    updateDeclarations(decls: Record<string, { line: number; col: number; file?: string; kind?: string }>) {
       declarations = decls;
-      fileSources = sources || {};
+    },
+
+    updateFileSources(sources: Record<string, string>) {
+      fileSources = sources;
     },
 
     getCursorPosition(): { lineNumber: number; column: number } {

@@ -67,8 +67,6 @@ export function GetStderrLog():Promise<string>;
 
 export function InstallLibrary(arg1:string,arg2:string):Promise<void>;
 
-export function IsReadOnlyPath(arg1:string):Promise<boolean>;
-
 export function IsScratchFile(arg1:string):Promise<boolean>;
 
 export function ListLibraries():Promise<Array<main.LibraryInfo>>;
@@ -96,6 +94,8 @@ export function RekeySource(arg1:string,arg2:string):Promise<void>;
 export function RemoveLibrary(arg1:string,arg2:string):Promise<void>;
 
 export function RemoveLocalLibrary(arg1:string):Promise<void>;
+
+export function RemoveSource(arg1:string):Promise<void>;
 
 export function ResetRunner():Promise<void>;
 

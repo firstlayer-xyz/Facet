@@ -108,15 +108,24 @@ function mergeWithDefaults(parsed: any): AppSettings {
   if (appearance.uiTheme in themeRenames) {
     appearance.uiTheme = themeRenames[appearance.uiTheme];
   }
+  // Only pick known keys from each section — don't preserve stale fields
+  const pick = <T extends Record<string, any>>(def: T, src: any): T => {
+    if (!src || typeof src !== 'object') return { ...def };
+    const result = { ...def };
+    for (const key of Object.keys(def)) {
+      if (key in src) (result as any)[key] = src[key];
+    }
+    return result;
+  };
   return {
-    ...parsed, // preserve Go-owned keys (lastFile, recentFiles, etc.)
+    ...parsed, // preserve Go-owned keys (lastFile, recentFiles, savedTabs, etc.)
     appearance,
-    editor: { ...defaults.editor, ...parsed.editor },
+    editor: pick(defaults.editor, parsed.editor),
     libraries,
-    assistant: { ...defaults.assistant, ...parsed.assistant },
-    camera: { ...defaults.camera, ...parsed.camera },
-    librarySettings: { ...defaults.librarySettings, ...parsed.librarySettings },
-    slicer: { ...defaults.slicer, ...parsed.slicer },
+    assistant: pick(defaults.assistant, parsed.assistant),
+    camera: pick(defaults.camera, parsed.camera),
+    librarySettings: pick(defaults.librarySettings, parsed.librarySettings),
+    slicer: pick(defaults.slicer, parsed.slicer),
   };
 }
 

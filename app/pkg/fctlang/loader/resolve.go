@@ -54,20 +54,18 @@ func (p Program) Resolve(importPath string) string {
 // Load parses source and resolves all library dependencies, returning a Program.
 // key is the disk path (or scratch path) for the source being loaded.
 // The standard library is automatically parsed and added under StdlibPath.
-func Load(ctx context.Context, source string, key string, libDir string, opts *Options) (Program, error) {
-	src, err := parser.Parse(source)
+func Load(ctx context.Context, source string, key string, kind parser.SourceKind, libDir string, opts *Options) (Program, error) {
+	src, err := parser.Parse(source, "", kind)
 	if err != nil {
 		return Program{}, err
 	}
 	src.Path = key
-	src.Text = source
 
-	stdSrc, err := parser.Parse(stdlib.StdlibSource)
+	stdSrc, err := parser.Parse(stdlib.StdlibSource, "", parser.SourceStdLib)
 	if err != nil {
 		return Program{}, fmt.Errorf("stdlib: %w", err)
 	}
 	stdSrc.Path = StdlibPath
-	stdSrc.Text = stdlib.StdlibSource
 
 	prog := NewProgram()
 	prog.Sources[key] = src
@@ -239,7 +237,6 @@ func (r *resolver) resolveSource(src *parser.Source) error {
 			}
 		}
 		rl := res.rl
-		rl.src.Dir = rl.dir
 		// Compute disk path key for this library
 		importPath := entries[i].le.Path
 		diskPath := importPath // fallback: use import path if no fctFile
@@ -305,24 +302,22 @@ func (r *resolver) loadLocalLib(rawPath string) (*resolvedLib, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", fsPath, err)
 		}
-		src, err := parser.Parse(string(data))
+		src, err := parser.Parse(string(data), "", parser.SourceLibrary)
 		if err != nil {
 			return nil, fmt.Errorf("parse %s: %w", fsPath, err)
 		}
 		src.Path = rawPath
-		src.Text = string(data)
 		return &resolvedLib{src: src, dir: fsDir, fctFile: fsPath, modTime: info.ModTime()}, nil
 	}
 
 	// Fall back to embedded stdlib
 	embeddedPath := "libraries/" + rawPath + "/" + base + ".fct"
 	if data, err := stdlib.Libraries.ReadFile(embeddedPath); err == nil {
-		src, err := parser.Parse(string(data))
+		src, err := parser.Parse(string(data), "", parser.SourceLibrary)
 		if err != nil {
 			return nil, fmt.Errorf("parse embedded %s: %w", embeddedPath, err)
 		}
 		src.Path = rawPath
-		src.Text = string(data)
 		return &resolvedLib{src: src, dir: ""}, nil
 	}
 
@@ -346,12 +341,11 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 				if err != nil {
 					return nil, fmt.Errorf("read %s: %w", fctFile, err)
 				}
-				src, err := parser.Parse(string(data))
+				src, err := parser.Parse(string(data), "", parser.SourceLibrary)
 				if err != nil {
 					return nil, fmt.Errorf("parse %s: %w", fctFile, err)
 				}
 				src.Path = rawPath
-				src.Text = string(data)
 				return &resolvedLib{src: src, dir: dir, fctFile: fctFile, modTime: info.ModTime()}, nil
 			}
 		}
@@ -369,12 +363,11 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", fctFile, err)
 		}
-		src, err := parser.Parse(string(data))
+		src, err := parser.Parse(string(data), "", parser.SourceLibrary)
 		if err != nil {
 			return nil, fmt.Errorf("parse %s: %w", fctFile, err)
 		}
 		src.Path = rawPath
-		src.Text = string(data)
 		return &resolvedLib{src: src, dir: baseDir, fctFile: fctFile, modTime: info.ModTime()}, nil
 	}
 
@@ -444,10 +437,9 @@ func LoadLibraryDir(dir string) (*parser.Source, error) {
 	if err != nil {
 		return nil, fmt.Errorf("expected %s.fct in %s", name, dir)
 	}
-	src, err := parser.Parse(string(data))
+	src, err := parser.Parse(string(data), "", parser.SourceLibrary)
 	if err != nil {
 		return nil, fmt.Errorf("%s.fct: %w", name, err)
 	}
-	src.Text = string(data)
 	return src, nil
 }

@@ -8,7 +8,7 @@ import (
 
 // formatString is a test helper that parses source and formats it.
 func formatString(source string) string {
-	src, err := parser.Parse(source)
+	src, err := parser.Parse(source, "", parser.SourceUser)
 	if err != nil {
 		return source
 	}

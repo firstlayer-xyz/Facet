@@ -15,7 +15,7 @@ func parseLibTestProg(t *testing.T, mainSrc, libSrc, libPath string) *fctchecker
 
 	prog := parseTestProg(t, mainSrc)
 
-	lib, err := parser.Parse(libSrc)
+	lib, err := parser.Parse(libSrc, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse library: %v", err)
 	}
@@ -102,7 +102,7 @@ fn mylib.Widget.Double() Number { return self.size * 2 }
 
 fn Main() Number { return 0 }
 `
-	_, err := parser.Parse(mainSrc)
+	_, err := parser.Parse(mainSrc, "", parser.SourceUser)
 	if err == nil {
 		t.Errorf("expected parse error for qualified library method (fn mylib.Widget.Double), got none")
 	} else {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -116,6 +117,43 @@ func (r *ProgramRunner) RekeySource(oldKey, newKey string) {
 	}
 }
 
+// RemoveSource removes a source from the program if it is not referenced
+// by any other source's lib imports. Triggers a re-check and pushes a new result.
+func (r *ProgramRunner) RemoveSource(key string) {
+	r.progMu.Lock()
+	if r.prog.Sources == nil {
+		r.progMu.Unlock()
+		return
+	}
+	// Check if any other source references this key via a LibExpr
+	referenced := false
+	for srcKey, src := range r.prog.Sources {
+		if srcKey == key {
+			continue
+		}
+		for _, g := range src.Globals {
+			if le, ok := g.Value.(*parser.LibExpr); ok {
+				if diskPath, ok := r.prog.Imports[le.Path]; ok && diskPath == key {
+					referenced = true
+					break
+				}
+			}
+		}
+		if referenced {
+			break
+		}
+	}
+	if !referenced {
+		delete(r.prog.Sources, key)
+		for importPath, diskPath := range r.prog.Imports {
+			if diskPath == key {
+				delete(r.prog.Imports, importPath)
+			}
+		}
+	}
+	r.progMu.Unlock()
+}
+
 // Reset cancels any in-flight build and clears all state.
 func (r *ProgramRunner) Reset() {
 	r.Stop()
@@ -216,7 +254,11 @@ func (r *ProgramRunner) doUpdateSource(ctx context.Context, key string, source s
 	}
 
 	// Parse the new source
-	src, parseErr := parser.Parse(source)
+	kind := parser.SourceUser
+	if strings.HasPrefix(key, "example:") {
+		kind = parser.SourceExample
+	}
+	src, parseErr := parser.Parse(source, "", kind)
 	if parseErr != nil {
 		var se *parser.SourceError
 		var errs []parser.SourceError
@@ -236,7 +278,7 @@ func (r *ProgramRunner) doUpdateSource(ctx context.Context, key string, source s
 	if r.prog.Sources == nil {
 		r.progMu.Unlock()
 
-		prog, err := loader.Load(ctx, source, key, r.config.LibDir, r.resolveOpts())
+		prog, err := loader.Load(ctx, source, key, kind, r.config.LibDir, r.resolveOpts())
 		if err != nil {
 			result := &RunResult{Errors: []parser.SourceError{SourceErrorFromErr(err)}}
 			r.pushResult(result)
@@ -247,10 +289,6 @@ func (r *ProgramRunner) doUpdateSource(ctx context.Context, key string, source s
 		r.prog = prog
 		r.progMu.Unlock()
 	} else {
-		// Update source — preserve Dir from the original
-		if old := r.prog.Sources[key]; old != nil {
-			src.Dir = old.Dir
-		}
 		src.Path = key
 		src.Text = source
 		r.prog.Sources[key] = src
@@ -262,6 +300,31 @@ func (r *ProgramRunner) doUpdateSource(ctx context.Context, key string, source s
 			r.pushResult(result)
 			return
 		}
+
+		// Prune orphaned libraries: rebuild Imports from current LibExpr nodes,
+		// keeping resolved disk paths, then remove Sources not referenced.
+		r.progMu.Lock()
+		activeImports := make(map[string]string)
+		for _, s := range r.prog.Sources {
+			for _, g := range s.Globals {
+				if le, ok := g.Value.(*parser.LibExpr); ok {
+					if diskPath, resolved := r.prog.Imports[le.Path]; resolved {
+						activeImports[le.Path] = diskPath
+					}
+				}
+			}
+		}
+		r.prog.Imports = activeImports
+		usedPaths := map[string]bool{key: true, loader.StdlibPath: true}
+		for _, diskPath := range activeImports {
+			usedPaths[diskPath] = true
+		}
+		for srcKey, s := range r.prog.Sources {
+			if !usedPaths[srcKey] && s.Kind != parser.SourceUser {
+				delete(r.prog.Sources, srcKey)
+			}
+		}
+		r.progMu.Unlock()
 	}
 
 	if ctx.Err() != nil {
@@ -396,6 +459,17 @@ func (r *ProgramRunner) doRun(ctx context.Context, prog loader.Program, key stri
 }
 
 func (r *ProgramRunner) pushResult(result *RunResult) {
+	// Populate Sources from the program's parsed sources
+	r.progMu.Lock()
+	if r.prog.Sources != nil {
+		sources := make(map[string]SourceEntry)
+		for key, src := range r.prog.Sources {
+			sources[key] = SourceEntry{Text: src.Text, Kind: src.Kind}
+		}
+		result.Sources = sources
+	}
+	r.progMu.Unlock()
+
 	if r.callbacks.OnResult != nil {
 		r.callbacks.OnResult(result)
 	}

@@ -146,12 +146,13 @@ func (e *evaluator) newLibEval(lib *libRef) *evaluator {
 		globals:      e.libEvalCache[lib.path],
 		debug:        e.debug,
 		libEvalCache: e.libEvalCache,
-		file:         lib.path,
+		file:         diskPath,
 		libSources:   e.libSources,
 		stdFuncs:     e.stdFuncs,
 		stdMethods:   e.stdMethods,
 		structDecls:  buildStructDecls(e.prog, diskPath),
 		currentLib:   lib,
+		solidTracks:  e.solidTracks,
 	}
 }
 

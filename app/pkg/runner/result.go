@@ -12,14 +12,21 @@ import (
 	"facet/app/pkg/manifold"
 )
 
+// SourceEntry describes a parsed source file with its text and origin.
+type SourceEntry struct {
+	Text string            `json:"text"`
+	Kind parser.SourceKind `json:"kind"`
+}
+
 // RunResult captures the full outcome of a run: check data + optional eval data.
 type RunResult struct {
 	// Check results (always populated)
-	Errors       []parser.SourceError `json:"errors,omitempty"`
-	VarTypes     checker.VarTypeMap   `json:"-"`
-	Declarations *checker.DeclResult  `json:"-"`
-	EntryPoints  []EntryPoint         `json:"entryPoints,omitempty"`
-	DocIndex     []doc.DocEntry       `json:"-"`
+	Errors       []parser.SourceError    `json:"errors,omitempty"`
+	Sources      map[string]SourceEntry  `json:"sources,omitempty"`
+	VarTypes     checker.VarTypeMap      `json:"-"`
+	Declarations *checker.DeclResult     `json:"-"`
+	EntryPoints  []EntryPoint            `json:"entryPoints,omitempty"`
+	DocIndex     []doc.DocEntry          `json:"-"`
 
 	// Eval results (populated when entryPoint != "")
 	Success bool                  `json:"success"`

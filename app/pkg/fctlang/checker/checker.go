@@ -26,11 +26,9 @@ type DeclLocation struct {
 	ReturnType string `json:"returnType,omitempty"` // declared return type name (e.g. "Solid", "Length")
 }
 
-// DeclResult bundles declaration locations with the source text of any
-// external files so the frontend can display them without a second round-trip.
+// DeclResult bundles declaration locations for Go to Definition support.
 type DeclResult struct {
-	Decls   map[string]DeclLocation `json:"decls"`
-	Sources map[string]string       `json:"sources"` // file path → source content
+	Decls map[string]DeclLocation `json:"decls"`
 }
 
 // VarTypeMap maps source key → (var name → type display name).
@@ -364,8 +362,7 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog
 
 func buildDeclarations(prog loader.Program) *DeclResult {
 	result := &DeclResult{
-		Decls:   make(map[string]DeclLocation),
-		Sources: make(map[string]string),
+		Decls: make(map[string]DeclLocation),
 	}
 
 	addDecl := func(key string, loc DeclLocation) {
@@ -383,11 +380,8 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 		result.Decls[key] = loc
 	}
 
-	// Declarations and sources from all files in the program.
+	// Declarations from all files in the program.
 	for srcKey, src := range prog.Sources {
-		if src.Text != "" && srcKey != loader.StdlibPath {
-			result.Sources[srcKey] = src.Text
-		}
 		// File tag: source key for all files (frontend identifies the active file)
 		file := srcKey
 		for _, fn := range src.Functions {

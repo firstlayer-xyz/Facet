@@ -19,7 +19,7 @@ export function parseLibImports(source: string): string[] {
  * We try the import path first (covers embedded libs), then fall back to
  * path-segment matching that strips the @ref component (covers remote libs).
  */
-export function findLibPath(libId: string, sources: Record<string, string>): string | undefined {
+export function findLibPath(libId: string, sources: Record<string, { text: string }>): string | undefined {
   // 1. Direct lookup by import path (embedded + remote libs, backend always adds this key)
   if (libId in sources) return libId;
 
@@ -60,8 +60,9 @@ export function findLibPath(libId: string, sources: Record<string, string>): str
 }
 
 export interface FileTreeCallbacks {
-  getMainLabel(): string;
-  getLibrarySources(): Record<string, string>;
+  getActiveLabel(): string;
+  getActiveTab(): string;
+  getSources(): Record<string, { text: string }>;
   openTab(path: string, source: string): void;
 }
 
@@ -69,7 +70,6 @@ export class FileTree {
   private panel: HTMLElement;
   private libs: string[] = [];
   private visible = false;
-  private mainKey = '';
   readonly callbacks: FileTreeCallbacks;
 
   constructor(callbacks: FileTreeCallbacks) {
@@ -81,8 +81,7 @@ export class FileTree {
 
   get element(): HTMLElement { return this.panel; }
 
-  update(source: string, activeTab: string, mainKey?: string) {
-    if (mainKey !== undefined) this.mainKey = mainKey;
+  update(source: string, activeTab: string) {
     this.libs = parseLibImports(source);
     this.render(activeTab);
   }
@@ -91,17 +90,16 @@ export class FileTree {
 
   private render(activeTab: string) {
     this.panel.innerHTML = '';
-    const mainLabel = this.callbacks.getMainLabel();
-    const libSources = this.callbacks.getLibrarySources();
+    const activeLabel = this.callbacks.getActiveLabel();
+    const libSources = this.callbacks.getSources();
 
-    // Main file row
+    // Active file row
     const mainRow = document.createElement('div');
-    mainRow.className = 'ft-row ft-main' + (activeTab === this.mainKey ? ' ft-active' : '');
+    mainRow.className = 'ft-row ft-main ft-active';
     mainRow.appendChild(makeFileIcon());
     const mainSpan = document.createElement('span');
-    mainSpan.textContent = mainLabel;
+    mainSpan.textContent = activeLabel;
     mainRow.appendChild(mainSpan);
-    mainRow.addEventListener('click', () => this.callbacks.openTab(this.mainKey, ''));
     this.panel.appendChild(mainRow);
 
     // Recursively render lib rows
@@ -110,7 +108,7 @@ export class FileTree {
 
   private renderLibs(
     libs: string[],
-    libSources: Record<string, string>,
+    libSources: Record<string, { text: string }>,
     activeTab: string,
     depth: number,
     visited = new Set<string>(),
@@ -119,7 +117,7 @@ export class FileTree {
       const libId = libs[i];
       const isLast = i === libs.length - 1;
       const libPath = findLibPath(libId, libSources);
-      const libSource = libPath ? libSources[libPath] : undefined;
+      const libSource = libPath ? libSources[libPath]?.text : undefined;
 
       // Skip libs we've already rendered (circular imports)
       if (libPath && visited.has(libPath)) continue;

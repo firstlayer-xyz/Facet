@@ -1,6 +1,6 @@
 // app.ts — Run/debug orchestration logic.
 
-import { Stop, ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, GetDebugStepMeshes, SetWindowTitle, IsReadOnlyPath, GetLibraryFilePath, FormatCode, UpdateSource, Run, Debug, ResetRunner, CreateScratchFile, IsScratchFile } from '../wailsjs/go/main/App';
+import { Stop, ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, GetDebugStepMeshes, SetWindowTitle, GetLibraryFilePath, FormatCode, UpdateSource, RemoveSource, Run, Debug, ResetRunner, CreateScratchFile, IsScratchFile } from '../wailsjs/go/main/App';
 import type { EntryPoint } from './function-preview';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { Viewer, mergeMeshes } from './viewer';
@@ -8,6 +8,11 @@ import type { DecodedMesh, DebugStepData, MeshData } from './viewer';
 import type { EditorHandle } from './editor';
 import { DocsPanel } from './docs';
 import { patchSettings } from './settings';
+
+interface SourceEntry {
+  text: string;
+  kind: number; // 0=User, 1=StdLib, 2=Library, 3=Cached
+}
 
 // Dependencies injected via initApp()
 let viewer: Viewer;
@@ -33,7 +38,6 @@ let debugStepIndex = 0;
 let debugStepGen = 0;
 interface TabState {
   path: string;       // resolved filesystem path
-  readOnly: boolean;
   dirty: boolean;
   cursor: { lineNumber: number; column: number } | null;
   label: string;
@@ -42,8 +46,12 @@ let tabs: Record<string, TabState> = {};
 let activeTab = '';
 
 function getTab(key: string): TabState {
-  if (!tabs[key]) tabs[key] = { path: key, readOnly: true, dirty: false, cursor: null, label: tabLabel(key) };
+  if (!tabs[key]) tabs[key] = { path: key, dirty: false, cursor: null, label: tabLabel(key) };
   return tabs[key];
+}
+
+function isReadOnly(path: string): boolean {
+  return (lastResult?.sources?.[path]?.kind ?? 0) !== 0;
 }
 
 // Dirty flag for the active main file
@@ -70,21 +78,22 @@ let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } |
 let entryOverrides: Record<string, any> = {};
 
 /** Set the active tab to a file path, creating the tab if needed. */
-async function setActiveFile(path: string, label?: string) {
-  const ro = path ? await IsReadOnlyPath(path) : false;
-  tabs[path] = { path, readOnly: ro, dirty: false, cursor: null, label: label || tabLabel(path) };
+function setActiveFile(path: string, label?: string) {
+  tabs[path] = { path, dirty: false, cursor: null, label: label || tabLabel(path) };
   activeTab = path;
-  editor.setReadOnly(ro);
+  editor.setCurrentSource(path);
+  editor.setReadOnly(isReadOnly(path));
   patchSettings({ lastFile: path });
 }
 
 /** Set the file path on startup (no discard prompt, no re-persist). */
-export async function setInitialFile(path: string) {
-  const ro = path ? await IsReadOnlyPath(path) : false;
-  tabs[path] = { path, readOnly: ro, dirty: false, cursor: null, label: tabLabel(path) };
+export function setInitialFile(path: string) {
+  tabs[path] = { path, dirty: false, cursor: null, label: tabLabel(path) };
   activeTab = path;
-  editor.setReadOnly(ro);
+  editor.setCurrentSource(path);
+  editor.setReadOnly(isReadOnly(path));
   updateWindowTitle();
+  renderTabs();
 }
 
 function markDirty() {
@@ -111,6 +120,28 @@ async function confirmDiscardAsync(): Promise<boolean> {
   if (!hasUnsavedChanges()) return true;
   return ConfirmDiscard();
 }
+interface SavedTab {
+  path: string;
+  label: string;
+  cursor: { lineNumber: number; column: number } | null;
+}
+
+function persistOpenTabs() {
+  const sources = lastResult?.sources ?? {};
+  // Save cursor for active tab before persisting
+  if (activeTab && tabs[activeTab]) {
+    tabs[activeTab].cursor = editor.getCursorPosition();
+  }
+  // Persist all tabs except stdlib (kind=1) and cached libs (kind=3)
+  const savedTabs: SavedTab[] = [];
+  for (const [path, tab] of Object.entries(tabs)) {
+    const kind = sources[path]?.kind ?? 0;
+    if (kind === 1 || kind === 3) continue;
+    savedTabs.push({ path: tab.path, label: tab.label, cursor: tab.cursor });
+  }
+  patchSettings({ savedTabs, activeTab });
+}
+
 function updateWindowTitle() {
   const tab = tabs[activeTab];
   const name = tab ? tab.label || tabLabel(activeTab) : 'Untitled';
@@ -312,6 +343,20 @@ function handleRunResult(data: any) {
 
   lastResult = data;
 
+  // Close tabs for files no longer in sources
+  if (data.sources) {
+    let tabsClosed = false;
+    for (const path of Object.keys(tabs)) {
+      if (path === activeTab) continue;
+      if (!data.sources[path]) {
+        editor.disposeModel(path);
+        delete tabs[path];
+        tabsClosed = true;
+      }
+    }
+    if (tabsClosed) renderTabs();
+  }
+
   // Doc index, var types, declarations — push into editor
   if (data.docIndex) {
     editor.updateDocIndex(data.docIndex);
@@ -319,11 +364,16 @@ function handleRunResult(data: any) {
   if (data.varTypes && Object.keys(data.varTypes).length > 0) editor.updateVarTypes(data.varTypes);
   if (data.declarations) {
     if (data.declarations.decls) {
-      editor.updateDeclarations(data.declarations.decls, data.declarations.sources || {});
+      editor.updateDeclarations(data.declarations.decls);
     }
-    if (data.declarations.sources) {
-      onSourceChangeCb?.(editor.getContent());
+  }
+  if (data.sources) {
+    const textSources: Record<string, string> = {};
+    for (const [k, v] of Object.entries(data.sources as Record<string, SourceEntry>)) {
+      textSources[k] = v.text;
     }
+    editor.updateFileSources(textSources);
+    onSourceChangeCb?.(editor.getContent());
   }
 
   // Entry points — notify callback, which may trigger a follow-up Run with eval
@@ -409,7 +459,14 @@ function handleRunResult(data: any) {
   setDebugBarVisible(false);
   viewer.clearMeshes();
   if (data.mesh) viewer.loadMesh(data.mesh as MeshData);
-  viewer.setPosMap(data.posMap ?? []);
+  // Exclude stdlib from face-click cycling
+  const excludeFiles = new Set<string>();
+  if (data.sources) {
+    for (const [path, entry] of Object.entries(data.sources as Record<string, SourceEntry>)) {
+      if (entry.kind === 1) excludeFiles.add(path); // SourceStdLib
+    }
+  }
+  viewer.setPosMap(data.posMap ?? [], excludeFiles);
   viewer.centerOnBed();
   viewer.fitToView();
   showStats(data.stats, data.time);
@@ -433,10 +490,10 @@ function tabLabel(path: string): string {
 
 export function renderTabs() {
   onDebugFilesChangeCb?.();
+  persistOpenTabs();
   tabBar.innerHTML = '';
   // Only show tabs the user has explicitly opened
   const openTabs = Object.keys(tabs);
-  if (openTabs.length === 0) return;
 
   const leftArrow = document.createElement('button');
   leftArrow.className = 'tab-arrow';
@@ -457,24 +514,35 @@ export function renderTabs() {
     tab.className = 'tab' + (activeTab === path ? ' active' : '');
     tab.title = path;
 
-    if (getTab(path).readOnly) {
+    const sourceKind = lastResult?.sources?.[path]?.kind ?? 0;
+    if (sourceKind === 4) {
+      // Example — star icon
+      const star = document.createElement('span');
+      star.className = 'tab-book';
+      star.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+      star.title = 'Example';
+      tab.appendChild(star);
+    } else if (sourceKind === 2) {
+      // Library — book icon
+      const book = document.createElement('span');
+      book.className = 'tab-book';
+      book.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>';
+      book.title = 'Library';
+      tab.appendChild(book);
+    } else if (sourceKind === 1 || sourceKind === 3) {
+      // StdLib or Cached — lock icon
       const lock = document.createElement('span');
       lock.className = 'tab-lock';
       lock.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>';
       lock.title = 'Read-only';
       tab.appendChild(lock);
     } else if (getTab(path).dirty) {
+      // User file with unsaved changes
       const dot = document.createElement('span');
       dot.className = 'tab-dirty';
       dot.textContent = '\u25cf';
       dot.title = 'Unsaved changes';
       tab.appendChild(dot);
-    } else {
-      const book = document.createElement('span');
-      book.className = 'tab-book';
-      book.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>';
-      book.title = 'Library';
-      tab.appendChild(book);
     }
 
     const label = document.createElement('span');
@@ -521,14 +589,25 @@ function closeTab(file: string) {
     const remaining = Object.keys(tabs).filter(k => k !== file);
     if (remaining.length > 0) {
       switchToTab(remaining[0]);
+    } else {
+      activeTab = '';
     }
   }
   editor.disposeModel(file);
   delete tabs[file];
   renderTabs();
+  // Tell backend to remove the source if not referenced by other files.
+  RemoveSource(file);
+  // If no tabs remain, clear the viewport
+  if (Object.keys(tabs).length === 0) {
+    viewer.clearMeshes();
+    viewer.setPosMap([]);
+    hideStats();
+    errorDiv.style.display = 'none';
+  }
 }
 
-export async function switchToTab(file: string) {
+export function switchToTab(file: string) {
   if (file === activeTab) return;
 
   // Save cursor position for the tab we're leaving
@@ -539,15 +618,13 @@ export async function switchToTab(file: string) {
   dirty = getTab(file).dirty;
   editor.setCurrentSource(file);
 
-  // Switch editor model — source comes from declarations or editor's own model cache
+  // Switch editor model — source comes from sources map or editor's own model cache
   editor.setReadOnly(false);
-  const source = lastResult?.declarations?.sources?.[file] ?? '';
+  const source = lastResult?.sources?.[file]?.text ?? '';
   editor.switchModel(file, source);
 
   // Resolve read-only status
-  const tab = getTab(file);
-  tab.readOnly = await IsReadOnlyPath(file);
-  editor.setReadOnly(tab.readOnly);
+  editor.setReadOnly(isReadOnly(file));
 
   // Restore cursor position
   const saved = getTab(file).cursor;
@@ -559,7 +636,7 @@ export async function switchToTab(file: string) {
 
   // Update declarations from cached data so Go to Declaration works
   if (lastResult?.declarations?.decls) {
-    editor.updateDeclarations(lastResult.declarations.decls, lastResult.declarations.sources || {});
+    editor.updateDeclarations(lastResult.declarations.decls);
   }
 
   // Re-highlight current debug step line if it belongs to this tab
@@ -681,7 +758,7 @@ function resetSession() {
     editor.clearDebugLine();
   }
   // Dispose all editor models for library tabs
-  const sources = lastResult?.declarations?.sources ?? {};
+  const sources = lastResult?.sources ?? {};
   for (const key of Object.keys(sources)) editor.disposeModel(key);
   lastResult = null;
   tabs = {};
@@ -693,52 +770,65 @@ function resetSession() {
   renderTabs();
 }
 
-export async function loadSource(source: string, name?: string) {
-  if (!await confirmDiscardAsync()) return;
-  resetSession();
-  const label = name ? name.replace(/\.fct$/, '') : 'Untitled';
-  const key = 'untitled';
-  tabs[key] = { path: '', readOnly: false, dirty: false, cursor: null, label };
+export async function openExample(source: string, name: string) {
+  const label = name.replace(/\.fct$/, '');
+  const key = 'example:' + name;
+  // If already open, just switch to it
+  if (tabs[key]) {
+    switchToTab(key);
+    return;
+  }
+  tabs[key] = { path: key, dirty: false, cursor: null, label };
   activeTab = key;
-  editor.resetMainModel(key, source);
-  editor.setReadOnly(false);
+  editor.setCurrentSource(key);
+  editor.switchModel(key, source);
+  editor.setReadOnly(true);
   markClean();
   updateWindowTitle();
+  renderTabs();
   run();
 }
 
 export async function openFile() {
-  if (!await confirmDiscardAsync()) return;
   const result = await OpenFile();
   if (!result) return; // cancelled
-  resetSession();
-  await setActiveFile(result.path);
-  editor.resetMainModel(activeTab, result.source);
+  // If already open, just switch to it
+  if (tabs[result.path]) {
+    switchToTab(result.path);
+    return;
+  }
+  setActiveFile(result.path);
+  editor.switchModel(activeTab, result.source);
   markClean();
   updateWindowTitle();
+  renderTabs();
   AddRecentFile(result.path).catch(() => {});
   run();
 }
 
 export async function openRecentFile(path: string) {
-  if (!await confirmDiscardAsync()) return;
+  // If already open, just switch to it
+  if (tabs[path]) {
+    switchToTab(path);
+    return;
+  }
   let result: Record<string, string>;
   try {
     result = await OpenRecentFile(path);
   } catch {
     return; // file may no longer exist
   }
-  resetSession();
-  await setActiveFile(result.path);
-  editor.resetMainModel(activeTab, result.source);
+  setActiveFile(result.path);
+  editor.switchModel(activeTab, result.source);
   markClean();
   updateWindowTitle();
+  renderTabs();
   AddRecentFile(result.path).catch(() => {});
   run();
 }
 
 async function formatSource(source: string): Promise<string> {
-  if (!formatOnSave || tabs[activeTab]?.readOnly) return source;
+  if (!formatOnSave || isReadOnly(activeTab)) return source;
   try {
     return await FormatCode(source);
   } catch {
@@ -757,13 +847,13 @@ export async function saveFile() {
     // If saving under a new path (Save As dialog), update the tab
     if (path !== tab.path) {
       delete tabs[activeTab];
-      tabs[path] = { path, readOnly: false, dirty: false, cursor: tab.cursor, label: tabLabel(path) };
+      tabs[path] = { path, dirty: false, cursor: tab.cursor, label: tabLabel(path) };
       activeTab = path;
       editor.setCurrentSource(path);
     }
     tab.dirty = false;
-    if (lastResult?.declarations?.sources) {
-      lastResult.declarations.sources[activeTab] = source;
+    if (lastResult?.sources?.[activeTab]) {
+      lastResult.sources[activeTab].text = source;
     }
     markClean();
     updateWindowTitle();
@@ -773,16 +863,14 @@ export async function saveFile() {
 }
 
 export async function newFile() {
-  if (!await confirmDiscardAsync()) return;
-  resetSession();
   const key = await CreateScratchFile('Untitled-' + Date.now());
-  tabs[key] = { path: key, readOnly: false, dirty: false, cursor: null, label: 'Untitled' };
+  tabs[key] = { path: key, dirty: false, cursor: null, label: 'Untitled' };
   activeTab = key;
-  editor.resetMainModel(key, '');
+  editor.switchModel(key, '');
   editor.setReadOnly(false);
-  viewer.clearMeshes();
   markClean();
   updateWindowTitle();
+  renderTabs();
   patchSettings({ lastFile: key });
 }
 
@@ -793,7 +881,7 @@ export async function saveFileAs() {
   if (path) {
     const oldTab = tabs[activeTab];
     delete tabs[activeTab];
-    tabs[path] = { path, readOnly: false, dirty: false, cursor: oldTab?.cursor ?? null, label: tabLabel(path) };
+    tabs[path] = { path, dirty: false, cursor: oldTab?.cursor ?? null, label: tabLabel(path) };
     activeTab = path;
     editor.setCurrentSource(path);
     markClean();
@@ -829,7 +917,7 @@ export function toggleDebug() {
     setDebugBarVisible(false);
     editor.clearDebugLine();
     // Close library tabs opened during debug, keep the main file tab
-    const sources = lastResult?.declarations?.sources ?? {};
+    const sources = lastResult?.sources ?? {};
     for (const key of Object.keys(sources)) {
       editor.disposeModel(key);
       delete tabs[key];
@@ -888,9 +976,13 @@ export async function openDocsToEntry(name: string): Promise<void> {
 
 // ── State accessors for external UI (file tree, preview selector) ──────────
 
-export function getLibrarySources(): Record<string, string> { return lastResult?.declarations?.sources ?? {}; }
+export function getSources(): Record<string, SourceEntry> { return lastResult?.sources ?? {}; }
 export function getActiveTabValue(): string { return activeTab; }
-export function getMainLabel(): string {
+export function restoreTabCursor(path: string, cursor: { lineNumber: number; column: number }) {
+  const tab = tabs[path];
+  if (tab) tab.cursor = cursor;
+}
+export function getActiveLabel(): string {
   const tab = tabs[activeTab];
   return tab ? tab.label || tabLabel(activeTab) : 'Untitled';
 }
@@ -917,16 +1009,16 @@ export function getMainSource(): string {
 /** Open a library tab without navigating to a specific line.
  *  file may be an import path or disk path. If import path, resolves to disk path. */
 export async function openLibraryTab(file: string, source: string) {
-  const sources = lastResult?.declarations?.sources ?? {};
+  const sources = lastResult?.sources ?? {};
   if (!sources[file]) {
     const resolved = await GetLibraryFilePath(file);
     if (resolved) file = resolved;
   }
   if (sources[file] && !source) {
-    source = sources[file];
+    source = sources[file].text;
   }
   if (source && !sources[file]) {
-    sources[file] = source;
+    sources[file] = { text: source, kind: 2 };
   }
   getTab(file);
   await switchToTab(file);
@@ -936,16 +1028,16 @@ export async function openLibraryTab(file: string, source: string) {
  *  file may be an import path or disk path. If import path, resolves to disk path. */
 export async function openLibraryFile(file: string, source: string, line: number, col: number) {
   // Resolve import path to disk path if needed
-  const sources = lastResult?.declarations?.sources ?? {};
+  const sources = lastResult?.sources ?? {};
   if (!sources[file]) {
     const resolved = await GetLibraryFilePath(file);
     if (resolved) file = resolved;
   }
   if (sources[file] && !source) {
-    source = sources[file];
+    source = sources[file].text;
   }
   if (source && !sources[file]) {
-    sources[file] = source;
+    sources[file] = { text: source, kind: 2 };
   }
   getTab(file);
   await switchToTab(file);

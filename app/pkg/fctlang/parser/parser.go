@@ -2,13 +2,44 @@ package parser
 
 import "fmt"
 
+// SourceKind describes the origin of a parsed source file.
+type SourceKind int
+
+const (
+	SourceUser    SourceKind = iota // user-written source file
+	SourceStdLib                    // standard library (facet/std)
+	SourceLibrary                   // external library (git-fetched)
+	SourceCached                    // cached library (previously fetched)
+	SourceExample                   // built-in example (read-only)
+)
+
+// Source is the root AST node representing a single parsed source file.
+type Source struct {
+	Kind             SourceKind // origin of this source
+	Path             string     // disk path to the .fct file; zero after Parse, set by loader
+	Text             string     // raw source code; zero after Parse
+	Globals          []*VarStmt
+	Functions        []*Function
+	StructDecls      []*StructDecl
+	TrailingComments []Comment // comments after last declaration
+}
+
 // Parse parses a facet source string and returns the AST.
-func Parse(source string) (*Source, error) {
+// The path is the disk path to the source file (used for error reporting and source tracking).
+// The kind describes the origin of the source (SourceUser, SourceStdLib, etc.).
+func Parse(source, path string, kind SourceKind) (*Source, error) {
 	p := &parser{lex: newLexer(source)}
 	if err := p.next(); err != nil {
 		return nil, err
 	}
-	return p.parseProgram()
+	src, err := p.parseProgram()
+	if err != nil {
+		return nil, err
+	}
+	src.Path = path
+	src.Kind = kind
+	src.Text = source
+	return src, nil
 }
 
 const maxParseDepth = 256
