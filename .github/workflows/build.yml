@@ -4,7 +4,8 @@ on:
   schedule:
     - cron: '0 5 * * *'  # daily at midnight ET (5am UTC)
   push:
-    tags: ['v*']  # tagged releases
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:  # manual trigger from GitHub UI
 
 jobs:
@@ -19,6 +20,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
 
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y cmake libgtk-3-dev libwebkit2gtk-4.0-dev
@@ -39,12 +45,17 @@ jobs:
 
       - name: Build manifold
         run: make manifold
+        env:
+          CC: zig cc
+          CXX: zig c++
 
       - name: Build Facet
         run: cd app && ~/go/bin/wails build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+          CC: zig cc
+          CXX: zig c++
 
       - name: Package
         run: |
@@ -70,6 +81,11 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+
       - name: Cache custom Go toolchain
         id: cache-go
         uses: actions/cache@v4
@@ -89,6 +105,9 @@ jobs:
       - name: Build manifold
         shell: bash
         run: make manifold
+        env:
+          CC: zig cc
+          CXX: zig c++
 
       - name: Add Go toolchain to PATH
         shell: bash
@@ -99,6 +118,8 @@ jobs:
         run: cd app && ~/go/bin/wails build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
+          CC: zig cc
+          CXX: zig c++
 
       - name: Package
         shell: bash
