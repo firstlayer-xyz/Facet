@@ -158,13 +158,31 @@ jobs:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
-      - name: Ad-hoc codesign
-        run: codesign -s - --force --deep app/build/bin/Facet.app
+      - name: Import signing certificate
+        run: |
+          echo "${{ secrets.APPLE_CERTIFICATE }}" | base64 -d > cert.p12
+          security create-keychain -p "build" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "build" build.keychain
+          security import cert.p12 -k build.keychain -P "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "build" build.keychain
+
+      - name: Codesign
+        run: codesign -s "Developer ID Application" --force --deep --options runtime app/build/bin/Facet.app
 
       - name: Create DMG
         run: |
           mkdir -p dist
           hdiutil create -volname Facet -srcfolder app/build/bin/Facet.app -ov -format UDZO dist/Facet-macOS-arm64.dmg
+
+      - name: Notarize
+        run: |
+          xcrun notarytool submit dist/Facet-macOS-arm64.dmg \
+            --apple-id "${{ secrets.APPLE_ID }}" \
+            --password "${{ secrets.APPLE_APP_PASSWORD }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --wait
+          xcrun stapler staple dist/Facet-macOS-arm64.dmg
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
