@@ -9,9 +9,7 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
-    env:
-      GOFLAGS: -tags=webkit2_41
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
@@ -23,7 +21,7 @@ jobs:
           node-version: "22"
 
       - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y cmake libgtk-3-dev libwebkit2gtk-4.1-dev
+        run: sudo apt-get update && sudo apt-get install -y cmake libgtk-3-dev libwebkit2gtk-4.0-dev
 
       - name: Cache custom Go toolchain
         id: cache-go
@@ -43,7 +41,7 @@ jobs:
         run: make manifold
 
       - name: Build Facet
-        run: cd app && ~/go/bin/wails build -tags webkit2_41
+        run: cd app && ~/go/bin/wails build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
@@ -92,12 +90,15 @@ jobs:
         shell: bash
         run: make manifold
 
+      - name: Add Go toolchain to PATH
+        shell: bash
+        run: echo "${{ github.workspace }}/.go-toolchain/bin" >> $GITHUB_PATH
+
       - name: Build Facet
         shell: bash
         run: cd app && ~/go/bin/wails build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
-          PATH: ${{ github.workspace }}/.go-toolchain/bin:$PATH
 
       - name: Package
         shell: bash
@@ -170,6 +171,11 @@ jobs:
       - name: Clone facetlibs
         run: git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
 
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
@@ -189,6 +195,9 @@ jobs:
 
       - name: Run tests
         run: make test
+        env:
+          CC: zig cc
+          CXX: zig c++
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule'

@@ -196,7 +196,7 @@ if [ ! -f "$ASSIMP_INSTALL_DIR/lib/libassimp.a" ]; then
   cmake "$ASSIMP_DIR" \
     "${CMAKE_GENERATOR_FLAG[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
-    "${TOOLCHAIN_FLAG[@]}" \
+    ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
     -DBUILD_SHARED_LIBS=OFF \
     -DASSIMP_BUILD_TESTS=OFF \
     -DASSIMP_BUILD_SAMPLES=OFF \
@@ -228,7 +228,7 @@ if [ ! -f "$FREETYPE_INSTALL_DIR/lib/libfreetype.a" ]; then
   cmake "$FREETYPE_DIR" \
     "${CMAKE_GENERATOR_FLAG[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
-    "${TOOLCHAIN_FLAG[@]}" \
+    ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
     -DBUILD_SHARED_LIBS=OFF \
     -DFT_DISABLE_BZIP2=ON \
     -DFT_DISABLE_BROTLI=ON \
@@ -262,7 +262,7 @@ mkdir -p "$MANIFOLD_BUILD_DIR" && cd "$MANIFOLD_BUILD_DIR"
 cmake "$MANIFOLD_DIR" \
   "${CMAKE_GENERATOR_FLAG[@]}" \
   -DCMAKE_BUILD_TYPE=Release \
-  "${TOOLCHAIN_FLAG[@]}" \
+  ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
   -DBUILD_SHARED_LIBS=OFF \
   -DMANIFOLD_CBIND=ON \
   -DMANIFOLD_TEST=OFF \
@@ -295,7 +295,7 @@ mkdir -p "$FACET_CXX_BUILD_DIR" && cd "$FACET_CXX_BUILD_DIR"
 cmake "$FACET_CXX_DIR" \
   "${CMAKE_GENERATOR_FLAG[@]}" \
   -DCMAKE_BUILD_TYPE=Release \
-  "${TOOLCHAIN_FLAG[@]}" \
+  ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
   -DBUILD_SHARED_LIBS=OFF
 cmake --build . --config Release -j "$JOBS"
 echo "facet_cxx build complete."
