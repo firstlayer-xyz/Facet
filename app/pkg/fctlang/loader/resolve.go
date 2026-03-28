@@ -276,7 +276,7 @@ func (r *resolver) resolveSource(src *parser.Source) error {
 
 // loadLib resolves and parses a single library .fct file.
 func (r *resolver) loadLib(rawPath string) (*resolvedLib, error) {
-	if err := ValidateLibPath(rawPath); err != nil {
+	if err := validateLibPath(rawPath); err != nil {
 		return nil, err
 	}
 	lp, err := ParseLibPath(rawPath)
@@ -372,18 +372,18 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 	}
 
 	// Try git clone
-	dir, err := ResolveLibPath(r.ctx, r.libDir, r.gitCacheDir, r.installedLibs, rawPath)
+	dir, err := resolveLibPath(r.ctx, r.libDir, r.gitCacheDir, r.installedLibs, rawPath)
 	if err != nil {
 		return nil, err
 	}
-	src, err := LoadLibraryDir(dir)
+	src, err := loadLibraryDir(dir)
 	if err != nil {
 		// Only attempt git pull for paths inside the git cache dir.
 		// Installed lib overrides point into the user's working tree —
 		// pulling/recloning those would destroy the project.
 		if strings.HasPrefix(dir, r.gitCacheDir+string(filepath.Separator)) {
 			if pullErr := pullIfGitRepo(r.ctx, dir); pullErr == nil {
-				src, err = LoadLibraryDir(dir)
+				src, err = loadLibraryDir(dir)
 			}
 		}
 		if err != nil {
@@ -411,9 +411,9 @@ func pullIfGitRepo(ctx context.Context, dir string) error {
 	return fmt.Errorf("not a git repo: %s", dir)
 }
 
-// ValidateLibPath checks that a library path has at least 2 segments (vendor/name),
+// validateLibPath checks that a library path has at least 2 segments (vendor/name),
 // does not contain ".." components, and is not an absolute path.
-func ValidateLibPath(path string) error {
+func validateLibPath(path string) error {
 	if filepath.IsAbs(path) {
 		return fmt.Errorf("library path %q: absolute paths are not allowed", path)
 	}
@@ -428,9 +428,9 @@ func ValidateLibPath(path string) error {
 	return nil
 }
 
-// LoadLibraryDir parses the single .fct file in dir and returns the Source
+// loadLibraryDir parses the single .fct file in dir and returns the Source
 // with Text populated.
-func LoadLibraryDir(dir string) (*parser.Source, error) {
+func loadLibraryDir(dir string) (*parser.Source, error) {
 	name := filepath.Base(dir)
 	file := filepath.Join(dir, name+".fct")
 	data, err := os.ReadFile(file)

@@ -962,7 +962,7 @@ func init() {
 					return 1
 				}
 				pt := makePtVecStruct3("Vec3", x, y, z)
-				result, callErr := e.callFunctionVal(fv, []value{pt})
+				result, callErr := e.callFunctionVal(fv, map[string]value{fv.params[0].Name: pt})
 				if callErr != nil {
 					lsErr = callErr
 					return 1 // positive = outside (safe default)

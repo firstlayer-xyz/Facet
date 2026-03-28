@@ -64,8 +64,8 @@ func (sf *SketchFuture) Resolve() (*Sketch, error) { return sf.inner.resolve() }
 // ImmediateSolid wraps an already-resolved Solid as a future.
 func ImmediateSolid(s *Solid) *SolidFuture { return &SolidFuture{immediate(s)} }
 
-// ImmediateSketch wraps an already-resolved Sketch as a future.
-func ImmediateSketch(s *Sketch) *SketchFuture { return &SketchFuture{immediate(s)} }
+// immediateSketch wraps an already-resolved Sketch as a future.
+func immediateSketch(s *Sketch) *SketchFuture { return &SketchFuture{immediate(s)} }
 
 // ToDisplayMesh resolves and extracts a DisplayMesh (implements debugShape).
 func (sf *SolidFuture) ToDisplayMesh() *DisplayMesh {

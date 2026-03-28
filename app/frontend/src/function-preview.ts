@@ -1,6 +1,6 @@
 // function-preview.ts — Bar for editing constrained params of the selected entry point function.
 
-export interface ParamConstraint {
+interface ParamConstraint {
   kind: string;
   min?: any;
   max?: any;
@@ -27,7 +27,7 @@ export interface EntryPoint {
   doc: string;
 }
 
-export interface FunctionPreviewCallbacks {
+interface FunctionPreviewCallbacks {
   onOverrideChange(overrides: Record<string, any>): void;
 }
 

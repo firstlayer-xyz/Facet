@@ -5,7 +5,7 @@
 
 import { FaceDetector, FilesetResolver } from '@mediapipe/tasks-vision';
 
-export interface HeadOffset {
+interface HeadOffset {
   azimuth: number;  // radians to add to orbit theta
   elevation: number; // radians to add to orbit phi
   dolly: number;     // multiplier: 1 = no change, <1 = closer, >1 = farther

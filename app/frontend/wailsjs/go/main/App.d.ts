@@ -21,8 +21,6 @@ export function CreateScratchFile(arg1:string):Promise<string>;
 
 export function Debug(arg1:string,arg2:string,arg3:Record<string, any>):Promise<void>;
 
-export function DeleteScratchFile(arg1:string):Promise<void>;
-
 export function DetectAssistantCLIs():Promise<Array<main.CLIInfo>>;
 
 export function DetectSlicers():Promise<Array<main.SlicerInfo>>;
@@ -32,10 +30,6 @@ export function ExportMesh(arg1:string):Promise<void>;
 export function ForkLibrary(arg1:string,arg2:string):Promise<void>;
 
 export function FormatCode(arg1:string):Promise<string>;
-
-export function GetAssistantAvailable():Promise<boolean>;
-
-export function GetAssistantConfig():Promise<main.AssistantConfig>;
 
 export function GetDebugStepMeshes(arg1:number):Promise<Array<evaluator.DebugMesh>>;
 
@@ -49,8 +43,6 @@ export function GetExample(arg1:string):Promise<string>;
 
 export function GetExampleList():Promise<Array<string>>;
 
-export function GetLastFile():Promise<string>;
-
 export function GetLibraryDir():Promise<string>;
 
 export function GetLibraryFilePath(arg1:string):Promise<string>;
@@ -58,8 +50,6 @@ export function GetLibraryFilePath(arg1:string):Promise<string>;
 export function GetLogDir():Promise<string>;
 
 export function GetMemoryLimit():Promise<number>;
-
-export function GetRecentFiles():Promise<Array<string>>;
 
 export function GetSettings():Promise<string>;
 
@@ -87,15 +77,9 @@ export function PatchSettings(arg1:string):Promise<void>;
 
 export function PickImageFile():Promise<string>;
 
+export function PruneSources(arg1:Array<string>):Promise<void>;
+
 export function PullAllLibraries():Promise<void>;
-
-export function RekeySource(arg1:string,arg2:string):Promise<void>;
-
-export function RemoveLibrary(arg1:string,arg2:string):Promise<void>;
-
-export function RemoveLocalLibrary(arg1:string):Promise<void>;
-
-export function RemoveSource(arg1:string):Promise<void>;
 
 export function ResetRunner():Promise<void>;
 
@@ -107,15 +91,11 @@ export function RunGC():Promise<void>;
 
 export function SaveFile(arg1:string,arg2:string):Promise<string>;
 
-export function SaveScreenshot(arg1:string):Promise<string>;
-
 export function SendAssistantMessage(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<void>;
 
 export function SendToSlicer(arg1:string):Promise<void>;
 
 export function SetAssistantConfig(arg1:main.AssistantConfig):Promise<void>;
-
-export function SetLastFile(arg1:string):Promise<void>;
 
 export function SetMemoryLimit(arg1:number):Promise<void>;
 

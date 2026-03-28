@@ -1,6 +1,7 @@
 import type { AppSettings } from './settings';
 import type { CustomTheme } from './themes';
 import { PALETTE_FIELDS, UI_THEMES, resolveThemePalette, resolveUiTheme, getBaseThemeId } from './themes';
+import { styleButton, styleInput } from './settings_ui';
 
 export interface SettingsPageContext {
   draft: AppSettings;
@@ -138,13 +139,7 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
 
   const saveThemeBtn = document.createElement('button');
   saveThemeBtn.textContent = 'Save as Theme';
-  saveThemeBtn.style.padding = '4px 12px';
-  saveThemeBtn.style.border = 'none';
-  saveThemeBtn.style.borderRadius = '4px';
-  saveThemeBtn.style.background = 'var(--ui-border)';
-  saveThemeBtn.style.color = 'var(--ui-text)';
-  saveThemeBtn.style.cursor = 'pointer';
-  saveThemeBtn.style.fontSize = '13px';
+  styleButton(saveThemeBtn);
   saveThemeBtn.addEventListener('click', () => {
     // Show inline name input (window.prompt() doesn't work in WKWebView)
     if (actionsRow.querySelector('.theme-name-input')) return; // already open
@@ -158,33 +153,16 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
     nameInput.type = 'text';
     nameInput.placeholder = 'Theme name';
     nameInput.style.flex = '1';
-    nameInput.style.padding = '4px 8px';
-    nameInput.style.border = '1px solid var(--ui-border)';
-    nameInput.style.borderRadius = '4px';
-    nameInput.style.background = 'var(--ui-bg)';
-    nameInput.style.color = 'var(--ui-text)';
-    nameInput.style.fontSize = '13px';
+    styleInput(nameInput);
     nameInput.style.outline = 'none';
 
     const okBtn = document.createElement('button');
     okBtn.textContent = 'OK';
-    okBtn.style.padding = '4px 10px';
-    okBtn.style.border = 'none';
-    okBtn.style.borderRadius = '4px';
-    okBtn.style.background = 'var(--ui-accent)';
-    okBtn.style.color = '#fff';
-    okBtn.style.cursor = 'pointer';
-    okBtn.style.fontSize = '13px';
+    styleButton(okBtn, 'primary');
 
     const cancelBtn = document.createElement('button');
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.padding = '4px 10px';
-    cancelBtn.style.border = 'none';
-    cancelBtn.style.borderRadius = '4px';
-    cancelBtn.style.background = 'var(--ui-border)';
-    cancelBtn.style.color = 'var(--ui-text)';
-    cancelBtn.style.cursor = 'pointer';
-    cancelBtn.style.fontSize = '13px';
+    styleButton(cancelBtn);
 
     function commit() {
       const name = nameInput.value.trim();
@@ -230,13 +208,9 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
 
   const deleteThemeBtn = document.createElement('button');
   deleteThemeBtn.textContent = 'Delete';
-  deleteThemeBtn.style.padding = '4px 12px';
-  deleteThemeBtn.style.border = 'none';
-  deleteThemeBtn.style.borderRadius = '4px';
+  styleButton(deleteThemeBtn);
   deleteThemeBtn.style.background = 'var(--ui-error-bg)';
   deleteThemeBtn.style.color = '#f85149';
-  deleteThemeBtn.style.cursor = 'pointer';
-  deleteThemeBtn.style.fontSize = '13px';
   deleteThemeBtn.addEventListener('click', () => {
     const idx = draft.appearance.customThemes.findIndex((t: CustomTheme) => t.id === currentTheme());
     if (idx < 0) return;
@@ -252,13 +226,7 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
 
   const resetBtn = document.createElement('button');
   resetBtn.textContent = 'Reset Overrides';
-  resetBtn.style.padding = '4px 12px';
-  resetBtn.style.border = 'none';
-  resetBtn.style.borderRadius = '4px';
-  resetBtn.style.background = 'var(--ui-border)';
-  resetBtn.style.color = 'var(--ui-text)';
-  resetBtn.style.cursor = 'pointer';
-  resetBtn.style.fontSize = '13px';
+  styleButton(resetBtn);
   resetBtn.addEventListener('click', () => {
     draft.appearance.themeOverrides = {};
     onSave(structuredClone(draft));

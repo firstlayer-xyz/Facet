@@ -414,13 +414,6 @@ func translate(s *Solid, x, y, z float64) *Solid {
 	return r
 }
 
-func rotate(s *Solid, x, y, z float64) *Solid {
-	ptr := C.facet_rotate(s.ptr, C.double(x), C.double(y), C.double(z))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
-}
 
 func scale(s *Solid, x, y, z float64) *Solid {
 	ptr := C.facet_scale(s.ptr, C.double(x), C.double(y), C.double(z))
@@ -957,9 +950,9 @@ func extractDisplayMesh(m *C.ManifoldManifold, faceMap map[uint32]FaceInfo) *Dis
 	}
 }
 
-// MergeDisplayMeshes combines multiple display meshes into one.
+// mergeDisplayMeshes combines multiple display meshes into one.
 // Deprecated: prefer MergeExtractDisplayMeshes when source Solids are available.
-func MergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
+func mergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
 	if len(meshes) == 1 {
 		return meshes[0]
 	}
@@ -991,12 +984,12 @@ func MergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
 	for _, m := range meshes {
 		vb, err := base64.StdEncoding.DecodeString(m.vertB64)
 		if err != nil {
-			log.Printf("MergeDisplayMeshes: skipping mesh with malformed vertex data: %v", err)
+			log.Printf("mergeDisplayMeshes: skipping mesh with malformed vertex data: %v", err)
 			continue
 		}
 		ib, err := base64.StdEncoding.DecodeString(m.idxB64)
 		if err != nil {
-			log.Printf("MergeDisplayMeshes: skipping mesh with malformed index data: %v", err)
+			log.Printf("mergeDisplayMeshes: skipping mesh with malformed index data: %v", err)
 			continue
 		}
 		vertBuf = append(vertBuf, vb...)
@@ -1013,7 +1006,7 @@ func MergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
 			if m.faceGroupB64 != "" {
 				fb, err := base64.StdEncoding.DecodeString(m.faceGroupB64)
 				if err != nil {
-					log.Printf("MergeDisplayMeshes: malformed face group data: %v", err)
+					log.Printf("mergeDisplayMeshes: malformed face group data: %v", err)
 				} else if fn := len(fb) / 4; fn > 0 {
 					src := unsafe.Slice((*uint32)(unsafe.Pointer(&fb[0])), fn)
 					fgBuf = append(fgBuf, src...)
@@ -1157,10 +1150,10 @@ func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
 	}
 }
 
-// BuildDisplayMesh creates a DisplayMesh from Go-typed arrays with optional face group IDs.
+// buildDisplayMesh creates a DisplayMesh from Go-typed arrays with optional face group IDs.
 // verts is flat float32 xyz, indices is flat uint32 triangle indices,
 // faceGroups (optional) is per-triangle face group IDs.
-func BuildDisplayMesh(verts []float32, indices []uint32, faceGroups []uint32) *DisplayMesh {
+func buildDisplayMesh(verts []float32, indices []uint32, faceGroups []uint32) *DisplayMesh {
 	if len(verts) == 0 || len(indices) == 0 {
 		return &DisplayMesh{}
 	}

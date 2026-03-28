@@ -28,6 +28,28 @@ func (fn *Function) ArgsInRange(nArgs int) bool {
 	return nArgs >= required && nArgs <= len(fn.Params)
 }
 
+// CollectCandidates filters fns by name (and optionally receiver type),
+// splitting into arity-matching candidates and a first-seen fallback for error
+// reporting. Pass nArgs < 0 to skip arity filtering (all matches become candidates).
+func CollectCandidates(fns []*Function, name string, nArgs int, checkReceiver bool) (candidates []*Function, fallback *Function) {
+	for _, fn := range fns {
+		if fn.Name != name || (checkReceiver && fn.ReceiverType != "") {
+			continue
+		}
+		if nArgs >= 0 && !fn.ArgsInRange(nArgs) {
+			if fallback == nil {
+				fallback = fn
+			}
+			continue
+		}
+		candidates = append(candidates, fn)
+		if fallback == nil {
+			fallback = fn
+		}
+	}
+	return
+}
+
 // Param represents a typed function parameter.
 // Default is non-nil for optional parameters (e.g. Length height = 5 mm).
 // Constraint is non-nil for constrained parameters (e.g. radius Length where [0:100]).

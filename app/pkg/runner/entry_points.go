@@ -38,34 +38,38 @@ type ParamConstraint struct {
 	Values    []interface{} `json:"values,omitempty"`    // for enum constraints
 }
 
-// GetEntryPoints returns all entry points (capitalized, fully-constrained,
+// isValidEntryPoint returns true if fn is a capitalized, fully-constrained,
+// Solid-returning function suitable as an entry point.
+func isValidEntryPoint(fn *parser.Function, inferredReturnTypes map[string]string) bool {
+	if fn.ReceiverType != "" {
+		return false
+	}
+	if len(fn.Name) == 0 || fn.Name[0] < 'A' || fn.Name[0] > 'Z' {
+		return false
+	}
+	// Main is always treated as returning Solid; all others require explicit or inferred Solid return.
+	inferred := inferredReturnTypes[fn.Name]
+	if fn.Name != "Main" && fn.ReturnType != "Solid" && inferred != "Solid" {
+		return false
+	}
+	// Entry points must be fully constrained — every param needs a default.
+	for _, p := range fn.Params {
+		if p.Default == nil {
+			return false
+		}
+	}
+	return true
+}
+
+// getEntryPoints returns all entry points (capitalized, fully-constrained,
 // Solid-returning functions) from the main program and resolved libraries.
 // inferredReturnTypes provides inferred return types from the checker (fn name -> type name).
 // ResolveLibraries must have been called on prog before this.
-func GetEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) []EntryPoint {
+func getEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) []EntryPoint {
 	var out []EntryPoint
 
 	collect := func(fn *parser.Function, libPath, libVar string) {
-		if fn.ReceiverType != "" {
-			return
-		}
-		// Main is always treated as returning Solid; all others require explicit or inferred Solid return.
-		inferred := inferredReturnTypes[fn.Name]
-		if fn.Name != "Main" && fn.ReturnType != "Solid" && inferred != "Solid" {
-			return
-		}
-		if len(fn.Name) == 0 || fn.Name[0] < 'A' || fn.Name[0] > 'Z' {
-			return // only include exported (capital letter) functions
-		}
-		// Entry points must be fully constrained — every param needs a default.
-		fullyConstrained := true
-		for _, p := range fn.Params {
-			if p.Default == nil {
-				fullyConstrained = false
-				break
-			}
-		}
-		if !fullyConstrained {
+		if !isValidEntryPoint(fn, inferredReturnTypes) {
 			return
 		}
 		params := make([]ParamEntry, 0, len(fn.Params)) // never nil -> always [] in JSON

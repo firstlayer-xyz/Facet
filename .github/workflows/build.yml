@@ -62,6 +62,8 @@ jobs:
           mkdir -p dist
           cp app/build/bin/facet dist/Facet-linux-amd64
           chmod +x dist/Facet-linux-amd64
+          tar czf dist/Facet-linux-amd64.tar.gz -C dist Facet-linux-amd64
+          rm dist/Facet-linux-amd64
 
       - name: Package .deb
         run: |
@@ -113,7 +115,7 @@ jobs:
         with:
           name: facet-linux
           path: |
-            dist/Facet-linux-amd64
+            dist/Facet-linux-amd64.tar.gz
             dist/*.deb
 
   build-windows:

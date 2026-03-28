@@ -8,17 +8,6 @@ import (
 	"facet/app/pkg/manifold"
 )
 
-// stripNamedArgs extracts bare values from a []value that may contain namedArgVal wrappers.
-// Used before passing args to internal _-prefixed methods that expect positional values.
-func stripNamedArgs(args []value) []value {
-	for i, a := range args {
-		if na, ok := a.(*namedArgVal); ok {
-			args[i] = na.val
-		}
-	}
-	return args
-}
-
 // ---------------------------------------------------------------------------
 // Method call dispatch helpers
 // ---------------------------------------------------------------------------
@@ -38,6 +27,7 @@ func findMethods(funcs []*parser.Function, name, receiverType string, nArgs int)
 }
 
 // resolveOverload performs type-based overload resolution on candidates.
+// args is a map[string]value keyed by parameter name.
 // resolver is the evaluator used for fillDefaults/coerceArgs.
 // call is invoked with the matched function and resolved args as a map.
 // Returns (nil, nil, false) if candidates is empty.
@@ -45,7 +35,7 @@ func (e *evaluator) resolveOverload(
 	pos parser.Pos,
 	method string,
 	candidates []*parser.Function,
-	args []value,
+	args map[string]value,
 	resolver *evaluator,
 	call func(fn *parser.Function, args map[string]value) (value, error),
 ) (value, error, bool) {
@@ -54,56 +44,35 @@ func (e *evaluator) resolveOverload(
 	}
 
 	for _, fn := range candidates {
-		// Build named arg map from namedArgVal wrappers.
+		// Validate that all provided arg names match declared parameters.
 		paramNames := make(map[string]bool, len(fn.Params))
 		for _, p := range fn.Params {
 			paramNames[p.Name] = true
 		}
-		argMap := make(map[string]value, len(fn.Params))
-		buildErr := false
-		for _, a := range args {
-			na, ok := a.(*namedArgVal)
-			if !ok {
-				// Non-named arg (only from _-prefixed internal calls) — positional fallback.
-				buildErr = true
+		badName := false
+		for name := range args {
+			if !paramNames[name] {
+				badName = true
 				break
 			}
-			if !paramNames[na.name] {
-				buildErr = true
-				break
-			}
-			if _, dup := argMap[na.name]; dup {
-				buildErr = true
-				break
-			}
-			argMap[na.name] = na.val
 		}
-
-		if buildErr {
+		if badName {
 			if len(candidates) > 1 {
 				continue
 			}
 			// Single candidate — produce a specific error for bad names.
-			for _, a := range args {
-				na, ok := a.(*namedArgVal)
-				if !ok {
-					break
-				}
-				if !paramNames[na.name] {
-					return nil, e.errAt(pos, "%s() has no parameter named %q", method, na.name), true
+			for name := range args {
+				if !paramNames[name] {
+					return nil, e.errAt(pos, "%s() has no parameter named %q", method, name), true
 				}
 			}
-			// Non-named args to an internal function — positional fallback: build map by index.
-			argMap = make(map[string]value, len(fn.Params))
-			for i, a := range args {
-				if i < len(fn.Params) {
-					if na, ok := a.(*namedArgVal); ok {
-						argMap[fn.Params[i].Name] = na.val
-					} else {
-						argMap[fn.Params[i].Name] = a
-					}
-				}
-			}
+		}
+
+		// Copy the args map so fillDefaults/coerceArgs don't mutate the caller's map
+		// when we need to try the next candidate.
+		argMap := make(map[string]value, len(args))
+		for k, v := range args {
+			argMap[k] = v
 		}
 
 		if fillErr := resolver.fillDefaults(fn, argMap, resolver.globals); fillErr != nil {
@@ -124,13 +93,9 @@ func (e *evaluator) resolveOverload(
 		}
 		return result, nil, true
 	}
-	argTypeNames := make([]string, len(args))
-	for i, a := range args {
-		if na, ok := a.(*namedArgVal); ok {
-			argTypeNames[i] = na.name + ": " + typeName(na.val)
-		} else {
-			argTypeNames[i] = typeName(a)
-		}
+	argTypeNames := make([]string, 0, len(args))
+	for name, v := range args {
+		argTypeNames = append(argTypeNames, name+": "+typeName(v))
 	}
 	return nil, e.errAt(pos, "no matching overload for %s(%s)",
 		method, strings.Join(argTypeNames, ", ")), true
@@ -170,13 +135,12 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		return nil, err
 	}
 
-	args := make([]value, len(mc.Args))
-	for i, argExpr := range mc.Args {
-		v, err := e.evalExpr(argExpr, locals)
-		if err != nil {
-			return nil, err
-		}
-		args[i] = v
+	// Build named args map for stdlib/user method dispatch.
+	// Pass nil for paramNames; bare positional args in method calls will be
+	// mapped positionally when the receiver type is known (inside resolveOverload).
+	argMap, namedErr := e.evalNamedArgs(mc.Args, locals, nil)
+	if namedErr != nil {
+		return nil, namedErr
 	}
 
 	// stdlibCall returns a callback that evaluates fn as a stdlib method on receiver.
@@ -189,11 +153,16 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		}
 	}
 
+	// evalPositional lazily evaluates positional args for builtin methods.
+	evalPositional := func() ([]value, error) {
+		return e.evalPositionalArgs(mc.Args, locals)
+	}
+
 	switch r := receiver.(type) {
 	case *manifold.SolidFuture:
 		if !strings.HasPrefix(mc.Method, "_") {
-			candidates := findMethods(e.stdMethods["Solid"], mc.Method, "*", len(args))
-			if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, args, e, stdlibCall(r)); ok {
+			candidates := findMethods(e.stdMethods["Solid"], mc.Method, "*", len(argMap))
+			if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, argMap, e, stdlibCall(r)); ok {
 				if err != nil {
 					return nil, err
 				}
@@ -204,7 +173,11 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 				return result, nil
 			}
 		}
-		result, err := solidMethod(e, r, mc.Method, stripNamedArgs(args))
+		posArgs, err := evalPositional()
+		if err != nil {
+			return nil, err
+		}
+		result, err := solidMethod(e, r, mc.Method, posArgs)
 		if err != nil {
 			return nil, e.wrapErr(mc.Pos, err)
 		}
@@ -215,8 +188,8 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 
 	case *manifold.SketchFuture:
 		if !strings.HasPrefix(mc.Method, "_") {
-			candidates := findMethods(e.stdMethods["Sketch"], mc.Method, "*", len(args))
-			if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, args, e, stdlibCall(r)); ok {
+			candidates := findMethods(e.stdMethods["Sketch"], mc.Method, "*", len(argMap))
+			if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, argMap, e, stdlibCall(r)); ok {
 				if err != nil {
 					return nil, err
 				}
@@ -229,19 +202,23 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 				return result, nil
 			}
 		}
-		result, err := sketchMethod(r, mc.Method, stripNamedArgs(args))
+		posArgs, err := evalPositional()
+		if err != nil {
+			return nil, err
+		}
+		result, err := sketchMethod(r, mc.Method, posArgs)
 		if err != nil {
 			return nil, e.wrapErr(mc.Pos, err)
 		}
 		return result, nil
 
 	case *libRef:
-		candidates := findMethods(e.prog.Sources[e.prog.Resolve(r.path)].Functions, mc.Method, "", len(args))
+		candidates := findMethods(e.prog.Sources[e.prog.Resolve(r.path)].Functions, mc.Method, "", len(argMap))
 		if len(candidates) == 0 {
 			return nil, e.errAt(mc.Pos, "library has no function %q", mc.Method)
 		}
 		libEval := e.newLibEval(r)
-		result, err, _ := e.resolveOverload(mc.Pos, mc.Method, candidates, args, libEval,
+		result, err, _ := e.resolveOverload(mc.Pos, mc.Method, candidates, argMap, libEval,
 			func(fn *parser.Function, args map[string]value) (value, error) {
 				return libEval.evalFunction(fn, args)
 			})
@@ -257,7 +234,11 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 	case *structVal:
 		// Builtin struct methods (e.g. Mesh._face_normals)
 		if strings.HasPrefix(mc.Method, "_") {
-			if result, err := structBuiltinMethod(r, mc.Method, stripNamedArgs(args)); err == nil {
+			posArgs, posErr := evalPositional()
+			if posErr != nil {
+				return nil, posErr
+			}
+			if result, err := structBuiltinMethod(r, mc.Method, posArgs); err == nil {
 				return result, nil
 			} else if !strings.HasPrefix(err.Error(), "no builtin method") {
 				return nil, e.wrapErr(mc.Pos, err)
@@ -265,8 +246,8 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		}
 
 		// User-defined methods for this struct type
-		candidates := findMethods(e.prog.Sources[e.currentKey].Functions, mc.Method, r.typeName, len(args))
-		if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, args, e,
+		candidates := findMethods(e.prog.Sources[e.currentKey].Functions, mc.Method, r.typeName, len(argMap))
+		if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, argMap, e,
 			func(fn *parser.Function, args map[string]value) (value, error) {
 				return e.evalMethodFunction(fn, r, args)
 			}); ok {
@@ -278,10 +259,10 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 
 		// Library methods (if struct came from a library)
 		if r.lib != nil {
-			libCandidates := findMethods(e.prog.Sources[e.prog.Resolve(r.lib.path)].Functions, mc.Method, r.typeName, len(args))
+			libCandidates := findMethods(e.prog.Sources[e.prog.Resolve(r.lib.path)].Functions, mc.Method, r.typeName, len(argMap))
 			if len(libCandidates) > 0 {
 				libEval := e.newLibEval(r.lib)
-				result, err, _ := e.resolveOverload(mc.Pos, mc.Method, libCandidates, args, libEval,
+				result, err, _ := e.resolveOverload(mc.Pos, mc.Method, libCandidates, argMap, libEval,
 					func(fn *parser.Function, args map[string]value) (value, error) {
 						return libEval.evalMethodFunction(fn, r, args)
 					})
@@ -297,8 +278,8 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		}
 
 		// Stdlib methods for this struct type (e.g. Box methods)
-		stdCandidates := findMethods(e.stdMethods[r.typeName], mc.Method, "*", len(args))
-		if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, stdCandidates, args, e, stdlibCall(r)); ok {
+		stdCandidates := findMethods(e.stdMethods[r.typeName], mc.Method, "*", len(argMap))
+		if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, stdCandidates, argMap, e, stdlibCall(r)); ok {
 			if rs, ok := result.(*manifold.SolidFuture); ok {
 				e.trackSolid(mc.Pos, rs)
 			}
@@ -309,12 +290,16 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 
 	case string:
 		if !strings.HasPrefix(mc.Method, "_") {
-			candidates := findMethods(e.stdMethods["String"], mc.Method, "*", len(args))
-			if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, args, e, stdlibCall(r)); ok {
+			candidates := findMethods(e.stdMethods["String"], mc.Method, "*", len(argMap))
+			if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, argMap, e, stdlibCall(r)); ok {
 				return result, err
 			}
 		}
-		result, err := stringMethod(r, mc.Method, stripNamedArgs(args))
+		posArgs, err := evalPositional()
+		if err != nil {
+			return nil, err
+		}
+		result, err := stringMethod(r, mc.Method, posArgs)
 		if err != nil {
 			return nil, e.wrapErr(mc.Pos, err)
 		}

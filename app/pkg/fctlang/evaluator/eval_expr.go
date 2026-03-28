@@ -27,11 +27,9 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 		return val, nil
 
 	case *parser.NamedArg:
-		v, err := e.evalExpr(ex.Value, locals)
-		if err != nil {
-			return nil, err
-		}
-		return &namedArgVal{name: ex.Name, val: v}, nil
+		// NamedArg should be handled at the call site (evalCall/evalMethodCall),
+		// not as a standalone expression. If we reach here, evaluate just the value.
+		return e.evalExpr(ex.Value, locals)
 
 	case *parser.UnaryExpr:
 		return e.evalUnary(ex, locals)

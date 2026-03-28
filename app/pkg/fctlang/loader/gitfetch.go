@@ -79,13 +79,13 @@ func DefaultGitCacheDir() string {
 	return filepath.Join(base, "Facet", "libcache")
 }
 
-// ResolveLibPath resolves a raw library path to a local directory.
+// resolveLibPath resolves a raw library path to a local directory.
 // Resolution order:
 //  1. Built-in paths (IsLocal) → libDir/<path>
 //  2. Settings-installed working copies (installedLibs overrides)
 //  3. Git cache (previously cloned)
 //  4. Remote clone (git clone --depth 1)
-func ResolveLibPath(ctx context.Context, libDir, gitCacheDir string, installedLibs map[string]string, rawPath string) (string, error) {
+func resolveLibPath(ctx context.Context, libDir, gitCacheDir string, installedLibs map[string]string, rawPath string) (string, error) {
 	lp, err := ParseLibPath(rawPath)
 	if err != nil {
 		return "", err
@@ -98,7 +98,7 @@ func ResolveLibPath(ctx context.Context, libDir, gitCacheDir string, installedLi
 
 	// Local/built-in path → validate and resolve against libDir
 	if lp.IsLocal {
-		if err := ValidateLibPath(rawPath); err != nil {
+		if err := validateLibPath(rawPath); err != nil {
 			return "", err
 		}
 		return filepath.Join(libDir, rawPath), nil

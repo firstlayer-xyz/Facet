@@ -97,9 +97,9 @@ func TestParseLibPathErrors(t *testing.T) {
 	}
 }
 
-func TestResolveLibPathLocal(t *testing.T) {
+func Test_resolveLibPathLocal(t *testing.T) {
 	libDir := t.TempDir()
-	dir, err := ResolveLibPath(context.Background(), libDir, "", nil, "facet/gears")
+	dir, err := resolveLibPath(context.Background(), libDir, "", nil, "facet/gears")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,19 +109,19 @@ func TestResolveLibPathLocal(t *testing.T) {
 	}
 }
 
-func TestResolveLibPathLocalValidation(t *testing.T) {
+func Test_resolveLibPathLocalValidation(t *testing.T) {
 	// Ensure path traversal is rejected
-	_, err := ResolveLibPath(context.Background(), "/tmp", "", nil, "foo/../bar")
+	_, err := resolveLibPath(context.Background(), "/tmp", "", nil, "foo/../bar")
 	if err == nil {
 		t.Fatal("expected error for path traversal")
 	}
 }
 
-func TestResolveLibPathInstalledOverride(t *testing.T) {
+func Test_resolveLibPathInstalledOverride(t *testing.T) {
 	installed := map[string]string{
 		"github.com/user/repo": "/custom/path",
 	}
-	dir, err := ResolveLibPath(context.Background(), "/lib", "/cache", installed, "github.com/user/repo@v1.0")
+	dir, err := resolveLibPath(context.Background(), "/lib", "/cache", installed, "github.com/user/repo@v1.0")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -130,11 +130,11 @@ func TestResolveLibPathInstalledOverride(t *testing.T) {
 	}
 }
 
-func TestResolveLibPathInstalledOverrideSubpath(t *testing.T) {
+func Test_resolveLibPathInstalledOverrideSubpath(t *testing.T) {
 	installed := map[string]string{
 		"gitlab.com/user/monorepo": "/custom/mono",
 	}
-	dir, err := ResolveLibPath(context.Background(), "/lib", "/cache", installed, "gitlab.com/user/monorepo/gears@main")
+	dir, err := resolveLibPath(context.Background(), "/lib", "/cache", installed, "gitlab.com/user/monorepo/gears@main")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestResolveLibPathInstalledOverrideSubpath(t *testing.T) {
 	}
 }
 
-func TestResolveLibPathCached(t *testing.T) {
+func Test_resolveLibPathCached(t *testing.T) {
 	cacheDir := t.TempDir()
 	// Pre-create a cached directory
 	cachedRepo := filepath.Join(cacheDir, "github.com", "user", "repo", "v1.0")
@@ -155,7 +155,7 @@ func TestResolveLibPathCached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dir, err := ResolveLibPath(context.Background(), "/lib", cacheDir, nil, "github.com/user/repo@v1.0")
+	dir, err := resolveLibPath(context.Background(), "/lib", cacheDir, nil, "github.com/user/repo@v1.0")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -244,7 +244,7 @@ func (e *evaluator) evalMethodFunction(fn *parser.Function, self value, args map
 // callFunctionVal evaluates a first-class function (lambda) call.
 // Scope is built as: globals → captured (overrides) → args.
 // Globals are included as fallback so recursive lambdas can reference themselves by name.
-func (e *evaluator) callFunctionVal(fv *functionVal, args []value) (value, error) {
+func (e *evaluator) callFunctionVal(fv *functionVal, args map[string]value) (value, error) {
 	if len(args) != len(fv.params) {
 		return nil, fmt.Errorf("function expects %d arguments, got %d", len(fv.params), len(args))
 	}
@@ -255,20 +255,16 @@ func (e *evaluator) callFunctionVal(fv *functionVal, args []value) (value, error
 	for k, v := range fv.captured {
 		scope[k] = v
 	}
-	// Bind args by name
+	// Validate and bind args by name
 	paramNames := make(map[string]bool, len(fv.params))
 	for _, p := range fv.params {
 		paramNames[p.Name] = true
 	}
-	for _, a := range args {
-		na, ok := a.(*namedArgVal)
-		if !ok {
-			return nil, fmt.Errorf("function arguments must be named (e.g., name: value)")
+	for name, val := range args {
+		if !paramNames[name] {
+			return nil, fmt.Errorf("function has no parameter named %q", name)
 		}
-		if !paramNames[na.name] {
-			return nil, fmt.Errorf("function has no parameter named %q", na.name)
-		}
-		scope[na.name] = na.val
+		scope[name] = val
 	}
 	return e.execBody(fv.body, fv.retType, scope)
 }

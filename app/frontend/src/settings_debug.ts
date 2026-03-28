@@ -1,6 +1,7 @@
 import type { PageResult } from './settings_appearance';
 import { GetLogDir, GetStderrLog, RevealInFileManager } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
+import { styleButton } from './settings_ui';
 
 export function buildDebugPage(): PageResult {
   const page = document.createElement('div');
@@ -20,13 +21,7 @@ export function buildDebugPage(): PageResult {
   const showBtn = document.createElement('button');
   showBtn.textContent = 'Show';
   showBtn.title = 'Open logs folder';
-  showBtn.style.padding = '4px 12px';
-  showBtn.style.border = 'none';
-  showBtn.style.borderRadius = '4px';
-  showBtn.style.background = 'var(--ui-border)';
-  showBtn.style.color = 'var(--ui-text)';
-  showBtn.style.cursor = 'pointer';
-  showBtn.style.fontSize = '13px';
+  styleButton(showBtn);
   showBtn.addEventListener('click', async () => {
     const dir = await GetLogDir();
     RevealInFileManager(dir);

@@ -50,17 +50,8 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 	}
 
 	// Check user-defined functions (type-based overload resolution)
-	var userCandidates []*parser.Function
-	var userFallback *parser.Function
-	for _, fn := range c.prog.Sources[c.currentSrcKey].Functions {
-		if fn.Name == call.Name && fn.ReceiverType == "" {
-			if fn.ArgsInRange(len(argTypes)) {
-				userCandidates = append(userCandidates, fn)
-			} else if userFallback == nil {
-				userFallback = fn
-			}
-		}
-	}
+	userCandidates, userFallback := parser.CollectCandidates(
+		c.prog.Sources[c.currentSrcKey].Functions, call.Name, len(argTypes), true)
 	if len(userCandidates) == 1 {
 		return c.checkFuncArgs(call.Name, call.Pos, userCandidates[0], call.Args, argTypes)
 	} else if len(userCandidates) > 1 {
@@ -73,17 +64,7 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 	}
 
 	// Check stdlib functions (type-based overload resolution)
-	var stdCandidates []*parser.Function
-	var stdFallback *parser.Function
-	for _, fn := range c.stdFuncs {
-		if fn.Name == call.Name {
-			if fn.ArgsInRange(len(argTypes)) {
-				stdCandidates = append(stdCandidates, fn)
-			} else if stdFallback == nil {
-				stdFallback = fn
-			}
-		}
-	}
+	stdCandidates, stdFallback := parser.CollectCandidates(c.stdFuncs, call.Name, len(argTypes), false)
 	if len(stdCandidates) == 1 {
 		return c.checkFuncArgs(call.Name, call.Pos, stdCandidates[0], call.Args, argTypes)
 	} else if len(stdCandidates) > 1 {

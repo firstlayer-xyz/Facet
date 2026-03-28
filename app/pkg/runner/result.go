@@ -61,8 +61,8 @@ type Callbacks struct {
 	OnResult func(result *RunResult)
 }
 
-// SourceErrorFromErr converts a generic error into a parser.SourceError.
-func SourceErrorFromErr(err error) parser.SourceError {
+// sourceErrorFromErr converts a generic error into a parser.SourceError.
+func sourceErrorFromErr(err error) parser.SourceError {
 	var se *parser.SourceError
 	if errors.As(err, &se) {
 		return *se
@@ -70,18 +70,28 @@ func SourceErrorFromErr(err error) parser.SourceError {
 	return parser.SourceError{Message: err.Error()}
 }
 
-// SolidBBoxes computes per-solid bounding boxes.
-func SolidBBoxes(solids []*manifold.Solid) []SolidBBox {
-	result := make([]SolidBBox, len(solids))
+// solidBBoxes computes per-solid bounding boxes and the overall global bbox.
+func solidBBoxes(solids []*manifold.Solid) (boxes []SolidBBox, globalMin, globalMax [3]float64) {
+	boxes = make([]SolidBBox, len(solids))
+	if len(solids) > 0 {
+		globalMin = [3]float64{math.MaxFloat64, math.MaxFloat64, math.MaxFloat64}
+		globalMax = [3]float64{-math.MaxFloat64, -math.MaxFloat64, -math.MaxFloat64}
+	}
 	for i, s := range solids {
 		mnX, mnY, mnZ, mxX, mxY, mxZ := s.BoundingBox()
-		result[i] = SolidBBox{
+		boxes[i] = SolidBBox{
 			Min:    [3]float64{sanitizeBBox(mnX), sanitizeBBox(mnY), sanitizeBBox(mnZ)},
 			Max:    [3]float64{sanitizeBBox(mxX), sanitizeBBox(mxY), sanitizeBBox(mxZ)},
 			Pieces: s.NumComponents(),
 		}
+		globalMin[0] = math.Min(globalMin[0], mnX)
+		globalMin[1] = math.Min(globalMin[1], mnY)
+		globalMin[2] = math.Min(globalMin[2], mnZ)
+		globalMax[0] = math.Max(globalMax[0], mxX)
+		globalMax[1] = math.Max(globalMax[1], mxY)
+		globalMax[2] = math.Max(globalMax[2], mxZ)
 	}
-	return result
+	return
 }
 
 func sanitizeBBox(v float64) float64 {
@@ -89,13 +99,4 @@ func sanitizeBBox(v float64) float64 {
 		return 0
 	}
 	return v
-}
-
-// RenderMeshes converts each solid to a display mesh.
-func RenderMeshes(solids []*manifold.Solid) []*manifold.DisplayMesh {
-	meshes := make([]*manifold.DisplayMesh, len(solids))
-	for i, s := range solids {
-		meshes[i] = s.ToDisplayMesh()
-	}
-	return meshes
 }

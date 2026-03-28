@@ -164,8 +164,6 @@ export class AssistantPanel {
     installHtml += `<strong>Claude</strong> (recommended)<br>`;
     if (isMac) {
       installHtml += `<code>brew install claude-code</code><br>or <code>npm install -g @anthropic-ai/claude-code</code>`;
-    } else if (isWin) {
-      installHtml += `<code>npm install -g @anthropic-ai/claude-code</code>`;
     } else {
       installHtml += `<code>npm install -g @anthropic-ai/claude-code</code>`;
     }

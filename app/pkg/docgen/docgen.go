@@ -73,8 +73,8 @@ func BuildSite(guidesDir, libDir string) (*DocSite, error) {
 	return site, nil
 }
 
-// RenderMarkdown converts markdown text to HTML using goldmark.
-func RenderMarkdown(markdown string) (string, error) {
+// renderMarkdown converts markdown text to HTML using goldmark.
+func renderMarkdown(markdown string) (string, error) {
 	var buf bytes.Buffer
 	md := goldmark.New()
 	if err := md.Convert([]byte(markdown), &buf); err != nil {
@@ -99,7 +99,7 @@ func loadGuides(dir string) ([]Guide, error) {
 			return nil, err
 		}
 		src := string(data)
-		html, err := RenderMarkdown(src)
+		html, err := renderMarkdown(src)
 		if err != nil {
 			return nil, err
 		}

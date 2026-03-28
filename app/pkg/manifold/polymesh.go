@@ -827,7 +827,7 @@ func (pm *PolyMesh) ToSolid() (*SolidFuture, error) {
 		}
 	}
 
-	return CreateSolidFromMeshWithFaceIDs(verts, indices, faceIDs)
+	return createSolidFromMeshWithFaceIDs(verts, indices, faceIDs)
 }
 
 // ToDisplayMesh converts the PolyMesh to a DisplayMesh for rendering.
@@ -851,7 +851,7 @@ func (pm *PolyMesh) ToDisplayMesh() *DisplayMesh {
 		}
 	}
 
-	return BuildDisplayMesh(verts, indices, faceGroups)
+	return buildDisplayMesh(verts, indices, faceGroups)
 }
 
 // edges returns all unique edges in the mesh.

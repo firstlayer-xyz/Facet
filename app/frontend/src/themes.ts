@@ -27,7 +27,7 @@ import nightOwlTheme from './themes/Night Owl.json';
 // @ts-ignore
 import nightOwlLightTheme from './themes/Night Owl Light.json';
 
-export interface ThemeEntry {
+interface ThemeEntry {
   id: string;
   label: string;
 }
@@ -455,7 +455,7 @@ export function getThemePalette(name: string): UIPalette {
   return THEME_PALETTES[name] ?? THEME_PALETTES['facet-orange-light'];
 }
 
-export interface PaletteField {
+interface PaletteField {
   key: keyof UIPalette;
   label: string;
   type: 'color' | 'color-alpha' | 'number';

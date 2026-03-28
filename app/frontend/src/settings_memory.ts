@@ -1,5 +1,6 @@
 import type { SettingsPageContext, PageResult } from './settings_appearance';
 import { GetMemoryLimit, MemStats, RunGC, SetMemoryLimit } from '../wailsjs/go/main/App';
+import { styleButton, styleInput } from './settings_ui';
 
 export function buildMemoryPage(ctx: SettingsPageContext): PageResult {
   const page = document.createElement('div');
@@ -65,24 +66,12 @@ export function buildMemoryPage(ctx: SettingsPageContext): PageResult {
 
   const refreshBtn = document.createElement('button');
   refreshBtn.textContent = 'Refresh';
-  refreshBtn.style.padding = '4px 12px';
-  refreshBtn.style.border = 'none';
-  refreshBtn.style.borderRadius = '4px';
-  refreshBtn.style.background = 'var(--ui-border)';
-  refreshBtn.style.color = 'var(--ui-text)';
-  refreshBtn.style.cursor = 'pointer';
-  refreshBtn.style.fontSize = '13px';
+  styleButton(refreshBtn);
   refreshBtn.addEventListener('click', refreshStats);
 
   const gcBtn = document.createElement('button');
   gcBtn.textContent = 'Run GC';
-  gcBtn.style.padding = '4px 12px';
-  gcBtn.style.border = 'none';
-  gcBtn.style.borderRadius = '4px';
-  gcBtn.style.background = 'var(--ui-border)';
-  gcBtn.style.color = 'var(--ui-text)';
-  gcBtn.style.cursor = 'pointer';
-  gcBtn.style.fontSize = '13px';
+  styleButton(gcBtn);
   gcBtn.addEventListener('click', async () => {
     RunGC();
     gcBtn.textContent = 'Done';
@@ -112,33 +101,17 @@ export function buildMemoryPage(ctx: SettingsPageContext): PageResult {
   memInput.type = 'number';
   memInput.min = '0';
   memInput.style.width = '100px';
-  memInput.style.padding = '4px 8px';
-  memInput.style.border = '1px solid var(--ui-border)';
-  memInput.style.borderRadius = '4px';
+  styleInput(memInput);
   memInput.style.background = 'var(--ui-bg-dark)';
-  memInput.style.color = 'var(--ui-text)';
-  memInput.style.fontSize = '13px';
   memInput.style.fontFamily = 'monospace';
 
   const setBtn = document.createElement('button');
   setBtn.textContent = 'Set';
-  setBtn.style.padding = '4px 12px';
-  setBtn.style.border = 'none';
-  setBtn.style.borderRadius = '4px';
-  setBtn.style.background = 'var(--ui-border)';
-  setBtn.style.color = 'var(--ui-text)';
-  setBtn.style.cursor = 'pointer';
-  setBtn.style.fontSize = '13px';
+  styleButton(setBtn);
 
   const defaultBtn = document.createElement('button');
   defaultBtn.textContent = 'No Limit';
-  defaultBtn.style.padding = '4px 12px';
-  defaultBtn.style.border = 'none';
-  defaultBtn.style.borderRadius = '4px';
-  defaultBtn.style.background = 'var(--ui-border)';
-  defaultBtn.style.color = 'var(--ui-text)';
-  defaultBtn.style.cursor = 'pointer';
-  defaultBtn.style.fontSize = '13px';
+  styleButton(defaultBtn);
 
   limitRow.appendChild(memInput);
   limitRow.appendChild(setBtn);

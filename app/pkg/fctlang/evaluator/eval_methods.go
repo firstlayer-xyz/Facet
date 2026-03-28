@@ -334,7 +334,7 @@ func solidMethod(e *evaluator, sf *manifold.SolidFuture, method string, args []v
 				return x, y, z
 			}
 			pt := makePtVecStruct3("Vec3", x, y, z)
-			result, callErr := e.callFunctionVal(fv, []value{pt})
+			result, callErr := e.callFunctionVal(fv, map[string]value{fv.params[0].Name: pt})
 			if callErr != nil {
 				warpErr = callErr
 				return x, y, z

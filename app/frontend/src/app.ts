@@ -1,6 +1,6 @@
 // app.ts — Run/debug orchestration logic.
 
-import { Stop, ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, GetDebugStepMeshes, SetWindowTitle, GetLibraryFilePath, FormatCode, UpdateSource, RemoveSource, Run, Debug, ResetRunner, CreateScratchFile, IsScratchFile } from '../wailsjs/go/main/App';
+import { Stop, ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, GetDebugStepMeshes, SetWindowTitle, GetLibraryFilePath, FormatCode, UpdateSource, PruneSources, Run, Debug, CreateScratchFile, IsScratchFile } from '../wailsjs/go/main/App';
 import type { EntryPoint } from './function-preview';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { Viewer, mergeMeshes } from './viewer';
@@ -11,7 +11,24 @@ import { patchSettings } from './settings';
 
 interface SourceEntry {
   text: string;
-  kind: number; // 0=User, 1=StdLib, 2=Library, 3=Cached
+  kind: number;
+}
+
+// Source kind constants (mirrors parser.SourceKind in Go)
+const SOURCE_USER = 0;
+const SOURCE_STDLIB = 1;
+const SOURCE_LIBRARY = 2;
+const SOURCE_CACHED = 3;
+const SOURCE_EXAMPLE = 4;
+
+/** Read-only source kinds — not editable by the user. */
+function isReadOnlyKind(kind: number): boolean {
+  return kind === SOURCE_STDLIB || kind === SOURCE_CACHED || kind === SOURCE_EXAMPLE;
+}
+
+/** Source kinds excluded from tab persistence (ephemeral). */
+function isEphemeralKind(kind: number): boolean {
+  return kind === SOURCE_STDLIB || kind === SOURCE_CACHED;
 }
 
 // Dependencies injected via initApp()
@@ -51,7 +68,7 @@ function getTab(key: string): TabState {
 }
 
 function isReadOnly(path: string): boolean {
-  return (lastResult?.sources?.[path]?.kind ?? 0) !== 0;
+  return isReadOnlyKind(lastResult?.sources?.[path]?.kind ?? SOURCE_USER);
 }
 
 // Dirty flag for the active main file
@@ -76,15 +93,6 @@ let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } |
 // The entry point name itself is NOT stored here — it flows through function
 // parameters to Run()/Debug(), so it's impossible to eval without one.
 let entryOverrides: Record<string, any> = {};
-
-/** Set the active tab to a file path, creating the tab if needed. */
-function setActiveFile(path: string, label?: string) {
-  tabs[path] = { path, dirty: false, cursor: null, label: label || tabLabel(path) };
-  activeTab = path;
-  editor.setCurrentSource(path);
-  editor.setReadOnly(isReadOnly(path));
-  patchSettings({ lastFile: path });
-}
 
 /** Set the file path on startup (no discard prompt, no re-persist). */
 export function setInitialFile(path: string) {
@@ -112,14 +120,6 @@ function markClean() {
     updateWindowTitle();
   }
 }
-function hasUnsavedChanges(): boolean {
-  if (dirty) return true;
-  return Object.values(tabs).some(t => t.dirty);
-}
-async function confirmDiscardAsync(): Promise<boolean> {
-  if (!hasUnsavedChanges()) return true;
-  return ConfirmDiscard();
-}
 interface SavedTab {
   path: string;
   label: string;
@@ -135,8 +135,8 @@ function persistOpenTabs() {
   // Persist all tabs except stdlib (kind=1) and cached libs (kind=3)
   const savedTabs: SavedTab[] = [];
   for (const [path, tab] of Object.entries(tabs)) {
-    const kind = sources[path]?.kind ?? 0;
-    if (kind === 1 || kind === 3) continue;
+    const kind = sources[path]?.kind ?? SOURCE_USER;
+    if (isEphemeralKind(kind)) continue;
     savedTabs.push({ path: tab.path, label: tab.label, cursor: tab.cursor });
   }
   patchSettings({ savedTabs, activeTab });
@@ -214,30 +214,6 @@ export function initApp(deps: AppDeps) {
   // Single result event — carries check data, eval data, or both
   EventsOn('run:result', (data: any) => handleRunResult(data));
 
-}
-
-/** Feedback from a completed run, used by the auto-verify loop. */
-export interface RunFeedback {
-  success: boolean;
-  stats?: {
-    triangles: number; vertices: number; volume: number; surfaceArea: number;
-    bboxMin: [number, number, number]; bboxMax: [number, number, number];
-  };
-  time?: number;
-  error?: string;
-}
-
-type RunFeedbackCallback = (feedback: RunFeedback) => void;
-let pendingRunCallback: RunFeedbackCallback | null = null;
-
-/**
- * Register a one-shot listener that fires after the next run completes.
- * The callback receives the run result (success + stats or error).
- * Returns a cancel function.
- */
-export function onNextRunComplete(cb: RunFeedbackCallback): () => void {
-  pendingRunCallback = cb;
-  return () => { pendingRunCallback = null; };
 }
 
 function setSpinner(active: boolean) {
@@ -337,36 +313,44 @@ function handleRunResult(data: any) {
   errorDiv.onclick = null;
   errorDiv.style.cursor = '';
 
-  // Markers from check errors
   const errors = data.errors ?? [];
   if (errors.length > 0) editor.setMarkers(errors);
 
   lastResult = data;
+  syncTabsWithSources(data);
+  pushEditorData(data);
 
-  // Close tabs for files no longer in sources
-  if (data.sources) {
-    let tabsClosed = false;
-    for (const path of Object.keys(tabs)) {
-      if (path === activeTab) continue;
-      if (!data.sources[path]) {
-        editor.disposeModel(path);
-        delete tabs[path];
-        tabsClosed = true;
-      }
+  const fns = (data.entryPoints ?? []) as EntryPoint[];
+  if (!data.mesh && !data.debugFinal) {
+    handleCheckOnly(data, errors, fns);
+  } else {
+    onEntryPointsCb?.(fns);
+    if (data.debugSteps) {
+      handleDebugResult(data);
+    } else {
+      handleEvalResult(data);
     }
-    if (tabsClosed) renderTabs();
   }
+}
 
-  // Doc index, var types, declarations — push into editor
-  if (data.docIndex) {
-    editor.updateDocIndex(data.docIndex);
+function syncTabsWithSources(data: any) {
+  if (!data.sources) return;
+  let tabsClosed = false;
+  for (const path of Object.keys(tabs)) {
+    if (path === activeTab) continue;
+    if (!data.sources[path]) {
+      editor.disposeModel(path);
+      delete tabs[path];
+      tabsClosed = true;
+    }
   }
+  if (tabsClosed) renderTabs();
+}
+
+function pushEditorData(data: any) {
+  if (data.docIndex) editor.updateDocIndex(data.docIndex);
   if (data.varTypes && Object.keys(data.varTypes).length > 0) editor.updateVarTypes(data.varTypes);
-  if (data.declarations) {
-    if (data.declarations.decls) {
-      editor.updateDeclarations(data.declarations.decls);
-    }
-  }
+  if (data.declarations?.decls) editor.updateDeclarations(data.declarations.decls);
   if (data.sources) {
     const textSources: Record<string, string> = {};
     for (const [k, v] of Object.entries(data.sources as Record<string, SourceEntry>)) {
@@ -375,109 +359,76 @@ function handleRunResult(data: any) {
     editor.updateFileSources(textSources);
     onSourceChangeCb?.(editor.getContent());
   }
+}
 
-  // Entry points — notify callback, which may trigger a follow-up Run with eval
-  const fns = (data.entryPoints ?? []) as EntryPoint[];
-  if (!data.mesh && !data.debugFinal) {
-    // No eval output — clear stale posMap so highlighting doesn't use old positions
-    viewer.setPosMap([]);
-    // Either check-only or eval error
-    if (errors.length > 0) {
-      const e = errors[0];
-      hideStats();
-      const prefix = e.file
-        ? `[${e.file}${e.line > 0 ? ':' + e.line : ''}] `
-        : '';
-      errorDiv.textContent = prefix + e.message;
-      errorDiv.style.display = 'block';
-      if (e.line > 0 && !e.file) {
-        errorDiv.style.cursor = 'pointer';
+function handleCheckOnly(data: any, errors: any[], fns: EntryPoint[]) {
+  viewer.setPosMap([]);
+  if (errors.length > 0) {
+    const e = errors[0];
+    hideStats();
+    const prefix = e.file ? `[${e.file}${e.line > 0 ? ':' + e.line : ''}] ` : '';
+    errorDiv.textContent = prefix + e.message;
+    errorDiv.style.display = 'block';
+    if (e.line > 0 && !e.file) {
+      errorDiv.style.cursor = 'pointer';
+      editor.highlightError(e.line);
+      errorDiv.onclick = () => editor.revealLine(e.line, e.col || 1);
+    } else if (e.line > 0 && e.file) {
+      errorDiv.style.cursor = 'pointer';
+      errorDiv.onclick = async () => {
+        getTab(e.file);
+        await switchToTab(e.file);
         editor.highlightError(e.line);
-        errorDiv.onclick = () => editor.revealLine(e.line, e.col || 1);
-      } else if (e.line > 0 && e.file) {
-        errorDiv.style.cursor = 'pointer';
-        errorDiv.onclick = async () => {
-          getTab(e.file);
-          await switchToTab(e.file);
-          editor.highlightError(e.line);
-          editor.revealLine(e.line, e.col || 1);
-        };
-      }
-      if (pendingRunCallback) {
-        const cb = pendingRunCallback;
-        pendingRunCallback = null;
-        cb({ success: false, error: prefix + e.message });
-      }
-      return;
-    }
-    // Check-only success — let callback pick entry point and dispatch eval
-    const picked = onEntryPointsCb?.(fns);
-    if (picked) {
-      const key = picked.libPath || activeTab;
-      if (debugMode) {
-        Debug(key, picked.name, entryOverrides);
-      } else {
-        Run(key, picked.name, entryOverrides);
-      }
+        editor.revealLine(e.line, e.col || 1);
+      };
     }
     return;
   }
-
-  // Update entry points UI without re-dispatching
-  onEntryPointsCb?.(fns);
-
-  // --- Debug result ---
-  if (data.debugSteps) {
-    setDebugBarVisible(false);
-    const steps = (data.debugSteps ?? []) as unknown as DebugStepData[];
-
-    const finalMeshes = (data.debugFinal ?? []) as any as MeshData[];
-    if (finalMeshes.length > 0) {
-      steps.push({
-        op: 'Final',
-        meshes: finalMeshes.map((m: MeshData) => ({ role: 'result', mesh: m })),
-        line: 0, col: 0, file: '',
-      });
-    }
-    // Store augmented steps back so lastResult includes the synthetic Final step
-    data.debugSteps = steps;
-
-    renderTabs();
-    debugFinalMesh = finalMeshes.length > 0 ? mergeMeshes(finalMeshes) : null;
-    viewer.clearMeshes();
-    if (debugFinalMesh) viewer.loadDecodedMesh(debugFinalMesh);
-
-    if (steps.length > 0) {
-      debugSlider.max = String(steps.length - 1);
-      showDebugStep(0);
-      setDebugBarVisible(true);
-    }
-    return;
+  const picked = onEntryPointsCb?.(fns);
+  if (picked) {
+    const key = picked.libPath || activeTab;
+    if (debugMode) Debug(key, picked.name, entryOverrides);
+    else Run(key, picked.name, entryOverrides);
   }
+}
 
-  // --- Normal eval result ---
+function handleDebugResult(data: any) {
+  setDebugBarVisible(false);
+  const steps = (data.debugSteps ?? []) as unknown as DebugStepData[];
+  const finalMeshes = (data.debugFinal ?? []) as any as MeshData[];
+  if (finalMeshes.length > 0) {
+    steps.push({
+      op: 'Final',
+      meshes: finalMeshes.map((m: MeshData) => ({ role: 'result', mesh: m })),
+      line: 0, col: 0, file: '',
+    });
+  }
+  data.debugSteps = steps;
+  renderTabs();
+  debugFinalMesh = finalMeshes.length > 0 ? mergeMeshes(finalMeshes) : null;
+  viewer.clearMeshes();
+  if (debugFinalMesh) viewer.loadDecodedMesh(debugFinalMesh);
+  if (steps.length > 0) {
+    debugSlider.max = String(steps.length - 1);
+    showDebugStep(0);
+    setDebugBarVisible(true);
+  }
+}
+
+function handleEvalResult(data: any) {
   setDebugBarVisible(false);
   viewer.clearMeshes();
   if (data.mesh) viewer.loadMesh(data.mesh as MeshData);
-  // Exclude stdlib from face-click cycling
   const excludeFiles = new Set<string>();
   if (data.sources) {
     for (const [path, entry] of Object.entries(data.sources as Record<string, SourceEntry>)) {
-      if (entry.kind === 1) excludeFiles.add(path); // SourceStdLib
+      if (entry.kind === SOURCE_STDLIB) excludeFiles.add(path);
     }
   }
   viewer.setPosMap(data.posMap ?? [], excludeFiles);
   viewer.centerOnBed();
   viewer.fitToView();
   showStats(data.stats, data.time);
-
-  if (pendingRunCallback) {
-    const cb = pendingRunCallback;
-    pendingRunCallback = null;
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      cb({ success: true, stats: data.stats, time: data.time });
-    }));
-  }
 }
 
 /** Shorten a path to just the filename, for tab display. */
@@ -515,21 +466,21 @@ export function renderTabs() {
     tab.title = path;
 
     const sourceKind = lastResult?.sources?.[path]?.kind ?? 0;
-    if (sourceKind === 4) {
+    if (sourceKind === SOURCE_EXAMPLE) {
       // Example — star icon
       const star = document.createElement('span');
       star.className = 'tab-book';
       star.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
       star.title = 'Example';
       tab.appendChild(star);
-    } else if (sourceKind === 2) {
+    } else if (sourceKind === SOURCE_LIBRARY) {
       // Library — book icon
       const book = document.createElement('span');
       book.className = 'tab-book';
       book.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>';
       book.title = 'Library';
       tab.appendChild(book);
-    } else if (sourceKind === 1 || sourceKind === 3) {
+    } else if (sourceKind === SOURCE_STDLIB || sourceKind === SOURCE_CACHED) {
       // StdLib or Cached — lock icon
       const lock = document.createElement('span');
       lock.className = 'tab-lock';
@@ -583,7 +534,12 @@ export function renderTabs() {
   requestAnimationFrame(updateArrows);
 }
 
-function closeTab(file: string) {
+async function closeTab(file: string) {
+  // Prompt if tab has unsaved changes
+  if (getTab(file).dirty) {
+    const ok = await ConfirmDiscard();
+    if (!ok) return;
+  }
   if (activeTab === file) {
     // Switch to another open tab
     const remaining = Object.keys(tabs).filter(k => k !== file);
@@ -596,15 +552,17 @@ function closeTab(file: string) {
   editor.disposeModel(file);
   delete tabs[file];
   renderTabs();
-  // Tell backend to remove the source if not referenced by other files.
-  RemoveSource(file);
-  // If no tabs remain, clear the viewport
+  // Tell backend which tabs are still open — it prunes unreachable sources.
+  PruneSources(Object.keys(tabs));
+  // Clear viewport if no tabs remain
   if (Object.keys(tabs).length === 0) {
     viewer.clearMeshes();
     viewer.setPosMap([]);
     hideStats();
     errorDiv.style.display = 'none';
   }
+  // Notify file tree / preview of the tab change
+  onTabChangeCb?.(activeTab);
 }
 
 export function switchToTab(file: string) {
@@ -619,11 +577,8 @@ export function switchToTab(file: string) {
   editor.setCurrentSource(file);
 
   // Switch editor model — source comes from sources map or editor's own model cache
-  editor.setReadOnly(false);
   const source = lastResult?.sources?.[file]?.text ?? '';
   editor.switchModel(file, source);
-
-  // Resolve read-only status
   editor.setReadOnly(isReadOnly(file));
 
   // Restore cursor position
@@ -640,9 +595,9 @@ export function switchToTab(file: string) {
   }
 
   // Re-highlight current debug step line if it belongs to this tab
-  const _steps = lastResult?.debugSteps ?? [];
-  if (_steps.length > 0 && debugStepIndex < _steps.length) {
-    const step = _steps[debugStepIndex];
+  const steps = lastResult?.debugSteps ?? [];
+  if (steps.length > 0 && debugStepIndex < steps.length) {
+    const step = steps[debugStepIndex];
     if ((step.file ?? '') === activeTab && step.line > 0) {
       editor.highlightDebugLine(step.line);
     } else {
@@ -747,84 +702,44 @@ export function refreshEditorUI() {
   UpdateSource(activeTab, editor.getContent());
 }
 
-/** Cancel running builds, clear all state, and reset the backend. Called when loading new content. */
-function resetSession() {
-  // Clear backend state: program, entry point, lib cache
-  ResetRunner();
-  if (debugMode) {
-    debugMode = false;
-    debugBtn.classList.remove('active');
-    setDebugBarVisible(false);
-    editor.clearDebugLine();
-  }
-  // Dispose all editor models for library tabs
-  const sources = lastResult?.sources ?? {};
-  for (const key of Object.keys(sources)) editor.disposeModel(key);
-  lastResult = null;
-  tabs = {};
-  activeTab = '';
-  debugFinalMesh = null;
-  // Reset overrides and function list
-  entryOverrides = {};
-  onEntryPointsCb?.([]);
-  renderTabs();
-}
-
-export async function openExample(source: string, name: string) {
-  const label = name.replace(/\.fct$/, '');
-  const key = 'example:' + name;
-  // If already open, just switch to it
+/** Open a tab with the given key and source, switching to it if already open. */
+function openTab(key: string, source: string, label?: string, readOnly?: boolean) {
   if (tabs[key]) {
     switchToTab(key);
     return;
   }
-  tabs[key] = { path: key, dirty: false, cursor: null, label };
+  tabs[key] = { path: key, dirty: false, cursor: null, label: label || tabLabel(key) };
   activeTab = key;
   editor.setCurrentSource(key);
   editor.switchModel(key, source);
-  editor.setReadOnly(true);
+  editor.setReadOnly(readOnly ?? isReadOnly(key));
   markClean();
   updateWindowTitle();
   renderTabs();
   run();
+}
+
+export function openExample(source: string, name: string) {
+  openTab('example:' + name, source, name.replace(/\.fct$/, ''), true);
 }
 
 export async function openFile() {
   const result = await OpenFile();
-  if (!result) return; // cancelled
-  // If already open, just switch to it
-  if (tabs[result.path]) {
-    switchToTab(result.path);
-    return;
-  }
-  setActiveFile(result.path);
-  editor.switchModel(activeTab, result.source);
-  markClean();
-  updateWindowTitle();
-  renderTabs();
+  if (!result) return;
+  openTab(result.path, result.source);
   AddRecentFile(result.path).catch(() => {});
-  run();
 }
 
 export async function openRecentFile(path: string) {
-  // If already open, just switch to it
-  if (tabs[path]) {
-    switchToTab(path);
-    return;
-  }
+  if (tabs[path]) { switchToTab(path); return; }
   let result: Record<string, string>;
   try {
     result = await OpenRecentFile(path);
   } catch {
     return; // file may no longer exist
   }
-  setActiveFile(result.path);
-  editor.switchModel(activeTab, result.source);
-  markClean();
-  updateWindowTitle();
-  renderTabs();
+  openTab(result.path, result.source);
   AddRecentFile(result.path).catch(() => {});
-  run();
 }
 
 async function formatSource(source: string): Promise<string> {
@@ -836,59 +751,36 @@ async function formatSource(source: string): Promise<string> {
   }
 }
 
-export async function saveFile() {
+/** Core save logic. Pass forceDialog=true for Save As. */
+async function doSave(forceDialog: boolean) {
   const source = await formatSource(editor.getContent());
   editor.setContentSilent(source);
   const tab = getTab(activeTab);
-  // Scratch files → show Save As dialog (empty path triggers dialog)
-  const savePath = await IsScratchFile(tab.path) ? '' : tab.path;
+  const savePath = forceDialog ? '' : (await IsScratchFile(tab.path) ? '' : tab.path);
   const path = await SaveFile(source, savePath);
-  if (path) {
-    // If saving under a new path (Save As dialog), update the tab
-    if (path !== tab.path) {
-      delete tabs[activeTab];
-      tabs[path] = { path, dirty: false, cursor: tab.cursor, label: tabLabel(path) };
-      activeTab = path;
-      editor.setCurrentSource(path);
-    }
-    tab.dirty = false;
-    if (lastResult?.sources?.[activeTab]) {
-      lastResult.sources[activeTab].text = source;
-    }
-    markClean();
-    updateWindowTitle();
-    renderTabs();
-    AddRecentFile(path).catch(() => {});
+  if (!path) return;
+  if (path !== tab.path) {
+    delete tabs[activeTab];
+    tabs[path] = { path, dirty: false, cursor: tab.cursor, label: tabLabel(path) };
+    activeTab = path;
+    editor.setCurrentSource(path);
   }
-}
-
-export async function newFile() {
-  const key = await CreateScratchFile('Untitled-' + Date.now());
-  tabs[key] = { path: key, dirty: false, cursor: null, label: 'Untitled' };
-  activeTab = key;
-  editor.switchModel(key, '');
-  editor.setReadOnly(false);
+  if (lastResult?.sources?.[activeTab]) {
+    lastResult.sources[activeTab].text = source;
+  }
   markClean();
   updateWindowTitle();
   renderTabs();
-  patchSettings({ lastFile: key });
+  AddRecentFile(path).catch(() => {});
 }
 
-export async function saveFileAs() {
-  const source = await formatSource(editor.getContent());
-  editor.setContentSilent(source);
-  const path = await SaveFile(source, ''); // force dialog
-  if (path) {
-    const oldTab = tabs[activeTab];
-    delete tabs[activeTab];
-    tabs[path] = { path, dirty: false, cursor: oldTab?.cursor ?? null, label: tabLabel(path) };
-    activeTab = path;
-    editor.setCurrentSource(path);
-    markClean();
-    updateWindowTitle();
-    renderTabs();
-    AddRecentFile(path).catch(() => {});
-  }
+export function saveFile() { return doSave(false); }
+export function saveFileAs() { return doSave(true); }
+
+export async function newFile() {
+  const key = await CreateScratchFile('Untitled-' + Date.now());
+  openTab(key, '', 'Untitled', false);
+  patchSettings({ lastFile: key });
 }
 
 export async function exportMesh(format: string = '3mf') {
@@ -940,19 +832,11 @@ export function toggleDebug() {
 async function openDocs(): Promise<boolean> {
   if (docsPanel.isVisible()) return true;
   docsMode = true;
-  const source = editor.getContent();
-  try {
-    const guides = await GetDocGuides();
-    docsPanel.show(lastResult?.docIndex ?? [], guides);
-    viewer.setVisible(false);
-    setDebugBarVisible(false);
-    return true;
-  } catch {
-    docsPanel.show([]);
-    viewer.setVisible(false);
-    setDebugBarVisible(false);
-    return true;
-  }
+  const guides = await GetDocGuides().catch(() => [] as any[]);
+  docsPanel.show(lastResult?.docIndex ?? [], guides);
+  viewer.setVisible(false);
+  setDebugBarVisible(false);
+  return true;
 }
 
 export async function toggleDocs() {
@@ -1001,10 +885,7 @@ export function getEntryPoints(): EntryPoint[] { return lastResult?.entryPoints 
 
 export function setEntryOverrides(overrides: Record<string, any>) { entryOverrides = overrides; }
 
-/** Return the source currently being edited in the main tab. */
-export function getMainSource(): string {
-  return editor.getModelContent(activeTab);
-}
+
 
 /** Open a library tab without navigating to a specific line.
  *  file may be an import path or disk path. If import path, resolves to disk path. */
@@ -1018,7 +899,7 @@ export async function openLibraryTab(file: string, source: string) {
     source = sources[file].text;
   }
   if (source && !sources[file]) {
-    sources[file] = { text: source, kind: 2 };
+    sources[file] = { text: source, kind: SOURCE_LIBRARY };
   }
   getTab(file);
   await switchToTab(file);
@@ -1027,19 +908,6 @@ export async function openLibraryTab(file: string, source: string) {
 /** Open a library file in a read-only tab and navigate to the given position.
  *  file may be an import path or disk path. If import path, resolves to disk path. */
 export async function openLibraryFile(file: string, source: string, line: number, col: number) {
-  // Resolve import path to disk path if needed
-  const sources = lastResult?.sources ?? {};
-  if (!sources[file]) {
-    const resolved = await GetLibraryFilePath(file);
-    if (resolved) file = resolved;
-  }
-  if (sources[file] && !source) {
-    source = sources[file].text;
-  }
-  if (source && !sources[file]) {
-    sources[file] = { text: source, kind: 2 };
-  }
-  getTab(file);
-  await switchToTab(file);
+  await openLibraryTab(file, source);
   editor.revealLine(line, col);
 }

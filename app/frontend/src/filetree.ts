@@ -59,7 +59,7 @@ export function findLibPath(libId: string, sources: Record<string, { text: strin
   return undefined;
 }
 
-export interface FileTreeCallbacks {
+interface FileTreeCallbacks {
   getActiveLabel(): string;
   getActiveTab(): string;
   getSources(): Record<string, { text: string }>;
@@ -90,6 +90,8 @@ export class FileTree {
 
   private render(activeTab: string) {
     this.panel.innerHTML = '';
+    if (!activeTab) return; // no tabs open
+
     const activeLabel = this.callbacks.getActiveLabel();
     const libSources = this.callbacks.getSources();
 

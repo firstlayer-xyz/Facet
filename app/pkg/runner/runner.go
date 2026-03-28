@@ -3,7 +3,6 @@ package runner
 import (
 	"context"
 	"errors"
-	"math"
 	"runtime"
 	"strings"
 	"sync"
@@ -65,7 +64,7 @@ func New(ctx context.Context, cb Callbacks, cfg Config) *ProgramRunner {
 // UpdateSource parses the given source, updates the program, re-checks,
 // and pushes a check-only result (no eval). Debounces 500ms.
 func (r *ProgramRunner) UpdateSource(key string, source string) {
-	r.startBuild(func(ctx context.Context) {
+	r.startBuild(500*time.Millisecond, func(ctx context.Context) {
 		r.doUpdateSource(ctx, key, source)
 	})
 }
@@ -81,7 +80,7 @@ func (r *ProgramRunner) Run(key string, entryPoint string, overrides map[string]
 		return
 	}
 
-	r.startBuildImmediate(func(ctx context.Context) {
+	r.startBuild(0, func(ctx context.Context) {
 		r.doRun(ctx, prog, key, entryPoint, overrides, false)
 	})
 }
@@ -97,7 +96,7 @@ func (r *ProgramRunner) Debug(key string, entryPoint string, overrides map[strin
 		return
 	}
 
-	r.startBuildImmediate(func(ctx context.Context) {
+	r.startBuild(0, func(ctx context.Context) {
 		r.doRun(ctx, prog, key, entryPoint, overrides, true)
 	})
 }
@@ -117,41 +116,57 @@ func (r *ProgramRunner) RekeySource(oldKey, newKey string) {
 	}
 }
 
-// RemoveSource removes a source from the program if it is not referenced
-// by any other source's lib imports. Triggers a re-check and pushes a new result.
-func (r *ProgramRunner) RemoveSource(key string) {
+// PruneSources keeps only sources that are in the openTabs set or transitively
+// referenced by them. Stdlib is always kept. Pushes a new result after pruning.
+func (r *ProgramRunner) PruneSources(openTabs []string) {
 	r.progMu.Lock()
 	if r.prog.Sources == nil {
 		r.progMu.Unlock()
 		return
 	}
-	// Check if any other source references this key via a LibExpr
-	referenced := false
-	for srcKey, src := range r.prog.Sources {
-		if srcKey == key {
-			continue
+
+	// Walk from open tabs + their transitive imports to find all reachable sources
+	usedPaths := map[string]bool{loader.StdlibPath: true}
+	var walk func(srcKey string)
+	walk = func(srcKey string) {
+		if usedPaths[srcKey] {
+			return
+		}
+		usedPaths[srcKey] = true
+		src := r.prog.Sources[srcKey]
+		if src == nil {
+			return
 		}
 		for _, g := range src.Globals {
 			if le, ok := g.Value.(*parser.LibExpr); ok {
-				if diskPath, ok := r.prog.Imports[le.Path]; ok && diskPath == key {
-					referenced = true
-					break
+				if dp, ok := r.prog.Imports[le.Path]; ok {
+					walk(dp)
 				}
 			}
 		}
-		if referenced {
-			break
+	}
+	for _, tab := range openTabs {
+		walk(tab)
+	}
+
+	// Remove unreachable sources and stale imports
+	changed := false
+	for srcKey := range r.prog.Sources {
+		if !usedPaths[srcKey] {
+			delete(r.prog.Sources, srcKey)
+			changed = true
 		}
 	}
-	if !referenced {
-		delete(r.prog.Sources, key)
-		for importPath, diskPath := range r.prog.Imports {
-			if diskPath == key {
-				delete(r.prog.Imports, importPath)
-			}
+	for importPath, diskPath := range r.prog.Imports {
+		if _, exists := r.prog.Sources[diskPath]; !exists {
+			delete(r.prog.Imports, importPath)
 		}
 	}
 	r.progMu.Unlock()
+
+	if changed {
+		r.pushResult(&RunResult{})
+	}
 }
 
 // Reset cancels any in-flight build and clears all state.
@@ -177,8 +192,9 @@ func (r *ProgramRunner) Stop() {
 
 // --- Build orchestration ---
 
-// startBuild cancels any in-flight build, debounces 500ms, then runs buildFn.
-func (r *ProgramRunner) startBuild(buildFn func(ctx context.Context)) {
+// startBuild cancels any in-flight build, waits for the previous one to finish,
+// then runs buildFn after the given delay (0 = immediate).
+func (r *ProgramRunner) startBuild(delay time.Duration, buildFn func(ctx context.Context)) {
 	r.mu.Lock()
 	if r.cancelBuild != nil {
 		r.cancelBuild()
@@ -199,39 +215,13 @@ func (r *ProgramRunner) startBuild(buildFn func(ctx context.Context)) {
 			<-prevDone
 		}
 
-		select {
-		case <-time.After(500 * time.Millisecond):
-		case <-ctx.Done():
-			return
-		}
-
-		buildFn(ctx)
-	}()
-}
-
-// startBuildImmediate cancels any in-flight build, then runs buildFn without debounce.
-func (r *ProgramRunner) startBuildImmediate(buildFn func(ctx context.Context)) {
-	r.mu.Lock()
-	if r.cancelBuild != nil {
-		r.cancelBuild()
-	}
-	prevDone := r.buildDone
-
-	ctx, cancel := context.WithCancel(context.Background())
-	r.cancelBuild = cancel
-	r.buildPending = true
-	done := make(chan struct{})
-	r.buildDone = done
-	r.mu.Unlock()
-
-	go func() {
-		defer close(done)
-
-		if prevDone != nil {
-			<-prevDone
-		}
-
-		if ctx.Err() != nil {
+		if delay > 0 {
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return
+			}
+		} else if ctx.Err() != nil {
 			return
 		}
 
@@ -280,7 +270,7 @@ func (r *ProgramRunner) doUpdateSource(ctx context.Context, key string, source s
 
 		prog, err := loader.Load(ctx, source, key, kind, r.config.LibDir, r.resolveOpts())
 		if err != nil {
-			result := &RunResult{Errors: []parser.SourceError{SourceErrorFromErr(err)}}
+			result := &RunResult{Errors: []parser.SourceError{sourceErrorFromErr(err)}}
 			r.pushResult(result)
 			return
 		}
@@ -296,7 +286,7 @@ func (r *ProgramRunner) doUpdateSource(ctx context.Context, key string, source s
 		// Resolve any new library imports
 		r.progMu.Unlock()
 		if err := loader.ResolveLibraries(ctx, r.prog, key, r.config.LibDir, r.resolveOpts()); err != nil {
-			result := &RunResult{Errors: []parser.SourceError{SourceErrorFromErr(err)}}
+			result := &RunResult{Errors: []parser.SourceError{sourceErrorFromErr(err)}}
 			r.pushResult(result)
 			return
 		}
@@ -351,7 +341,7 @@ func (r *ProgramRunner) doUpdateSource(ctx context.Context, key string, source s
 		DocIndex:     r.buildDocIndex(docText),
 	}
 	if checked.Prog.Sources != nil {
-		result.EntryPoints = GetEntryPoints(checked.Prog, checked.InferredReturnTypes)
+		result.EntryPoints = getEntryPoints(checked.Prog, checked.InferredReturnTypes)
 	}
 
 	// Push check-only result (no eval)
@@ -389,7 +379,7 @@ func (r *ProgramRunner) doRun(ctx context.Context, prog loader.Program, key stri
 		DocIndex:     r.buildDocIndex(docText),
 	}
 	if checked.Prog.Sources != nil {
-		result.EntryPoints = GetEntryPoints(checked.Prog, checked.InferredReturnTypes)
+		result.EntryPoints = getEntryPoints(checked.Prog, checked.InferredReturnTypes)
 	}
 
 	if len(checked.Errors) > 0 || entryPoint == "" {
@@ -405,13 +395,17 @@ func (r *ProgramRunner) doRun(ctx context.Context, prog loader.Program, key stri
 				return
 			}
 			result.Success = false
-			result.Errors = append(result.Errors, SourceErrorFromErr(err))
+			result.Errors = append(result.Errors, sourceErrorFromErr(err))
 			r.pushResult(result)
 			return
 		}
-		evalResult.Final = RenderMeshes(evalResult.Solids)
+		meshes := make([]*manifold.DisplayMesh, len(evalResult.Solids))
+		for i, s := range evalResult.Solids {
+			meshes[i] = s.ToDisplayMesh()
+		}
+		evalResult.Final = meshes
 		result.Success = true
-		result.Boxes = SolidBBoxes(evalResult.Solids)
+		result.Boxes, _, _ = solidBBoxes(evalResult.Solids)
 		result.Time = time.Since(start).Seconds()
 		result.Solids = evalResult.Solids
 		result.DebugResult = evalResult
@@ -425,32 +419,22 @@ func (r *ProgramRunner) doRun(ctx context.Context, prog loader.Program, key stri
 			return
 		}
 		result.Success = false
-		result.Errors = append(result.Errors, SourceErrorFromErr(err))
+		result.Errors = append(result.Errors, sourceErrorFromErr(err))
 		r.pushResult(result)
 		return
 	}
 
 	merged := manifold.MergeExtractDisplayMeshes(evalResult.Solids)
+	boxes, globalMin, globalMax := solidBBoxes(evalResult.Solids)
 	stats := evalResult.Stats
 	stats.Triangles += merged.IndexCount / 3
 	stats.Vertices += merged.VertexCount
-	if len(evalResult.Solids) > 0 {
-		stats.BBoxMin = [3]float64{math.MaxFloat64, math.MaxFloat64, math.MaxFloat64}
-		stats.BBoxMax = [3]float64{-math.MaxFloat64, -math.MaxFloat64, -math.MaxFloat64}
-		for _, s := range evalResult.Solids {
-			mnX, mnY, mnZ, mxX, mxY, mxZ := s.BoundingBox()
-			stats.BBoxMin[0] = math.Min(stats.BBoxMin[0], mnX)
-			stats.BBoxMin[1] = math.Min(stats.BBoxMin[1], mnY)
-			stats.BBoxMin[2] = math.Min(stats.BBoxMin[2], mnZ)
-			stats.BBoxMax[0] = math.Max(stats.BBoxMax[0], mxX)
-			stats.BBoxMax[1] = math.Max(stats.BBoxMax[1], mxY)
-			stats.BBoxMax[2] = math.Max(stats.BBoxMax[2], mxZ)
-		}
-	}
+	stats.BBoxMin = globalMin
+	stats.BBoxMax = globalMax
 
 	result.Success = true
 	result.Stats = &stats
-	result.Boxes = SolidBBoxes(evalResult.Solids)
+	result.Boxes = boxes
 	result.Time = time.Since(start).Seconds()
 	result.Mesh = merged
 	result.PosMap = evalResult.PosMap

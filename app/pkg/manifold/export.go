@@ -55,9 +55,9 @@ type RunMesh struct {
 	RunIndex       []uint32  // start triVerts index per run (len = NumRuns+1)
 }
 
-// ExtractRunMesh extracts mesh data with run information from a Solid.
+// extractRunMesh extracts mesh data with run information from a Solid.
 // This is used by the 3MF exporter to map per-face colors via originalID.
-func ExtractRunMesh(s *Solid) *RunMesh {
+func extractRunMesh(s *Solid) *RunMesh {
 	var cVerts *C.float
 	var cNumVerts C.int
 	var cIndices *C.uint32_t
@@ -115,7 +115,7 @@ func ExtractRunMesh(s *Solid) *RunMesh {
 // The mesh geometry is written untouched — no vertex splitting or merging.
 // Colors are derived from the Solid's FaceMap via Manifold's originalID run tracking.
 func Export3MF(s *Solid, path string) error {
-	rm := ExtractRunMesh(s)
+	rm := extractRunMesh(s)
 	if len(rm.Vertices) == 0 {
 		return fmt.Errorf("export failed: empty mesh")
 	}
@@ -172,7 +172,7 @@ func Export3MFMulti(solids []*Solid, path string) error {
 
 // ExportSTL exports a single Solid to a binary STL file.
 func ExportSTL(s *Solid, path string) error {
-	rm := ExtractRunMesh(s)
+	rm := extractRunMesh(s)
 	if len(rm.Vertices) == 0 {
 		return fmt.Errorf("export failed: empty mesh")
 	}
@@ -197,7 +197,7 @@ func ExportSTLMulti(solids []*Solid, path string) error {
 
 // ExportOBJ exports a single Solid to a Wavefront OBJ file with per-face colors.
 func ExportOBJ(s *Solid, path string) error {
-	rm := ExtractRunMesh(s)
+	rm := extractRunMesh(s)
 	if len(rm.Vertices) == 0 {
 		return fmt.Errorf("export failed: empty mesh")
 	}

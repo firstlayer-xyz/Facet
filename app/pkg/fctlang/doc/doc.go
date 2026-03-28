@@ -30,8 +30,8 @@ type DocEntry struct {
 	Library   string `json:"library"`   // "facet/gears" or "" for stdlib/builtins
 }
 
-// FormatStructSignature reconstructs a human-readable signature from a StructDecl AST node.
-func FormatStructSignature(sd *parser.StructDecl) string {
+// formatStructSignature reconstructs a human-readable signature from a StructDecl AST node.
+func formatStructSignature(sd *parser.StructDecl) string {
 	var b strings.Builder
 	b.WriteString("type ")
 	b.WriteString(sd.Name)
@@ -143,7 +143,7 @@ func BuildLibDocEntries(libDir string) []DocEntry {
 		for _, sd := range libProg.StructDecls {
 			entries = append(entries, DocEntry{
 				Name:      sd.Name,
-				Signature: FormatStructSignature(sd),
+				Signature: formatStructSignature(sd),
 				Doc:       parser.DocComment(sd.Comments),
 				Kind:      "type",
 				Library:   ns,
@@ -249,7 +249,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 		for _, sd := range libProg.StructDecls {
 			entries = append(entries, DocEntry{
 				Name:      sd.Name,
-				Signature: FormatStructSignature(sd),
+				Signature: formatStructSignature(sd),
 				Doc:       parser.DocComment(sd.Comments),
 				Kind:      "type",
 				Library:   ns,
@@ -290,7 +290,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 		for _, sd := range prog.StructDecls {
 			entries = append(entries, DocEntry{
 				Name:      sd.Name,
-				Signature: FormatStructSignature(sd),
+				Signature: formatStructSignature(sd),
 				Doc:       parser.DocComment(sd.Comments),
 				Kind:      "type",
 			})

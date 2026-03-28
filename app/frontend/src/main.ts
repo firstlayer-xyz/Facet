@@ -36,7 +36,7 @@ import {
   openExample, openFile, openRecentFile, saveFile, saveFileAs, newFile, exportMesh, sendToSlicer,
   reeval, toggleDebug, toggleDocs, openDocsToEntry, openLibraryFile, openLibraryTab,
   switchToTab,
-  getSources, getActiveTabValue, getActiveLabel, getMainSource, restoreTabCursor,
+  getSources, getActiveTabValue, getActiveLabel, restoreTabCursor,
   isPreviewLocked, setPreviewLocked,
   setOnTabChange, setOnSourceChange, setOnDebugFilesChange, setOnEntryPoints,
   setEntryOverrides, refreshEditorUI,
@@ -46,136 +46,7 @@ import { resolveThemePalette, resolveUiTheme, resolveEditorTheme, applyUIPalette
 let settings: Awaited<ReturnType<typeof loadSettings>>;
 let viewer: Viewer;
 
-/** Show a centered input dialog (window.prompt doesn't work in WKWebView). */
-/** Single dialog for creating a new library: pick/create folder + name. */
-function promptNewLibrary(folders: string[]): Promise<{folder: string; name: string; isNewFolder: boolean} | null> {
-  return new Promise(resolve => {
-    const inputCSS = 'width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--ui-border,#444);border-radius:4px;background:var(--ui-bg-alt,#1a1a1a);color:var(--ui-text,#eee);font-size:13px;outline:none';
-    const btnCSS = 'padding:4px 14px;border:none;border-radius:4px;cursor:pointer;font-size:13px';
-
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:9999';
-
-    const box = document.createElement('div');
-    box.style.cssText = 'background:var(--ui-bg,#222);border:1px solid var(--ui-border,#444);border-radius:8px;padding:16px;min-width:300px;color:var(--ui-text,#eee);font-family:system-ui,sans-serif;font-size:13px';
-
-    const title = document.createElement('div');
-    title.textContent = 'New Library';
-    title.style.cssText = 'font-weight:600;font-size:14px;margin-bottom:12px';
-    box.appendChild(title);
-
-    // Folder row
-    const folderLabel = document.createElement('div');
-    folderLabel.textContent = 'Folder';
-    folderLabel.style.marginBottom = '4px';
-    box.appendChild(folderLabel);
-
-    const folderRow = document.createElement('div');
-    folderRow.style.cssText = 'display:flex;gap:6px;margin-bottom:10px';
-
-    const sel = document.createElement('select');
-    sel.style.cssText = inputCSS + ';flex:1';
-    for (const f of folders) {
-      const o = document.createElement('option');
-      o.value = f; o.textContent = f;
-      sel.appendChild(o);
-    }
-    const newOpt = document.createElement('option');
-    newOpt.value = '__new__';
-    newOpt.textContent = '+ New Folder...';
-    sel.appendChild(newOpt);
-
-    const newFolderInput = document.createElement('input');
-    newFolderInput.type = 'text';
-    newFolderInput.placeholder = 'folder name';
-    newFolderInput.style.cssText = inputCSS + ';flex:1;display:none';
-
-    sel.addEventListener('change', () => {
-      if (sel.value === '__new__') {
-        sel.style.display = 'none';
-        newFolderInput.style.display = '';
-        newFolderInput.focus();
-      }
-    });
-
-    folderRow.append(sel, newFolderInput);
-    box.appendChild(folderRow);
-
-    // Name row
-    const nameLabel = document.createElement('div');
-    nameLabel.textContent = 'Library Name';
-    nameLabel.style.marginBottom = '4px';
-    box.appendChild(nameLabel);
-
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.placeholder = 'my-library';
-    nameInput.style.cssText = inputCSS + ';margin-bottom:12px';
-    box.appendChild(nameInput);
-
-    // Buttons
-    const btns = document.createElement('div');
-    btns.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
-
-    const cancel = document.createElement('button');
-    cancel.textContent = 'Cancel';
-    cancel.style.cssText = btnCSS + ';background:var(--ui-border,#444);color:var(--ui-text,#eee)';
-
-    const ok = document.createElement('button');
-    ok.textContent = 'Create';
-    ok.style.cssText = btnCSS + ';background:var(--ui-accent,#4a9eff);color:#fff';
-
-    function done(result: {folder: string; name: string; isNewFolder: boolean} | null) {
-      overlay.remove(); resolve(result);
-    }
-    function stripFct(s: string): string {
-      return s.endsWith('.fct') ? s.slice(0, -4) : s;
-    }
-    function submit() {
-      let rawName = stripFct(nameInput.value.trim());
-      let folder: string;
-      let name: string;
-      let isNew: boolean;
-      if (rawName.includes('/')) {
-        const idx = rawName.indexOf('/');
-        folder = rawName.slice(0, idx).trim();
-        name = rawName.slice(idx + 1).trim();
-        isNew = !folders.includes(folder);
-      } else {
-        isNew = sel.value === '__new__' || sel.style.display === 'none';
-        folder = isNew ? stripFct(newFolderInput.value.trim()) : sel.value;
-        name = rawName;
-      }
-      if (!folder || !name) return;
-      done({ folder, name, isNewFolder: isNew });
-    }
-
-    cancel.addEventListener('click', () => done(null));
-    ok.addEventListener('click', submit);
-    nameInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') submit();
-      if (e.key === 'Escape') done(null);
-    });
-    newFolderInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') nameInput.focus();
-      if (e.key === 'Escape') done(null);
-    });
-    overlay.addEventListener('click', e => { if (e.target === overlay) done(null); });
-
-    btns.append(cancel, ok);
-    box.appendChild(btns);
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-
-    if (folders.length === 0) {
-      sel.style.display = 'none';
-      newFolderInput.style.display = '';
-      newFolderInput.focus();
-    } else {
-      nameInput.focus();
-    }
-  });
-}
+import { promptNewLibrary, showSlicerPicker } from './dialogs';
 
 /** Resolve UI palette and apply to CSS vars, viewport, and editor theme. */
 function applyCurrentTheme(): void {
@@ -422,12 +293,8 @@ async function init() {
     },
   });
 
-  // Called by run() after GetEntryPoints resolves.
-  // Picks the entry point function and returns its name (or null to skip running).
-  setOnEntryPoints((fns) => {
-    currentEntryPoints = fns;
-    // Filter to entry points matching the active tab
-    const tab = getActiveTabValue();
+  /** Filter visible entry points for a tab, keep previous selection if valid, else pick first. */
+  function pickEntryPoint(tab: string, fns: EntryPoint[]): EntryPoint | null {
     const visible = fns.filter(f => f.libPath === tab);
     if (visible.length === 0) {
       selectedFnKey = null;
@@ -436,7 +303,6 @@ async function init() {
       updatePreviewLabel(tab);
       return null;
     }
-    // Keep previous selection if still valid, else pick first
     let picked = visible[0];
     if (selectedFnKey !== null) {
       const still = visible.find(f => fnKey(f) === selectedFnKey);
@@ -444,6 +310,17 @@ async function init() {
     }
     selectedFnKey = fnKey(picked);
     previewFileLbl.textContent = picked.name;
+    return picked;
+  }
+
+  // Called by run() after GetEntryPoints resolves.
+  // Picks the entry point function and returns its name (or null to skip running).
+  setOnEntryPoints((fns) => {
+    currentEntryPoints = fns;
+    previewMenuDirty = true;
+    const tab = getActiveTabValue();
+    const picked = pickEntryPoint(tab, fns);
+    if (!picked) return null;
     const reconciledOverrides = functionPreview.updateUI(picked);
     setEntryOverrides(reconciledOverrides);
     return { name: picked.name, libPath: picked.libPath };
@@ -451,6 +328,7 @@ async function init() {
 
   // ── Preview selector wiring ────────────────────────────────────────────────
   const previewFileLbl = document.getElementById('preview-file-lbl')!;
+  let previewMenuDirty = true;
 
   function updatePreviewLabel(tab: string) {
     if (selectedFnKey !== null) return; // keep showing function name
@@ -519,22 +397,9 @@ async function init() {
 
   setOnTabChange((tab) => {
     fileTree.setActiveTab(tab);
-    // Re-pick entry point for the new tab's visible functions
-    const visible = currentEntryPoints.filter(f => f.libPath === tab);
-    if (visible.length === 0) {
-      selectedFnKey = null;
-      setEntryOverrides({});
-      functionPreview.updateUI(null);
-      updatePreviewLabel(tab);
-    } else {
-      // Keep previous selection if still valid in new tab, else pick first
-      let picked = visible[0];
-      if (selectedFnKey !== null) {
-        const still = visible.find(f => fnKey(f) === selectedFnKey);
-        if (still) picked = still;
-      }
-      selectedFnKey = fnKey(picked);
-      previewFileLbl.textContent = picked.name;
+    previewMenuDirty = true;
+    const picked = pickEntryPoint(tab, currentEntryPoints);
+    if (picked) {
       const reconciledOverrides = functionPreview.updateUI(picked);
       setEntryOverrides(reconciledOverrides);
       reeval(picked.name, picked.libPath);
@@ -545,13 +410,14 @@ async function init() {
   setOnDebugFilesChange(() => {
     const tab = getActiveTabValue();
     fileTree.setActiveTab(tab);
+    previewMenuDirty = true;
     if (previewFileMenu.classList.contains('show')) buildPreviewMenu();
   });
 
   // Preview file dropdown toggle
   previewFileBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    buildPreviewMenu();
+    if (previewMenuDirty) { buildPreviewMenu(); previewMenuDirty = false; }
     const open = previewFileMenu.classList.toggle('show');
     previewFileBtn.classList.toggle('open', open);
   });
@@ -918,69 +784,32 @@ viewpointBar.addEventListener('click', (e) => {
 exportBtn.addEventListener('click', () => exportMesh());
 document.getElementById('titlebar-export-btn')!.addEventListener('click', () => exportMesh());
 
-// Send to Slicer — show slicer picker dropdown
-async function showSlicerPicker() {
-  // Close existing dropdown if open
-  const existing = document.getElementById('slicer-dropdown');
-  if (existing) { existing.remove(); return; }
-
+async function pickAndSendToSlicer() {
   const slicers = await DetectSlicers();
   if (!slicers || slicers.length === 0) {
     errorDiv.textContent = 'No slicer found — install BambuStudio, OrcaSlicer, PrusaSlicer, Cura, or AnycubicSlicer';
     errorDiv.style.display = 'block';
     return;
   }
-
-  // Single slicer — send directly
   if (slicers.length === 1) {
     sendToSlicer(slicers[0].id);
     return;
   }
-
-  // Multiple slicers — show dropdown
-  const dropdown = document.createElement('div');
-  dropdown.id = 'slicer-dropdown';
-
-  for (const slicer of slicers) {
-    const item = document.createElement('button');
-    item.className = 'slicer-item';
-    item.textContent = slicer.name;
-    item.addEventListener('click', () => {
-      dropdown.remove();
-      sendToSlicer(slicer.id);
-    });
-    dropdown.appendChild(item);
-  }
-
-  const rect = slicerBtn.getBoundingClientRect();
-  document.body.appendChild(dropdown);
-  const menuH = dropdown.offsetHeight;
-  const top = Math.min(rect.top, window.innerHeight - menuH - 8);
-  dropdown.style.left = (rect.right + 4) + 'px';
-  dropdown.style.top = Math.max(8, top) + 'px';
-
-  const closeHandler = (e: MouseEvent) => {
-    if (!dropdown.contains(e.target as Node) && e.target !== slicerBtn) {
-      dropdown.remove();
-      document.removeEventListener('click', closeHandler);
-    }
-  };
-  setTimeout(() => document.addEventListener('click', closeHandler), 0);
+  const id = await showSlicerPicker(slicers, slicerBtn);
+  if (id) sendToSlicer(id);
 }
 
 slicerBtn.addEventListener('click', async () => {
-  // If a default slicer is configured, send directly
   if (settings.slicer.defaultSlicer) {
     sendToSlicer(settings.slicer.defaultSlicer);
     return;
   }
-  showSlicerPicker();
+  pickAndSendToSlicer();
 });
 
-// Right-click always shows the slicer picker
 slicerBtn.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  showSlicerPicker();
+  pickAndSendToSlicer();
 });
 
 // Debug bar controls

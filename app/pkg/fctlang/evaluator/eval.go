@@ -56,13 +56,6 @@ func getConstraint(v value) (*constrainedVal, bool) {
 	return cv, ok
 }
 
-// namedArgVal wraps a runtime value with the parameter name it was passed as.
-// Created during argument evaluation for named call arguments (name: expr).
-type namedArgVal struct {
-	name string
-	val  value
-}
-
 // length represents a dimensional value stored in millimeters.
 type length struct {
 	mm float64

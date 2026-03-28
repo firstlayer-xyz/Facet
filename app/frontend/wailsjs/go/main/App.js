@@ -38,10 +38,6 @@ export function Debug(arg1, arg2, arg3) {
   return window['go']['main']['App']['Debug'](arg1, arg2, arg3);
 }
 
-export function DeleteScratchFile(arg1) {
-  return window['go']['main']['App']['DeleteScratchFile'](arg1);
-}
-
 export function DetectAssistantCLIs() {
   return window['go']['main']['App']['DetectAssistantCLIs']();
 }
@@ -60,14 +56,6 @@ export function ForkLibrary(arg1, arg2) {
 
 export function FormatCode(arg1) {
   return window['go']['main']['App']['FormatCode'](arg1);
-}
-
-export function GetAssistantAvailable() {
-  return window['go']['main']['App']['GetAssistantAvailable']();
-}
-
-export function GetAssistantConfig() {
-  return window['go']['main']['App']['GetAssistantConfig']();
 }
 
 export function GetDebugStepMeshes(arg1) {
@@ -94,10 +82,6 @@ export function GetExampleList() {
   return window['go']['main']['App']['GetExampleList']();
 }
 
-export function GetLastFile() {
-  return window['go']['main']['App']['GetLastFile']();
-}
-
 export function GetLibraryDir() {
   return window['go']['main']['App']['GetLibraryDir']();
 }
@@ -112,10 +96,6 @@ export function GetLogDir() {
 
 export function GetMemoryLimit() {
   return window['go']['main']['App']['GetMemoryLimit']();
-}
-
-export function GetRecentFiles() {
-  return window['go']['main']['App']['GetRecentFiles']();
 }
 
 export function GetSettings() {
@@ -170,24 +150,12 @@ export function PickImageFile() {
   return window['go']['main']['App']['PickImageFile']();
 }
 
+export function PruneSources(arg1) {
+  return window['go']['main']['App']['PruneSources'](arg1);
+}
+
 export function PullAllLibraries() {
   return window['go']['main']['App']['PullAllLibraries']();
-}
-
-export function RekeySource(arg1, arg2) {
-  return window['go']['main']['App']['RekeySource'](arg1, arg2);
-}
-
-export function RemoveLibrary(arg1, arg2) {
-  return window['go']['main']['App']['RemoveLibrary'](arg1, arg2);
-}
-
-export function RemoveLocalLibrary(arg1) {
-  return window['go']['main']['App']['RemoveLocalLibrary'](arg1);
-}
-
-export function RemoveSource(arg1) {
-  return window['go']['main']['App']['RemoveSource'](arg1);
 }
 
 export function ResetRunner() {
@@ -210,10 +178,6 @@ export function SaveFile(arg1, arg2) {
   return window['go']['main']['App']['SaveFile'](arg1, arg2);
 }
 
-export function SaveScreenshot(arg1) {
-  return window['go']['main']['App']['SaveScreenshot'](arg1);
-}
-
 export function SendAssistantMessage(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SendAssistantMessage'](arg1, arg2, arg3, arg4);
 }
@@ -224,10 +188,6 @@ export function SendToSlicer(arg1) {
 
 export function SetAssistantConfig(arg1) {
   return window['go']['main']['App']['SetAssistantConfig'](arg1);
-}
-
-export function SetLastFile(arg1) {
-  return window['go']['main']['App']['SetLastFile'](arg1);
 }
 
 export function SetMemoryLimit(arg1) {

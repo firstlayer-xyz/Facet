@@ -137,13 +137,13 @@ func TestDisplayMeshEmpty(t *testing.T) {
 	}
 }
 
-func TestMergeDisplayMeshes(t *testing.T) {
+func Test_mergeDisplayMeshes(t *testing.T) {
 	a := CreateCube(5, 5, 5)
 	b := CreateCube(3, 3, 3).Translate(10, 0, 0)
 	dmA := a.ToDisplayMesh()
 	dmB := b.ToDisplayMesh()
 
-	merged := MergeDisplayMeshes([]*DisplayMesh{dmA, dmB})
+	merged := mergeDisplayMeshes([]*DisplayMesh{dmA, dmB})
 
 	if merged.VertexCount != dmA.VertexCount+dmB.VertexCount {
 		t.Errorf("merged vertex count: got %d, want %d", merged.VertexCount, dmA.VertexCount+dmB.VertexCount)
@@ -190,11 +190,11 @@ func TestMergeDisplayMeshes(t *testing.T) {
 	}
 }
 
-func TestMergeDisplayMeshesSingle(t *testing.T) {
+func Test_mergeDisplayMeshesSingle(t *testing.T) {
 	cube := CreateCube(5, 5, 5)
 	dm := cube.ToDisplayMesh()
 
-	merged := MergeDisplayMeshes([]*DisplayMesh{dm})
+	merged := mergeDisplayMeshes([]*DisplayMesh{dm})
 	if merged != dm {
 		t.Error("single mesh merge should return the same pointer")
 	}

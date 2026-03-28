@@ -18,11 +18,11 @@ type Options struct {
 
 // Format formats a parsed Facet AST back to source code.
 func Format(src *parser.Source) string {
-	return FormatWithOptions(src, Options{})
+	return formatWithOptions(src, Options{})
 }
 
-// FormatWithOptions formats with explicit options.
-func FormatWithOptions(src *parser.Source, opts Options) string {
+// formatWithOptions formats with explicit options.
+func formatWithOptions(src *parser.Source, opts Options) string {
 	if opts.MaxLineLength <= 0 {
 		opts.MaxLineLength = 80
 	}

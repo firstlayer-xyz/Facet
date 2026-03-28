@@ -35,242 +35,129 @@ registerFacetLanguage();
 // Register all bundled VS Code themes
 registerThemes();
 
-// Define the built-in light theme — white bg, dark text, orange accent.
-monaco.editor.defineTheme('facet-orange-light', {
-  base: 'vs',
-  inherit: true,
-  rules: [
+// Base colors shared by all light/dark theme variants.
+// Only accent-specific colors (highlight, cursor, selection) differ per theme.
+const lightBaseColors: Record<string, string> = {
+  'editor.background': '#ffffff',
+  'editor.foreground': '#3a3a3a',
+  'editorWidget.background': '#f7f7f7',
+  'editorWidget.border': '#d0d0d0',
+  'editorSuggestWidget.background': '#f7f7f7',
+  'editorSuggestWidget.foreground': '#3a3a3a',
+  'editorSuggestWidget.border': '#d0d0d0',
+  'editorSuggestWidget.selectedBackground': '#e8e8e8',
+  'editorSuggestWidget.selectedForeground': '#1a1a1a',
+  'editorHoverWidget.background': '#f7f7f7',
+  'editorHoverWidget.foreground': '#3a3a3a',
+  'editorHoverWidget.border': '#d0d0d0',
+  'editor.lineHighlightBackground': '#f5f5f5',
+  'editorLineNumber.foreground': '#b0b0b0',
+};
+
+const darkBaseColors: Record<string, string> = {
+  'editor.background': '#1a1a1a',
+  'editor.foreground': '#cccccc',
+  'editorWidget.background': '#252525',
+  'editorWidget.border': '#3a3a3a',
+  'editorSuggestWidget.background': '#252525',
+  'editorSuggestWidget.foreground': '#cccccc',
+  'editorSuggestWidget.border': '#3a3a3a',
+  'editorSuggestWidget.selectedBackground': '#3a3a3a',
+  'editorSuggestWidget.selectedForeground': '#eeeeee',
+  'editorHoverWidget.background': '#252525',
+  'editorHoverWidget.foreground': '#cccccc',
+  'editorHoverWidget.border': '#3a3a3a',
+  'editor.lineHighlightBackground': '#252525',
+  'editorLineNumber.foreground': '#555555',
+};
+
+interface AccentColors {
+  /** Token foreground for constant.numeric / constant.language */
+  light: string;
+  dark: string;
+  /** Cursor color (light variant) */
+  cursorLight: string;
+  /** Cursor color (dark variant) */
+  cursorDark: string;
+  /** Selection background (light variant) */
+  selectionLight: string;
+  /** Selection background (dark variant) */
+  selectionDark: string;
+}
+
+function defineAccentThemes(name: string, accent: AccentColors): void {
+  // Light rules: shared tokens + accent-specific constants
+  const lightRules: monaco.editor.ITokenThemeRule[] = [
     { token: 'keyword.control', foreground: '7c3aed' },
     { token: 'keyword.other.unit', foreground: '7c3aed' },
     { token: 'support.type', foreground: '0d7377' },
-    { token: 'constant.numeric', foreground: 'e45500' },
-    { token: 'constant.numeric.float', foreground: 'e45500' },
-    { token: 'constant.language', foreground: 'e45500' },
+    { token: 'constant.numeric', foreground: accent.light },
+    { token: 'constant.numeric.float', foreground: accent.light },
+    { token: 'constant.language', foreground: accent.light },
     { token: 'string.quoted.double', foreground: '2a7e3b' },
     { token: 'string.quoted.other', foreground: '2a7e3b' },
     { token: 'comment.line', foreground: '999999' },
     { token: 'keyword.operator', foreground: '0d7377' },
     { token: 'variable.other', foreground: '3a3a3a' },
     { token: 'punctuation.delimiter', foreground: '3a3a3a' },
-  ],
-  colors: {
-    'editor.background': '#ffffff',
-    'editor.foreground': '#3a3a3a',
-    'editorWidget.background': '#f7f7f7',
-    'editorWidget.border': '#d0d0d0',
-    'editorSuggestWidget.background': '#f7f7f7',
-    'editorSuggestWidget.foreground': '#3a3a3a',
-    'editorSuggestWidget.border': '#d0d0d0',
-    'editorSuggestWidget.selectedBackground': '#e8e8e8',
-    'editorSuggestWidget.selectedForeground': '#1a1a1a',
-    'editorSuggestWidget.highlightForeground': '#e45500',
-    'editorSuggestWidget.focusHighlightForeground': '#e45500',
-    'editorHoverWidget.background': '#f7f7f7',
-    'editorHoverWidget.foreground': '#3a3a3a',
-    'editorHoverWidget.border': '#d0d0d0',
-    'editor.lineHighlightBackground': '#f5f5f5',
-    'editorLineNumber.foreground': '#b0b0b0',
-    'editorCursor.foreground': '#ff6d00',
-    'editor.selectionBackground': '#ffe0c0',
-  },
-});
+  ];
 
-// Define the built-in dark theme matching the app palette.
-// Token names use standard TextMate scope names so this theme stays compatible
-// with the same Monarch tokenizer used by the VS Code themes.
-monaco.editor.defineTheme('facet-orange-dark', {
-  base: 'vs-dark',
-  inherit: true,
-  rules: [
+  const darkRules: monaco.editor.ITokenThemeRule[] = [
     { token: 'keyword.control', foreground: 'c49cff' },
     { token: 'keyword.other.unit', foreground: 'c49cff' },
     { token: 'support.type', foreground: '4dd4d8' },
-    { token: 'constant.numeric', foreground: 'ffaa44' },
-    { token: 'constant.numeric.float', foreground: 'ffaa44' },
-    { token: 'constant.language', foreground: 'ffaa44' },
+    { token: 'constant.numeric', foreground: accent.dark },
+    { token: 'constant.numeric.float', foreground: accent.dark },
+    { token: 'constant.language', foreground: accent.dark },
     { token: 'string.quoted.double', foreground: '7ecc8d' },
     { token: 'string.quoted.other', foreground: '7ecc8d' },
     { token: 'comment.line', foreground: '666666' },
     { token: 'keyword.operator', foreground: '4dd4d8' },
     { token: 'variable.other', foreground: 'cccccc' },
     { token: 'punctuation.delimiter', foreground: 'cccccc' },
-  ],
-  colors: {
-    'editor.background': '#1a1a1a',
-    'editor.foreground': '#cccccc',
-    'editorWidget.background': '#252525',
-    'editorWidget.border': '#3a3a3a',
-    'editorSuggestWidget.background': '#252525',
-    'editorSuggestWidget.foreground': '#cccccc',
-    'editorSuggestWidget.border': '#3a3a3a',
-    'editorSuggestWidget.selectedBackground': '#3a3a3a',
-    'editorSuggestWidget.selectedForeground': '#eeeeee',
-    'editorSuggestWidget.highlightForeground': '#ffaa44',
-    'editorSuggestWidget.focusHighlightForeground': '#ffaa44',
-    'editorHoverWidget.background': '#252525',
-    'editorHoverWidget.foreground': '#cccccc',
-    'editorHoverWidget.border': '#3a3a3a',
-    'editor.lineHighlightBackground': '#252525',
-    'editorLineNumber.foreground': '#555555',
-    'editorCursor.foreground': '#ff6d00',
-    'editor.selectionBackground': '#553a1a',
-  },
-});
+  ];
 
-monaco.editor.defineTheme('facet-green-light', {
-  base: 'vs',
-  inherit: true,
-  rules: [
-    { token: 'keyword.control', foreground: '7c3aed' },
-    { token: 'keyword.other.unit', foreground: '7c3aed' },
-    { token: 'support.type', foreground: '0d7377' },
-    { token: 'constant.numeric', foreground: '1e8a3e' },
-    { token: 'constant.numeric.float', foreground: '1e8a3e' },
-    { token: 'constant.language', foreground: '1e8a3e' },
-    { token: 'string.quoted.double', foreground: '2a7e3b' },
-    { token: 'string.quoted.other', foreground: '2a7e3b' },
-    { token: 'comment.line', foreground: '999999' },
-    { token: 'keyword.operator', foreground: '0d7377' },
-    { token: 'variable.other', foreground: '3a3a3a' },
-    { token: 'punctuation.delimiter', foreground: '3a3a3a' },
-  ],
-  colors: {
-    'editor.background': '#ffffff',
-    'editor.foreground': '#3a3a3a',
-    'editorWidget.background': '#f7f7f7',
-    'editorWidget.border': '#d0d0d0',
-    'editorSuggestWidget.background': '#f7f7f7',
-    'editorSuggestWidget.foreground': '#3a3a3a',
-    'editorSuggestWidget.border': '#d0d0d0',
-    'editorSuggestWidget.selectedBackground': '#e8e8e8',
-    'editorSuggestWidget.selectedForeground': '#1a1a1a',
-    'editorSuggestWidget.highlightForeground': '#1e8a3e',
-    'editorSuggestWidget.focusHighlightForeground': '#1e8a3e',
-    'editorHoverWidget.background': '#f7f7f7',
-    'editorHoverWidget.foreground': '#3a3a3a',
-    'editorHoverWidget.border': '#d0d0d0',
-    'editor.lineHighlightBackground': '#f5f5f5',
-    'editorLineNumber.foreground': '#b0b0b0',
-    'editorCursor.foreground': '#1e8a3e',
-    'editor.selectionBackground': '#c8f0d4',
-  },
-});
+  monaco.editor.defineTheme(`facet-${name}-light`, {
+    base: 'vs',
+    inherit: true,
+    rules: lightRules,
+    colors: {
+      ...lightBaseColors,
+      'editorSuggestWidget.highlightForeground': '#' + accent.light,
+      'editorSuggestWidget.focusHighlightForeground': '#' + accent.light,
+      'editorCursor.foreground': accent.cursorLight,
+      'editor.selectionBackground': accent.selectionLight,
+    },
+  });
 
-monaco.editor.defineTheme('facet-green-dark', {
-  base: 'vs-dark',
-  inherit: true,
-  rules: [
-    { token: 'keyword.control', foreground: 'c49cff' },
-    { token: 'keyword.other.unit', foreground: 'c49cff' },
-    { token: 'support.type', foreground: '4dd4d8' },
-    { token: 'constant.numeric', foreground: '52c878' },
-    { token: 'constant.numeric.float', foreground: '52c878' },
-    { token: 'constant.language', foreground: '52c878' },
-    { token: 'string.quoted.double', foreground: '7ecc8d' },
-    { token: 'string.quoted.other', foreground: '7ecc8d' },
-    { token: 'comment.line', foreground: '666666' },
-    { token: 'keyword.operator', foreground: '4dd4d8' },
-    { token: 'variable.other', foreground: 'cccccc' },
-    { token: 'punctuation.delimiter', foreground: 'cccccc' },
-  ],
-  colors: {
-    'editor.background': '#1a1a1a',
-    'editor.foreground': '#cccccc',
-    'editorWidget.background': '#252525',
-    'editorWidget.border': '#3a3a3a',
-    'editorSuggestWidget.background': '#252525',
-    'editorSuggestWidget.foreground': '#cccccc',
-    'editorSuggestWidget.border': '#3a3a3a',
-    'editorSuggestWidget.selectedBackground': '#3a3a3a',
-    'editorSuggestWidget.selectedForeground': '#eeeeee',
-    'editorSuggestWidget.highlightForeground': '#52c878',
-    'editorSuggestWidget.focusHighlightForeground': '#52c878',
-    'editorHoverWidget.background': '#252525',
-    'editorHoverWidget.foreground': '#cccccc',
-    'editorHoverWidget.border': '#3a3a3a',
-    'editor.lineHighlightBackground': '#252525',
-    'editorLineNumber.foreground': '#555555',
-    'editorCursor.foreground': '#2eb84e',
-    'editor.selectionBackground': '#1a3a22',
-  },
-});
+  monaco.editor.defineTheme(`facet-${name}-dark`, {
+    base: 'vs-dark',
+    inherit: true,
+    rules: darkRules,
+    colors: {
+      ...darkBaseColors,
+      'editorSuggestWidget.highlightForeground': '#' + accent.dark,
+      'editorSuggestWidget.focusHighlightForeground': '#' + accent.dark,
+      'editorCursor.foreground': accent.cursorDark,
+      'editor.selectionBackground': accent.selectionDark,
+    },
+  });
+}
 
-monaco.editor.defineTheme('facet-digital-blue-light', {
-  base: 'vs',
-  inherit: true,
-  rules: [
-    { token: 'keyword.control', foreground: '7c3aed' },
-    { token: 'keyword.other.unit', foreground: '7c3aed' },
-    { token: 'support.type', foreground: '0d7377' },
-    { token: 'constant.numeric', foreground: '0060c8' },
-    { token: 'constant.numeric.float', foreground: '0060c8' },
-    { token: 'constant.language', foreground: '0060c8' },
-    { token: 'string.quoted.double', foreground: '2a7e3b' },
-    { token: 'string.quoted.other', foreground: '2a7e3b' },
-    { token: 'comment.line', foreground: '999999' },
-    { token: 'keyword.operator', foreground: '0d7377' },
-    { token: 'variable.other', foreground: '3a3a3a' },
-    { token: 'punctuation.delimiter', foreground: '3a3a3a' },
-  ],
-  colors: {
-    'editor.background': '#ffffff',
-    'editor.foreground': '#3a3a3a',
-    'editorWidget.background': '#f7f7f7',
-    'editorWidget.border': '#d0d0d0',
-    'editorSuggestWidget.background': '#f7f7f7',
-    'editorSuggestWidget.foreground': '#3a3a3a',
-    'editorSuggestWidget.border': '#d0d0d0',
-    'editorSuggestWidget.selectedBackground': '#e8e8e8',
-    'editorSuggestWidget.selectedForeground': '#1a1a1a',
-    'editorSuggestWidget.highlightForeground': '#0060c8',
-    'editorSuggestWidget.focusHighlightForeground': '#0060c8',
-    'editorHoverWidget.background': '#f7f7f7',
-    'editorHoverWidget.foreground': '#3a3a3a',
-    'editorHoverWidget.border': '#d0d0d0',
-    'editor.lineHighlightBackground': '#f5f5f5',
-    'editorLineNumber.foreground': '#b0b0b0',
-    'editorCursor.foreground': '#0060c8',
-    'editor.selectionBackground': '#c8d8f8',
-  },
+defineAccentThemes('orange', {
+  light: 'e45500', dark: 'ffaa44',
+  cursorLight: '#ff6d00', cursorDark: '#ff6d00',
+  selectionLight: '#ffe0c0', selectionDark: '#553a1a',
 });
-
-monaco.editor.defineTheme('facet-digital-blue-dark', {
-  base: 'vs-dark',
-  inherit: true,
-  rules: [
-    { token: 'keyword.control', foreground: 'c49cff' },
-    { token: 'keyword.other.unit', foreground: 'c49cff' },
-    { token: 'support.type', foreground: '4dd4d8' },
-    { token: 'constant.numeric', foreground: '5aa8ff' },
-    { token: 'constant.numeric.float', foreground: '5aa8ff' },
-    { token: 'constant.language', foreground: '5aa8ff' },
-    { token: 'string.quoted.double', foreground: '7ecc8d' },
-    { token: 'string.quoted.other', foreground: '7ecc8d' },
-    { token: 'comment.line', foreground: '666666' },
-    { token: 'keyword.operator', foreground: '4dd4d8' },
-    { token: 'variable.other', foreground: 'cccccc' },
-    { token: 'punctuation.delimiter', foreground: 'cccccc' },
-  ],
-  colors: {
-    'editor.background': '#1a1a1a',
-    'editor.foreground': '#cccccc',
-    'editorWidget.background': '#252525',
-    'editorWidget.border': '#3a3a3a',
-    'editorSuggestWidget.background': '#252525',
-    'editorSuggestWidget.foreground': '#cccccc',
-    'editorSuggestWidget.border': '#3a3a3a',
-    'editorSuggestWidget.selectedBackground': '#3a3a3a',
-    'editorSuggestWidget.selectedForeground': '#eeeeee',
-    'editorSuggestWidget.highlightForeground': '#5aa8ff',
-    'editorSuggestWidget.focusHighlightForeground': '#5aa8ff',
-    'editorHoverWidget.background': '#252525',
-    'editorHoverWidget.foreground': '#cccccc',
-    'editorHoverWidget.border': '#3a3a3a',
-    'editor.lineHighlightBackground': '#252525',
-    'editorLineNumber.foreground': '#555555',
-    'editorCursor.foreground': '#3d96ff',
-    'editor.selectionBackground': '#1a2a4a',
-  },
+defineAccentThemes('green', {
+  light: '1e8a3e', dark: '52c878',
+  cursorLight: '#1e8a3e', cursorDark: '#2eb84e',
+  selectionLight: '#c8f0d4', selectionDark: '#1a3a22',
+});
+defineAccentThemes('digital-blue', {
+  light: '0060c8', dark: '5aa8ff',
+  cursorLight: '#0060c8', cursorDark: '#3d96ff',
+  selectionLight: '#c8d8f8', selectionDark: '#1a2a4a',
 });
 
 export interface DocEntry {
@@ -281,7 +168,7 @@ export interface DocEntry {
   library: string;
 }
 
-export interface CheckError {
+interface CheckError {
   file: string;
   line: number;
   col: number;
@@ -376,11 +263,10 @@ export function createEditor(
   const debugCollection = ed.createDecorationsCollection();
 
   // Register command for hover "→ Open in Docs" links and context menu
-  let openDocsCmdId: string | null = null;
   if (onOpenDocs) {
-    openDocsCmdId = ed.addCommand(0, (_ctx, name: string) => {
+    ed.addCommand(0, (_ctx, name: string) => {
       onOpenDocs(name);
-    }) ?? null;
+    });
 
     ed.addAction({
       id: 'facet.openDocs',
@@ -473,6 +359,15 @@ export function createEditor(
     return null;
   }
 
+  // Resolve a declaration key, preferring the function decl at call sites
+  // and the struct decl otherwise.
+  function resolveDeclaration(key: string, isCallSite: boolean): { line: number; col: number; file?: string } | null {
+    const decl = declarations[key];
+    const structDecl = declarations['struct:' + key];
+    if (decl && structDecl) return isCallSite ? decl : structDecl;
+    return decl || structDecl || null;
+  }
+
   // Go to Declaration — deterministic context-based dispatch
   function findDecl(editor: monaco.editor.ICodeEditor): { line: number; col: number; file?: string } | null {
     const pos = editor.getPosition();
@@ -499,25 +394,15 @@ export function createEditor(
       // Direct key lookup for library vars: "K.Knurl", "F.Thumbscrew"
       const receiverMatch = textBefore.match(/([A-Za-z_]\w*)$/);
       if (receiverMatch) {
-        const qualKey = receiverMatch[1] + '.' + name;
-        const decl = declarations[qualKey];
-        const structDecl = declarations['struct:' + qualKey];
-        if (decl && structDecl) {
-          return isCallSite ? decl : structDecl;
-        }
-        if (decl || structDecl) return (decl || structDecl)!;
+        const result = resolveDeclaration(receiverMatch[1] + '.' + name, isCallSite);
+        if (result) return result;
       }
 
       return null; // no match — don't guess
     }
 
     // Bare name — not after a dot
-    const decl = declarations[name];
-    const structDecl = declarations['struct:' + name];
-    if (decl && structDecl) {
-      return isCallSite ? decl : structDecl;
-    }
-    return decl || structDecl || null;
+    return resolveDeclaration(name, isCallSite);
   }
 
   // Context key: true when cursor is on a word with a known declaration
@@ -538,7 +423,7 @@ export function createEditor(
       if (!decl) return;
       if (decl.file && onGoToFile) {
         // Cross-file: open the library file in a tab
-        const source = fileSources[decl.file] || '';
+        const source = fileSources[decl.file] ?? '';
         onGoToFile(decl.file, source, decl.line, decl.col);
       } else {
         // Same file: navigate within the editor
@@ -573,7 +458,7 @@ export function createEditor(
     run(ed) {
       const libPath = getLibPathAtCursor(ed);
       if (!libPath || !onGoToFile) return;
-      const source = fileSources[libPath] || '';
+      const source = fileSources[libPath] ?? '';
       onGoToFile(libPath, source, 1, 1);
     },
   });
@@ -603,15 +488,6 @@ export function createEditor(
     },
   });
   ed.addAction({
-    id: 'facet.toggleComment',
-    label: 'Toggle Line Comment',
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash],
-    run(editor) {
-      editor.trigger('keyboard', 'editor.action.commentLine', null);
-    },
-  });
-
-  ed.addAction({
     id: 'facet.clipboardPaste',
     label: 'Paste',
     keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV],
@@ -622,47 +498,6 @@ export function createEditor(
           editor.executeEdits('paste', [{ range: sel, text }]);
         }
       });
-    },
-  });
-
-  ed.addAction({
-    id: 'facet.indentLines',
-    label: 'Indent Lines',
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.BracketRight],
-    run(editor) {
-      editor.trigger('keyboard', 'editor.action.indentLines', null);
-    },
-  });
-  ed.addAction({
-    id: 'facet.outdentLines',
-    label: 'Outdent Lines',
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.BracketLeft],
-    run(editor) {
-      editor.trigger('keyboard', 'editor.action.outdentLines', null);
-    },
-  });
-  ed.addAction({
-    id: 'facet.undo',
-    label: 'Undo',
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ],
-    run(editor) {
-      editor.trigger('keyboard', 'undo', null);
-    },
-  });
-  ed.addAction({
-    id: 'facet.redo',
-    label: 'Redo',
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ],
-    run(editor) {
-      editor.trigger('keyboard', 'redo', null);
-    },
-  });
-  ed.addAction({
-    id: 'facet.selectAll',
-    label: 'Select All',
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA],
-    run(editor) {
-      editor.trigger('keyboard', 'editor.action.selectAll', null);
     },
   });
 

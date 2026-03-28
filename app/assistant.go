@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -203,28 +202,11 @@ func queryModels(cliID, binPath string) []string {
 	return models
 }
 
-// GetAssistantAvailable checks if any supported AI CLI is installed.
-func (a *App) GetAssistantAvailable() bool {
-	for _, cli := range knownCLIs {
-		if p := findBinary(cli.Bin); p != "" {
-			return true
-		}
-	}
-	return false
-}
-
 // SetAssistantConfig stores the assistant configuration.
 func (a *App) SetAssistantConfig(config AssistantConfig) {
 	a.assistantMu.Lock()
 	defer a.assistantMu.Unlock()
 	a.assistantConfig = config
-}
-
-// GetAssistantConfig returns the current assistant configuration.
-func (a *App) GetAssistantConfig() AssistantConfig {
-	a.assistantMu.Lock()
-	defer a.assistantMu.Unlock()
-	return a.assistantConfig
 }
 
 // GetDefaultSystemPrompt returns the dynamically assembled system prompt.
@@ -251,31 +233,6 @@ func (a *App) PickImageFile() (string, error) {
 		return "", err
 	}
 	return path, nil
-}
-
-// SaveScreenshot decodes a base64 PNG data URL and writes it to a temp file.
-// Returns the file path so it can be passed as an image attachment.
-func (a *App) SaveScreenshot(base64Data string) (string, error) {
-	// Strip data URL prefix if present
-	data := base64Data
-	if idx := strings.Index(data, ","); idx >= 0 {
-		data = data[idx+1:]
-	}
-	raw, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
-		return "", fmt.Errorf("decode base64: %w", err)
-	}
-	f, err := os.CreateTemp("", "facet-screenshot-*.png")
-	if err != nil {
-		return "", fmt.Errorf("create temp file: %w", err)
-	}
-	if _, err := f.Write(raw); err != nil {
-		f.Close()
-		os.Remove(f.Name())
-		return "", fmt.Errorf("write screenshot: %w", err)
-	}
-	f.Close()
-	return f.Name(), nil
 }
 
 // SendAssistantMessage sends a user message via the configured AI CLI.
