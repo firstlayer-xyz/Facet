@@ -70,6 +70,38 @@ var slicerDefs = []slicerDef{
 	},
 }
 
+// findMacApp searches /Applications and ~/Applications recursively for name.app.
+// Returns the full path or "" if not found.
+func findMacApp(name string) string {
+	target := name + ".app"
+	home, _ := os.UserHomeDir()
+	dirs := []string{"/Applications"}
+	if home != "" {
+		dirs = append(dirs, filepath.Join(home, "Applications"))
+	}
+	for _, root := range dirs {
+		var found string
+		filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return filepath.SkipDir
+			}
+			if d.IsDir() && d.Name() == target {
+				found = path
+				return filepath.SkipAll
+			}
+			// Don't descend into .app bundles
+			if d.IsDir() && filepath.Ext(d.Name()) == ".app" {
+				return filepath.SkipDir
+			}
+			return nil
+		})
+		if found != "" {
+			return found
+		}
+	}
+	return ""
+}
+
 func detectSlicers() []SlicerInfo {
 	var found []SlicerInfo
 	for _, d := range slicerDefs {
@@ -83,8 +115,7 @@ func detectSlicers() []SlicerInfo {
 func slicerExists(d slicerDef) bool {
 	switch runtime.GOOS {
 	case "darwin":
-		_, err := os.Stat(filepath.Join("/Applications", d.MacApp+".app"))
-		return err == nil
+		return findMacApp(d.MacApp) != ""
 	case "linux":
 		_, err := exec.LookPath(d.LinuxBin)
 		return err == nil
@@ -123,7 +154,11 @@ func launchSlicer(id string, filePath string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", "-a", d.MacApp, filePath)
+		appPath := findMacApp(d.MacApp)
+		if appPath == "" {
+			return fmt.Errorf("%s not found", d.Name)
+		}
+		cmd = exec.Command("open", "-a", appPath, filePath)
 	case "linux":
 		cmd = exec.Command(d.LinuxBin, filePath)
 	case "windows":

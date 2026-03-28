@@ -1,6 +1,6 @@
 // app.ts — Run/debug orchestration logic.
 
-import { Stop, ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, GetDebugStepMeshes, SetWindowTitle, GetLibraryFilePath, FormatCode, UpdateSource, PruneSources, Run, Debug, CreateScratchFile, IsScratchFile } from '../wailsjs/go/main/App';
+import { Stop, ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, GetDebugStepMeshes, SetWindowTitle, GetLibraryFilePath, FormatCode, UpdateSource, PruneSources, Run, Debug, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
 import type { EntryPoint } from './function-preview';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { Viewer, mergeMeshes } from './viewer';
@@ -50,6 +50,8 @@ let compilingOverlay: HTMLElement;
 
 // Debug mode state
 let debugMode = false;
+let debugStepping = false; // true while showDebugStep is switching tabs
+let debugEntryTab = ''; // tab that was active when debug started
 let debugFinalMesh: DecodedMesh | null = null;
 let debugStepIndex = 0;
 let debugStepGen = 0;
@@ -95,13 +97,17 @@ let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } |
 let entryOverrides: Record<string, any> = {};
 
 /** Set the file path on startup (no discard prompt, no re-persist). */
-export function setInitialFile(path: string) {
-  tabs[path] = { path, dirty: false, cursor: null, label: tabLabel(path) };
+export function setInitialFile(path: string, label?: string, readOnly?: boolean) {
+  tabs[path] = { path, dirty: false, cursor: null, label: label || tabLabel(path) };
   activeTab = path;
   editor.setCurrentSource(path);
-  editor.setReadOnly(isReadOnly(path));
+  editor.setReadOnly(readOnly ?? isReadOnly(path));
   updateWindowTitle();
   renderTabs();
+}
+
+function anyDirty(): boolean {
+  return Object.values(tabs).some(t => t.dirty);
 }
 
 function markDirty() {
@@ -110,6 +116,7 @@ function markDirty() {
     const tab = tabs[activeTab];
     if (tab) tab.dirty = true;
     updateWindowTitle();
+    SetDirtyState(true);
   }
 }
 function markClean() {
@@ -118,6 +125,7 @@ function markClean() {
     const tab = tabs[activeTab];
     if (tab) tab.dirty = false;
     updateWindowTitle();
+    SetDirtyState(anyDirty());
   }
 }
 interface SavedTab {
@@ -206,6 +214,9 @@ export function initApp(deps: AppDeps) {
   tabBar = deps.tabBar;
   statsBar = deps.statsBar;
   compilingOverlay = deps.compilingOverlay;
+
+  // Persist tabs when app is about to close
+  EventsOn('app:before-close', () => persistOpenTabs());
 
   // Run state driven by Go-side events
   EventsOn('run:start', () => setRunState('running'));
@@ -641,15 +652,17 @@ export async function showDebugStep(index: number) {
   if (step.op === 'Final' && debugFinalMesh) {
     viewer.clearMeshes();
     viewer.loadDecodedMesh(debugFinalMesh);
-    viewer.centerOnBed();
-    viewer.fitToView();
   } else {
     viewer.loadDebugStep(stepWithMeshes);
   }
+  viewer.centerOnBed();
+  viewer.fitToView();
 
   const stepFile = debugSteps[index].file ?? '';
-  if (stepFile !== activeTab) {
+  if (stepFile && stepFile !== activeTab) {
+    debugStepping = true;
     switchToTab(stepFile);
+    debugStepping = false;
   }
 
   if (debugSteps[index].line > 0) {
@@ -780,7 +793,7 @@ export function saveFileAs() { return doSave(true); }
 export async function newFile() {
   const key = await CreateScratchFile('Untitled-' + Date.now());
   openTab(key, '', 'Untitled', false);
-  patchSettings({ lastFile: key });
+  patchSettings({ activeTab: key });
 }
 
 export async function exportMesh(format: string = '3mf') {
@@ -805,16 +818,11 @@ export async function sendToSlicer(id: string) {
 
 export function toggleDebug() {
   debugMode = !debugMode;
-  if (!debugMode) {
+  if (debugMode) {
+    debugEntryTab = activeTab;
+  } else {
     setDebugBarVisible(false);
     editor.clearDebugLine();
-    // Close library tabs opened during debug, keep the main file tab
-    const sources = lastResult?.sources ?? {};
-    for (const key of Object.keys(sources)) {
-      editor.disposeModel(key);
-      delete tabs[key];
-    }
-    renderTabs();
 
     // Restore the final mesh with normal materials instead of re-evaluating
     if (debugFinalMesh) {
@@ -825,6 +833,11 @@ export function toggleDebug() {
     }
     lastResult = null;
     debugFinalMesh = null;
+
+    // Jump back to the tab that had the entry point
+    if (debugEntryTab && debugEntryTab !== activeTab && tabs[debugEntryTab]) {
+      switchToTab(debugEntryTab);
+    }
   }
   return debugMode;
 }
@@ -872,6 +885,7 @@ export function getActiveLabel(): string {
 }
 
 export function isPreviewLocked(): boolean { return previewLocked; }
+export function isDebugStepping(): boolean { return debugStepping; }
 export function setPreviewLocked(locked: boolean) {
   previewLocked = locked;
   if (locked) lockedTab = activeTab;

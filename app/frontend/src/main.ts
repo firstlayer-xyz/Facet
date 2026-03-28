@@ -37,7 +37,7 @@ import {
   reeval, toggleDebug, toggleDocs, openDocsToEntry, openLibraryFile, openLibraryTab,
   switchToTab,
   getSources, getActiveTabValue, getActiveLabel, restoreTabCursor,
-  isPreviewLocked, setPreviewLocked,
+  isPreviewLocked, setPreviewLocked, isDebugStepping,
   setOnTabChange, setOnSourceChange, setOnDebugFilesChange, setOnEntryPoints,
   setEntryOverrides, refreshEditorUI,
 } from './app';
@@ -168,26 +168,29 @@ async function init() {
   // Restore saved tab state or load default tutorial
   const savedTabs = (settings as any).savedTabs as { path: string; label: string; cursor: { lineNumber: number; column: number } | null }[] | undefined;
   const savedActiveTab = (settings as any).activeTab as string | undefined;
-  // Legacy fallback
-  const lastFile = (settings as any).lastFile as string | undefined;
 
   let initialSource = '';
-  let initialFileKey = 'untitled';
+  let initialFileKey = 'example:Tutorial.fct';
+  let initialReadOnly = true;
 
   // Find the first tab to load as the initial editor content
-  const firstTab = savedTabs?.[0] ?? (lastFile ? { path: lastFile, label: '', cursor: null } : null);
+  const firstTab = savedTabs?.[0] ?? null;
   if (firstTab) {
     try {
       const result = await OpenRecentFile(firstTab.path);
       if (result?.source) {
         initialSource = result.source;
         initialFileKey = result.path;
+        initialReadOnly = false;
       }
     } catch {
-      initialSource = await GetDefaultSource();
+      // file no longer exists — fall through to tutorial
     }
-  } else {
+  }
+  if (!initialSource) {
     initialSource = await GetDefaultSource();
+    initialFileKey = 'example:Tutorial.fct';
+    initialReadOnly = true;
   }
 
   const editor = createEditor(editorPanel, initialSource, autoRun, async (name) => {
@@ -227,7 +230,10 @@ async function init() {
   });
 
   // Set initial file and show tab
-  setInitialFile(initialFileKey);
+  const initialLabel = initialFileKey.startsWith('example:')
+    ? initialFileKey.replace(/^example:/, '').replace(/\.fct$/, '')
+    : undefined;
+  setInitialFile(initialFileKey, initialLabel, initialReadOnly);
   if (firstTab?.cursor) {
     editor.revealLine(firstTab.cursor.lineNumber, firstTab.cursor.column);
   }
@@ -397,6 +403,7 @@ async function init() {
 
   setOnTabChange((tab) => {
     fileTree.setActiveTab(tab);
+    if (isDebugStepping()) return; // don't re-eval while navigating debug steps
     previewMenuDirty = true;
     const picked = pickEntryPoint(tab, currentEntryPoints);
     if (picked) {

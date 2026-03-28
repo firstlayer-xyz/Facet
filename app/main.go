@@ -31,6 +31,7 @@ func main() {
 		LogLevel:         logger.DEBUG,
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 255},
 		OnStartup:        app.startup,
+		OnBeforeClose:    app.beforeClose,
 		OnShutdown:       app.shutdown,
 		Menu:             app.buildMenu(),
 		Bind: []interface{}{

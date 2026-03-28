@@ -97,6 +97,8 @@ export function SendToSlicer(arg1:string):Promise<void>;
 
 export function SetAssistantConfig(arg1:main.AssistantConfig):Promise<void>;
 
+export function SetDirtyState(arg1:boolean):Promise<void>;
+
 export function SetMemoryLimit(arg1:number):Promise<void>;
 
 export function SetWindowTitle(arg1:string):Promise<void>;

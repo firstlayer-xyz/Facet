@@ -232,6 +232,9 @@ func (e *evaluator) callResolved(call *parser.CallExpr, fn *parser.Function, arg
 	}
 	if s, ok := result.(*manifold.SolidFuture); ok {
 		e.trackSolid(call.Pos, s)
+		e.recordStep(call.Name, call.Pos, debugRole{"result", s})
+	} else if sk, ok := result.(*manifold.SketchFuture); ok {
+		e.recordStep(call.Name, call.Pos, debugRole{"result", sk})
 	}
 	return result, nil
 }

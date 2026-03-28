@@ -167,11 +167,13 @@ type appConfig struct {
 	MemoryLimitGB   int64              `json:"memoryLimitGB"`              // 0 = default (8 GB)
 	InstalledLibs   map[string]string  `json:"installedLibs,omitempty"`    // libID → local dir overrides
 	RecentFiles     []string           `json:"recentFiles,omitempty"`      // most-recently-opened file paths
-	LastFile        string             `json:"lastFile,omitempty"`         // path of last opened file; "" = tutorial
+	SavedTabs       json.RawMessage    `json:"savedTabs,omitempty"`        // frontend-owned tab state
+	ActiveTab       string             `json:"activeTab,omitempty"`        // frontend-owned active tab path
 	Appearance      json.RawMessage    `json:"appearance,omitempty"`       // frontend-owned
 	Editor          json.RawMessage    `json:"editor,omitempty"`           // frontend-owned
 	Assistant       json.RawMessage    `json:"assistant,omitempty"`        // frontend-owned
 	Camera          json.RawMessage    `json:"camera,omitempty"`           // frontend-owned
+	Slicer          json.RawMessage    `json:"slicer,omitempty"`           // frontend-owned
 	LibrarySettings json.RawMessage    `json:"librarySettings,omitempty"`  // frontend-owned (autoPull, etc.)
 }
 
@@ -347,6 +349,37 @@ func parseAutoPull(raw json.RawMessage) bool {
 		return false
 	}
 	return ls.AutoPull
+}
+
+// hasDirtyFiles is set by the frontend whenever the dirty state changes.
+// Checked by beforeClose to prompt for unsaved changes.
+var hasDirtyFiles bool
+
+// SetDirtyState is called by the frontend to report whether any files have unsaved changes.
+func (a *App) SetDirtyState(dirty bool) {
+	hasDirtyFiles = dirty
+}
+
+// beforeClose is called when the user tries to close the window.
+// Returns true to prevent closing (user chose to cancel).
+func (a *App) beforeClose(ctx context.Context) bool {
+	// Emit event so frontend can persist tab state
+	wailsRuntime.EventsEmit(ctx, "app:before-close")
+
+	if !hasDirtyFiles {
+		return false // allow close
+	}
+	result, err := wailsRuntime.MessageDialog(ctx, wailsRuntime.MessageDialogOptions{
+		Type:          wailsRuntime.QuestionDialog,
+		Title:         "Unsaved Changes",
+		Message:       "You have unsaved changes. Quit anyway?",
+		DefaultButton: "No",
+		Buttons:       []string{"Yes", "No"},
+	})
+	if err != nil {
+		return false // allow close on error
+	}
+	return result != "Yes" // true = prevent close
 }
 
 // shutdown is called when the app is closing. Persists current memory limit.

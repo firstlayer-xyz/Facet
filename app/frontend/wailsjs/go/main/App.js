@@ -190,6 +190,10 @@ export function SetAssistantConfig(arg1) {
   return window['go']['main']['App']['SetAssistantConfig'](arg1);
 }
 
+export function SetDirtyState(arg1) {
+  return window['go']['main']['App']['SetDirtyState'](arg1);
+}
+
 export function SetMemoryLimit(arg1) {
   return window['go']['main']['App']['SetMemoryLimit'](arg1);
 }

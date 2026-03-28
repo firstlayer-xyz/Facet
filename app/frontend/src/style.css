@@ -1057,7 +1057,7 @@ canvas {
   color: var(--ui-text);
   font-size: 13px;
   font-family: monospace;
-  z-index: 10;
+  z-index: 20;
 }
 
 #debug-bar button {

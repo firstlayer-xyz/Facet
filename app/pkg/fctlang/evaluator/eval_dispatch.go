@@ -183,6 +183,9 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		}
 		if rs, ok := result.(*manifold.SolidFuture); ok {
 			e.trackSolid(mc.Pos, rs)
+			if !strings.HasPrefix(mc.Method, "_") {
+				e.recordStep(mc.Method, mc.Pos, debugRole{"input", r}, debugRole{"result", rs})
+			}
 		}
 		return result, nil
 
@@ -209,6 +212,13 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		result, err := sketchMethod(r, mc.Method, posArgs)
 		if err != nil {
 			return nil, e.wrapErr(mc.Pos, err)
+		}
+		if !strings.HasPrefix(mc.Method, "_") {
+			if rs, ok := result.(*manifold.SolidFuture); ok {
+				e.recordStep(mc.Method, mc.Pos, debugRole{"input", r}, debugRole{"result", rs})
+			} else if rsk, ok := result.(*manifold.SketchFuture); ok {
+				e.recordStep(mc.Method, mc.Pos, debugRole{"input", r}, debugRole{"result", rsk})
+			}
 		}
 		return result, nil
 

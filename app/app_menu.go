@@ -24,6 +24,7 @@ func (a *App) buildMenu() *menu.Menu {
 	fileMenu.AddText("New Library...", nil, func(_ *menu.CallbackData) {
 		wailsRuntime.EventsEmit(a.ctx, "menu:new-library")
 	})
+	fileMenu.AddSeparator()
 	fileMenu.AddText("Open...", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
 		wailsRuntime.EventsEmit(a.ctx, "menu:open")
 	})
@@ -40,15 +41,6 @@ func (a *App) buildMenu() *menu.Menu {
 				wailsRuntime.EventsEmit(a.ctx, "menu:open-recent", p)
 			})
 		}
-	}
-
-	// Open Example submenu
-	demoMenu := fileMenu.AddSubmenu("Open Example")
-	for _, name := range a.GetExampleList() {
-		label := strings.TrimSuffix(name, ".fct")
-		demoMenu.AddText(label, nil, func(_ *menu.CallbackData) {
-			wailsRuntime.EventsEmit(a.ctx, "menu:open-demo", name)
-		})
 	}
 
 	// Open Library submenu — 2 levels deep: first segment → submenu, rest → label
@@ -83,6 +75,15 @@ func (a *App) buildMenu() *menu.Menu {
 				})
 			}
 		}
+	}
+
+	// Open Example submenu
+	demoMenu := fileMenu.AddSubmenu("Open Example")
+	for _, name := range a.GetExampleList() {
+		label := strings.TrimSuffix(name, ".fct")
+		demoMenu.AddText(label, nil, func(_ *menu.CallbackData) {
+			wailsRuntime.EventsEmit(a.ctx, "menu:open-demo", name)
+		})
 	}
 
 	fileMenu.AddSeparator()
