@@ -14,10 +14,10 @@ func TestParseMinimal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(prog.Functions) != 1 {
-		t.Fatalf("expected 1 function, got %d", len(prog.Functions))
+	if len(prog.Functions()) != 1 {
+		t.Fatalf("expected 1 function, got %d", len(prog.Functions()))
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if fn.ReturnType != "Solid" {
 		t.Errorf("return type = %q, want %q", fn.ReturnType, "Solid")
 	}
@@ -76,16 +76,16 @@ fn Main() Solid {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(prog.Functions) != 2 {
-		t.Fatalf("expected 2 functions, got %d", len(prog.Functions))
+	if len(prog.Functions()) != 2 {
+		t.Fatalf("expected 2 functions, got %d", len(prog.Functions()))
 	}
 
-	bar := prog.Functions[0]
+	bar := prog.Functions()[0]
 	if bar.Name != "Bar" {
 		t.Errorf("first function name = %q, want %q", bar.Name, "Bar")
 	}
 
-	main := prog.Functions[1]
+	main := prog.Functions()[1]
 	if main.Name != "Main" {
 		t.Errorf("second function name = %q, want %q", main.Name, "Main")
 	}
@@ -126,7 +126,7 @@ func TestParseFunctionWithParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Params) != 2 {
 		t.Fatalf("expected 2 params, got %d", len(fn.Params))
 	}
@@ -152,7 +152,7 @@ func TestParseFloatLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	call := ret.Value.(*parser.CallExpr)
 	na, ok := call.Args[0].(*parser.NamedArg)
 	if !ok {
@@ -173,7 +173,7 @@ func TestParseRatioLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	call := ret.Value.(*parser.CallExpr)
 	if len(call.Args) != 1 {
 		t.Fatalf("expected 1 arg (struct literal), got %d", len(call.Args))
@@ -220,7 +220,7 @@ func TestParseRatioPlainNumber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	call := ret.Value.(*parser.CallExpr)
 	na, ok := call.Args[0].(*parser.NamedArg)
 	if !ok {
@@ -245,7 +245,7 @@ func TestParseLengthLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	call := ret.Value.(*parser.CallExpr)
 	if len(call.Args) != 3 {
 		t.Fatalf("expected 3 args, got %d", len(call.Args))
@@ -289,7 +289,7 @@ func TestParseVarStatement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 2 {
 		t.Fatalf("expected 2 statements, got %d", len(fn.Body))
 	}
@@ -325,10 +325,10 @@ func TestInferredReturnType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	if len(prog.Functions) != 1 {
-		t.Fatalf("expected 1 function, got %d", len(prog.Functions))
+	if len(prog.Functions()) != 1 {
+		t.Fatalf("expected 1 function, got %d", len(prog.Functions()))
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if fn.ReturnType != "" {
 		t.Errorf("expected empty return type, got %q", fn.ReturnType)
 	}
@@ -342,8 +342,8 @@ func TestErrorEmptyInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("empty input should not be an error, got: %v", err)
 	}
-	if len(prog.Functions) != 0 {
-		t.Errorf("expected 0 functions, got %d", len(prog.Functions))
+	if len(prog.Functions()) != 0 {
+		t.Errorf("expected 0 functions, got %d", len(prog.Functions()))
 	}
 }
 
@@ -359,8 +359,8 @@ fn Main() {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	if len(prog.Functions) != 1 {
-		t.Fatalf("expected 1 function, got %d", len(prog.Functions))
+	if len(prog.Functions()) != 1 {
+		t.Fatalf("expected 1 function, got %d", len(prog.Functions()))
 	}
 }
 
@@ -378,7 +378,7 @@ func TestParseDotCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	mc, ok := ret.Value.(*parser.MethodCallExpr)
 	if !ok {
 		t.Fatalf("expected parser.MethodCallExpr, got %T", ret.Value)
@@ -404,7 +404,7 @@ func TestParseDotChain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	// Outermost should be Rotate
 	mc, ok := ret.Value.(*parser.MethodCallExpr)
 	if !ok {
@@ -440,7 +440,7 @@ func TestParseDotOnVariable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[1].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[1].(*parser.ReturnStmt)
 	mc, ok := ret.Value.(*parser.MethodCallExpr)
 	if !ok {
 		t.Fatalf("expected parser.MethodCallExpr, got %T", ret.Value)
@@ -463,7 +463,7 @@ func TestParseDotOnParenExpr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	mc, ok := ret.Value.(*parser.MethodCallExpr)
 	if !ok {
 		t.Fatalf("expected parser.MethodCallExpr, got %T", ret.Value)
@@ -487,7 +487,7 @@ func TestParseAngleLiteralDeg(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	mc := ret.Value.(*parser.MethodCallExpr)
 	if mc.Method != "Rotate" {
 		t.Fatalf("method = %q, want %q", mc.Method, "Rotate")
@@ -521,7 +521,7 @@ func TestParseAngleLiteralRad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	mc := ret.Value.(*parser.MethodCallExpr)
 	naRad, ok := mc.Args[0].(*parser.NamedArg)
 	if !ok {
@@ -552,7 +552,7 @@ func TestParseArrayLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	arr, ok := ret.Value.(*parser.ArrayLitExpr)
 	if !ok {
 		t.Fatalf("expected parser.ArrayLitExpr, got %T", ret.Value)
@@ -568,7 +568,7 @@ func TestParseArrayTrailingComma(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	arr, ok := ret.Value.(*parser.ArrayLitExpr)
 	if !ok {
 		t.Fatalf("expected parser.ArrayLitExpr, got %T", ret.Value)
@@ -584,7 +584,7 @@ func TestParseEmptyArray(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	arr, ok := ret.Value.(*parser.ArrayLitExpr)
 	if !ok {
 		t.Fatalf("expected parser.ArrayLitExpr, got %T", ret.Value)
@@ -600,7 +600,7 @@ func TestParseRangeExclusive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	rng, ok := ret.Value.(*parser.RangeExpr)
 	if !ok {
 		t.Fatalf("expected parser.RangeExpr, got %T", ret.Value)
@@ -633,7 +633,7 @@ func TestParseRangeInclusive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	rng, ok := ret.Value.(*parser.RangeExpr)
 	if !ok {
 		t.Fatalf("expected parser.RangeExpr, got %T", ret.Value)
@@ -649,7 +649,7 @@ func TestParseRangeStep(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	rng, ok := ret.Value.(*parser.RangeExpr)
 	if !ok {
 		t.Fatalf("expected parser.RangeExpr, got %T", ret.Value)
@@ -680,7 +680,7 @@ func TestParseForYield(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 2 {
 		t.Fatalf("expected 2 statements, got %d", len(fn.Body))
 	}
@@ -717,7 +717,7 @@ func TestParseFold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	ff, ok := v.Value.(*parser.FoldExpr)
 	if !ok {
@@ -741,7 +741,7 @@ func TestParseBoolLiterals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	bl, ok := ret.Value.(*parser.BoolLit)
 	if !ok {
 		t.Fatalf("expected parser.BoolLit, got %T", ret.Value)
@@ -755,7 +755,7 @@ func TestParseBoolLiterals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret2 := prog2.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret2 := prog2.Functions()[0].Body[0].(*parser.ReturnStmt)
 	bl2, ok := ret2.Value.(*parser.BoolLit)
 	if !ok {
 		t.Fatalf("expected parser.BoolLit, got %T", ret2.Value)
@@ -771,7 +771,7 @@ func TestParseComparison(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	bin, ok := ret.Value.(*parser.BinaryExpr)
 	if !ok {
 		t.Fatalf("expected parser.BinaryExpr, got %T", ret.Value)
@@ -787,7 +787,7 @@ func TestParseLogicalOps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	// || is lower precedence than &&, so tree is: (true && false) || true
 	bin, ok := ret.Value.(*parser.BinaryExpr)
 	if !ok {
@@ -817,9 +817,9 @@ func TestParseIfStmt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ifS, ok := prog.Functions[0].Body[0].(*parser.IfStmt)
+	ifS, ok := prog.Functions()[0].Body[0].(*parser.IfStmt)
 	if !ok {
-		t.Fatalf("expected parser.IfStmt, got %T", prog.Functions[0].Body[0])
+		t.Fatalf("expected parser.IfStmt, got %T", prog.Functions()[0].Body[0])
 	}
 	if len(ifS.Then) != 1 {
 		t.Errorf("expected 1 then statement, got %d", len(ifS.Then))
@@ -846,9 +846,9 @@ func TestParseIfElseIfStmt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ifS, ok := prog.Functions[0].Body[0].(*parser.IfStmt)
+	ifS, ok := prog.Functions()[0].Body[0].(*parser.IfStmt)
 	if !ok {
-		t.Fatalf("expected parser.IfStmt, got %T", prog.Functions[0].Body[0])
+		t.Fatalf("expected parser.IfStmt, got %T", prog.Functions()[0].Body[0])
 	}
 	if len(ifS.ElseIfs) != 1 {
 		t.Errorf("expected 1 else-if clause, got %d", len(ifS.ElseIfs))
@@ -874,7 +874,7 @@ func TestParseStringLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	sl, ok := ret.Value.(*parser.StringLit)
 	if !ok {
 		t.Fatalf("expected parser.StringLit, got %T", ret.Value)
@@ -891,10 +891,10 @@ fn Main() { return Cube(size: {x: 10, y: 10, z: 10}); }`
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	if len(prog.Globals) != 1 {
-		t.Fatalf("expected 1 global, got %d", len(prog.Globals))
+	if len(prog.Globals()) != 1 {
+		t.Fatalf("expected 1 global, got %d", len(prog.Globals()))
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	if g.Name != "T" {
 		t.Errorf("global name = %q, want %q", g.Name, "T")
 	}
@@ -913,7 +913,7 @@ func TestParseDefaultParam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Params) != 2 {
 		t.Fatalf("expected 2 params, got %d", len(fn.Params))
 	}
@@ -940,7 +940,7 @@ func TestParseDefaultParamAfterType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Params) != 3 {
 		t.Fatalf("expected 3 params, got %d", len(fn.Params))
 	}
@@ -968,7 +968,7 @@ func TestParseDefaultParamNonTrailing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Params) != 3 {
 		t.Fatalf("expected 3 params, got %d", len(fn.Params))
 	}
@@ -999,7 +999,7 @@ func TestParseDefaultParamWithConstraint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Params) != 1 {
 		t.Fatalf("expected 1 param, got %d", len(fn.Params))
 	}
@@ -1032,10 +1032,10 @@ fn Main() { return Cube(size: {x: 10, y: 10, z: 10}); }
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	if len(prog.StructDecls) != 1 {
-		t.Fatalf("expected 1 struct decl, got %d", len(prog.StructDecls))
+	if len(prog.StructDecls()) != 1 {
+		t.Fatalf("expected 1 struct decl, got %d", len(prog.StructDecls()))
 	}
-	sd := prog.StructDecls[0]
+	sd := prog.StructDecls()[0]
 	if sd.Name != "Vec3" {
 		t.Errorf("struct name = %q, want %q", sd.Name, "Vec3")
 	}
@@ -1069,7 +1069,7 @@ fn Main() {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	sl, ok := v.Value.(*parser.StructLitExpr)
 	if !ok {
@@ -1102,7 +1102,7 @@ fn Main() {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	ret := fn.Body[1].(*parser.ReturnStmt)
 	call := ret.Value.(*parser.CallExpr)
 	naFA, ok := call.Args[0].(*parser.NamedArg)
@@ -1147,10 +1147,10 @@ fn Main() { return Cube(size: {x: 10, y: 10, z: 10}); }
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	if len(prog.Functions) != 2 {
-		t.Fatalf("expected 2 functions, got %d", len(prog.Functions))
+	if len(prog.Functions()) != 2 {
+		t.Fatalf("expected 2 functions, got %d", len(prog.Functions()))
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if fn.Name != "Length" {
 		t.Errorf("name = %q, want %q", fn.Name, "Length")
 	}
@@ -1169,7 +1169,7 @@ func TestParseImplicitReturnFunction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(fn.Body))
 	}
@@ -1191,7 +1191,7 @@ func TestParseImplicitReturnFunction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn2 := prog2.Functions[0]
+	fn2 := prog2.Functions()[0]
 	if len(fn2.Body) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(fn2.Body))
 	}
@@ -1226,7 +1226,7 @@ func TestParseIfStmtBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(fn.Body))
 	}
@@ -1258,7 +1258,7 @@ func TestParseIfStmtElseIf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	ifS := fn.Body[0].(*parser.IfStmt)
 	if len(ifS.ElseIfs) != 1 {
 		t.Fatalf("expected 1 else-if clause, got %d", len(ifS.ElseIfs))
@@ -1280,7 +1280,7 @@ func TestParseImplicitYieldForYield(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	fy, ok := v.Value.(*parser.ForYieldExpr)
 	if !ok {
@@ -1306,7 +1306,7 @@ func TestParseImplicitReturnFold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	ff, ok := v.Value.(*parser.FoldExpr)
 	if !ok {
@@ -1330,7 +1330,7 @@ func TestParseImplicitReturnMixed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 2 {
 		t.Fatalf("expected 2 statements, got %d", len(fn.Body))
 	}
@@ -1357,7 +1357,7 @@ func TestParseAssert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 2 {
 		t.Fatalf("expected 2 statements, got %d", len(fn.Body))
 	}
@@ -1386,7 +1386,7 @@ func TestParseAssertWithMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	a := fn.Body[0].(*parser.AssertStmt)
 	sl, ok := a.Message.(*parser.StringLit)
 	if !ok {
@@ -1408,7 +1408,7 @@ func TestParseBareExpressionMidBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 2 {
 		t.Fatalf("expected 2 statements, got %d", len(fn.Body))
 	}
@@ -1426,7 +1426,7 @@ func TestParseBooleanNot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	u, ok := v.Value.(*parser.UnaryExpr)
 	if !ok {
@@ -1453,7 +1453,7 @@ func TestParseUnaryMinusNumber(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	u, ok := v.Value.(*parser.UnaryExpr)
 	if !ok {
@@ -1480,7 +1480,7 @@ func TestParseUnaryMinusLength(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	u, ok := v.Value.(*parser.UnaryExpr)
 	if !ok {
@@ -1510,7 +1510,7 @@ func TestParseUnaryMinusAngle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	u, ok := v.Value.(*parser.UnaryExpr)
 	if !ok {
@@ -1540,7 +1540,7 @@ func TestParseUnaryMinusParenExpr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	u, ok := v.Value.(*parser.UnaryExpr)
 	if !ok {
@@ -1567,7 +1567,7 @@ func TestParseDoubleNegation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	outer, ok := v.Value.(*parser.UnaryExpr)
 	if !ok {
@@ -1596,7 +1596,7 @@ func TestParseMultiVarForYield(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	fy, ok := v.Value.(*parser.ForYieldExpr)
 	if !ok {
@@ -1624,7 +1624,7 @@ func TestParseMultiVarForYieldThreeClauses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	fy, ok := v.Value.(*parser.ForYieldExpr)
 	if !ok {
@@ -1646,10 +1646,10 @@ fn Main() { return Cube(size: {x: x, y: x, z: x}); }`
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(prog.Globals) != 1 {
-		t.Fatalf("expected 1 global, got %d", len(prog.Globals))
+	if len(prog.Globals()) != 1 {
+		t.Fatalf("expected 1 global, got %d", len(prog.Globals()))
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	if g.Name != "x" {
 		t.Errorf("name = %q, want %q", g.Name, "x")
 	}
@@ -1674,7 +1674,7 @@ fn Main() { return Cube(size: {x: w, y: w, z: w}); }`
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	if _, ok := g.Value.(*parser.UnitExpr); !ok {
 		t.Errorf("value: expected parser.UnitExpr, got %T", g.Value)
 	}
@@ -1699,7 +1699,7 @@ fn Main() { return Cube(size: {x: w2, y: w2, z: w2}); }`
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	rng, ok := g.Constraint.(*parser.RangeExpr)
 	if !ok {
 		t.Fatalf("constraint: expected parser.RangeExpr, got %T", g.Constraint)
@@ -1719,7 +1719,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	ue, ok := g.Value.(*parser.UnitExpr)
 	if !ok {
 		t.Errorf("value: expected parser.UnitExpr, got %T", g.Value)
@@ -1747,7 +1747,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	if _, ok := g.Value.(*parser.StringLit); !ok {
 		t.Errorf("value: expected parser.StringLit, got %T", g.Value)
 	}
@@ -1767,7 +1767,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	rng, ok := g.Constraint.(*parser.RangeExpr)
 	if !ok {
 		t.Fatalf("constraint: expected parser.RangeExpr, got %T", g.Constraint)
@@ -1788,7 +1788,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	rng, ok := g.Constraint.(*parser.RangeExpr)
 	if !ok {
 		t.Fatalf("constraint: expected parser.RangeExpr, got %T", g.Constraint)
@@ -1805,7 +1805,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	arr, ok := g.Constraint.(*parser.ArrayLitExpr)
 	if !ok {
 		t.Fatalf("constraint: expected parser.ArrayLitExpr, got %T", g.Constraint)
@@ -1822,7 +1822,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	g := prog.Globals[0]
+	g := prog.Globals()[0]
 	if g.Constraint != nil {
 		t.Errorf("expected nil constraint, got %T", g.Constraint)
 	}
@@ -1837,7 +1837,7 @@ func TestParseVarConstraintLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	if v.Constraint == nil {
 		t.Fatal("expected non-nil constraint on local var")
@@ -1858,7 +1858,7 @@ func TestParseForYieldEnumerate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	fy, ok := v.Value.(*parser.ForYieldExpr)
 	if !ok {
@@ -1886,7 +1886,7 @@ func TestParseForYieldEnumerateWithCartesian(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	fy, ok := v.Value.(*parser.ForYieldExpr)
 	if !ok {
@@ -1923,7 +1923,7 @@ func TestParseForYieldRegularNoIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[0].(*parser.VarStmt)
 	fy, ok := v.Value.(*parser.ForYieldExpr)
 	if !ok {
@@ -1947,7 +1947,7 @@ func TestParseIndexExpr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[1].(*parser.VarStmt)
 	idx, ok := v.Value.(*parser.IndexExpr)
 	if !ok {
@@ -1979,7 +1979,7 @@ func TestParseIndexChained(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	v := fn.Body[1].(*parser.VarStmt)
 	outer, ok := v.Value.(*parser.IndexExpr)
 	if !ok {
@@ -2015,7 +2015,7 @@ func TestParseUnitExprParen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	call := ret.Value.(*parser.CallExpr)
 	naUP, ok := call.Args[0].(*parser.NamedArg)
 	if !ok {
@@ -2044,7 +2044,7 @@ func TestParseUnitExprCallResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[1].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[1].Body[0].(*parser.ReturnStmt)
 	call := ret.Value.(*parser.CallExpr)
 	naCR, ok := call.Args[0].(*parser.NamedArg)
 	if !ok {
@@ -2073,7 +2073,7 @@ func TestParseUnitExprAngle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	mc := ret.Value.(*parser.MethodCallExpr)
 	naUA, ok := mc.Args[0].(*parser.NamedArg)
 	if !ok {
@@ -2098,7 +2098,7 @@ func TestParseUnitExprNoDoubleLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[0].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
 	call := ret.Value.(*parser.CallExpr)
 	naND, ok := call.Args[0].(*parser.NamedArg)
 	if !ok {
@@ -2133,7 +2133,7 @@ func TestParseUnitExprVariable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	ret := prog.Functions[0].Body[1].(*parser.ReturnStmt)
+	ret := prog.Functions()[0].Body[1].(*parser.ReturnStmt)
 	call := ret.Value.(*parser.CallExpr)
 	naUV, ok := call.Args[0].(*parser.NamedArg)
 	if !ok {
@@ -2161,7 +2161,7 @@ func TestParseAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 3 {
 		t.Fatalf("expected 3 statements, got %d", len(fn.Body))
 	}
@@ -2203,7 +2203,7 @@ func TestParseCompoundAssignment(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: unexpected error: %v", tc.op, err)
 		}
-		fn := prog.Functions[0]
+		fn := prog.Functions()[0]
 		assign, ok := fn.Body[1].(*parser.AssignStmt)
 		if !ok {
 			t.Fatalf("%s: expected parser.AssignStmt, got %T", tc.op, fn.Body[1])
@@ -2227,10 +2227,10 @@ func TestParseBareArrayLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	if len(s.Functions) != 1 {
-		t.Fatalf("expected 1 function, got %d", len(s.Functions))
+	if len(s.Functions()) != 1 {
+		t.Fatalf("expected 1 function, got %d", len(s.Functions()))
 	}
-	body := s.Functions[0].Body
+	body := s.Functions()[0].Body
 	if len(body) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(body))
 	}

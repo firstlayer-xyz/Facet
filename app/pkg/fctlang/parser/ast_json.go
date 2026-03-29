@@ -17,9 +17,9 @@ func (p *Source) MarshalJSON() ([]byte, error) {
 		Functions   []*Function   `json:"functions"`
 		StructDecls []*StructDecl `json:"structDecls"`
 	}{
-		Globals:     p.Globals,
-		Functions:   p.Functions,
-		StructDecls: p.StructDecls,
+		Globals:     p.Globals(),
+		Functions:   p.Functions(),
+		StructDecls: p.StructDecls(),
 	})
 }
 
@@ -258,6 +258,13 @@ func marshalExpr(e Expr) interface{} {
 	case *CallExpr:
 		return map[string]interface{}{
 			"type": "CallExpr",
+			"name": e.Name,
+			"args": marshalExprs(e.Args),
+			"pos":  e.Pos,
+		}
+	case *BuiltinCallExpr:
+		return map[string]interface{}{
+			"type": "BuiltinCallExpr",
 			"name": e.Name,
 			"args": marshalExprs(e.Args),
 			"pos":  e.Pos,

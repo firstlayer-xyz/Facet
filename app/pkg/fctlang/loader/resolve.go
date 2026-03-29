@@ -178,7 +178,7 @@ func (r *resolver) resolveSource(src *parser.Source) error {
 		le      *parser.LibExpr
 	}
 	var entries []libEntry
-	for _, g := range src.Globals {
+	for _, g := range src.Globals() {
 		if le, ok := g.Value.(*parser.LibExpr); ok {
 			// Already resolved if we have an import mapping for this path
 			if _, ok := r.prog.Imports[le.Path]; ok {

@@ -18,9 +18,7 @@ type Source struct {
 	Kind             SourceKind // origin of this source
 	Path             string     // disk path to the .fct file; zero after Parse, set by loader
 	Text             string     // raw source code; zero after Parse
-	Globals          []*VarStmt
-	Functions        []*Function
-	StructDecls      []*StructDecl
+	Declarations     []Decl
 	TrailingComments []Comment // comments after last declaration
 }
 

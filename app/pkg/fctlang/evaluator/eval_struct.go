@@ -13,12 +13,12 @@ import (
 func buildStructDecls(prog loader.Program, currentKey string) map[string]*parser.StructDecl {
 	decls := make(map[string]*parser.StructDecl)
 	if stdSrc := prog.Std(); stdSrc != nil {
-		for _, sd := range stdSrc.StructDecls {
+		for _, sd := range stdSrc.StructDecls() {
 			decls[sd.Name] = sd
 		}
 	}
 	if src := prog.Sources[currentKey]; src != nil {
-		for _, sd := range src.StructDecls {
+		for _, sd := range src.StructDecls() {
 			decls[sd.Name] = sd
 		}
 	}
@@ -54,7 +54,7 @@ func (e *evaluator) evalStructLit(ex *parser.StructLitExpr, locals map[string]va
 			libName := ex.TypeName[:dotIdx]
 			bareName := ex.TypeName[dotIdx+1:]
 			if lv, lvOk := e.resolveLibraryVar(libName); lvOk {
-				for _, sd := range e.prog.Sources[e.prog.Resolve(lv.path)].StructDecls {
+				for _, sd := range e.prog.Sources[e.prog.Resolve(lv.path)].StructDecls() {
 					if sd.Name == bareName {
 						decl = sd
 						ok = true
@@ -213,7 +213,7 @@ func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, loca
 			libName := targetType[:dotIdx]
 			bareName := targetType[dotIdx+1:]
 			if lv, lvOk := e.resolveLibraryVar(libName); lvOk {
-				for _, sd := range e.prog.Sources[e.prog.Resolve(lv.path)].StructDecls {
+				for _, sd := range e.prog.Sources[e.prog.Resolve(lv.path)].StructDecls() {
 					if sd.Name == bareName {
 						decl = sd
 						sv.lib = lv
@@ -225,7 +225,7 @@ func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, loca
 		if decl == nil {
 			// Search loaded libraries for the defining declaration.
 			for libPath := range e.libEvalCache {
-				for _, sd := range e.prog.Sources[e.prog.Resolve(libPath)].StructDecls {
+				for _, sd := range e.prog.Sources[e.prog.Resolve(libPath)].StructDecls() {
 					if sd.Name == targetType {
 						decl = sd
 						sv.lib = &libRef{path: libPath}

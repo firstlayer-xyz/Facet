@@ -175,10 +175,10 @@ var v = Vec3{x: 1 mm, y: 2 mm, z: 3 mm}
 Cube(size: 10 mm).Translate(v: v * 2)    # double the displacement
 ```
 
-For axis-only moves, use `.MoveX()`, `.MoveY()`, `.MoveZ()`:
+All axes default to 0, so you can move along a single axis:
 
 ```
-Sphere(radius: 5 mm).MoveZ(z: 10 mm)    # lift 10mm off the ground
+Sphere(radius: 5 mm).Move(z: 10 mm)    # lift 10mm off the ground
 ```
 
 ### Rotate
@@ -571,7 +571,7 @@ Pass functions as arguments using `fn(Type) ReturnType` as the parameter type:
 fn Apply(s Solid, f fn(Solid) Solid) Solid { return f(s) }
 
 fn Main() {
-    return Apply(s: Sphere(radius: 10 mm), f: fn(s Solid) Solid { return s.MoveX(x: 15 mm) })
+    return Apply(s: Sphere(radius: 10 mm), f: fn(s Solid) Solid { return s.Move(x: 15 mm) })
 }
 ```
 

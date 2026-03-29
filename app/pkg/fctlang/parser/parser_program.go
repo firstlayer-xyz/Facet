@@ -73,7 +73,7 @@ func (p *parser) parseProgram() (*Source, error) {
 			}
 			v := &VarStmt{Name: name.Text, Value: expr, IsConst: isConst, Constraint: constraint, Pos: Pos{name.Line, name.Col}, Comments: comments}
 			v.Comments = append(v.Comments, p.drainTrailingComments(name.Line)...)
-			prog.Globals = append(prog.Globals, v)
+			prog.Declarations = append(prog.Declarations, v)
 			continue
 		}
 
@@ -84,7 +84,7 @@ func (p *parser) parseProgram() (*Source, error) {
 				return nil, err
 			}
 			sd.Comments = append(comments, sd.Comments...)
-			prog.StructDecls = append(prog.StructDecls, sd)
+			prog.Declarations = append(prog.Declarations, sd)
 			continue
 		}
 
@@ -97,7 +97,7 @@ func (p *parser) parseProgram() (*Source, error) {
 			return nil, err
 		}
 		fn.Comments = append(comments, fn.Comments...)
-		prog.Functions = append(prog.Functions, fn)
+		prog.Declarations = append(prog.Declarations, fn)
 	}
 	// Any remaining comments after all declarations
 	prog.TrailingComments = p.lex.drainComments()

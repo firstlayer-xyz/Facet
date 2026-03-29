@@ -6,8 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strconv"
-	"time"
+	"strings"
 
 	"facet/app/pkg/manifold"
 )
@@ -434,324 +433,6 @@ func coerceNumericArgs(args []value) {
 	}
 }
 
-func mathMinMax(name string, args []value, isMax bool) (value, error) {
-	// Coerce Number → Length/Angle so mixed calls like Min(5 mm, 0) work.
-	coerceNumericArgs(args)
-	switch a := args[0].(type) {
-	case length:
-		b, ok := args[1].(length)
-		if !ok {
-			return nil, fmt.Errorf("%s() arguments must be the same type, got %s and %s", name, typeName(args[0]), typeName(args[1]))
-		}
-		if isMax {
-			if a.mm > b.mm {
-				return a, nil
-			}
-			return b, nil
-		}
-		if a.mm < b.mm {
-			return a, nil
-		}
-		return b, nil
-	case float64:
-		bn, ok := args[1].(float64)
-		if !ok {
-			return nil, fmt.Errorf("%s() arguments must be the same type, got %s and %s", name, typeName(args[0]), typeName(args[1]))
-		}
-		if isMax {
-			if a > bn {
-				return a, nil
-			}
-			return bn, nil
-		}
-		if a < bn {
-			return a, nil
-		}
-		return bn, nil
-	case angle:
-		b, ok := args[1].(angle)
-		if !ok {
-			return nil, fmt.Errorf("%s() arguments must be the same type, got %s and %s", name, typeName(args[0]), typeName(args[1]))
-		}
-		if isMax {
-			if a.deg > b.deg {
-				return a, nil
-			}
-			return b, nil
-		}
-		if a.deg < b.deg {
-			return a, nil
-		}
-		return b, nil
-	default:
-		return nil, fmt.Errorf("%s() arguments must be numeric, got %s", name, typeName(args[0]))
-	}
-}
-
-func mathAbs(v value) (value, error) {
-	switch a := v.(type) {
-	case length:
-		return length{mm: math.Abs(a.mm)}, nil
-	case float64:
-		return math.Abs(a), nil
-	case angle:
-		return angle{deg: math.Abs(a.deg)}, nil
-	default:
-		return nil, fmt.Errorf("Abs() argument must be numeric, got %s", typeName(v))
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Trig builtins
-// ---------------------------------------------------------------------------
-
-func builtinSin(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_sin() expects 1 argument, got %d", len(args))
-	}
-	deg, err := requireAngle("_sin", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Sin(deg * math.Pi / 180), nil
-}
-
-func builtinCos(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_cos() expects 1 argument, got %d", len(args))
-	}
-	deg, err := requireAngle("_cos", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Cos(deg * math.Pi / 180), nil
-}
-
-func builtinTan(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_tan() expects 1 argument, got %d", len(args))
-	}
-	deg, err := requireAngle("_tan", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Tan(deg * math.Pi / 180), nil
-}
-
-func builtinAsin(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_asin() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_asin", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	if n < -1 || n > 1 {
-		return nil, fmt.Errorf("_asin() argument out of range [-1, 1]: %g", n)
-	}
-	return angle{deg: math.Asin(n) * 180 / math.Pi}, nil
-}
-
-func builtinAcos(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_acos() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_acos", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	if n < -1 || n > 1 {
-		return nil, fmt.Errorf("_acos() argument out of range [-1, 1]: %g", n)
-	}
-	return angle{deg: math.Acos(n) * 180 / math.Pi}, nil
-}
-
-func builtinAtan2(_ *evaluator, args []value) (value, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("_atan2() expects 2 arguments, got %d", len(args))
-	}
-	y, err := requireNumber("_atan2", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	x, err := requireNumber("_atan2", 2, args[1])
-	if err != nil {
-		return nil, err
-	}
-	return angle{deg: math.Atan2(y, x) * 180 / math.Pi}, nil
-}
-
-// ---------------------------------------------------------------------------
-// Math builtins (wrapped for registry)
-// ---------------------------------------------------------------------------
-
-func builtinMin(args []value) (value, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("_min() expects 2 arguments, got %d", len(args))
-	}
-	return mathMinMax("_min", args, false)
-}
-
-func builtinMax(args []value) (value, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("_max() expects 2 arguments, got %d", len(args))
-	}
-	return mathMinMax("_max", args, true)
-}
-
-func builtinAbs(args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_abs() expects 1 argument, got %d", len(args))
-	}
-	return mathAbs(args[0])
-}
-
-func builtinSqrt(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_sqrt() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_sqrt", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Sqrt(n), nil
-}
-
-func builtinPow(_ *evaluator, args []value) (value, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("_pow() expects 2 arguments, got %d", len(args))
-	}
-	base, err := requireNumber("_pow", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	exp, err := requireNumber("_pow", 2, args[1])
-	if err != nil {
-		return nil, err
-	}
-	return math.Pow(base, exp), nil
-}
-
-func builtinFloor(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_floor() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_floor", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Floor(n), nil
-}
-
-func builtinCeil(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_ceil() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_ceil", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Ceil(n), nil
-}
-
-func builtinRound(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_round() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_round", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Round(n), nil
-}
-
-func builtinLerp(args []value) (value, error) {
-	if len(args) != 3 {
-		return nil, fmt.Errorf("_lerp() expects 3 arguments, got %d", len(args))
-	}
-	return mathLerp(args)
-}
-
-// ---------------------------------------------------------------------------
-// Conversion builtins
-// ---------------------------------------------------------------------------
-
-func builtinString(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_string() expects 1 argument, got %d", len(args))
-	}
-	switch v := args[0].(type) {
-	case string:
-		return v, nil
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64), nil
-	case length:
-		return strconv.FormatFloat(v.mm, 'f', -1, 64), nil
-	case angle:
-		return strconv.FormatFloat(v.deg, 'f', -1, 64), nil
-	case bool:
-		if v {
-			return "true", nil
-		}
-		return "false", nil
-	default:
-		return nil, fmt.Errorf("_string() expects Length, Angle, Number, Bool, or String, got %s", typeName(args[0]))
-	}
-}
-
-func builtinNumber(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_number() expects 1 argument, got %d", len(args))
-	}
-	switch v := args[0].(type) {
-	case length:
-		return v.mm, nil
-	case angle:
-		return v.deg, nil
-	case float64:
-		return v, nil
-	case string:
-		n, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return nil, fmt.Errorf("_number() cannot parse %q as a number", v)
-		}
-		return n, nil
-	default:
-		return nil, fmt.Errorf("_number() expects Length, Angle, Number, or String, got %s", typeName(args[0]))
-	}
-}
-
-func builtinSize(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_size() expects 1 argument, got %d", len(args))
-	}
-	switch v := args[0].(type) {
-	case array:
-		return float64(len(v.elems)), nil
-	case string:
-		return float64(len([]rune(v))), nil
-	default:
-		return nil, fmt.Errorf("_size() expects Array or String, got %s", typeName(args[0]))
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Time builtins
-// ---------------------------------------------------------------------------
-
-func builtinUtcDate(_ *evaluator, args []value) (value, error) {
-	if len(args) != 0 {
-		return nil, fmt.Errorf("_utc_date() expects 0 arguments, got %d", len(args))
-	}
-	return time.Now().UTC().Format("1/2/2006"), nil
-}
-
-func builtinUtcTime(_ *evaluator, args []value) (value, error) {
-	if len(args) != 0 {
-		return nil, fmt.Errorf("_utc_time() expects 0 arguments, got %d", len(args))
-	}
-	return time.Now().UTC().Format("15:04:05"), nil
-}
 
 // ---------------------------------------------------------------------------
 // SolidFromMesh builtin (moved from eval_call.go)
@@ -930,6 +611,20 @@ func init() {
 		"_text":            func(e *evaluator, args []value) (value, error) { return e.builtinNewText(args) },
 		"_solid_from_mesh": func(e *evaluator, args []value) (value, error) { return e.builtinSolidFromMesh(args) },
 		// Callback-based operations (require init to avoid init cycle via callFunctionVal → evalCall)
+		// ---------------------------------------------------------------------------
+		// Method builtins (former self.method() calls, now free functions)
+		// ---------------------------------------------------------------------------
+
+		// Solid methods, Solid+Sketch shared methods, and Sketch-only _fillet/_chamfer
+		// are registered in eval_builtins_solid.go init().
+
+		// Sketch-only methods (_rotate_origin, _offset, _extrude, _area, _revolve, _sweep)
+		// are registered in eval_builtins_sketch.go init().
+		// String methods are registered in eval_builtins_string.go init().
+		// _split is registered in eval_builtins_solid.go init() (handles both String and Solid).
+
+		// Struct methods (Mesh, PolyMesh, Color) are registered in eval_builtins_struct.go init().
+
 		"_level_set": func(e *evaluator, args []value) (value, error) {
 			if len(args) != 3 {
 				return nil, fmt.Errorf("_level_set() expects 3 arguments (fn, Box, Length), got %d", len(args))
@@ -1014,4 +709,246 @@ func mathLerp(args []value) (value, error) {
 	default:
 		return nil, fmt.Errorf("Lerp() arguments must be numeric, got %s", typeName(args[0]))
 	}
+}
+
+// polyMeshToStructVal converts a Go *manifold.PolyMesh to a language-level structVal.
+func polyMeshToStructVal(pm *manifold.PolyMesh) *structVal {
+	nv := len(pm.Vertices) / 3
+	vertElems := make([]value, nv)
+	for i := 0; i < nv; i++ {
+		vertElems[i] = makePtVecStruct3("Vec3", pm.Vertices[i*3], pm.Vertices[i*3+1], pm.Vertices[i*3+2])
+	}
+	faceElems := make([]value, len(pm.Faces))
+	for i, face := range pm.Faces {
+		idxElems := make([]value, len(face))
+		for j, idx := range face {
+			idxElems[j] = float64(idx)
+		}
+		faceElems[i] = array{elems: idxElems, elemType: "Number"}
+	}
+	return &structVal{
+		typeName: "PolyMesh",
+		fields: map[string]value{
+			"vertices": array{elems: vertElems, elemType: "Vec3"},
+			"faces":    array{elems: faceElems, elemType: "Array"},
+		},
+	}
+}
+
+// structValToPolyMesh converts a language-level PolyMesh structVal to a Go *manifold.PolyMesh.
+func structValToPolyMesh(sv *structVal) (*manifold.PolyMesh, error) {
+	vertsArr, ok := sv.fields["vertices"].(array)
+	if !ok {
+		return nil, fmt.Errorf("PolyMesh.vertices must be []Vec3")
+	}
+	facesArr, ok := sv.fields["faces"].(array)
+	if !ok {
+		return nil, fmt.Errorf("PolyMesh.faces must be Number[][]")
+	}
+	vertices := make([]float64, len(vertsArr.elems)*3)
+	for i, v := range vertsArr.elems {
+		px, py, pz, ok := extractVec3(v)
+		if !ok {
+			return nil, fmt.Errorf("PolyMesh.vertices[%d] must be Vec3, got %s", i, typeName(v))
+		}
+		vertices[i*3+0] = px
+		vertices[i*3+1] = py
+		vertices[i*3+2] = pz
+	}
+	faces := make([][]int, len(facesArr.elems))
+	for i, v := range facesArr.elems {
+		faceArr, ok := v.(array)
+		if !ok {
+			return nil, fmt.Errorf("PolyMesh.faces[%d] must be Number[], got %s", i, typeName(v))
+		}
+		face := make([]int, len(faceArr.elems))
+		for j, idx := range faceArr.elems {
+			n, err := requireNumber("PolyMesh.faces", j+1, idx)
+			if err != nil {
+				return nil, err
+			}
+			face[j] = int(n)
+		}
+		faces[i] = face
+	}
+	return &manifold.PolyMesh{Vertices: vertices, Faces: faces}, nil
+}
+
+func meshFaceNormals(sv *structVal, args []value) (value, error) {
+	const name = "_face_normals"
+	if len(args) != 0 {
+		return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
+	}
+	vertsArr, ok := sv.fields["vertices"].(array)
+	if !ok {
+		return nil, fmt.Errorf("%s() requires vertices field to be an Array", name)
+	}
+	indicesArr, ok := sv.fields["indices"].(array)
+	if !ok {
+		return nil, fmt.Errorf("%s() requires indices field to be an Array", name)
+	}
+
+	// Extract vertices as float64 triples
+	verts := make([][3]float64, len(vertsArr.elems))
+	for i, v := range vertsArr.elems {
+		px, py, pz, ok := extractVec3(v)
+		if !ok {
+			return nil, fmt.Errorf("%s() vertex %d is %s, expected Vec3", name, i, typeName(v))
+		}
+		verts[i] = [3]float64{px, py, pz}
+	}
+
+	// Compute face normals
+	normals := make([]value, len(indicesArr.elems))
+	for i, v := range indicesArr.elems {
+		face, ok := v.(*structVal)
+		if !ok {
+			return nil, fmt.Errorf("%s() index %d is %s, expected Face struct", name, i, typeName(v))
+		}
+		v0, ok0 := face.fields["v0"].(float64)
+		v1, ok1 := face.fields["v1"].(float64)
+		v2, ok2 := face.fields["v2"].(float64)
+		if !ok0 || !ok1 || !ok2 {
+			return nil, fmt.Errorf("%s() face %d has non-numeric vertex indices", name, i)
+		}
+		i0 := int(v0)
+		i1 := int(v1)
+		i2 := int(v2)
+		if i0 < 0 || i0 >= len(verts) || i1 < 0 || i1 >= len(verts) || i2 < 0 || i2 >= len(verts) {
+			return nil, fmt.Errorf("%s() face %d has out-of-bounds vertex index", name, i)
+		}
+		p0, p1, p2 := verts[i0], verts[i1], verts[i2]
+		// Edge vectors
+		e1x, e1y, e1z := p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]
+		e2x, e2y, e2z := p2[0]-p0[0], p2[1]-p0[1], p2[2]-p0[2]
+		// Cross product
+		nx := e1y*e2z - e1z*e2y
+		ny := e1z*e2x - e1x*e2z
+		nz := e1x*e2y - e1y*e2x
+		// Normalize
+		ln := math.Sqrt(nx*nx + ny*ny + nz*nz)
+		if ln > 0 {
+			nx, ny, nz = nx/ln, ny/ln, nz/ln
+		}
+		normals[i] = makePtVecStruct3("Vec3", nx, ny, nz)
+	}
+	return array{elems: normals, elemType: "Vec3"}, nil
+}
+
+func meshVertexNormals(sv *structVal, args []value) (value, error) {
+	const name = "_vertex_normals"
+	if len(args) != 0 {
+		return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
+	}
+	vertsArr, ok := sv.fields["vertices"].(array)
+	if !ok {
+		return nil, fmt.Errorf("%s() requires vertices field to be an Array", name)
+	}
+	indicesArr, ok := sv.fields["indices"].(array)
+	if !ok {
+		return nil, fmt.Errorf("%s() requires indices field to be an Array", name)
+	}
+	numVerts := len(vertsArr.elems)
+
+	// Extract vertices
+	verts := make([][3]float64, numVerts)
+	for i, v := range vertsArr.elems {
+		px, py, pz, ok := extractVec3(v)
+		if !ok {
+			return nil, fmt.Errorf("%s() vertex %d is %s, expected Vec3", name, i, typeName(v))
+		}
+		verts[i] = [3]float64{px, py, pz}
+	}
+
+	// Accumulate face normals per vertex
+	acc := make([][3]float64, numVerts)
+	for fi, v := range indicesArr.elems {
+		face, ok := v.(*structVal)
+		if !ok {
+			return nil, fmt.Errorf("%s() index %d is %s, expected Face struct", name, fi, typeName(v))
+		}
+		fv0, ok0 := face.fields["v0"].(float64)
+		fv1, ok1 := face.fields["v1"].(float64)
+		fv2, ok2 := face.fields["v2"].(float64)
+		if !ok0 || !ok1 || !ok2 {
+			return nil, fmt.Errorf("%s() face %d has non-numeric vertex indices", name, fi)
+		}
+		i0 := int(fv0)
+		i1 := int(fv1)
+		i2 := int(fv2)
+		if i0 < 0 || i0 >= numVerts || i1 < 0 || i1 >= numVerts || i2 < 0 || i2 >= numVerts {
+			return nil, fmt.Errorf("%s() face %d has out-of-bounds vertex index", name, fi)
+		}
+		p0, p1, p2 := verts[i0], verts[i1], verts[i2]
+		e1x, e1y, e1z := p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]
+		e2x, e2y, e2z := p2[0]-p0[0], p2[1]-p0[1], p2[2]-p0[2]
+		nx := e1y*e2z - e1z*e2y
+		ny := e1z*e2x - e1x*e2z
+		nz := e1x*e2y - e1y*e2x
+		ln := math.Sqrt(nx*nx + ny*ny + nz*nz)
+		if ln > 0 {
+			nx, ny, nz = nx/ln, ny/ln, nz/ln
+		}
+		acc[i0][0] += nx; acc[i0][1] += ny; acc[i0][2] += nz
+		acc[i1][0] += nx; acc[i1][1] += ny; acc[i1][2] += nz
+		acc[i2][0] += nx; acc[i2][1] += ny; acc[i2][2] += nz
+	}
+
+	// Normalize per-vertex normals
+	normals := make([]value, numVerts)
+	for i, a := range acc {
+		ln := math.Sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2])
+		if ln > 0 {
+			normals[i] = makePtVecStruct3("Vec3", a[0]/ln, a[1]/ln, a[2]/ln)
+		} else {
+			normals[i] = makePtVecStruct3("Vec3", 0, 0, 0)
+		}
+	}
+	return array{elems: normals, elemType: "Vec3"}, nil
+}
+
+// clampByte converts a 0-1 float to a 0-255 int, clamping to [0, 255].
+func clampByte(f float64) int {
+	v := int(f*255 + 0.5)
+	if v < 0 {
+		return 0
+	}
+	if v > 255 {
+		return 255
+	}
+	return v
+}
+
+// parseHexColor parses "#RGB" or "#RRGGBB" to float64 r, g, b in 0-1.
+func parseHexColor(s string) (float64, float64, float64, error) {
+	r, g, b, _, err := parseHexColorRGBA(s)
+	return r, g, b, err
+}
+
+// parseHexColorRGBA parses "#RGB", "#RRGGBB", or "#RRGGBBAA" to float64 r, g, b, a in 0-1.
+func parseHexColorRGBA(s string) (float64, float64, float64, float64, error) {
+	s = strings.TrimPrefix(s, "#")
+	var r, g, b, a uint8
+	a = 255
+	switch len(s) {
+	case 3:
+		_, err := fmt.Sscanf(s, "%1x%1x%1x", &r, &g, &b)
+		if err != nil {
+			return 0, 0, 0, 0, fmt.Errorf("invalid hex color %q", s)
+		}
+		r, g, b = r*17, g*17, b*17
+	case 6:
+		_, err := fmt.Sscanf(s, "%02x%02x%02x", &r, &g, &b)
+		if err != nil {
+			return 0, 0, 0, 0, fmt.Errorf("invalid hex color %q", s)
+		}
+	case 8:
+		_, err := fmt.Sscanf(s, "%02x%02x%02x%02x", &r, &g, &b, &a)
+		if err != nil {
+			return 0, 0, 0, 0, fmt.Errorf("invalid hex color %q", s)
+		}
+	default:
+		return 0, 0, 0, 0, fmt.Errorf("hex color must be 3, 6, or 8 digits, got %q", s)
+	}
+	return float64(r) / 255, float64(g) / 255, float64(b) / 255, float64(a) / 255, nil
 }

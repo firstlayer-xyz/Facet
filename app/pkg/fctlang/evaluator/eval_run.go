@@ -14,7 +14,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 	e.stdFuncs = nil
 	e.stdMethods = make(map[string][]*parser.Function)
 	if stdSrc := e.prog.Std(); stdSrc != nil {
-		for _, fn := range stdSrc.Functions {
+		for _, fn := range stdSrc.Functions() {
 			if fn.ReceiverType != "" {
 				e.stdMethods[fn.ReceiverType] = append(e.stdMethods[fn.ReceiverType], fn)
 			} else {
@@ -37,7 +37,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 
 	// Evaluate stdlib globals (PI, TAU, E, etc.)
 	if stdSrc := e.prog.Std(); stdSrc != nil {
-		for _, g := range stdSrc.Globals {
+		for _, g := range stdSrc.Globals() {
 			v, err := e.evalExpr(g.Value, e.globals)
 			if err != nil {
 				return nil, fmt.Errorf("stdlib: %v", err)
@@ -51,7 +51,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 	}
 
 	currentSrc := e.prog.Sources[e.currentKey]
-	for _, g := range currentSrc.Globals {
+	for _, g := range currentSrc.Globals() {
 		if ov, ok := e.overrides[g.Name]; ok && g.Constraint != nil {
 			e.globals[g.Name] = ov
 		} else {
@@ -84,7 +84,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 		// (e.g. "T.Config") so namespace collisions are avoided.
 		if lv, ok := unwrap(e.globals[g.Name]).(*libRef); ok {
 			if lvSrc := e.prog.Sources[e.prog.Resolve(lv.path)]; lvSrc != nil {
-				for _, sd := range lvSrc.StructDecls {
+				for _, sd := range lvSrc.StructDecls() {
 					e.structDecls[g.Name+"."+sd.Name] = sd
 				}
 			}
@@ -93,7 +93,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 
 	// Find entry point function
 	var entryFn *parser.Function
-	for _, fn := range currentSrc.Functions {
+	for _, fn := range currentSrc.Functions() {
 		if fn.Name == e.entryPoint {
 			entryFn = fn
 			break

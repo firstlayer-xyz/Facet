@@ -208,6 +208,9 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 	case *parser.CallExpr:
 		return c.checkCall(ex, env)
 
+	case *parser.BuiltinCallExpr:
+		return c.checkBuiltinCall(ex, env)
+
 	case *parser.MethodCallExpr:
 		return c.checkMethodCall(ex, env)
 
@@ -458,7 +461,7 @@ func (c *checker) resolveStructName(expr parser.Expr, env *typeEnv) string {
 		return ex.TypeName
 	case *parser.CallExpr:
 		// Check user functions for return type matching struct
-		for _, fn := range c.prog.Sources[c.currentSrcKey].Functions {
+		for _, fn := range c.prog.Sources[c.currentSrcKey].Functions() {
 			if fn.Name == ex.Name && fn.ReceiverType == "" {
 				if _, ok := c.structDecls[fn.ReturnType]; ok {
 					return fn.ReturnType
@@ -485,7 +488,7 @@ func (c *checker) resolveStructName(expr parser.Expr, env *typeEnv) string {
 				if libPath, ok := c.libVarToPath[ident.Name]; ok {
 					libSrc := c.prog.Sources[c.prog.Resolve(libPath)]
 					if libSrc != nil {
-						for _, fn := range libSrc.Functions {
+						for _, fn := range libSrc.Functions() {
 							if fn.Name == ex.Method && fn.ReceiverType == "" {
 								if fn.ReturnType != "" && typeFromName(fn.ReturnType) == typeUnknown {
 									// If return type is already qualified (e.g. "K.Knurl"
@@ -520,7 +523,7 @@ func (c *checker) resolveStructName(expr parser.Expr, env *typeEnv) string {
 		}
 		if recvTypeName != "" {
 			// Check user-defined methods — match receiver type directly
-			for _, fn := range c.prog.Sources[c.currentSrcKey].Functions {
+			for _, fn := range c.prog.Sources[c.currentSrcKey].Functions() {
 				if fn.ReceiverType == recvTypeName && fn.Name == ex.Method {
 					if qn := c.qualifyStructType(recvTypeName, fn.ReturnType); qn != "" {
 						return qn

@@ -291,7 +291,7 @@ func buildOpFuncs(prog loader.Program, currentKey string) map[opFuncKey]*parser.
 	m := make(map[opFuncKey]*parser.Function)
 	// Register stdlib operator functions
 	if stdSrc := prog.Std(); stdSrc != nil {
-		for _, fn := range stdSrc.Functions {
+		for _, fn := range stdSrc.Functions() {
 			if !fn.IsOperator {
 				continue
 			}
@@ -300,7 +300,7 @@ func buildOpFuncs(prog loader.Program, currentKey string) map[opFuncKey]*parser.
 	}
 	// Register current source operator functions (override stdlib)
 	if src := prog.Sources[currentKey]; src != nil {
-		for _, fn := range src.Functions {
+		for _, fn := range src.Functions() {
 			if !fn.IsOperator {
 				continue
 			}

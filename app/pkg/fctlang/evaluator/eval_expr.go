@@ -40,6 +40,9 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 	case *parser.CallExpr:
 		return e.evalCall(ex, locals)
 
+	case *parser.BuiltinCallExpr:
+		return e.evalBuiltinCall(ex, locals)
+
 	case *parser.MethodCallExpr:
 		return e.evalMethodCall(ex, locals)
 

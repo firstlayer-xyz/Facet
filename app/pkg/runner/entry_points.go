@@ -102,7 +102,7 @@ func getEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) 
 	}
 
 	for srcKey, src := range prog.Sources {
-		for _, fn := range src.Functions {
+		for _, fn := range src.Functions() {
 			collect(fn, srcKey, "")
 		}
 	}

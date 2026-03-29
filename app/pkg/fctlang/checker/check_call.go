@@ -29,6 +29,14 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 		argTypes[i] = c.inferExpr(arg, env)
 	}
 
+	// Require named arguments for all function calls
+	for _, arg := range call.Args {
+		if _, ok := arg.(*parser.NamedArg); !ok {
+			c.addError(call.Pos, fmt.Sprintf("%s() arguments must be named (e.g. name: value)", call.Name))
+			return unknown()
+		}
+	}
+
 	// Check if the callee is a function-typed variable (e.g., lambda in scope)
 	if varType, ok := env.lookup(call.Name); ok && varType.ft == typeFunc {
 		// Validate arg count
@@ -51,7 +59,7 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 
 	// Check user-defined functions (type-based overload resolution)
 	userCandidates, userFallback := parser.CollectCandidates(
-		c.prog.Sources[c.currentSrcKey].Functions, call.Name, len(argTypes), true)
+		c.prog.Sources[c.currentSrcKey].Functions(), call.Name, len(argTypes), true)
 	if len(userCandidates) == 1 {
 		return c.checkFuncArgs(call.Name, call.Pos, userCandidates[0], call.Args, argTypes)
 	} else if len(userCandidates) > 1 {
@@ -83,6 +91,17 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 	}
 	if fb != nil {
 		return c.checkFuncArgs(call.Name, call.Pos, fb, call.Args, argTypes)
+	}
+
+	c.addError(call.Pos, fmt.Sprintf("unknown function %q", call.Name))
+	return unknown()
+}
+
+// checkBuiltinCall checks an internal _-prefixed builtin call and returns its inferred return type.
+func (c *checker) checkBuiltinCall(call *parser.BuiltinCallExpr, env *typeEnv) typeInfo {
+	argTypes := make([]typeInfo, len(call.Args))
+	for i, arg := range call.Args {
+		argTypes[i] = c.inferExpr(arg, env)
 	}
 
 	// Check builtin signatures
@@ -186,10 +205,6 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 		return simple(typeSketch)
 	}
 
-	// Internal _-prefixed builtins are not tracked by the checker — skip silently.
-	if !strings.HasPrefix(call.Name, "_") {
-		c.addError(call.Pos, fmt.Sprintf("unknown function %q", call.Name))
-	}
 	return unknown()
 }
 
@@ -463,7 +478,7 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 				libSrc := c.prog.Sources[c.prog.Resolve(libPath)]
 				// Collect candidates by name and arg count, then use type-based resolution
 				var libCandidates []*parser.Function
-				for _, fn := range libSrc.Functions {
+				for _, fn := range libSrc.Functions() {
 					if fn.Name == mc.Method && fn.ReceiverType == "" && fn.ArgsInRange(len(argTypes)) {
 						libCandidates = append(libCandidates, fn)
 					}
@@ -530,7 +545,7 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 		}
 		// Check user-defined methods — type-based overload resolution
 		var structMethodCandidates []*parser.Function
-		for _, fn := range c.prog.Sources[c.currentSrcKey].Functions {
+		for _, fn := range c.prog.Sources[c.currentSrcKey].Functions() {
 			if fn.ReceiverType == structName && fn.Name == mc.Method && fn.ArgsInRange(len(argTypes)) {
 				structMethodCandidates = append(structMethodCandidates, fn)
 			}
@@ -566,7 +581,7 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 		// Method exists but with wrong arity?
 		if c.methodExistsAnyArity(structName, mc.Method) {
 			c.addError(mc.Pos, fmt.Sprintf("%s.%s() expects a different number of arguments (got %d)", bareStructName(structName), mc.Method, len(argTypes)))
-		} else if !strings.HasPrefix(mc.Method, "_") {
+		} else {
 			c.addError(mc.Pos, fmt.Sprintf("%s has no method %q", bareStructName(structName), mc.Method))
 		}
 		return unknown()
@@ -592,16 +607,14 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 		}
 	}
 
-	if !strings.HasPrefix(mc.Method, "_") {
-		c.addError(mc.Pos, fmt.Sprintf("%s has no method %q", recvTypeName, mc.Method))
-	}
+	c.addError(mc.Pos, fmt.Sprintf("%s has no method %q", recvTypeName, mc.Method))
 	return unknown()
 }
 
 // methodExistsAnyArity returns true if any function with the given receiver type
 // and method name exists, regardless of arity. Used for better error messages.
 func (c *checker) methodExistsAnyArity(receiverType, method string) bool {
-	for _, fn := range c.prog.Sources[c.currentSrcKey].Functions {
+	for _, fn := range c.prog.Sources[c.currentSrcKey].Functions() {
 		if fn.ReceiverType == receiverType && fn.Name == method {
 			return true
 		}
@@ -898,7 +911,6 @@ const (
 func (c *checker) findOverload(candidates []*parser.Function, argTypes []typeInfo) *parser.Function {
 	bestScore := -1
 	var bestFn *parser.Function
-	tied := false
 
 	for _, fn := range candidates {
 		score := 0
@@ -932,13 +944,7 @@ func (c *checker) findOverload(candidates []*parser.Function, argTypes []typeInf
 		if score > bestScore {
 			bestScore = score
 			bestFn = fn
-			tied = false
-		} else if score == bestScore {
-			tied = true
 		}
-	}
-	if tied {
-		return nil // ambiguous
 	}
 	return bestFn
 }

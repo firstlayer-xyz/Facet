@@ -54,7 +54,7 @@ func (e *evaluator) evalLibExpr(ex *parser.LibExpr) (value, error) {
 	libEval.currentLib = lv
 	// Seed stdlib globals (PI, TAU, E, etc.) so library code can reference them
 	if stdSrc := e.prog.Std(); stdSrc != nil {
-		for _, g := range stdSrc.Globals {
+		for _, g := range stdSrc.Globals() {
 			v, err := libEval.evalExpr(g.Value, libEval.globals)
 			if err != nil {
 				return nil, e.errAt(ex.Pos, "stdlib: %v", err)
@@ -62,7 +62,7 @@ func (e *evaluator) evalLibExpr(ex *parser.LibExpr) (value, error) {
 			libEval.globals[g.Name] = v
 		}
 	}
-	for _, g := range libSrc.Globals {
+	for _, g := range libSrc.Globals() {
 		v, err := libEval.evalExpr(g.Value, libEval.globals)
 		if err != nil {
 			return nil, e.errAt(ex.Pos, "library %q: %v", ex.Path, err)
@@ -71,7 +71,7 @@ func (e *evaluator) evalLibExpr(ex *parser.LibExpr) (value, error) {
 		// Register imported library struct declarations with qualified names
 		if ilv, ok := v.(*libRef); ok {
 			if ilvSrc := e.prog.Sources[e.prog.Resolve(ilv.path)]; ilvSrc != nil {
-				for _, sd := range ilvSrc.StructDecls {
+				for _, sd := range ilvSrc.StructDecls() {
 					libEval.structDecls[g.Name+"."+sd.Name] = sd
 				}
 			}

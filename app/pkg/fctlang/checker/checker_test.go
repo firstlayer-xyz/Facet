@@ -513,7 +513,7 @@ func TestCheckArgTypeMismatch(t *testing.T) {
 fn Main() {
     return Cylinder(bottom: 45 deg, top: 10 mm, height: 5 mm);
 }
-`, "must be Length, got Angle")
+`, "no matching overload for Cylinder")
 }
 
 func TestCheckOperatorTypeMismatch(t *testing.T) {
@@ -1789,7 +1789,7 @@ fn Config.GetHeight() Length {
 	// Phase 1: register struct declarations with qualified names only
 	for _, entry := range []struct{ name, path string }{{"A", "fake/libA"}, {"B", "fake/libB"}} {
 		libProg := prog.Sources[entry.path]
-		for _, sd := range libProg.StructDecls {
+		for _, sd := range libProg.StructDecls() {
 			qualified := entry.name + "." + sd.Name
 			c.structDecls[qualified] = sd
 		}
@@ -1797,7 +1797,7 @@ fn Config.GetHeight() Length {
 	// Phase 2: register methods with qualified receiver names only
 	for _, entry := range []struct{ name, path string }{{"A", "fake/libA"}, {"B", "fake/libB"}} {
 		libProg := prog.Sources[entry.path]
-		for _, fn := range libProg.Functions {
+		for _, fn := range libProg.Functions() {
 			if fn.ReceiverType != "" {
 				qualified := entry.name + "." + fn.ReceiverType
 				c.stdMethods[qualified] = append(c.stdMethods[qualified], fn)
@@ -1805,7 +1805,7 @@ fn Config.GetHeight() Length {
 		}
 	}
 
-	env := c.seedGlobalEnv()
+	env := c.newStdEnv()
 	env.set("A", simple(typeLibrary))
 	env.set("B", simple(typeLibrary))
 	return c, env
@@ -1962,18 +1962,18 @@ fn Widget.GetSize() Length {
 	c.inferredReturnStructs = make(map[string]string)
 	c.libVarToPath["T"] = "fake/lib"
 
-	for _, sd := range libProg.StructDecls {
+	for _, sd := range libProg.StructDecls() {
 		qualified := "T." + sd.Name
 		c.structDecls[qualified] = sd
 	}
-	for _, fn := range libProg.Functions {
+	for _, fn := range libProg.Functions() {
 		if fn.ReceiverType != "" {
 			qualified := "T." + fn.ReceiverType
 			c.stdMethods[qualified] = append(c.stdMethods[qualified], fn)
 		}
 	}
 
-	env := c.seedGlobalEnv()
+	env := c.newStdEnv()
 	env.set("T", simple(typeLibrary))
 	return c, env
 }
@@ -2090,8 +2090,8 @@ func TestArrayTypeInference(t *testing.T) {
 			c.currentSrcKey = testMainKey
 			c.inferredReturns = make(map[string]typeInfo)
 			c.inferredReturnStructs = make(map[string]string)
-			env := c.seedGlobalEnv()
-			for _, g := range prog.Sources[testMainKey].Globals {
+			env := c.newStdEnv()
+			for _, g := range prog.Sources[testMainKey].Globals() {
 				ti := c.inferExpr(g.Value, env)
 				env.set(g.Name, ti)
 				c.recordVarType(g.Name, env)

@@ -293,7 +293,7 @@ fn Main() {
     return Cube(size: Vec3{x: 10, y: 10, z: 10})
 }
 `)
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(fn.Body))
 	}
@@ -309,7 +309,7 @@ fn Main() {
     return Cube(size: Vec3{x: x, y: x, z: x})
 }
 `)
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 2 {
 		t.Fatalf("expected 2 statements, got %d", len(fn.Body))
 	}
@@ -325,7 +325,7 @@ fn Main() {
     Cube(size: Vec3{x: 10, y: 10, z: 10})
 }
 `)
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(fn.Body))
 	}
@@ -341,7 +341,7 @@ fn Main() {
     Cube(size: Vec3{x: 10, y: 10, z: 10});
 }
 `)
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if _, ok := fn.Body[0].(*ExprStmt); !ok {
 		t.Fatalf("expected ast.ExprStmt, got %T", fn.Body[0])
 	}
@@ -356,7 +356,7 @@ fn Main() {
     Cube(size: Vec3{x: a, y: b, z: c})
 }
 `)
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 4 {
 		t.Fatalf("expected 4 statements, got %d", len(fn.Body))
 	}
@@ -370,11 +370,11 @@ fn Main() {
     Cube(size: Vec3{x: size, y: size, z: size})
 }
 `)
-	if len(prog.Globals) != 1 {
-		t.Fatalf("expected 1 global, got %d", len(prog.Globals))
+	if len(prog.Globals()) != 1 {
+		t.Fatalf("expected 1 global, got %d", len(prog.Globals()))
 	}
-	if prog.Globals[0].Name != "size" {
-		t.Errorf("global name = %q, want size", prog.Globals[0].Name)
+	if prog.Globals()[0].Name != "size" {
+		t.Errorf("global name = %q, want size", prog.Globals()[0].Name)
 	}
 }
 
@@ -409,7 +409,7 @@ fn Main() {
     }
 }
 `)
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 1 {
 		t.Fatalf("expected 1 statement, got %d", len(fn.Body))
 	}
@@ -479,10 +479,10 @@ fn Main() {
     Cube(size: Vec3{x: 1, y: 1, z: 1})
 }
 `)
-	if len(prog.StructDecls) != 1 {
-		t.Fatalf("expected 1 struct decl, got %d", len(prog.StructDecls))
+	if len(prog.StructDecls()) != 1 {
+		t.Fatalf("expected 1 struct decl, got %d", len(prog.StructDecls()))
 	}
-	sd := prog.StructDecls[0]
+	sd := prog.StructDecls()[0]
 	if len(sd.Fields) != 2 {
 		t.Fatalf("expected 2 fields, got %d", len(sd.Fields))
 	}
@@ -500,7 +500,7 @@ fn Main() {
         .Translate(v: Vec3{x: 0, y: 0, z: 5})
 }
 `)
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	es := fn.Body[0].(*ExprStmt)
 	if _, ok := es.Expr.(*MethodCallExpr); !ok {
 		t.Fatalf("expected ast.MethodCallExpr (chain), got %T", es.Expr)
@@ -649,7 +649,7 @@ fn Main() {
     return Cube(size: Vec3{x: 1, y: 1, z: 1})
 }
 `)
-	fn := prog.Functions[0]
+	fn := prog.Functions()[0]
 	if len(fn.Body) != 2 {
 		t.Fatalf("expected 2 statements, got %d", len(fn.Body))
 	}

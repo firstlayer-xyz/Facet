@@ -137,7 +137,7 @@ func (r *ProgramRunner) PruneSources(openTabs []string) {
 		if src == nil {
 			return
 		}
-		for _, g := range src.Globals {
+		for _, g := range src.Globals() {
 			if le, ok := g.Value.(*parser.LibExpr); ok {
 				if dp, ok := r.prog.Imports[le.Path]; ok {
 					walk(dp)
@@ -296,7 +296,7 @@ func (r *ProgramRunner) doUpdateSource(ctx context.Context, key string, source s
 		r.progMu.Lock()
 		activeImports := make(map[string]string)
 		for _, s := range r.prog.Sources {
-			for _, g := range s.Globals {
+			for _, g := range s.Globals() {
 				if le, ok := g.Value.(*parser.LibExpr); ok {
 					if diskPath, resolved := r.prog.Imports[le.Path]; resolved {
 						activeImports[le.Path] = diskPath

@@ -300,7 +300,7 @@ func (e *evaluator) isAccessibleType(typeName string) bool {
 			libName := typeName[:dotIdx]
 			bareName := typeName[dotIdx+1:]
 			if lv, ok := e.resolveLibraryVar(libName); ok {
-				for _, sd := range e.prog.Sources[e.prog.Resolve(lv.path)].StructDecls {
+				for _, sd := range e.prog.Sources[e.prog.Resolve(lv.path)].StructDecls() {
 					if sd.Name == bareName {
 						return true
 					}

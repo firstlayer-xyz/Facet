@@ -4,7 +4,6 @@ package formatter
 import (
 	"fmt"
 	"math"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -95,39 +94,17 @@ func (f *formatter) measureMethodTail(e *parser.MethodCallExpr) int {
 	return m.buf.Len()
 }
 
-// topLevelItem wraps globals, functions, and struct decls for sorting by source position.
-type topLevelItem struct {
-	pos  parser.Pos
-	kind int // 0=global, 1=function, 2=struct
-	idx  int // index in the respective slice
-}
-
 func (f *formatter) formatSource(src *parser.Source) {
-	// Collect all top-level items and sort by source position
-	var items []topLevelItem
-	for i, g := range src.Globals {
-		items = append(items, topLevelItem{pos: g.Pos, kind: 0, idx: i})
-	}
-	for i, fn := range src.Functions {
-		items = append(items, topLevelItem{pos: fn.Pos, kind: 1, idx: i})
-	}
-	for i, sd := range src.StructDecls {
-		items = append(items, topLevelItem{pos: sd.Pos, kind: 2, idx: i})
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].pos.Line != items[j].pos.Line {
-			return items[i].pos.Line < items[j].pos.Line
-		}
-		return items[i].pos.Col < items[j].pos.Col
-	})
-
+	// Declarations are already in source order — iterate directly.
 	prevEndLine := 0
-	for i, item := range items {
+	for i, decl := range src.Declarations {
+		pos := decl.DeclPos()
 		if i > 0 {
-			bothVars := item.kind == 0 && items[i-1].kind == 0
-			if bothVars {
+			_, prevIsVar := src.Declarations[i-1].(*parser.VarStmt)
+			_, curIsVar := decl.(*parser.VarStmt)
+			if prevIsVar && curIsVar {
 				// Between consecutive vars: blank line only if original had one
-				if item.pos.Line > prevEndLine+1 {
+				if pos.Line > prevEndLine+1 {
 					f.write("\n")
 				}
 			} else {
@@ -135,32 +112,27 @@ func (f *formatter) formatSource(src *parser.Source) {
 				f.write("\n")
 			}
 		}
-		switch item.kind {
-		case 0:
-			g := src.Globals[item.idx]
-			leading, trailing := splitComments(g.Comments)
+		switch d := decl.(type) {
+		case *parser.VarStmt:
+			leading, trailing := splitComments(d.Comments)
 			f.writeComments(leading)
-			f.formatVarDeclTrailing(g, trailing)
-		case 1:
-			fn := src.Functions[item.idx]
-			leading, trailing := splitComments(fn.Comments)
+			f.formatVarDeclTrailing(d, trailing)
+		case *parser.Function:
+			leading, trailing := splitComments(d.Comments)
 			f.writeComments(leading)
-			f.formatFunction(fn, trailing)
-		case 2:
-			sd := src.StructDecls[item.idx]
-			leading, trailing := splitComments(sd.Comments)
+			f.formatFunction(d, trailing)
+		case *parser.StructDecl:
+			leading, trailing := splitComments(d.Comments)
 			f.writeComments(leading)
-			f.formatStructDecl(sd, trailing)
+			f.formatStructDecl(d, trailing)
 		}
 		// Track end line for blank-line detection
-		prevEndLine = item.pos.Line
-		switch item.kind {
-		case 1:
-			fn := src.Functions[item.idx]
-			prevEndLine += len(fn.Body) + 1 // body lines + closing brace
-		case 2:
-			sd := src.StructDecls[item.idx]
-			prevEndLine += len(sd.Fields) + 1
+		prevEndLine = pos.Line
+		switch d := decl.(type) {
+		case *parser.Function:
+			prevEndLine += len(d.Body) + 1
+		case *parser.StructDecl:
+			prevEndLine += len(d.Fields) + 1
 		}
 	}
 
@@ -536,6 +508,10 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 			f.write(")")
 		}
 	case *parser.CallExpr:
+		f.write(e.Name + "(")
+		f.formatArgs(e.Args)
+		f.write(")")
+	case *parser.BuiltinCallExpr:
 		f.write(e.Name + "(")
 		f.formatArgs(e.Args)
 		f.write(")")

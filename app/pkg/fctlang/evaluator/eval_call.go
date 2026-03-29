@@ -9,32 +9,19 @@ import (
 )
 
 // evalNamedArgs evaluates call arguments and builds a map[string]value keyed by
-// the NamedArg name. If any argument is not a NamedArg (bare positional arg from
-// internal/stdlib code), it falls back to positional mapping using paramNames.
-// paramNames provides the positional-to-name mapping for bare args.
-func (e *evaluator) evalNamedArgs(args []parser.Expr, locals map[string]value, paramNames []string) (map[string]value, error) {
+// the NamedArg name. All arguments must be named (e.g. `name: value`).
+func (e *evaluator) evalNamedArgs(args []parser.Expr, locals map[string]value) (map[string]value, error) {
 	result := make(map[string]value, len(args))
-	for i, argExpr := range args {
+	for _, argExpr := range args {
 		na, ok := argExpr.(*parser.NamedArg)
-		if ok {
-			v, err := e.evalExpr(na.Value, locals)
-			if err != nil {
-				return nil, err
-			}
-			result[na.Name] = v
-		} else {
-			// Bare positional arg — map using paramNames
-			v, err := e.evalExpr(argExpr, locals)
-			if err != nil {
-				return nil, err
-			}
-			if i < len(paramNames) {
-				result[paramNames[i]] = v
-			} else {
-				// More args than params — store by index as fallback key
-				result[fmt.Sprintf("_%d", i)] = v
-			}
+		if !ok {
+			return nil, fmt.Errorf("arguments must be named (e.g. name: value)")
 		}
+		v, err := e.evalExpr(na.Value, locals)
+		if err != nil {
+			return nil, err
+		}
+		result[na.Name] = v
 	}
 	return result, nil
 }
@@ -62,26 +49,24 @@ func (e *evaluator) evalPositionalArgs(args []parser.Expr, locals map[string]val
 	return result, nil
 }
 
-// paramNamesFromFunctions extracts the union of param names from a slice of function
-// candidates, returning the param names from the first candidate (for positional mapping).
-func paramNamesFromFunctions(fns []*parser.Function) []string {
-	if len(fns) == 0 {
-		return nil
-	}
-	names := make([]string, len(fns[0].Params))
-	for i, p := range fns[0].Params {
-		names[i] = p.Name
-	}
-	return names
-}
 
-// fvParamNames extracts param names from a functionVal for positional mapping.
-func fvParamNames(fv *functionVal) []string {
-	names := make([]string, len(fv.params))
-	for i, p := range fv.params {
-		names[i] = p.Name
+func (e *evaluator) evalBuiltinCall(call *parser.BuiltinCallExpr, locals map[string]value) (value, error) {
+	if err := e.ctx.Err(); err != nil {
+		return nil, err
 	}
-	return names
+	fn, ok := builtinRegistry[call.Name]
+	if !ok {
+		return nil, e.errAt(call.Pos, "unknown builtin %q", call.Name)
+	}
+	args, err := e.evalPositionalArgs(call.Args, locals)
+	if err != nil {
+		return nil, err
+	}
+	v, err := fn(e, args)
+	if err != nil {
+		return nil, e.wrapErr(call.Pos, err)
+	}
+	return v, nil
 }
 
 func (e *evaluator) evalCall(call *parser.CallExpr, locals map[string]value) (value, error) {
@@ -91,7 +76,7 @@ func (e *evaluator) evalCall(call *parser.CallExpr, locals map[string]value) (va
 
 	// Check if the callee is a functionVal stored in local or global scope.
 	if fv, ok := unwrap(locals[call.Name]).(*functionVal); ok {
-		argMap, err := e.evalNamedArgs(call.Args, locals, fvParamNames(fv))
+		argMap, err := e.evalNamedArgs(call.Args, locals)
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +87,7 @@ func (e *evaluator) evalCall(call *parser.CallExpr, locals map[string]value) (va
 		return v, nil
 	}
 	if fv, ok := unwrap(e.globals[call.Name]).(*functionVal); ok {
-		argMap, err := e.evalNamedArgs(call.Args, locals, fvParamNames(fv))
+		argMap, err := e.evalNamedArgs(call.Args, locals)
 		if err != nil {
 			return nil, err
 		}
@@ -113,35 +98,14 @@ func (e *evaluator) evalCall(call *parser.CallExpr, locals map[string]value) (va
 		return v, nil
 	}
 
-	// Try internal _snake_case builtins via registry (positional args)
-	if fn, ok := builtinRegistry[call.Name]; ok {
-		positionalArgs, err := e.evalPositionalArgs(call.Args, locals)
-		if err != nil {
-			return nil, err
-		}
-		v, err := fn(e, positionalArgs)
-		if err != nil {
-			return nil, e.wrapErr(call.Pos, err)
-		}
-		return v, nil
-	}
-
-	// Collect all function candidates first (to get param names for positional mapping).
+	// Collect all function candidates.
 	// nArgs=-1 skips arity filtering; evalCall filters by arity after evaluating args.
 	userCandidates, userFallback := parser.CollectCandidates(
-		e.prog.Sources[e.currentKey].Functions, call.Name, -1, true)
+		e.prog.Sources[e.currentKey].Functions(), call.Name, -1, true)
 	stdCandidates, stdFallback := parser.CollectCandidates(e.stdFuncs, call.Name, -1, false)
 
-	// Build param names for positional mapping from the first available candidate.
-	var paramNames []string
-	if len(userCandidates) > 0 {
-		paramNames = paramNamesFromFunctions(userCandidates)
-	} else if len(stdCandidates) > 0 {
-		paramNames = paramNamesFromFunctions(stdCandidates)
-	}
-
-	// Build named args map
-	argMap, err := e.evalNamedArgs(call.Args, locals, paramNames)
+	// Build named args map — all arguments must be named
+	argMap, err := e.evalNamedArgs(call.Args, locals)
 	if err != nil {
 		return nil, err
 	}

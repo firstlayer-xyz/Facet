@@ -2,10 +2,12 @@ build/bin
 build/windows
 node_modules
 app/frontend/dist
+app/frontend/wailsjs
 app/frontend/package.json.md5
 frontend/dist
 frontend/node_modules
 frontend/package.json.md5
+app/third_party/assimp
 app/third_party/manifold
 app/pkg/manifold/cxx/build*
 app/third_party/assimp/build*

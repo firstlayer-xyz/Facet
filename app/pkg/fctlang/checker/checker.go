@@ -39,11 +39,11 @@ type VarTypeMap map[string]map[string]string
 // Returns a Result with all analysis outputs.
 func Check(prog loader.Program) *Result {
 	c := initChecker(prog)
-	globalEnv := c.registerLibraries(prog)
-	c.checkGlobals(prog, globalEnv)
-	c.checkStructDefaults(prog, globalEnv)
+	c.registerLibraries(prog)
+	c.checkGlobals(prog)
+	c.checkStructDefaults(prog)
 	c.checkDuplicateFunctions(prog)
-	c.inferReturnTypes(prog, globalEnv)
+	c.inferReturnTypes(prog)
 	c.validateFunctions(prog)
 
 	inferredRets := make(map[string]string, len(c.inferredReturns))
@@ -59,19 +59,18 @@ func Check(prog loader.Program) *Result {
 	}
 }
 
-// registerLibraries registers library struct declarations and methods,
-// and builds the global type environment.
-func (c *checker) registerLibraries(prog loader.Program) *typeEnv {
+// registerLibraries registers library struct declarations and methods.
+func (c *checker) registerLibraries(prog loader.Program) {
 	for _, src := range prog.Sources {
-		for _, g := range src.Globals {
+		for _, g := range src.Globals() {
 			if le, ok := g.Value.(*parser.LibExpr); ok {
 				rl := prog.Sources[prog.Resolve(le.Path)]
 				if rl != nil {
 					c.libVarToPath[g.Name] = le.Path
-					for _, sd := range rl.StructDecls {
+					for _, sd := range rl.StructDecls() {
 						c.structDecls[g.Name+"."+sd.Name] = sd
 					}
-					for _, fn := range rl.Functions {
+					for _, fn := range rl.Functions() {
 						if fn.ReceiverType != "" {
 							qualified := g.Name + "." + fn.ReceiverType
 							c.stdMethods[qualified] = append(c.stdMethods[qualified], fn)
@@ -83,25 +82,25 @@ func (c *checker) registerLibraries(prog loader.Program) *typeEnv {
 			}
 		}
 	}
-	return c.seedGlobalEnv()
 }
 
-// checkGlobals validates global variables across all sources.
-func (c *checker) checkGlobals(prog loader.Program, globalEnv *typeEnv) {
+// checkGlobals validates global variables per source file.
+func (c *checker) checkGlobals(prog loader.Program) {
 	for srcKey, src := range prog.Sources {
 		if srcKey == loader.StdlibPath {
 			continue
 		}
 		c.currentSrcKey = srcKey
-		for _, g := range src.Globals {
-			t := c.inferExpr(g.Value, globalEnv)
-			globalEnv.set(g.Name, t)
+		env := c.newStdEnv()
+		for _, g := range src.Globals() {
+			t := c.inferExpr(g.Value, env)
+			env.set(g.Name, t)
 			if g.IsConst {
-				globalEnv.setConst(g.Name)
+				env.setConst(g.Name)
 			}
-			c.recordVarType(g.Name, globalEnv)
+			c.recordVarType(g.Name, env)
 			if g.Constraint != nil {
-				c.checkConstraint(g, t, globalEnv)
+				c.checkConstraint(g, t, env)
 			}
 			if t.ft == typeLibrary {
 				if le, ok := g.Value.(*parser.LibExpr); ok {
@@ -115,15 +114,16 @@ func (c *checker) checkGlobals(prog loader.Program, globalEnv *typeEnv) {
 }
 
 // checkStructDefaults validates struct field default values against declared types.
-func (c *checker) checkStructDefaults(prog loader.Program, globalEnv *typeEnv) {
+func (c *checker) checkStructDefaults(prog loader.Program) {
 	for srcKey, src := range prog.Sources {
 		c.currentSrcKey = srcKey
-		for _, sd := range src.StructDecls {
+		env := c.newStdEnv()
+		for _, sd := range src.StructDecls() {
 			for _, f := range sd.Fields {
 				if f.Default == nil {
 					continue
 				}
-				defType := c.inferExpr(f.Default, globalEnv)
+				defType := c.inferExpr(f.Default, env)
 				expectedType := c.resolveTypeStr(sd.Name, f.Type)
 				if defType.ft != typeUnknown && expectedType.ft != typeUnknown && !c.typeCompatible(expectedType, defType) {
 					c.addError(sd.Pos, fmt.Sprintf("field %q of %s: default value is %s, expected %s",
@@ -144,7 +144,7 @@ func (c *checker) checkDuplicateFunctions(prog loader.Program) {
 	for srcKey, src := range prog.Sources {
 		c.currentSrcKey = srcKey
 		funcSigSeen := map[funcSigKey]*parser.Function{}
-		for _, fn := range src.Functions {
+		for _, fn := range src.Functions() {
 			required := 0
 			for _, p := range fn.Params {
 				if p.Default == nil {
@@ -156,7 +156,7 @@ func (c *checker) checkDuplicateFunctions(prog loader.Program) {
 			for arity := required; arity <= total && !reported; arity++ {
 				var pts []string
 				for i := 0; i < arity; i++ {
-					pts = append(pts, fn.Params[i].Type)
+					pts = append(pts, fn.Params[i].Name+":"+fn.Params[i].Type)
 				}
 				key := funcSigKey{name: fn.Name, receiver: fn.ReceiverType, paramTypes: strings.Join(pts, ",")}
 				if prev := funcSigSeen[key]; prev != nil && prev != fn {
@@ -176,23 +176,28 @@ func (c *checker) checkDuplicateFunctions(prog loader.Program) {
 }
 
 // inferReturnTypes infers return types for unannotated functions (Pass 1).
-func (c *checker) inferReturnTypes(prog loader.Program, globalEnv *typeEnv) {
+func (c *checker) inferReturnTypes(prog loader.Program) {
 	for srcKey, src := range prog.Sources {
 		c.currentSrcKey = srcKey
+		srcEnv := c.newStdEnv()
+		for _, g := range src.Globals() {
+			t := c.inferExpr(g.Value, srcEnv)
+			srcEnv.set(g.Name, t)
+		}
 		nameCounts := map[string]int{}
-		for _, fn := range src.Functions {
+		for _, fn := range src.Functions() {
 			if fn.ReceiverType == "" {
 				nameCounts[fn.Name]++
 			}
 		}
-		for _, fn := range src.Functions {
+		for _, fn := range src.Functions() {
 			if fn.ReturnType != "" || fn.ReceiverType != "" {
 				continue
 			}
 			if nameCounts[fn.Name] > 1 {
 				continue
 			}
-			env := globalEnv.child()
+			env := srcEnv.child()
 			for _, p := range fn.Params {
 				pt := c.resolveParamType(fn, p.Type)
 				env.set(p.Name, pt)
@@ -219,24 +224,24 @@ func (c *checker) inferReturnTypes(prog loader.Program, globalEnv *typeEnv) {
 func (c *checker) validateFunctions(prog loader.Program) {
 	for srcKey, src := range prog.Sources {
 		c.currentSrcKey = srcKey
-		srcGlobalEnv := c.seedGlobalEnv()
-		for _, g := range src.Globals {
-			t := c.inferExpr(g.Value, srcGlobalEnv)
-			srcGlobalEnv.set(g.Name, t)
+		srcEnv := c.newStdEnv()
+		for _, g := range src.Globals() {
+			t := c.inferExpr(g.Value, srcEnv)
+			srcEnv.set(g.Name, t)
 			if g.IsConst {
-				srcGlobalEnv.setConst(g.Name)
+				srcEnv.setConst(g.Name)
 			}
-			c.recordVarType(g.Name, srcGlobalEnv)
+			c.recordVarType(g.Name, srcEnv)
 		}
 		savedStructDecls := c.structDecls
 		srcDecls := make(map[string]*parser.StructDecl)
 		if stdSrc := prog.Std(); stdSrc != nil {
-			for _, sd := range stdSrc.StructDecls {
+			for _, sd := range stdSrc.StructDecls() {
 				srcDecls[sd.Name] = sd
 			}
 		}
-		srcStructs := make(map[string]bool, len(src.StructDecls))
-		for _, sd := range src.StructDecls {
+		srcStructs := make(map[string]bool, len(src.StructDecls()))
+		for _, sd := range src.StructDecls() {
 			srcDecls[sd.Name] = sd
 			srcStructs[sd.Name] = true
 		}
@@ -246,16 +251,16 @@ func (c *checker) validateFunctions(prog loader.Program) {
 			}
 		}
 		c.structDecls = srcDecls
-		for _, fn := range src.Functions {
-			c.validateFunction(fn, src, prog, srcGlobalEnv, srcStructs)
+		for _, fn := range src.Functions() {
+			c.validateFunction(fn, src, prog, srcEnv, srcStructs)
 		}
 		c.structDecls = savedStructDecls
 	}
 }
 
 // validateFunction checks a single function definition.
-func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog loader.Program, srcGlobalEnv *typeEnv, srcStructs map[string]bool) {
-	env := srcGlobalEnv.child()
+func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog loader.Program, srcEnv *typeEnv, srcStructs map[string]bool) {
+	env := srcEnv.child()
 	for _, p := range fn.Params {
 		bareType := strings.TrimPrefix(p.Type, "[]")
 		if bareType == "Array" {
@@ -384,7 +389,7 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 	for srcKey, src := range prog.Sources {
 		// File tag: source key for all files (frontend identifies the active file)
 		file := srcKey
-		for _, fn := range src.Functions {
+		for _, fn := range src.Functions() {
 			key := fn.Name
 			if fn.ReceiverType != "" {
 				key = fn.ReceiverType + "." + fn.Name
@@ -394,11 +399,11 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 				addDecl(key, loc)
 			}
 		}
-		for _, sd := range src.StructDecls {
+		for _, sd := range src.StructDecls() {
 			loc := DeclLocation{Line: sd.Pos.Line, Col: sd.Pos.Col, File: file, Kind: "type"}
 			addDecl(sd.Name, loc)
 		}
-		for _, v := range src.Globals {
+		for _, v := range src.Globals() {
 			kind := "var"
 			if v.IsConst {
 				kind = "const"
@@ -409,7 +414,7 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 			}
 		}
 		// Qualified library declarations (e.g. T.FunctionName, T.StructName)
-		for _, g := range src.Globals {
+		for _, g := range src.Globals() {
 			le, ok := g.Value.(*parser.LibExpr)
 			if !ok {
 				continue
@@ -418,7 +423,7 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 			if libSrc == nil {
 				continue
 			}
-			for _, fn := range libSrc.Functions {
+			for _, fn := range libSrc.Functions() {
 				loc := DeclLocation{Line: fn.Pos.Line, Col: fn.Pos.Col, File: le.Path, Kind: "fn", ReturnType: fn.ReturnType}
 				if fn.ReceiverType != "" {
 					result.Decls[g.Name+"."+fn.ReceiverType+"."+fn.Name] = loc
@@ -429,7 +434,7 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 					result.Decls[g.Name+"."+fn.Name] = loc
 				}
 			}
-			for _, sd := range libSrc.StructDecls {
+			for _, sd := range libSrc.StructDecls() {
 				loc := DeclLocation{Line: sd.Pos.Line, Col: sd.Pos.Col, File: le.Path, Kind: "type"}
 				qualKey := g.Name + "." + sd.Name
 				if existing, exists := result.Decls[qualKey]; exists && existing.Kind == "fn" {
@@ -472,6 +477,7 @@ type checker struct {
 	// returnElemType is set when checking a function with a declared array return type.
 	// It provides top-down coercion context for untyped array literals in return position.
 	returnElemType typeInfo
+	stdEnv         *typeEnv // cached stdlib env, computed once
 }
 
 func initChecker(prog loader.Program) *checker {
@@ -487,7 +493,7 @@ func initChecker(prog loader.Program) *checker {
 		userStructs:           make(map[string]bool),
 	}
 	if stdSrc := prog.Std(); stdSrc != nil {
-		for _, fn := range stdSrc.Functions {
+		for _, fn := range stdSrc.Functions() {
 			if fn.IsOperator {
 				continue
 			}
@@ -497,16 +503,24 @@ func initChecker(prog loader.Program) *checker {
 				c.stdFuncs = append(c.stdFuncs, fn)
 			}
 		}
-		for _, sd := range stdSrc.StructDecls {
+		for _, sd := range stdSrc.StructDecls() {
 			c.structDecls[sd.Name] = sd
 		}
 	}
 	for _, src := range prog.Sources {
-		for _, sd := range src.StructDecls {
+		for _, sd := range src.StructDecls() {
 			c.structDecls[sd.Name] = sd
 			c.userStructs[sd.Name] = true
 		}
-		c.registerOpFuncs(src.Functions)
+		c.registerOpFuncs(src.Functions())
+	}
+	// Seed stdlib globals once — per-source envs are children of this.
+	c.stdEnv = c.newEnv()
+	if stdSrc := prog.Std(); stdSrc != nil {
+		for _, g := range stdSrc.Globals() {
+			t := c.inferExpr(g.Value, c.stdEnv)
+			c.stdEnv.set(g.Name, t)
+		}
 	}
 	return c
 }
@@ -558,15 +572,8 @@ func (c *checker) resolveOpReturnType(fn *parser.Function) typeInfo {
 	return unknown()
 }
 
-func (c *checker) seedGlobalEnv() *typeEnv {
-	env := c.newEnv()
-	if stdSrc := c.prog.Std(); stdSrc != nil {
-		for _, g := range stdSrc.Globals {
-			t := c.inferExpr(g.Value, env)
-			env.set(g.Name, t)
-		}
-	}
-	return env
+func (c *checker) newStdEnv() *typeEnv {
+	return c.stdEnv.child()
 }
 
 func (c *checker) srcVarTypes() map[string]string {

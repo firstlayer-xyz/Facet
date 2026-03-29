@@ -124,6 +124,66 @@ func TestAllExamples(t *testing.T) {
 	}
 }
 
+func TestDisc(t *testing.T) {
+	src := `
+fn Disc(
+    str String = "hello" where [],
+) {
+    var text = Text(text: str, size: 12 mm).Extrude(height: 1)
+        .Color(c: Color(r: 1, g: 1, b: 0))
+    var d = Cube(x: text.Width(), y: text.Depth(), z: text.Height())
+    return text + d.AlignCenter(with: text)
+}
+`
+	prog := parseTestProg(t, src)
+	checkErrs := fctchecker.Check(prog).Errors
+	for _, ce := range checkErrs {
+		t.Errorf("[check] %d:%d: %s", ce.Line, ce.Col, ce.Message)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result, err := evaluator.Eval(ctx, prog, testMainKey, nil, "Disc")
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if len(result.Solids) == 0 {
+		t.Error("expected non-empty solids")
+	}
+}
+
+func TestMultiFileNoFalseShadow(t *testing.T) {
+	// Two unrelated files in the same program. File A has a global "var d".
+	// File B has a function with a local "var d". The checker should NOT
+	// report a "shadows outer variable" error for file B's local.
+	prog := testStdlibLibs()
+
+	srcA, err := parser.Parse(`var d = 2 mm`, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse A: %v", err)
+	}
+	keyA := "/test/a.fct"
+	prog.Sources[keyA] = srcA
+
+	srcB, err := parser.Parse(`
+fn Main() {
+    var d = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})
+    return d
+}
+`, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse B: %v", err)
+	}
+	keyB := "/test/b.fct"
+	prog.Sources[keyB] = srcB
+
+	checkResult := fctchecker.Check(prog)
+	for _, ce := range checkResult.Errors {
+		if ce.Message == `variable "d" shadows outer variable` {
+			t.Errorf("false shadow error: %s at %s:%d:%d", ce.Message, ce.File, ce.Line, ce.Col)
+		}
+	}
+}
+
 func TestInferredArrayTypes(t *testing.T) {
 	tests := []struct {
 		name string

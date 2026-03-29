@@ -122,7 +122,7 @@ func BuildLibDocEntries(libDir string) []DocEntry {
 		// Derive namespace from path relative to libDir
 		dir := filepath.Dir(path)
 		ns, _ := filepath.Rel(libDir, dir)
-		for _, fn := range libProg.Functions {
+		for _, fn := range libProg.Functions() {
 			if strings.HasPrefix(fn.Name, "_") {
 				continue
 			}
@@ -140,7 +140,7 @@ func BuildLibDocEntries(libDir string) []DocEntry {
 				Library:   ns,
 			})
 		}
-		for _, sd := range libProg.StructDecls {
+		for _, sd := range libProg.StructDecls() {
 			entries = append(entries, DocEntry{
 				Name:      sd.Name,
 				Signature: formatStructSignature(sd),
@@ -172,7 +172,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 	if stdlibSrc == nil {
 		stdlibSrc = stdlibDocSource()
 	}
-	for _, fn := range stdlibSrc.Functions {
+	for _, fn := range stdlibSrc.Functions() {
 		// Skip _-prefixed internal builtins that might sneak through
 		if strings.HasPrefix(fn.Name, "_") {
 			continue
@@ -192,7 +192,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 	}
 
 	// 1b. Stdlib struct fields
-	for _, sd := range stdlibSrc.StructDecls {
+	for _, sd := range stdlibSrc.StructDecls() {
 		for _, f := range sd.Fields {
 			entries = append(entries, DocEntry{
 				Name:      fmt.Sprintf("%s.%s", sd.Name, f.Name),
@@ -228,7 +228,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 		// Derive library namespace from path: "libraries/facet/gears" → "facet/gears"
 		dir := filepath.Dir(path)
 		ns, _ := filepath.Rel("libraries", dir)
-		for _, fn := range libProg.Functions {
+		for _, fn := range libProg.Functions() {
 			if strings.HasPrefix(fn.Name, "_") {
 				continue
 			}
@@ -246,7 +246,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 				Library:   ns,
 			})
 		}
-		for _, sd := range libProg.StructDecls {
+		for _, sd := range libProg.StructDecls() {
 			entries = append(entries, DocEntry{
 				Name:      sd.Name,
 				Signature: formatStructSignature(sd),
@@ -270,7 +270,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 	// 3. User-defined functions/methods and structs
 	prog, err := parser.Parse(source, "", parser.SourceUser)
 	if err == nil && prog != nil {
-		for _, fn := range prog.Functions {
+		for _, fn := range prog.Functions() {
 			if strings.HasPrefix(fn.Name, "_") {
 				continue
 			}
@@ -287,7 +287,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 				Kind:      kind,
 			})
 		}
-		for _, sd := range prog.StructDecls {
+		for _, sd := range prog.StructDecls() {
 			entries = append(entries, DocEntry{
 				Name:      sd.Name,
 				Signature: formatStructSignature(sd),

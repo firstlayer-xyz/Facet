@@ -21,7 +21,7 @@ func convertOverrides(prog loader.Program, currentKey string, raw map[string]int
 	if src == nil {
 		return result
 	}
-	for _, g := range src.Globals {
+	for _, g := range src.Globals() {
 		if g.Constraint == nil {
 			continue
 		}
@@ -35,7 +35,7 @@ func convertOverrides(prog loader.Program, currentKey string, raw map[string]int
 	}
 
 	// Convert entry point function parameter overrides
-	for _, fn := range src.Functions {
+	for _, fn := range src.Functions() {
 		if fn.Name != entryPoint {
 			continue
 		}

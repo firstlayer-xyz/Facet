@@ -1,5 +1,7 @@
 package parser
 
+import "strings"
+
 // parsePrimary → "-" postfix | "!" postfix | number [unit] | ident [ "(" [args] ")" ] | "(" expr ")" | block
 func (p *parser) parsePrimary() (Expr, error) {
 	// Unary minus: -expr (binds looser than postfix so -self.field == -(self.field))
@@ -55,6 +57,9 @@ func (p *parser) parsePrimary() (Expr, error) {
 			}
 			if _, err := p.expect(TokenRParen); err != nil {
 				return nil, err
+			}
+			if strings.HasPrefix(name, "_") {
+				return &BuiltinCallExpr{Name: name, Args: args, Pos: Pos{nameLine, nameCol}}, nil
 			}
 			return &CallExpr{Name: name, Args: args, Pos: Pos{nameLine, nameCol}}, nil
 		}

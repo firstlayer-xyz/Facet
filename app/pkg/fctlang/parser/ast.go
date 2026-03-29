@@ -65,6 +65,57 @@ type Stmt interface {
 	stmtNode()
 }
 
+// Decl is a top-level declaration: variable, function, or struct type.
+type Decl interface {
+	declNode()
+	DeclPos() Pos
+	DeclComments() []Comment
+}
+
+func (*VarStmt) declNode()              {}
+func (*Function) declNode()             {}
+func (*StructDecl) declNode()           {}
+
+func (v *VarStmt) DeclPos() Pos        { return v.Pos }
+func (v *VarStmt) DeclComments() []Comment { return v.Comments }
+func (f *Function) DeclPos() Pos       { return f.Pos }
+func (f *Function) DeclComments() []Comment { return f.Comments }
+func (s *StructDecl) DeclPos() Pos     { return s.Pos }
+func (s *StructDecl) DeclComments() []Comment { return s.Comments }
+
+// Functions returns all function declarations in source order.
+func (s *Source) Functions() []*Function {
+	var fns []*Function
+	for _, d := range s.Declarations {
+		if fn, ok := d.(*Function); ok {
+			fns = append(fns, fn)
+		}
+	}
+	return fns
+}
+
+// Globals returns all global variable declarations in source order.
+func (s *Source) Globals() []*VarStmt {
+	var globals []*VarStmt
+	for _, d := range s.Declarations {
+		if v, ok := d.(*VarStmt); ok {
+			globals = append(globals, v)
+		}
+	}
+	return globals
+}
+
+// StructDecls returns all struct type declarations in source order.
+func (s *Source) StructDecls() []*StructDecl {
+	var decls []*StructDecl
+	for _, d := range s.Declarations {
+		if sd, ok := d.(*StructDecl); ok {
+			decls = append(decls, sd)
+		}
+	}
+	return decls
+}
+
 // Expr is the interface implemented by all expression nodes.
 type Expr interface {
 	exprNode()
@@ -131,6 +182,17 @@ type CallExpr struct {
 }
 
 func (*CallExpr) exprNode() {}
+
+// BuiltinCallExpr represents a call to an internal _-prefixed builtin function.
+// Arguments are positional (no NamedArg wrapping). Builtins are always free
+// functions — never methods.
+type BuiltinCallExpr struct {
+	Name string // includes the _ prefix, e.g. "_cylinder"
+	Args []Expr
+	Pos  Pos
+}
+
+func (*BuiltinCallExpr) exprNode() {}
 
 // NamedArg wraps a named argument at a call site: name: expr
 type NamedArg struct {
