@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -203,10 +204,9 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 	stats := evalResult.Stats
 	stats.Triangles += merged.IndexCount / 3
 	stats.Vertices += merged.VertexCount
-	boxes, globalMin, globalMax := solidBBoxes(evalResult.Solids)
+	_, globalMin, globalMax := solidBBoxes(evalResult.Solids)
 	stats.BBoxMin = globalMin
 	stats.BBoxMax = globalMax
-	_ = boxes // TODO: include in response if needed
 
 	var binaryData []byte
 	meta, binaryData := appendMeshBinary(binaryData, merged)
@@ -410,6 +410,33 @@ func handleCheck(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"valid":true,"errors":[]}`))
+}
+
+// evalSolids runs a fresh Load → Check → Eval and returns the resulting solids.
+// Used by export/slicer which need geometry but not a binary HTTP response.
+func evalSolids(ctx context.Context, req evalRequest) ([]*manifold.Solid, error) {
+	libDir, _ := libraryDir()
+	cfg := loadConfig()
+	opts := &loader.Options{}
+	if len(cfg.InstalledLibs) > 0 {
+		opts.InstalledLibs = cfg.InstalledLibs
+	}
+	prog, err := loader.LoadMulti(ctx, req.Sources, req.Key, libDir, opts)
+	if err != nil {
+		return nil, err
+	}
+	checked := checker.Check(prog)
+	if len(checked.Errors) > 0 {
+		return nil, fmt.Errorf("%s", checked.Errors[0].Message)
+	}
+	if req.Entry == "" {
+		return nil, fmt.Errorf("no entry point")
+	}
+	result, err := evaluator.Eval(ctx, prog, req.Key, req.Overrides, req.Entry)
+	if err != nil {
+		return nil, err
+	}
+	return result.Solids, nil
 }
 
 // sourceErrorFromErr converts a generic error into a parser.SourceError.

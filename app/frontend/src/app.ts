@@ -880,9 +880,20 @@ export async function newFile() {
   patchSettings({ activeTab: key });
 }
 
+function currentEvalParams() {
+  const picked = tabs[activeTab]?.pickedEntry;
+  return {
+    sources: editor.getAllSources(),
+    key: activeTab,
+    entry: picked?.name ?? '',
+    overrides: entryOverrides,
+  };
+}
+
 export async function exportMesh(format: string = '3mf') {
   try {
-    await ExportMesh(format);
+    const p = currentEvalParams();
+    await ExportMesh(format, p.sources, p.key, p.entry, p.overrides);
   } catch (err: any) {
     const msg = err?.message || String(err);
     errorDiv.textContent = msg;
@@ -892,7 +903,8 @@ export async function exportMesh(format: string = '3mf') {
 
 export async function sendToSlicer(id: string) {
   try {
-    await SendToSlicer(id);
+    const p = currentEvalParams();
+    await SendToSlicer(id, p.sources, p.key, p.entry, p.overrides);
   } catch (err: any) {
     const msg = err?.message || String(err);
     errorDiv.textContent = msg;

@@ -13,11 +13,13 @@ import (
 // ExportMesh exports the last evaluated model in the given format.
 // Uses Manifold's Assimp-backed I/O for export.
 // Shows a native save dialog to choose the output path.
-func (a *App) ExportMesh(format string) error {
-	// TODO: export needs access to last eval result — store solids on App after eval
-	var solids []*manifold.Solid
+func (a *App) ExportMesh(format string, sources map[string]string, key string, entry string, overrides map[string]interface{}) error {
+	solids, err := evalSolids(a.ctx, evalRequest{Sources: sources, Key: key, Entry: entry, Overrides: overrides})
+	if err != nil {
+		return fmt.Errorf("eval failed: %w", err)
+	}
 	if len(solids) == 0 {
-		return fmt.Errorf("no mesh to export — run your code first")
+		return fmt.Errorf("no mesh to export — model produced no solids")
 	}
 
 	var filter wailsRuntime.FileFilter
@@ -68,18 +70,17 @@ func (a *App) DetectSlicers() []SlicerInfo {
 	return detectSlicers()
 }
 
-// SendToSlicer exports the last evaluated model as .3mf to a stable temp file
-// and opens it in the specified slicer application. Uses a fixed path per slicer
-// so repeated sends reuse the already-open file in the slicer.
-func (a *App) SendToSlicer(slicerID string) error {
-	// TODO: export needs access to last eval result — store solids on App after eval
-	var solids []*manifold.Solid
+// SendToSlicer re-evaluates the current program and exports the result as .3mf
+// to a stable temp file, then opens it in the specified slicer application.
+func (a *App) SendToSlicer(slicerID string, sources map[string]string, key string, entry string, overrides map[string]interface{}) error {
+	solids, err := evalSolids(a.ctx, evalRequest{Sources: sources, Key: key, Entry: entry, Overrides: overrides})
+	if err != nil {
+		return fmt.Errorf("eval failed: %w", err)
+	}
 	if len(solids) == 0 {
-		return fmt.Errorf("no mesh to export — run your code first")
+		return fmt.Errorf("no mesh to export — model produced no solids")
 	}
 
-	// Stable path per instance: reuse the same file so the slicer can detect
-	// updates, but include PID so multiple app instances don't collide.
 	path := filepath.Join(os.TempDir(), fmt.Sprintf("facet-slicer-%s-%d.3mf", slicerID, os.Getpid()))
 	if err := manifold.Export3MFMulti(solids, path); err != nil {
 		return err

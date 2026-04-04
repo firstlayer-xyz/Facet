@@ -53,7 +53,6 @@ type replaceCodeInput struct {
 	Code string `json:"code" jsonschema:"Complete new source code for the editor"`
 }
 
-type getLastRunInput struct{}
 
 type checkSyntaxInput struct {
 	Source string `json:"source,omitempty" jsonschema:"Source code to check (omit to use current editor code)"`
@@ -115,9 +114,7 @@ func (a *App) startHTTPServer() (int, error) {
 		state.editorCode = newCode
 		state.mu.Unlock()
 
-		// Update the frontend editor silently, trigger build via runner
 		wailsRuntime.EventsEmit(a.ctx, "assistant:replace-code", newCode)
-		// Frontend autoRun handles UpdateSource after editor content changes
 
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: "Edit applied successfully."}},
@@ -138,22 +135,9 @@ func (a *App) startHTTPServer() (int, error) {
 		state.mu.Unlock()
 
 		wailsRuntime.EventsEmit(a.ctx, "assistant:replace-code", input.Code)
-		// Frontend autoRun handles UpdateSource after editor content changes
 
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: "Code replaced. Editor will auto-run."}},
-		}, nil, nil
-	})
-
-	// --- Tool: get_last_run ---
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_last_run",
-		Description: "Wait for the current build to finish (if one is in progress) and return the results: build stats (triangles, vertices, volume, surface area, bounding box), per-solid bounding boxes with piece counts, and any errors. Call this after edit_code or replace_code to verify the result.",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, input getLastRunInput) (*mcp.CallToolResult, any, error) {
-		// TODO: get_last_run needs access to last eval result
-		_, _ = ctx, req
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: `{"error":"get_last_run not yet implemented for HTTP eval"}`}},
 		}, nil, nil
 	})
 
