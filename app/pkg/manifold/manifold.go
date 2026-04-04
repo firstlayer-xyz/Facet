@@ -10,7 +10,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"runtime"
 	"unsafe"
@@ -48,19 +47,26 @@ type Mesh struct {
 	Indices  []uint32  // triangle indices
 }
 
-// DisplayMesh holds mesh data pre-encoded as base64 for efficient transfer to the frontend.
+// DisplayMesh holds mesh data as raw byte slices for efficient binary transfer.
 // Created by extracting directly from C buffers without intermediate Go typed slices.
 type DisplayMesh struct {
-	vertB64        string
-	idxB64         string
-	faceGroupB64   string            // per-triangle face group IDs (optional)
-	faceColorMap   map[string]string // faceGroupID → hex color (optional)
+	VertRaw        []byte            // float32 LE vertex positions (xyz, 12 bytes per vertex)
+	IdxRaw         []byte            // uint32 LE triangle indices (4 bytes each)
+	FaceGroupRaw   []byte            // uint32 LE per-triangle face group IDs (optional)
+	FaceColorMap   map[string]string // faceGroupID → hex color (optional)
 	VertexCount    int
 	IndexCount     int
 	FaceGroupCount int // number of face group entries (= IndexCount/3)
+
+	// Expanded format: pre-expanded non-indexed vertices + edge lines (computed on C++ side)
+	ExpandedRaw   []byte // float32 LE non-indexed positions (3 floats * 3 verts * numTri)
+	EdgeLinesRaw  []byte // float32 LE edge line segments (6 floats per edge)
+	ExpandedCount int    // number of expanded vertices (= numTri * 3)
+	EdgeCount     int    // number of edge line segments
+
 }
 
-// MarshalJSON serializes a DisplayMesh for the frontend.
+// MarshalJSON serializes a DisplayMesh as base64-encoded JSON (for backward compat with tests/MCP).
 func (m *DisplayMesh) MarshalJSON() ([]byte, error) {
 	type wireFormat struct {
 		Vertices    string            `json:"vertices"`
@@ -70,11 +76,15 @@ func (m *DisplayMesh) MarshalJSON() ([]byte, error) {
 		VertexCount int               `json:"vertexCount"`
 		IndexCount  int               `json:"indexCount"`
 	}
+	var fgB64 string
+	if len(m.FaceGroupRaw) > 0 {
+		fgB64 = base64.StdEncoding.EncodeToString(m.FaceGroupRaw)
+	}
 	return json.Marshal(wireFormat{
-		Vertices:    m.vertB64,
-		Indices:     m.idxB64,
-		FaceGroups:  m.faceGroupB64,
-		FaceColors:  m.faceColorMap,
+		Vertices:    base64.StdEncoding.EncodeToString(m.VertRaw),
+		Indices:     base64.StdEncoding.EncodeToString(m.IdxRaw),
+		FaceGroups:  fgB64,
+		FaceColors:  m.FaceColorMap,
 		VertexCount: m.VertexCount,
 		IndexCount:  m.IndexCount,
 	})
@@ -117,9 +127,10 @@ func (p *Sketch) ToMesh() *Mesh {
 	return m
 }
 
-// ToDisplayMesh extracts a DisplayMesh from a Solid, encoding directly from C memory.
+// ToDisplayMesh extracts a DisplayMesh from a Solid with expanded positions and edge lines.
 func (s *Solid) ToDisplayMesh() *DisplayMesh {
 	m := extractDisplayMesh(s.ptr, s.FaceMap)
+	appendExpandedData(m, s.ptr, 40)
 	runtime.KeepAlive(s)
 	return m
 }
@@ -128,8 +139,52 @@ func (s *Solid) ToDisplayMesh() *DisplayMesh {
 func (p *Sketch) ToDisplayMesh() *DisplayMesh {
 	solid := extrude(p, 0.001, 0, 0, 1, 1)
 	m := extractDisplayMesh(solid.ptr, nil)
+	appendExpandedData(m, solid.ptr, 40)
 	runtime.KeepAlive(solid)
 	return m
+}
+
+// appendExpandedData adds pre-expanded positions and edge lines to an existing DisplayMesh.
+func appendExpandedData(dm *DisplayMesh, ptr *C.ManifoldManifold, edgeThresholdDeg float32) {
+	var cPositions *C.float
+	var cNumPositions C.int
+	var cFaceIDs *C.uint32_t
+	var cNumFaceIDs C.int
+	var cEdgeLines *C.float
+	var cNumEdges C.int
+
+	C.facet_extract_expanded_mesh(ptr,
+		&cPositions, &cNumPositions,
+		&cFaceIDs, &cNumFaceIDs,
+		&cEdgeLines, &cNumEdges,
+		C.float(edgeThresholdDeg))
+
+	numPositions := int(cNumPositions)
+	if numPositions > 0 && cPositions != nil {
+		defer C.free(unsafe.Pointer(cPositions))
+		src := unsafe.Slice((*byte)(unsafe.Pointer(cPositions)), numPositions*3*4)
+		dm.ExpandedRaw = make([]byte, len(src))
+		copy(dm.ExpandedRaw, src)
+		dm.ExpandedCount = numPositions
+	}
+
+	numFaceIDs := int(cNumFaceIDs)
+	if numFaceIDs > 0 && cFaceIDs != nil {
+		defer C.free(unsafe.Pointer(cFaceIDs))
+		src := unsafe.Slice((*byte)(unsafe.Pointer(cFaceIDs)), numFaceIDs*4)
+		dm.FaceGroupRaw = make([]byte, len(src))
+		copy(dm.FaceGroupRaw, src)
+		dm.FaceGroupCount = numFaceIDs
+	}
+
+	numEdges := int(cNumEdges)
+	if numEdges > 0 && cEdgeLines != nil {
+		defer C.free(unsafe.Pointer(cEdgeLines))
+		src := unsafe.Slice((*byte)(unsafe.Pointer(cEdgeLines)), numEdges*6*4)
+		dm.EdgeLinesRaw = make([]byte, len(src))
+		copy(dm.EdgeLinesRaw, src)
+		dm.EdgeCount = numEdges
+	}
 }
 
 // ExternalMemory reports the external (C/C++ heap) memory footprint in bytes.
@@ -868,7 +923,7 @@ func colorFromFaceInfo(fi FaceInfo) string {
 	return fmt.Sprintf("#%02X%02X%02X", (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF)
 }
 
-// extractDisplayMesh base64-encodes mesh data directly from C buffers,
+// extractDisplayMesh copies mesh data directly from C buffers as raw bytes,
 // skipping intermediate Go typed slices. faceMap is used to build
 // faceGroupID → hex color and faceGroupID → source position lookups.
 func extractDisplayMesh(m *C.ManifoldManifold, faceMap map[uint32]FaceInfo) *DisplayMesh {
@@ -892,35 +947,37 @@ func extractDisplayMesh(m *C.ManifoldManifold, faceMap map[uint32]FaceInfo) *Dis
 	defer C.free(unsafe.Pointer(cVerts))
 	defer C.free(unsafe.Pointer(cIndices))
 
-	// Base64 encode vertex positions (xyz only)
-	var vertB64 string
+	// Copy vertex positions (xyz only) as raw bytes
+	var vertRaw []byte
 	if numProp == 3 {
-		vertB64 = base64.StdEncoding.EncodeToString(
-			unsafe.Slice((*byte)(unsafe.Pointer(cVerts)), numVert*3*4))
+		cBytes := unsafe.Slice((*byte)(unsafe.Pointer(cVerts)), numVert*3*4)
+		vertRaw = make([]byte, len(cBytes))
+		copy(vertRaw, cBytes)
 	} else {
-		tmp := make([]byte, numVert*12)
+		vertRaw = make([]byte, numVert*12)
 		src := unsafe.Pointer(cVerts)
 		stride := uintptr(numProp) * 4
 		for i := 0; i < numVert; i++ {
-			copy(tmp[i*12:], unsafe.Slice((*byte)(unsafe.Add(src, uintptr(i)*stride)), 12))
+			copy(vertRaw[i*12:], unsafe.Slice((*byte)(unsafe.Add(src, uintptr(i)*stride)), 12))
 		}
-		vertB64 = base64.StdEncoding.EncodeToString(tmp)
 	}
 
-	// Base64 encode indices directly from C buffer
+	// Copy indices directly from C buffer
 	triLen := numTri * 3
-	idxB64 := base64.StdEncoding.EncodeToString(
-		unsafe.Slice((*byte)(unsafe.Pointer(cIndices)), triLen*4))
+	idxSrc := unsafe.Slice((*byte)(unsafe.Pointer(cIndices)), triLen*4)
+	idxRaw := make([]byte, len(idxSrc))
+	copy(idxRaw, idxSrc)
 
 	// Extract face group IDs and build face color/source maps
-	var fgB64 string
+	var fgRaw []byte
 	var fgCount int
 	var fcMap map[string]string
 	nFaceIDs := int(cNumFaceIDs)
 	if nFaceIDs > 0 {
 		defer C.free(unsafe.Pointer(cFaceIDs))
-		fgB64 = base64.StdEncoding.EncodeToString(
-			unsafe.Slice((*byte)(unsafe.Pointer(cFaceIDs)), nFaceIDs*4))
+		fgSrc := unsafe.Slice((*byte)(unsafe.Pointer(cFaceIDs)), nFaceIDs*4)
+		fgRaw = make([]byte, len(fgSrc))
+		copy(fgRaw, fgSrc)
 		fgCount = nFaceIDs
 
 		faceIDs := unsafe.Slice((*uint32)(unsafe.Pointer(cFaceIDs)), nFaceIDs)
@@ -940,10 +997,10 @@ func extractDisplayMesh(m *C.ManifoldManifold, faceMap map[uint32]FaceInfo) *Dis
 	}
 
 	return &DisplayMesh{
-		vertB64:        vertB64,
-		idxB64:         idxB64,
-		faceGroupB64:   fgB64,
-		faceColorMap:   fcMap,
+		VertRaw:        vertRaw,
+		IdxRaw:         idxRaw,
+		FaceGroupRaw:   fgRaw,
+		FaceColorMap:   fcMap,
 		VertexCount:    numVert,
 		IndexCount:     triLen,
 		FaceGroupCount: fgCount,
@@ -963,7 +1020,7 @@ func mergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
 		totalIdx += m.IndexCount
 	}
 
-	// Decode, merge, re-encode
+	// Merge raw byte buffers
 	vertBuf := make([]byte, 0, totalVerts*12)
 	idxBuf := make([]uint32, 0, totalIdx)
 	var fgBuf []uint32
@@ -972,7 +1029,7 @@ func mergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
 
 	// Check if any mesh has face groups
 	for _, m := range meshes {
-		if m.faceGroupB64 != "" {
+		if len(m.FaceGroupRaw) > 0 {
 			hasFaceGroups = true
 			break
 		}
@@ -982,20 +1039,10 @@ func mergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
 	}
 
 	for _, m := range meshes {
-		vb, err := base64.StdEncoding.DecodeString(m.vertB64)
-		if err != nil {
-			log.Printf("mergeDisplayMeshes: skipping mesh with malformed vertex data: %v", err)
-			continue
-		}
-		ib, err := base64.StdEncoding.DecodeString(m.idxB64)
-		if err != nil {
-			log.Printf("mergeDisplayMeshes: skipping mesh with malformed index data: %v", err)
-			continue
-		}
-		vertBuf = append(vertBuf, vb...)
-		n := len(ib) / 4
+		vertBuf = append(vertBuf, m.VertRaw...)
+		n := len(m.IdxRaw) / 4
 		if n > 0 {
-			src := unsafe.Slice((*uint32)(unsafe.Pointer(&ib[0])), n)
+			src := unsafe.Slice((*uint32)(unsafe.Pointer(&m.IdxRaw[0])), n)
 			for _, idx := range src {
 				idxBuf = append(idxBuf, idx+vertOffset)
 			}
@@ -1003,14 +1050,10 @@ func mergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
 
 		// Merge face groups (IDs are globally unique via AsOriginal, no offset needed)
 		if hasFaceGroups {
-			if m.faceGroupB64 != "" {
-				fb, err := base64.StdEncoding.DecodeString(m.faceGroupB64)
-				if err != nil {
-					log.Printf("mergeDisplayMeshes: malformed face group data: %v", err)
-				} else if fn := len(fb) / 4; fn > 0 {
-					src := unsafe.Slice((*uint32)(unsafe.Pointer(&fb[0])), fn)
-					fgBuf = append(fgBuf, src...)
-				}
+			if len(m.FaceGroupRaw) > 0 {
+				fn := len(m.FaceGroupRaw) / 4
+				src := unsafe.Slice((*uint32)(unsafe.Pointer(&m.FaceGroupRaw[0])), fn)
+				fgBuf = append(fgBuf, src...)
 			} else {
 				// No face groups in this mesh — assign zero (unknown)
 				numTris := n / 3
@@ -1023,26 +1066,25 @@ func mergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
 		vertOffset += uint32(m.VertexCount)
 	}
 
-	var idxBytes []byte
+	var idxRaw []byte
 	if len(idxBuf) > 0 {
-		idxBytes = make([]byte, len(idxBuf)*4)
-		copy(idxBytes, unsafe.Slice((*byte)(unsafe.Pointer(&idxBuf[0])), len(idxBuf)*4))
+		idxRaw = make([]byte, len(idxBuf)*4)
+		copy(idxRaw, unsafe.Slice((*byte)(unsafe.Pointer(&idxBuf[0])), len(idxBuf)*4))
 	}
 
-	var fgB64 string
+	var fgRaw []byte
 	var fgCount int
 	if len(fgBuf) > 0 {
-		fgBytes := make([]byte, len(fgBuf)*4)
-		copy(fgBytes, unsafe.Slice((*byte)(unsafe.Pointer(&fgBuf[0])), len(fgBuf)*4))
-		fgB64 = base64.StdEncoding.EncodeToString(fgBytes)
+		fgRaw = make([]byte, len(fgBuf)*4)
+		copy(fgRaw, unsafe.Slice((*byte)(unsafe.Pointer(&fgBuf[0])), len(fgBuf)*4))
 		fgCount = len(fgBuf)
 	}
 
 	return &DisplayMesh{
-		vertB64:        base64.StdEncoding.EncodeToString(vertBuf),
-		idxB64:         base64.StdEncoding.EncodeToString(idxBytes),
-		faceGroupB64:   fgB64,
-		VertexCount:    len(vertBuf) / 12, // 12 bytes per vertex (3 floats × 4 bytes)
+		VertRaw:        vertBuf,
+		IdxRaw:         idxRaw,
+		FaceGroupRaw:   fgRaw,
+		VertexCount:    len(vertBuf) / 12,
 		IndexCount:     len(idxBuf),
 		FaceGroupCount: fgCount,
 	}
@@ -1095,32 +1137,34 @@ func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
 	src := unsafe.Pointer(cVerts)
 	stride := uintptr(numProp) * 4
 
-	// Extract XYZ positions (first 3 floats per vertex)
-	var vertB64 string
+	// Extract XYZ positions (first 3 floats per vertex) as raw bytes
+	var vertRaw []byte
 	if numProp == 3 {
-		vertB64 = base64.StdEncoding.EncodeToString(
-			unsafe.Slice((*byte)(src), numVert*3*4))
+		cBytes := unsafe.Slice((*byte)(src), numVert*3*4)
+		vertRaw = make([]byte, len(cBytes))
+		copy(vertRaw, cBytes)
 	} else {
-		vertTmp := make([]byte, numVert*12)
+		vertRaw = make([]byte, numVert*12)
 		for i := 0; i < numVert; i++ {
 			off := unsafe.Add(src, uintptr(i)*stride)
-			copy(vertTmp[i*12:], unsafe.Slice((*byte)(off), 12))
+			copy(vertRaw[i*12:], unsafe.Slice((*byte)(off), 12))
 		}
-		vertB64 = base64.StdEncoding.EncodeToString(vertTmp)
 	}
 
 	triLen := numTri * 3
-	idxB64 := base64.StdEncoding.EncodeToString(
-		unsafe.Slice((*byte)(unsafe.Pointer(cIndices)), triLen*4))
+	idxSrc := unsafe.Slice((*byte)(unsafe.Pointer(cIndices)), triLen*4)
+	idxRaw := make([]byte, len(idxSrc))
+	copy(idxRaw, idxSrc)
 
-	var fgB64 string
+	var fgRaw []byte
 	var fgCount int
 	var fcMap map[string]string
 	nFaceIDs := int(cNumFaceIDs)
 	if nFaceIDs > 0 {
 		defer C.free(unsafe.Pointer(cFaceIDs))
-		fgB64 = base64.StdEncoding.EncodeToString(
-			unsafe.Slice((*byte)(unsafe.Pointer(cFaceIDs)), nFaceIDs*4))
+		fgSrc := unsafe.Slice((*byte)(unsafe.Pointer(cFaceIDs)), nFaceIDs*4)
+		fgRaw = make([]byte, len(fgSrc))
+		copy(fgRaw, fgSrc)
 		fgCount = nFaceIDs
 
 		faceIDs := unsafe.Slice((*uint32)(unsafe.Pointer(cFaceIDs)), nFaceIDs)
@@ -1140,14 +1184,82 @@ func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
 	}
 
 	return &DisplayMesh{
-		vertB64:        vertB64,
-		idxB64:         idxB64,
-		faceGroupB64:   fgB64,
-		faceColorMap:   fcMap,
+		VertRaw:        vertRaw,
+		IdxRaw:         idxRaw,
+		FaceGroupRaw:   fgRaw,
+		FaceColorMap:   fcMap,
 		VertexCount:    numVert,
 		IndexCount:     triLen,
 		FaceGroupCount: fgCount,
 	}
+}
+
+// MergeExtractExpandedMeshes extracts expanded (non-indexed) display meshes with
+// pre-computed edge lines. The frontend can use the buffers directly without
+// calling toNonIndexed() or EdgesGeometry().
+func MergeExtractExpandedMeshes(solids []*Solid, edgeThresholdDeg float32) *DisplayMesh {
+	if len(solids) == 0 {
+		return &DisplayMesh{}
+	}
+
+	// Extract the standard indexed mesh (needed for face colors, posMap, etc.)
+	dm := MergeExtractDisplayMeshes(solids)
+
+	// Extract the expanded + edge data
+	var cPositions *C.float
+	var cNumPositions C.int
+	var cFaceIDs *C.uint32_t
+	var cNumFaceIDs C.int
+	var cEdgeLines *C.float
+	var cNumEdges C.int
+
+	if len(solids) == 1 {
+		C.facet_extract_expanded_mesh(solids[0].ptr,
+			&cPositions, &cNumPositions,
+			&cFaceIDs, &cNumFaceIDs,
+			&cEdgeLines, &cNumEdges,
+			C.float(edgeThresholdDeg))
+	} else {
+		ptrs := make([]*C.ManifoldManifold, len(solids))
+		for i, s := range solids {
+			ptrs[i] = s.ptr
+		}
+		C.facet_merge_extract_expanded_mesh(&ptrs[0], C.size_t(len(solids)),
+			&cPositions, &cNumPositions,
+			&cFaceIDs, &cNumFaceIDs,
+			&cEdgeLines, &cNumEdges,
+			C.float(edgeThresholdDeg))
+	}
+	runtime.KeepAlive(solids)
+
+	numPositions := int(cNumPositions)
+	if numPositions > 0 && cPositions != nil {
+		defer C.free(unsafe.Pointer(cPositions))
+		src := unsafe.Slice((*byte)(unsafe.Pointer(cPositions)), numPositions*3*4)
+		dm.ExpandedRaw = make([]byte, len(src))
+		copy(dm.ExpandedRaw, src)
+		dm.ExpandedCount = numPositions
+	}
+
+	numFaceIDs := int(cNumFaceIDs)
+	if numFaceIDs > 0 && cFaceIDs != nil {
+		defer C.free(unsafe.Pointer(cFaceIDs))
+		src := unsafe.Slice((*byte)(unsafe.Pointer(cFaceIDs)), numFaceIDs*4)
+		dm.FaceGroupRaw = make([]byte, len(src))
+		copy(dm.FaceGroupRaw, src)
+		dm.FaceGroupCount = numFaceIDs
+	}
+
+	numEdges := int(cNumEdges)
+	if numEdges > 0 && cEdgeLines != nil {
+		defer C.free(unsafe.Pointer(cEdgeLines))
+		src := unsafe.Slice((*byte)(unsafe.Pointer(cEdgeLines)), numEdges*6*4)
+		dm.EdgeLinesRaw = make([]byte, len(src))
+		copy(dm.EdgeLinesRaw, src)
+		dm.EdgeCount = numEdges
+	}
+
+	return dm
 }
 
 // buildDisplayMesh creates a DisplayMesh from Go-typed arrays with optional face group IDs.
@@ -1160,27 +1272,30 @@ func buildDisplayMesh(verts []float32, indices []uint32, faceGroups []uint32) *D
 
 	numVert := len(verts) / 3
 
-	// Encode vertices
-	vertBytes := unsafe.Slice((*byte)(unsafe.Pointer(&verts[0])), len(verts)*4)
-	vertB64 := base64.StdEncoding.EncodeToString(vertBytes)
+	// Copy vertices as raw bytes
+	vertSrc := unsafe.Slice((*byte)(unsafe.Pointer(&verts[0])), len(verts)*4)
+	vertRaw := make([]byte, len(vertSrc))
+	copy(vertRaw, vertSrc)
 
-	// Encode indices
-	idxBytes := unsafe.Slice((*byte)(unsafe.Pointer(&indices[0])), len(indices)*4)
-	idxB64 := base64.StdEncoding.EncodeToString(idxBytes)
+	// Copy indices as raw bytes
+	idxSrc := unsafe.Slice((*byte)(unsafe.Pointer(&indices[0])), len(indices)*4)
+	idxRaw := make([]byte, len(idxSrc))
+	copy(idxRaw, idxSrc)
 
-	// Encode face groups if present
-	var fgB64 string
+	// Copy face groups if present
+	var fgRaw []byte
 	var fgCount int
 	if len(faceGroups) > 0 {
-		fgBytes := unsafe.Slice((*byte)(unsafe.Pointer(&faceGroups[0])), len(faceGroups)*4)
-		fgB64 = base64.StdEncoding.EncodeToString(fgBytes)
+		fgSrc := unsafe.Slice((*byte)(unsafe.Pointer(&faceGroups[0])), len(faceGroups)*4)
+		fgRaw = make([]byte, len(fgSrc))
+		copy(fgRaw, fgSrc)
 		fgCount = len(faceGroups)
 	}
 
 	return &DisplayMesh{
-		vertB64:        vertB64,
-		idxB64:         idxB64,
-		faceGroupB64:   fgB64,
+		VertRaw:        vertRaw,
+		IdxRaw:         idxRaw,
+		FaceGroupRaw:   fgRaw,
 		VertexCount:    numVert,
 		IndexCount:     len(indices),
 		FaceGroupCount: fgCount,

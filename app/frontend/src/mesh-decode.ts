@@ -1,119 +1,63 @@
 import * as THREE from 'three';
 
-/** Wire format from Go MarshalJSON: base64-encoded binary arrays. */
-export interface MeshData {
-  vertices: string;    // base64-encoded float32 LE
-  indices: string;     // base64-encoded uint32 LE
-  faceGroups?: string; // base64-encoded uint32 LE (per-triangle face group IDs)
-  faceColors?: Record<string, string>; // faceGroupID → hex color (e.g. {"5": "#FF0000"})
-  vertexCount: number;
-  indexCount: number;
-}
-
 /** Decoded mesh ready for Three.js BufferGeometry. */
 export interface DecodedMesh {
   vertices: Float32Array;
   indices: Uint32Array;
   faceGroups?: Uint32Array;
   faceColors?: Record<string, string>;
+  expanded?: Float32Array;   // pre-expanded non-indexed positions (3 floats * 3 verts * numTri)
+  edgeLines?: Float32Array;  // pre-computed edge line segments (6 floats per edge)
 }
 
-interface DebugMeshData {
+export interface DebugMeshRef {
   role: string;
-  mesh: MeshData;
+  mesh: BinaryMeshMeta | null;
 }
 
 export interface DebugStepData {
   op: string;
-  meshes: DebugMeshData[];
+  meshes: DebugMeshRef[];
   line: number;
   col: number;
   file: string;
 }
 
-function decodeFloat32(b64: string): Float32Array {
-  if (!b64) return new Float32Array(0);
-  const bin = atob(b64);
-  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
-  return new Float32Array(bytes.buffer);
+/** Metadata for a binary mesh section (from eval response JSON header). */
+export interface BinaryMeshMeta {
+  vertexCount: number;
+  indexCount: number;
+  faceGroupCount: number;
+  faceColors?: Record<string, string>;
+  vertices: { offset: number; size: number };
+  indices: { offset: number; size: number };
+  faceGroups?: { offset: number; size: number };
+  // Pre-expanded non-indexed positions (replaces toNonIndexed)
+  expanded?: { offset: number; size: number };
+  expandedCount?: number;
+  // Pre-computed edge line segments (replaces EdgesGeometry)
+  edgeLines?: { offset: number; size: number };
+  edgeCount?: number;
 }
 
-function decodeUint32(b64: string): Uint32Array {
-  if (!b64) return new Uint32Array(0);
-  const bin = atob(b64);
-  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
-  return new Uint32Array(bytes.buffer);
-}
-
-export function decodeMesh(data: MeshData): DecodedMesh {
+/** Decode a mesh from a binary ArrayBuffer using offset metadata (zero-copy views). */
+export function decodeBinaryMesh(binary: ArrayBuffer, meta: BinaryMeshMeta): DecodedMesh {
   const result: DecodedMesh = {
-    vertices: decodeFloat32(data.vertices),
-    indices: decodeUint32(data.indices),
+    vertices: new Float32Array(binary, meta.vertices.offset, meta.vertices.size / 4),
+    indices: new Uint32Array(binary, meta.indices.offset, meta.indices.size / 4),
   };
-  if (data.faceGroups) {
-    result.faceGroups = decodeUint32(data.faceGroups);
+  if (meta.faceGroups) {
+    result.faceGroups = new Uint32Array(binary, meta.faceGroups.offset, meta.faceGroups.size / 4);
   }
-  if (data.faceColors) {
-    result.faceColors = data.faceColors;
+  if (meta.faceColors) {
+    result.faceColors = meta.faceColors;
   }
-  return result;
-}
-
-/** Merge multiple MeshData into one DecodedMesh (client-side equivalent of MergeMeshes). */
-export function mergeMeshes(meshes: MeshData[]): DecodedMesh {
-  if (meshes.length === 1) return decodeMesh(meshes[0]);
-  let totalVerts = 0, totalIdx = 0, totalTris = 0;
-  const decoded = meshes.map(m => {
-    const d = decodeMesh(m);
-    totalVerts += d.vertices.length;
-    totalIdx += d.indices.length;
-    totalTris += d.indices.length / 3;
-    return d;
-  });
-  const hasFG = decoded.some(d => d.faceGroups !== undefined);
-  const vertices = new Float32Array(totalVerts);
-  const indices = new Uint32Array(totalIdx);
-  const faceGroups = hasFG ? new Uint32Array(totalTris) : undefined;
-  let vi = 0, ii = 0, ti = 0, vertOffset = 0, fgOffset = 0;
-  for (const d of decoded) {
-    vertices.set(d.vertices, vi);
-    vi += d.vertices.length;
-    for (let i = 0; i < d.indices.length; i++) indices[ii++] = d.indices[i] + vertOffset;
-    if (faceGroups) {
-      const nTris = d.indices.length / 3;
-      if (d.faceGroups) {
-        for (let i = 0; i < nTris; i++) faceGroups[ti++] = d.faceGroups[i] + fgOffset;
-        fgOffset += d.faceGroups.reduce((a, b) => Math.max(a, b), 0) + 1;
-      } else {
-        for (let i = 0; i < nTris; i++) faceGroups[ti++] = fgOffset;
-        fgOffset++;
-      }
-    }
-    vertOffset += d.vertices.length / 3;
+  if (meta.expanded) {
+    result.expanded = new Float32Array(binary, meta.expanded.offset, meta.expanded.size / 4);
   }
-  const result: DecodedMesh = { vertices, indices };
-  if (faceGroups) result.faceGroups = faceGroups;
-
-  // Merge faceColors with offset keys
-  const hasFC = decoded.some(d => d.faceColors !== undefined);
-  if (hasFC) {
-    const mergedColors: Record<string, string> = {};
-    let fcOffset = 0;
-    for (const d of decoded) {
-      if (d.faceColors) {
-        for (const [k, v] of Object.entries(d.faceColors)) {
-          mergedColors[String(Number(k) + fcOffset)] = v;
-        }
-      }
-      if (d.faceGroups) {
-        fcOffset += d.faceGroups.reduce((a, b) => Math.max(a, b), 0) + 1;
-      } else {
-        fcOffset++;
-      }
-    }
-    result.faceColors = mergedColors;
+  if (meta.edgeLines) {
+    result.edgeLines = new Float32Array(binary, meta.edgeLines.offset, meta.edgeLines.size / 4);
   }
-
   return result;
 }
 

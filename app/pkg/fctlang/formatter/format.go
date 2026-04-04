@@ -317,11 +317,23 @@ func (f *formatter) formatStructDecl(sd *parser.StructDecl, trailing []parser.Co
 	f.writeTrailingComment(trailing)
 	f.writeln("")
 	f.depth++
+	// Find max field name length for type alignment
+	maxNameLen := 0
+	for _, field := range sd.Fields {
+		if len(field.Name) > maxNameLen {
+			maxNameLen = len(field.Name)
+		}
+	}
 	for _, field := range sd.Fields {
 		fLeading, fTrailing := splitComments(field.Comments)
 		f.writeComments(fLeading)
 		f.writeIndent()
-		f.write(field.Name + " " + field.Type)
+		f.write(field.Name)
+		padding := maxNameLen - len(field.Name) + 1
+		for i := 0; i < padding; i++ {
+			f.write(" ")
+		}
+		f.write(field.Type)
 		if field.Default != nil {
 			f.write(" = ")
 			f.formatExpr(field.Default)
@@ -669,14 +681,14 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 	}
 }
 
+type elemInfo struct {
+	expr      parser.Expr
+	stripName bool // true if we should temporarily clear StructLitExpr.TypeName
+}
+
 func (f *formatter) formatArrayElems(e *parser.ArrayLitExpr) {
 	if len(e.Elems) == 0 {
 		return
-	}
-	// Prepare elements — strip redundant struct type names in typed arrays
-	type elemInfo struct {
-		expr      parser.Expr
-		stripName bool // true if we should temporarily clear StructLitExpr.TypeName
 	}
 	elems := make([]elemInfo, len(e.Elems))
 	for i, elem := range e.Elems {
@@ -724,19 +736,47 @@ func (f *formatter) formatArrayElems(e *parser.ArrayLitExpr) {
 		}
 		return
 	}
-	// Multi-line
+	// Multi-line: pack as many elements per line as fit.
 	f.writeln("")
 	f.depth++
+	f.writeIndent()
+	lineLen := f.currentLineLen()
 	for i, ei := range elems {
-		f.writeIndent()
-		writeElem(ei)
-		if i < len(elems)-1 {
-			f.write(",")
+		elemWidth := f.measureElemInfo(ei)
+		sep := 0
+		if i > 0 {
+			sep = 2 // ", "
 		}
-		f.writeln("")
+		// Would this element push us past the limit?
+		if i > 0 && lineLen+sep+elemWidth > f.opts.MaxLineLength {
+			f.write(",")
+			f.writeln("")
+			f.writeIndent()
+			lineLen = f.currentLineLen()
+			sep = 0
+		}
+		if sep > 0 {
+			f.write(", ")
+			lineLen += 2
+		}
+		writeElem(ei)
+		lineLen += elemWidth
 	}
+	f.writeln("")
 	f.depth--
 	f.writeIndent()
+}
+
+func (f *formatter) measureElemInfo(ei elemInfo) int {
+	if ei.stripName {
+		sl := ei.expr.(*parser.StructLitExpr)
+		saved := sl.TypeName
+		sl.TypeName = ""
+		w := f.measureExpr(sl)
+		sl.TypeName = saved
+		return w
+	}
+	return f.measureExpr(ei.expr)
 }
 
 func (f *formatter) formatArgs(args []parser.Expr) {

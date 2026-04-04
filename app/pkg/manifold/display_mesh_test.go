@@ -22,21 +22,12 @@ func TestDisplayMeshCube(t *testing.T) {
 		t.Errorf("index count %d is not a multiple of 3", dm.IndexCount)
 	}
 
-	// Verify base64 strings decode to correct byte lengths
-	vertBytes, err := base64.StdEncoding.DecodeString(dm.vertB64)
-	if err != nil {
-		t.Fatalf("failed to decode vertex base64: %v", err)
+	// Verify raw byte lengths
+	if len(dm.VertRaw) != dm.VertexCount*12 {
+		t.Errorf("vertex bytes: got %d, want %d", len(dm.VertRaw), dm.VertexCount*12)
 	}
-	if len(vertBytes) != dm.VertexCount*12 {
-		t.Errorf("vertex bytes: got %d, want %d", len(vertBytes), dm.VertexCount*12)
-	}
-
-	idxBytes, err := base64.StdEncoding.DecodeString(dm.idxB64)
-	if err != nil {
-		t.Fatalf("failed to decode index base64: %v", err)
-	}
-	if len(idxBytes) != dm.IndexCount*4 {
-		t.Errorf("index bytes: got %d, want %d", len(idxBytes), dm.IndexCount*4)
+	if len(dm.IdxRaw) != dm.IndexCount*4 {
+		t.Errorf("index bytes: got %d, want %d", len(dm.IdxRaw), dm.IndexCount*4)
 	}
 }
 
@@ -57,9 +48,8 @@ func TestDisplayMeshMatchesMesh(t *testing.T) {
 		t.Errorf("index count mismatch: DisplayMesh=%d, Mesh=%d", dm.IndexCount, len(mesh.Indices))
 	}
 
-	// Decode DisplayMesh vertices and compare to Mesh vertices
-	vertBytes, _ := base64.StdEncoding.DecodeString(dm.vertB64)
-	dmVerts := unsafe.Slice((*float32)(unsafe.Pointer(&vertBytes[0])), dm.VertexCount*3)
+	// Compare raw vertex bytes to Mesh vertices
+	dmVerts := unsafe.Slice((*float32)(unsafe.Pointer(&dm.VertRaw[0])), dm.VertexCount*3)
 	for i, v := range mesh.Vertices {
 		if dmVerts[i] != v {
 			t.Errorf("vertex[%d] mismatch: DisplayMesh=%f, Mesh=%f", i, dmVerts[i], v)
@@ -67,9 +57,8 @@ func TestDisplayMeshMatchesMesh(t *testing.T) {
 		}
 	}
 
-	// Decode DisplayMesh indices and compare to Mesh indices
-	idxBytes, _ := base64.StdEncoding.DecodeString(dm.idxB64)
-	dmIdx := unsafe.Slice((*uint32)(unsafe.Pointer(&idxBytes[0])), dm.IndexCount)
+	// Compare raw index bytes to Mesh indices
+	dmIdx := unsafe.Slice((*uint32)(unsafe.Pointer(&dm.IdxRaw[0])), dm.IndexCount)
 	for i, idx := range mesh.Indices {
 		if dmIdx[i] != idx {
 			t.Errorf("index[%d] mismatch: DisplayMesh=%d, Mesh=%d", i, dmIdx[i], idx)
@@ -103,10 +92,10 @@ func TestDisplayMeshMarshalJSON(t *testing.T) {
 	if parsed.IndexCount != dm.IndexCount {
 		t.Errorf("indexCount: got %d, want %d", parsed.IndexCount, dm.IndexCount)
 	}
-	if parsed.Vertices != dm.vertB64 {
+	if parsed.Vertices != base64.StdEncoding.EncodeToString(dm.VertRaw) {
 		t.Error("vertices base64 mismatch")
 	}
-	if parsed.Indices != dm.idxB64 {
+	if parsed.Indices != base64.StdEncoding.EncodeToString(dm.IdxRaw) {
 		t.Error("indices base64 mismatch")
 	}
 
@@ -129,11 +118,11 @@ func TestDisplayMeshEmpty(t *testing.T) {
 	if dm.IndexCount != 0 {
 		t.Errorf("expected 0 indices, got %d", dm.IndexCount)
 	}
-	if dm.vertB64 != "" {
-		t.Error("expected empty vertex base64")
+	if len(dm.VertRaw) != 0 {
+		t.Error("expected empty vertex bytes")
 	}
-	if dm.idxB64 != "" {
-		t.Error("expected empty index base64")
+	if len(dm.IdxRaw) != 0 {
+		t.Error("expected empty index bytes")
 	}
 }
 
@@ -153,8 +142,7 @@ func Test_mergeDisplayMeshes(t *testing.T) {
 	}
 
 	// Verify merged indices are properly offset
-	idxBytes, _ := base64.StdEncoding.DecodeString(merged.idxB64)
-	indices := unsafe.Slice((*uint32)(unsafe.Pointer(&idxBytes[0])), merged.IndexCount)
+	indices := unsafe.Slice((*uint32)(unsafe.Pointer(&merged.IdxRaw[0])), merged.IndexCount)
 
 	// All indices should be in range [0, merged.VertexCount)
 	for i, idx := range indices {
@@ -165,10 +153,8 @@ func Test_mergeDisplayMeshes(t *testing.T) {
 	}
 
 	// Second mesh's indices should be offset by first mesh's vertex count
-	aIdxBytes, _ := base64.StdEncoding.DecodeString(dmA.idxB64)
-	aIndices := unsafe.Slice((*uint32)(unsafe.Pointer(&aIdxBytes[0])), dmA.IndexCount)
-	bIdxBytes, _ := base64.StdEncoding.DecodeString(dmB.idxB64)
-	bIndices := unsafe.Slice((*uint32)(unsafe.Pointer(&bIdxBytes[0])), dmB.IndexCount)
+	aIndices := unsafe.Slice((*uint32)(unsafe.Pointer(&dmA.IdxRaw[0])), dmA.IndexCount)
+	bIndices := unsafe.Slice((*uint32)(unsafe.Pointer(&dmB.IdxRaw[0])), dmB.IndexCount)
 
 	// First mesh indices should be unchanged
 	for i := 0; i < dmA.IndexCount; i++ {
@@ -218,8 +204,7 @@ func TestDisplayMeshVertexValues(t *testing.T) {
 	cube := CreateCube(10, 10, 10)
 	dm := cube.ToDisplayMesh()
 
-	vertBytes, _ := base64.StdEncoding.DecodeString(dm.vertB64)
-	verts := unsafe.Slice((*float32)(unsafe.Pointer(&vertBytes[0])), dm.VertexCount*3)
+	verts := unsafe.Slice((*float32)(unsafe.Pointer(&dm.VertRaw[0])), dm.VertexCount*3)
 
 	// Cube is not centered (center=false): vertices should be in [0, 10]
 	for i := 0; i < len(verts); i++ {
@@ -263,6 +248,6 @@ func TestDisplayMeshFaceMap(t *testing.T) {
 	}
 
 	dm := s.ToDisplayMesh()
-	t.Logf("faceGroupB64 len: %d", len(dm.faceGroupB64))
+	t.Logf("FaceGroupRaw len: %d", len(dm.FaceGroupRaw))
 	t.Logf("FaceGroupCount: %d", dm.FaceGroupCount)
 }

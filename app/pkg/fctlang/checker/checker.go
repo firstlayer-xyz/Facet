@@ -1,11 +1,13 @@
 package checker
 
 import (
-	"facet/app/pkg/fctlang/loader"
-	"facet/app/pkg/fctlang/parser"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
+
+	"facet/app/pkg/fctlang/loader"
+	"facet/app/pkg/fctlang/parser"
 )
 
 // Result holds all outputs from a single static analysis pass.
@@ -84,8 +86,10 @@ func (c *checker) registerLibraries(prog loader.Program) {
 	}
 }
 
-// checkGlobals validates global variables per source file.
+// checkGlobals validates global variables per source file and caches the
+// resulting env in c.srcEnvs so later passes don't re-infer.
 func (c *checker) checkGlobals(prog loader.Program) {
+	c.srcEnvs = make(map[string]*typeEnv)
 	for srcKey, src := range prog.Sources {
 		if srcKey == loader.StdlibPath {
 			continue
@@ -110,7 +114,16 @@ func (c *checker) checkGlobals(prog loader.Program) {
 				}
 			}
 		}
+		c.srcEnvs[srcKey] = env
 	}
+}
+
+// srcGlobalEnv returns the cached per-source env (globals + stdlib).
+func (c *checker) srcGlobalEnv(srcKey string) *typeEnv {
+	if env, ok := c.srcEnvs[srcKey]; ok {
+		return env.child()
+	}
+	return c.newStdEnv()
 }
 
 // checkStructDefaults validates struct field default values against declared types.
@@ -179,11 +192,7 @@ func (c *checker) checkDuplicateFunctions(prog loader.Program) {
 func (c *checker) inferReturnTypes(prog loader.Program) {
 	for srcKey, src := range prog.Sources {
 		c.currentSrcKey = srcKey
-		srcEnv := c.newStdEnv()
-		for _, g := range src.Globals() {
-			t := c.inferExpr(g.Value, srcEnv)
-			srcEnv.set(g.Name, t)
-		}
+		srcEnv := c.srcGlobalEnv(srcKey)
 		nameCounts := map[string]int{}
 		for _, fn := range src.Functions() {
 			if fn.ReceiverType == "" {
@@ -224,15 +233,7 @@ func (c *checker) inferReturnTypes(prog loader.Program) {
 func (c *checker) validateFunctions(prog loader.Program) {
 	for srcKey, src := range prog.Sources {
 		c.currentSrcKey = srcKey
-		srcEnv := c.newStdEnv()
-		for _, g := range src.Globals() {
-			t := c.inferExpr(g.Value, srcEnv)
-			srcEnv.set(g.Name, t)
-			if g.IsConst {
-				srcEnv.setConst(g.Name)
-			}
-			c.recordVarType(g.Name, srcEnv)
-		}
+		srcEnv := c.srcGlobalEnv(srcKey)
 		savedStructDecls := c.structDecls
 		srcDecls := make(map[string]*parser.StructDecl)
 		if stdSrc := prog.Std(); stdSrc != nil {
@@ -261,7 +262,10 @@ func (c *checker) validateFunctions(prog loader.Program) {
 // validateFunction checks a single function definition.
 func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog loader.Program, srcEnv *typeEnv, srcStructs map[string]bool) {
 	env := srcEnv.child()
-	for _, p := range fn.Params {
+	for i, p := range fn.Params {
+		if slices.ContainsFunc(fn.Params[i+1:], func(q *parser.Param) bool { return q.Name == p.Name }) {
+			c.addError(fn.Pos, fmt.Sprintf("%s() has duplicate parameter name %q", fn.Name, p.Name))
+		}
 		bareType := strings.TrimPrefix(p.Type, "[]")
 		if bareType == "Array" {
 			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: bare Array type is not allowed; use a typed array (e.g., []Solid) or []var for generic arrays", fn.Name, p.Name))
@@ -477,7 +481,8 @@ type checker struct {
 	// returnElemType is set when checking a function with a declared array return type.
 	// It provides top-down coercion context for untyped array literals in return position.
 	returnElemType typeInfo
-	stdEnv         *typeEnv // cached stdlib env, computed once
+	stdEnv         *typeEnv            // cached stdlib env, computed once
+	srcEnvs        map[string]*typeEnv // per-source env with globals, computed once by checkGlobals
 }
 
 func initChecker(prog loader.Program) *checker {

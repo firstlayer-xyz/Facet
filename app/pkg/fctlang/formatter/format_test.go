@@ -325,8 +325,35 @@ return []Vec3[Vec3{x: 100 mm, y: 200 mm, z: 300 mm}, Vec3{x: 400 mm, y: 500 mm, 
 `,
 			want: `fn Main() {
     return []Vec3[
-        {x: 100 mm, y: 200 mm, z: 300 mm},
-        {x: 400 mm, y: 500 mm, z: 600 mm}
+        {x: 100 mm, y: 200 mm, z: 300 mm}, {x: 400 mm, y: 500 mm, z: 600 mm}
+    ]
+}
+`,
+		},
+		{
+			name: "array of structs splits between structs",
+			input: `fn Main() {
+return []Vec3[Vec3{x: 1 mm, y: 2 mm, z: 3 mm}, Vec3{x: 4 mm, y: 5 mm, z: 6 mm}, Vec3{x: 7 mm, y: 8 mm, z: 9 mm}, Vec3{x: 10 mm, y: 11 mm, z: 12 mm}]
+}
+`,
+			want: `fn Main() {
+    return []Vec3[
+        {x: 1 mm, y: 2 mm, z: 3 mm}, {x: 4 mm, y: 5 mm, z: 6 mm},
+        {x: 7 mm, y: 8 mm, z: 9 mm}, {x: 10 mm, y: 11 mm, z: 12 mm}
+    ]
+}
+`,
+		},
+		{
+			name: "array of numbers packs per line",
+			input: `fn Main() {
+return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+}
+`,
+			want: `fn Main() {
+    return [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25
     ]
 }
 `,

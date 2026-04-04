@@ -2,11 +2,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { HeadTracker } from './headtrack';
 import { hexToInt } from './color';
-import { decodeMesh, mergeMeshes, buildFaceGroupWireframe } from './mesh-decode';
-import type { MeshData, DecodedMesh, DebugStepData } from './mesh-decode';
+import { decodeBinaryMesh, buildFaceGroupWireframe } from './mesh-decode';
+import type { DecodedMesh, DebugStepData } from './mesh-decode';
 
-export type { MeshData, DecodedMesh, DebugStepData };
-export { decodeMesh, mergeMeshes };
+export type { DecodedMesh, DebugStepData };
 /** Theme-derived colors + bed settings passed to the viewer. */
 interface ViewerAppearance {
   backgroundColor: string;
@@ -279,85 +278,114 @@ export class Viewer {
     this.animate();
   }
 
-  loadMesh(data: MeshData): void {
-    this.loadDecodedMesh(decodeMesh(data));
-  }
-
   loadDecodedMesh(decoded: DecodedMesh): void {
     if (!decoded.vertices || decoded.vertices.length === 0) {
       console.warn('Empty mesh data received');
       return;
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(decoded.vertices, 3));
-
-    if (decoded.indices && decoded.indices.length > 0) {
-      geometry.setIndex(new THREE.BufferAttribute(decoded.indices, 1));
-    }
-
-    // Face-group metadata
     const hasFaceColors = decoded.faceColors && Object.keys(decoded.faceColors).length > 0
-      && decoded.faceGroups && decoded.indices && decoded.indices.length > 0;
-    // Always use vertex colors when we have face groups (for per-face color + highlighting)
-    const useVertexColors = decoded.faceGroups && decoded.indices && decoded.indices.length > 0;
+      && decoded.faceGroups;
+    const useVertexColors = !!decoded.faceGroups;
 
     let mesh: THREE.Mesh<THREE.BufferGeometry, THREE.Material>;
 
-    // Per-face colors from ColorMap (e.g. .Color("#FF0000"))
-    // Faces without an explicit color get the default meshColor.
-    // Vertex colors also enable posMap-based dim highlighting.
-    if (useVertexColors) {
-      const nonIndexed = geometry.toNonIndexed();
+    if (decoded.expanded && useVertexColors) {
+      // Pre-expanded positions but need to compute colors on frontend
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(decoded.expanded, 3));
+
       const nTris = decoded.faceGroups!.length;
       const colors = new Float32Array(nTris * 3 * 4);
       const defaultColor = new THREE.Color(this.meshColor);
-      // Pre-compute color map to avoid per-triangle allocation
-      const colorMap = new Map<string, THREE.Color>();
+      const colorMap = new Map<number, [number, number, number]>();
       if (hasFaceColors) {
-        for (const hex of Object.values(decoded.faceColors!)) {
+        for (const [id, hex] of Object.entries(decoded.faceColors!)) {
           const key = hex.length > 7 ? hex.substring(0, 7) : hex;
-          if (!colorMap.has(key)) colorMap.set(key, new THREE.Color(key));
+          const c = new THREE.Color(key);
+          colorMap.set(Number(id), [c.r, c.g, c.b]);
         }
       }
+      const dr = defaultColor.r, dg = defaultColor.g, db = defaultColor.b;
       for (let t = 0; t < nTris; t++) {
-        const fgId = String(decoded.faceGroups![t]);
-        const hex = hasFaceColors ? decoded.faceColors![fgId] : undefined;
-        let r: number, g: number, b: number;
-        if (hex) {
-          const key = hex.length > 7 ? hex.substring(0, 7) : hex;
-          const c = colorMap.get(key)!;
-          r = c.r; g = c.g; b = c.b;
-        } else {
-          r = defaultColor.r; g = defaultColor.g; b = defaultColor.b;
-        }
-        for (let v = 0; v < 3; v++) {
-          const base = t * 12 + v * 4;
-          colors[base + 0] = r;
-          colors[base + 1] = g;
-          colors[base + 2] = b;
-          colors[base + 3] = 1.0;
-        }
+        const fgId = decoded.faceGroups![t];
+        const c = hasFaceColors ? colorMap.get(fgId) : undefined;
+        const r = c ? c[0] : dr, g = c ? c[1] : dg, b = c ? c[2] : db;
+        const base = t * 12;
+        colors[base]     = r; colors[base + 1] = g; colors[base + 2]  = b; colors[base + 3]  = 1;
+        colors[base + 4] = r; colors[base + 5] = g; colors[base + 6]  = b; colors[base + 7]  = 1;
+        colors[base + 8] = r; colors[base + 9] = g; colors[base + 10] = b; colors[base + 11] = 1;
       }
-      nonIndexed.setAttribute('color', new THREE.BufferAttribute(colors, 4));
-      const material = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        metalness: this.meshMetalness,
-        roughness: this.meshRoughness,
-        flatShading: true,
-        side: THREE.DoubleSide,
-      });
-      mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(nonIndexed, material);
-      geometry.dispose();
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
+      mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry,
+        new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          metalness: this.meshMetalness,
+          roughness: this.meshRoughness,
+          flatShading: true,
+          side: THREE.DoubleSide,
+        }));
+    } else if (decoded.expanded) {
+      // Pre-expanded but no face groups — simple material
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(decoded.expanded, 3));
+      mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry,
+        new THREE.MeshStandardMaterial({
+          color: this.meshColor,
+          metalness: this.meshMetalness,
+          roughness: this.meshRoughness,
+          flatShading: true,
+          side: THREE.DoubleSide,
+        }));
     } else {
-      const material = new THREE.MeshStandardMaterial({
-        color: this.meshColor,
-        metalness: this.meshMetalness,
-        roughness: this.meshRoughness,
-        flatShading: true,
-        side: THREE.DoubleSide,
-      });
-      mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry, material);
+      // Fallback: indexed geometry (old path for debug step meshes, etc.)
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(decoded.vertices, 3));
+      if (decoded.indices && decoded.indices.length > 0) {
+        geometry.setIndex(new THREE.BufferAttribute(decoded.indices, 1));
+      }
+      if (useVertexColors) {
+        const nonIndexed = geometry.toNonIndexed();
+        const nTris = decoded.faceGroups!.length;
+        const colors = new Float32Array(nTris * 3 * 4);
+        const defaultColor = new THREE.Color(this.meshColor);
+        const colorMap = new Map<string, THREE.Color>();
+        if (hasFaceColors) {
+          for (const hex of Object.values(decoded.faceColors!)) {
+            const key = hex.length > 7 ? hex.substring(0, 7) : hex;
+            if (!colorMap.has(key)) colorMap.set(key, new THREE.Color(key));
+          }
+        }
+        for (let t = 0; t < nTris; t++) {
+          const fgId = String(decoded.faceGroups![t]);
+          const hex = hasFaceColors ? decoded.faceColors![fgId] : undefined;
+          let r: number, g: number, b: number;
+          if (hex) {
+            const key = hex.length > 7 ? hex.substring(0, 7) : hex;
+            const c = colorMap.get(key)!;
+            r = c.r; g = c.g; b = c.b;
+          } else {
+            r = defaultColor.r; g = defaultColor.g; b = defaultColor.b;
+          }
+          for (let v = 0; v < 3; v++) {
+            const base = t * 12 + v * 4;
+            colors[base] = r; colors[base+1] = g; colors[base+2] = b; colors[base+3] = 1.0;
+          }
+        }
+        nonIndexed.setAttribute('color', new THREE.BufferAttribute(colors, 4));
+        mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(nonIndexed,
+          new THREE.MeshStandardMaterial({
+            vertexColors: true, metalness: this.meshMetalness, roughness: this.meshRoughness,
+            flatShading: true, side: THREE.DoubleSide,
+          }));
+        geometry.dispose();
+      } else {
+        mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry,
+          new THREE.MeshStandardMaterial({
+            color: this.meshColor, metalness: this.meshMetalness, roughness: this.meshRoughness,
+            flatShading: true, side: THREE.DoubleSide,
+          }));
+      }
     }
 
     // Store raw data for face-group wireframe (needed even if geometry was converted to non-indexed)
@@ -375,8 +403,15 @@ export class Viewer {
     this.scene.add(mesh);
     this.userMeshes.push(mesh);
 
-    // Feature-edge outlines (sharp creases only)
-    if (!this.drawingMode && this.edgeOpacity > 0) {
+    // Edge lines: use pre-computed from Go/C++ if available, else compute on CPU
+    if (decoded.edgeLines && decoded.edgeLines.length > 0 && !this.drawingMode && this.edgeOpacity > 0) {
+      const edgesGeo = new THREE.BufferGeometry();
+      edgesGeo.setAttribute('position', new THREE.BufferAttribute(decoded.edgeLines, 3));
+      const edgesMat = new THREE.LineBasicMaterial({ color: this.edgeColor, transparent: true, opacity: this.edgeOpacity });
+      const edgeLines = new THREE.LineSegments(edgesGeo, edgesMat);
+      this.scene.add(edgeLines);
+      this.userMeshes.push(edgeLines);
+    } else if (!decoded.edgeLines && !this.drawingMode && this.edgeOpacity > 0) {
       const edgesGeo = new THREE.EdgesGeometry(mesh.geometry, this.edgeThreshold);
       const edgesMat = new THREE.LineBasicMaterial({ color: this.edgeColor, transparent: true, opacity: this.edgeOpacity });
       const edgeLines = new THREE.LineSegments(edgesGeo, edgesMat);
@@ -590,15 +625,16 @@ export class Viewer {
     return new Set(best.faceIDs);
   }
 
-  loadDebugStep(step: DebugStepData): void {
+  loadDebugStep(step: DebugStepData, binary: ArrayBuffer): void {
     this.clearMeshes();
 
     const styleMap = STEP_STYLES[step.op]
       ?? (TRANSFORM_OPS.has(step.op) ? STEP_STYLES._transform : STEP_STYLES._default);
 
     for (const dm of step.meshes ?? []) {
+      if (!dm.mesh) continue;
       const style = styleMap[dm.role] ?? STEP_STYLES._default[dm.role] ?? STEP_STYLES._default.result;
-      const decoded = decodeMesh(dm.mesh as any as MeshData);
+      const decoded = decodeBinaryMesh(binary, dm.mesh);
       if (!decoded.vertices || decoded.vertices.length === 0) continue;
 
       const geometry = new THREE.BufferGeometry();

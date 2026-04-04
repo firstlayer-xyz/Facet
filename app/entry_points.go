@@ -1,11 +1,21 @@
-package runner
+package main
 
 import (
 	"facet/app/pkg/fctlang/doc"
 	"facet/app/pkg/fctlang/loader"
 	"facet/app/pkg/fctlang/parser"
+	"math"
 	"sort"
+
+	"facet/app/pkg/manifold"
 )
+
+// SourceEntry describes a parsed source file with its text and origin.
+type SourceEntry struct {
+	Text       string            `json:"text"`
+	Kind       parser.SourceKind `json:"kind"`
+	ImportPath string            `json:"importPath,omitempty"` // e.g. "facet/gears"; empty for non-library sources
+}
 
 // ParamEntry describes a single function parameter for the preview panel.
 type ParamEntry struct {
@@ -38,8 +48,13 @@ type ParamConstraint struct {
 	Values    []interface{} `json:"values,omitempty"`    // for enum constraints
 }
 
-// isValidEntryPoint returns true if fn is a capitalized, fully-constrained,
-// Solid-returning function suitable as an entry point.
+// SolidBBox describes the axis-aligned bounding box of a single solid.
+type SolidBBox struct {
+	Min    [3]float64 `json:"min"`    // [x, y, z]
+	Max    [3]float64 `json:"max"`    // [x, y, z]
+	Pieces int        `json:"pieces"` // number of disconnected components
+}
+
 func isValidEntryPoint(fn *parser.Function, inferredReturnTypes map[string]string) bool {
 	if fn.ReceiverType != "" {
 		return false
@@ -47,12 +62,10 @@ func isValidEntryPoint(fn *parser.Function, inferredReturnTypes map[string]strin
 	if len(fn.Name) == 0 || fn.Name[0] < 'A' || fn.Name[0] > 'Z' {
 		return false
 	}
-	// Main is always treated as returning Solid; all others require explicit or inferred Solid return.
 	inferred := inferredReturnTypes[fn.Name]
 	if fn.Name != "Main" && fn.ReturnType != "Solid" && inferred != "Solid" {
 		return false
 	}
-	// Entry points must be fully constrained — every param needs a default.
 	for _, p := range fn.Params {
 		if p.Default == nil {
 			return false
@@ -61,10 +74,6 @@ func isValidEntryPoint(fn *parser.Function, inferredReturnTypes map[string]strin
 	return true
 }
 
-// getEntryPoints returns all entry points (capitalized, fully-constrained,
-// Solid-returning functions) from the main program and resolved libraries.
-// inferredReturnTypes provides inferred return types from the checker (fn name -> type name).
-// ResolveLibraries must have been called on prog before this.
 func getEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) []EntryPoint {
 	var out []EntryPoint
 
@@ -72,7 +81,7 @@ func getEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) 
 		if !isValidEntryPoint(fn, inferredReturnTypes) {
 			return
 		}
-		params := make([]ParamEntry, 0, len(fn.Params)) // never nil -> always [] in JSON
+		params := make([]ParamEntry, 0, len(fn.Params))
 		for _, p := range fn.Params {
 			pe := ParamEntry{
 				Name:       p.Name,
@@ -107,7 +116,6 @@ func getEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) 
 		}
 	}
 
-	// Sort: Main first, then alphabetical.
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i].Name, out[j].Name
 		if a == "Main" {
@@ -122,7 +130,6 @@ func getEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) 
 	return out
 }
 
-// extractParamConstraint converts a constraint Expr into a ParamConstraint.
 func extractParamConstraint(c parser.Expr) *ParamConstraint {
 	switch c := c.(type) {
 	case *parser.ConstrainedRange:
@@ -168,7 +175,6 @@ func extractParamConstraint(c parser.Expr) *ParamConstraint {
 	return nil
 }
 
-// constraintUnit extracts the display unit from a constraint expression.
 func constraintUnit(c parser.Expr) string {
 	switch c := c.(type) {
 	case *parser.ConstrainedRange:
@@ -182,7 +188,6 @@ func constraintUnit(c parser.Expr) string {
 	return ""
 }
 
-// paramDefaultUnit extracts the display unit from a default-value expression.
 func paramDefaultUnit(e parser.Expr) string {
 	if e == nil {
 		return ""
@@ -194,7 +199,6 @@ func paramDefaultUnit(e parser.Expr) string {
 	return ""
 }
 
-// literalNumber extracts a plain numeric value from a literal expression.
 func literalNumber(e parser.Expr) (float64, bool) {
 	switch v := e.(type) {
 	case *parser.NumberLit:
@@ -209,7 +213,6 @@ func literalNumber(e parser.Expr) (float64, bool) {
 	}
 }
 
-// literalValue extracts a JSON-serializable value from a literal expression.
 func literalValue(e parser.Expr) (interface{}, bool) {
 	switch v := e.(type) {
 	case *parser.NumberLit:
@@ -228,10 +231,39 @@ func literalValue(e parser.Expr) (interface{}, bool) {
 	}
 }
 
-// exprUnit returns the unit string if the expression is a UnitExpr, or "".
 func exprUnit(e parser.Expr) string {
 	if u, ok := e.(*parser.UnitExpr); ok {
 		return u.Unit
 	}
 	return ""
+}
+
+func solidBBoxes(solids []*manifold.Solid) (boxes []SolidBBox, globalMin, globalMax [3]float64) {
+	boxes = make([]SolidBBox, len(solids))
+	if len(solids) > 0 {
+		globalMin = [3]float64{math.MaxFloat64, math.MaxFloat64, math.MaxFloat64}
+		globalMax = [3]float64{-math.MaxFloat64, -math.MaxFloat64, -math.MaxFloat64}
+	}
+	for i, s := range solids {
+		mnX, mnY, mnZ, mxX, mxY, mxZ := s.BoundingBox()
+		boxes[i] = SolidBBox{
+			Min:    [3]float64{sanitizeBBox(mnX), sanitizeBBox(mnY), sanitizeBBox(mnZ)},
+			Max:    [3]float64{sanitizeBBox(mxX), sanitizeBBox(mxY), sanitizeBBox(mxZ)},
+			Pieces: s.NumComponents(),
+		}
+		globalMin[0] = math.Min(globalMin[0], mnX)
+		globalMin[1] = math.Min(globalMin[1], mnY)
+		globalMin[2] = math.Min(globalMin[2], mnZ)
+		globalMax[0] = math.Max(globalMax[0], mxX)
+		globalMax[1] = math.Max(globalMax[1], mxY)
+		globalMax[2] = math.Max(globalMax[2], mxZ)
+	}
+	return
+}
+
+func sanitizeBBox(v float64) float64 {
+	if math.IsInf(v, 0) || math.IsNaN(v) {
+		return 0
+	}
+	return v
 }

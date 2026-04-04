@@ -241,8 +241,13 @@ body {
 .tab-scroll {
   display: flex;
   flex: 1;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   min-width: 0;
+  scrollbar-width: none; /* Firefox */
+}
+.tab-scroll::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 .tab {
   flex: 0 0 auto;
@@ -300,6 +305,8 @@ body {
 .tab:hover { color: var(--ui-text); background: var(--ui-surface); }
 .tab.active { color: var(--ui-text-bright); background: #1A1A1A; border-left: 2px solid var(--ui-accent); }
 .tab.active .tab-close { opacity: 0.6; }
+.tab.dragging { opacity: 0.4; }
+.tab.drag-over { border-left: 2px solid var(--ui-accent); }
 
 #editor-panel .monaco-editor {
   flex: 1;

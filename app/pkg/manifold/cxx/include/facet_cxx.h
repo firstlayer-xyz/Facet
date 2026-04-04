@@ -200,6 +200,28 @@ void facet_merge_extract_display_mesh(
     uint32_t** out_indices, int* out_num_tris,
     uint32_t** out_face_ids, int* out_num_face_ids);
 
+// Extracts an expanded (non-indexed) display mesh ready for direct GPU upload.
+// Vertices are expanded per-triangle (3 verts * numTri), eliminating the need
+// for index buffers and JS-side toNonIndexed(). Edge lines are computed for
+// edges above edge_threshold_deg (in degrees). Caller must free all outputs.
+void facet_extract_expanded_mesh(
+    ManifoldManifold* m,
+    // Expanded vertices: 3 floats (xyz) per vertex, 3 vertices per triangle
+    float** out_positions, int* out_num_positions,
+    // Per-triangle face group IDs (for click/highlight)
+    uint32_t** out_face_ids, int* out_num_face_ids,
+    // Edge line segments: pairs of xyz (6 floats per edge)
+    float** out_edge_lines, int* out_num_edges,
+    float edge_threshold_deg);
+
+// Same as above but for multiple solids merged into one.
+void facet_merge_extract_expanded_mesh(
+    ManifoldManifold** solids, size_t count,
+    float** out_positions, int* out_num_positions,
+    uint32_t** out_face_ids, int* out_num_face_ids,
+    float** out_edge_lines, int* out_num_edges,
+    float edge_threshold_deg);
+
 // ---------------------------------------------------------------------------
 // Text
 // ---------------------------------------------------------------------------

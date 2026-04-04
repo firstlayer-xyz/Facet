@@ -19,39 +19,11 @@ import (
 	"sync"
 	"time"
 
-	"facet/app/pkg/fctlang/checker"
-	"facet/app/pkg/fctlang/doc"
-	"facet/app/pkg/fctlang/evaluator"
 	"facet/app/pkg/fctlang/formatter"
-	"facet/app/pkg/fctlang/loader"
 	"facet/app/pkg/fctlang/parser"
-	"facet/app/pkg/manifold"
-	"facet/app/pkg/runner"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-// runResultPayload is the single event payload sent to the frontend on every run.
-// Check data is always present. Eval data is present when an entry point was provided.
-type runResultPayload struct {
-	// Check data (always present)
-	Errors       []parser.SourceError          `json:"errors,omitempty"`
-	Sources      map[string]runner.SourceEntry  `json:"sources,omitempty"`
-	VarTypes     checker.VarTypeMap             `json:"varTypes,omitempty"`
-	Declarations *checker.DeclResult            `json:"declarations,omitempty"`
-	EntryPoints  []runner.EntryPoint             `json:"entryPoints,omitempty"`
-	DocIndex     []doc.DocEntry                 `json:"docIndex,omitempty"`
-
-	// Eval data (present when entry point was provided and eval succeeded)
-	Mesh   *manifold.DisplayMesh `json:"mesh,omitempty"`
-	Stats  *evaluator.ModelStats `json:"stats,omitempty"`
-	Time   float64               `json:"time,omitempty"`
-	PosMap []evaluator.PosEntry  `json:"posMap,omitempty"`
-
-	// Debug data (present for debug runs)
-	DebugFinal []*manifold.DisplayMesh `json:"debugFinal,omitempty"`
-	DebugSteps []evaluator.DebugStep   `json:"debugSteps,omitempty"`
-}
 
 // libraryDir returns the OS-specific library directory for user-installed libraries.
 func libraryDir() (string, error) {
@@ -139,7 +111,6 @@ func (rb *ringBuffer) String() string {
 type App struct {
 	ctx context.Context
 
-	runner   *runner.ProgramRunner
 	configMu sync.Mutex
 
 	assistantMu sync.Mutex
@@ -149,7 +120,10 @@ type App struct {
 	cachedSystemPrompt string
 
 	mcpState *mcpState // MCP server state (tools read/write this)
-	mcpPort  int       // port the MCP HTTP server is listening on
+	mcpPort  int       // port the MCP/eval HTTP server is listening on
+
+	evalMu     sync.Mutex
+	cancelEval context.CancelFunc
 
 	stderrBuf *ringBuffer
 	logFile   *os.File
@@ -292,34 +266,12 @@ func (a *App) startup(ctx context.Context) {
 	applyMemoryLimit(cfg.MemoryLimitGB)
 
 	a.rebuildSystemPrompt()
-	libDir, _ := libraryDir()
-	a.runner = runner.New(a.ctx, runner.Callbacks{
-		OnStart: func() {
-			wailsRuntime.EventsEmit(a.ctx, "run:start")
-		},
-		OnIdle: func() {
-			wailsRuntime.EventsEmit(a.ctx, "run:idle")
-		},
-		OnResult: func(result *runner.RunResult) {
-			a.emitRunResult(result)
-		},
-	}, runner.Config{
-		LibDir: libDir,
-		ResolveOpts: func() *loader.Options {
-			cfg := loadConfig()
-			opts := &loader.Options{}
-			if len(cfg.InstalledLibs) > 0 {
-				opts.InstalledLibs = cfg.InstalledLibs
-			}
-			return opts
-		},
-	})
 	a.initStderrCapture()
 
-	// Start in-process MCP HTTP server for AI assistant tool use
-	port, err := a.startMCPServer()
+	// Start in-process HTTP server (MCP + eval endpoints)
+	port, err := a.startHTTPServer()
 	if err != nil {
-		log.Printf("[mcp] failed to start: %v", err)
+		log.Printf("[http] failed to start: %v", err)
 	} else {
 		a.mcpPort = port
 	}
@@ -389,8 +341,33 @@ func (a *App) shutdown(ctx context.Context) {
 	cfg := loadConfig()
 	cfg.MemoryLimitGB = a.GetMemoryLimit()
 	saveConfig(cfg)
+	cleanupScratchFiles()
 	if a.logFile != nil {
 		a.logFile.Close()
+	}
+}
+
+// cleanupScratchFiles deletes empty (0-byte) scratch files on shutdown.
+func cleanupScratchFiles() {
+	dir, err := scratchDir()
+	if err != nil {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".fct") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.Size() == 0 {
+			os.Remove(filepath.Join(dir, e.Name()))
+		}
 	}
 }
 
@@ -658,58 +635,6 @@ func (a *App) SaveFile(source string, path string) (string, error) {
 	return path, nil
 }
 
-// Stop cancels the current build without starting a new one.
-func (a *App) Stop() {
-	a.runner.Stop()
-}
-
-// ResetRunner clears all runner state: cached program, entry point, and library cache.
-func (a *App) ResetRunner() {
-	a.runner.Reset()
-}
-
-// UpdateSource parses the given source and updates the runner's program state.
-// key is the disk path of the source file.
-func (a *App) UpdateSource(key string, source string) {
-	a.runner.UpdateSource(key, source)
-}
-
-// PruneSources keeps only sources reachable from the given open tabs.
-func (a *App) PruneSources(openTabs []string) {
-	a.runner.PruneSources(openTabs)
-}
-
-// Run triggers an immediate evaluation from the given source key.
-func (a *App) Run(key string, entryPoint string, overrides map[string]interface{}) {
-	a.runner.Run(key, entryPoint, overrides)
-}
-
-// Debug triggers an immediate debug evaluation from the given source key.
-func (a *App) Debug(key string, entryPoint string, overrides map[string]interface{}) {
-	a.runner.Debug(key, entryPoint, overrides)
-}
-
-// emitRunResult sends a single run:result event with all data.
-func (a *App) emitRunResult(result *runner.RunResult) {
-	payload := runResultPayload{
-		Errors:       result.Errors,
-		Sources:      result.Sources,
-		VarTypes:     result.VarTypes,
-		Declarations: result.Declarations,
-		EntryPoints:  result.EntryPoints,
-		DocIndex:     result.DocIndex,
-		Mesh:         result.Mesh,
-		Stats:        result.Stats,
-		Time:         result.Time,
-		PosMap:       result.PosMap,
-	}
-	if result.DebugResult != nil {
-		payload.DebugFinal = result.DebugResult.Final
-		payload.DebugSteps = result.DebugResult.Steps
-	}
-	wailsRuntime.EventsEmit(a.ctx, "run:result", payload)
-}
-
 // FormatCode normalizes the indentation of Facet source code.
 func (a *App) FormatCode(source string) string {
 	src, err := parser.Parse(source, "", parser.SourceUser)
@@ -760,19 +685,3 @@ func (a *App) GetDocGuides() []DocGuide {
 	return guides
 }
 
-// GetDebugStepMeshes lazily extracts meshes for a single debug step.
-// Called by the frontend when the user navigates to a step.
-func (a *App) GetDebugStepMeshes(index int) ([]evaluator.DebugMesh, error) {
-	r := a.runner.LastResult()
-	if r == nil || r.DebugResult == nil {
-		return nil, fmt.Errorf("no debug result")
-	}
-	if index < 0 || index >= len(r.DebugResult.Steps) {
-		return nil, fmt.Errorf("step index out of range")
-	}
-	meshes := r.DebugResult.ResolveMeshes(index)
-	if meshes == nil {
-		return []evaluator.DebugMesh{}, nil
-	}
-	return meshes, nil
-}

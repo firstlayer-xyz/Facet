@@ -179,6 +179,7 @@ interface CheckError {
 export interface EditorHandle {
   getContent(): string;
   getModelContent(fileKey: string): string;
+  getAllSources(): Record<string, string>;
   highlightError(line: number): void;
   clearError(): void;
   setMarkers(errors: CheckError[]): void;
@@ -724,6 +725,14 @@ export function createEditor(
     getModelContent(fileKey: string): string {
       const m = models.get(fileKey);
       return m ? m.getValue() : '';
+    },
+
+    getAllSources(): Record<string, string> {
+      const result: Record<string, string> = {};
+      for (const [key, model] of models) {
+        result[key] = model.getValue();
+      }
+      return result;
     },
 
     highlightError(line: number) {

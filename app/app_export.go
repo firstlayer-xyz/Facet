@@ -14,11 +14,8 @@ import (
 // Uses Manifold's Assimp-backed I/O for export.
 // Shows a native save dialog to choose the output path.
 func (a *App) ExportMesh(format string) error {
-	r := a.runner.LastResult()
+	// TODO: export needs access to last eval result — store solids on App after eval
 	var solids []*manifold.Solid
-	if r != nil {
-		solids = r.Solids
-	}
 	if len(solids) == 0 {
 		return fmt.Errorf("no mesh to export — run your code first")
 	}
@@ -75,11 +72,8 @@ func (a *App) DetectSlicers() []SlicerInfo {
 // and opens it in the specified slicer application. Uses a fixed path per slicer
 // so repeated sends reuse the already-open file in the slicer.
 func (a *App) SendToSlicer(slicerID string) error {
-	r := a.runner.LastResult()
+	// TODO: export needs access to last eval result — store solids on App after eval
 	var solids []*manifold.Solid
-	if r != nil {
-		solids = r.Solids
-	}
 	if len(solids) == 0 {
 		return fmt.Errorf("no mesh to export — run your code first")
 	}

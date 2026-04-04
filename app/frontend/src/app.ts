@@ -1,17 +1,22 @@
 // app.ts — Run/debug orchestration logic.
 
-import { Stop, ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, GetDebugStepMeshes, SetWindowTitle, GetLibraryFilePath, FormatCode, UpdateSource, PruneSources, Run, Debug, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
+import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
 import type { EntryPoint } from './function-preview';
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { Viewer, mergeMeshes } from './viewer';
-import type { DecodedMesh, DebugStepData, MeshData } from './viewer';
+import { Viewer } from './viewer';
+import type { DecodedMesh, DebugStepData } from './viewer';
 import type { EditorHandle } from './editor';
 import { DocsPanel } from './docs';
 import { patchSettings } from './settings';
+import { evalRequest, cancelEval } from './eval-client';
+import type { EvalResponse } from './eval-client';
+import { decodeBinaryMesh } from './mesh-decode';
+import type { BinaryMeshMeta } from './mesh-decode';
 
 interface SourceEntry {
   text: string;
   kind: number;
+  importPath?: string;
 }
 
 // Source kind constants (mirrors parser.SourceKind in Go)
@@ -53,20 +58,35 @@ let debugMode = false;
 let debugStepping = false; // true while showDebugStep is switching tabs
 let debugEntryTab = ''; // tab that was active when debug started
 let debugFinalMesh: DecodedMesh | null = null;
+let debugBinary: ArrayBuffer | null = null;
 let debugStepIndex = 0;
-let debugStepGen = 0;
 interface TabState {
   path: string;       // resolved filesystem path
   dirty: boolean;
   cursor: { lineNumber: number; column: number } | null;
   label: string;
+  pickedEntry: { name: string; libPath: string } | null;
 }
 let tabs: Record<string, TabState> = {};
+let tabOrder: string[] = []; // explicit ordering for drag reorder
 let activeTab = '';
 
 function getTab(key: string): TabState {
-  if (!tabs[key]) tabs[key] = { path: key, dirty: false, cursor: null, label: tabLabel(key) };
+  if (!tabs[key]) {
+    tabs[key] = { path: key, dirty: false, cursor: null, label: tabLabel(key), pickedEntry: null };
+    if (!tabOrder.includes(key)) tabOrder.push(key);
+  }
   return tabs[key];
+}
+
+function addTab(key: string, state: TabState) {
+  tabs[key] = state;
+  if (!tabOrder.includes(key)) tabOrder.push(key);
+}
+
+function removeTab(key: string) {
+  delete tabs[key];
+  tabOrder = tabOrder.filter(k => k !== key);
 }
 
 function isReadOnly(path: string): boolean {
@@ -98,7 +118,7 @@ let entryOverrides: Record<string, any> = {};
 
 /** Set the file path on startup (no discard prompt, no re-persist). */
 export function setInitialFile(path: string, label?: string, readOnly?: boolean) {
-  tabs[path] = { path, dirty: false, cursor: null, label: label || tabLabel(path) };
+  addTab(path, { path, dirty: false, cursor: null, label: label || tabLabel(path), pickedEntry: null });
   activeTab = path;
   editor.setCurrentSource(path);
   editor.setReadOnly(readOnly ?? isReadOnly(path));
@@ -142,7 +162,9 @@ function persistOpenTabs() {
   }
   // Persist all tabs except stdlib (kind=1) and cached libs (kind=3)
   const savedTabs: SavedTab[] = [];
-  for (const [path, tab] of Object.entries(tabs)) {
+  for (const path of tabOrder) {
+    const tab = tabs[path];
+    if (!tab) continue;
     const kind = sources[path]?.kind ?? SOURCE_USER;
     if (isEphemeralKind(kind)) continue;
     savedTabs.push({ path: tab.path, label: tab.label, cursor: tab.cursor });
@@ -218,12 +240,7 @@ export function initApp(deps: AppDeps) {
   // Persist tabs when app is about to close
   EventsOn('app:before-close', () => persistOpenTabs());
 
-  // Run state driven by Go-side events
-  EventsOn('run:start', () => setRunState('running'));
-  EventsOn('run:idle', () => setRunState('idle'));
-
-  // Single result event — carries check data, eval data, or both
-  EventsOn('run:result', (data: any) => handleRunResult(data));
+  // Run state is now managed by runViaHTTP() — no Go-side events needed.
 
 }
 
@@ -315,34 +332,6 @@ function setDebugBarVisible(visible: boolean) {
   if (htBtn) htBtn.classList.toggle('above-debug-bar', visible);
 }
 
-function handleRunResult(data: any) {
-  // --- Check data (always present) ---
-  editor.clearError();
-  editor.clearMarkers();
-  errorDiv.style.display = 'none';
-  errorDiv.textContent = '';
-  errorDiv.onclick = null;
-  errorDiv.style.cursor = '';
-
-  const errors = data.errors ?? [];
-  if (errors.length > 0) editor.setMarkers(errors);
-
-  lastResult = data;
-  syncTabsWithSources(data);
-  pushEditorData(data);
-
-  const fns = (data.entryPoints ?? []) as EntryPoint[];
-  if (!data.mesh && !data.debugFinal) {
-    handleCheckOnly(data, errors, fns);
-  } else {
-    onEntryPointsCb?.(fns);
-    if (data.debugSteps) {
-      handleDebugResult(data);
-    } else {
-      handleEvalResult(data);
-    }
-  }
-}
 
 function syncTabsWithSources(data: any) {
   if (!data.sources) return;
@@ -351,7 +340,7 @@ function syncTabsWithSources(data: any) {
     if (path === activeTab) continue;
     if (!data.sources[path]) {
       editor.disposeModel(path);
-      delete tabs[path];
+      removeTab(path);
       tabsClosed = true;
     }
   }
@@ -397,50 +386,11 @@ function handleCheckOnly(data: any, errors: any[], fns: EntryPoint[]) {
   }
   const picked = onEntryPointsCb?.(fns);
   if (picked) {
-    const key = picked.libPath || activeTab;
-    if (debugMode) Debug(key, picked.name, entryOverrides);
-    else Run(key, picked.name, entryOverrides);
+    getTab(activeTab).pickedEntry = picked;
+    runViaHTTP(); // re-run with the picked entry point
   }
 }
 
-function handleDebugResult(data: any) {
-  setDebugBarVisible(false);
-  const steps = (data.debugSteps ?? []) as unknown as DebugStepData[];
-  const finalMeshes = (data.debugFinal ?? []) as any as MeshData[];
-  if (finalMeshes.length > 0) {
-    steps.push({
-      op: 'Final',
-      meshes: finalMeshes.map((m: MeshData) => ({ role: 'result', mesh: m })),
-      line: 0, col: 0, file: '',
-    });
-  }
-  data.debugSteps = steps;
-  renderTabs();
-  debugFinalMesh = finalMeshes.length > 0 ? mergeMeshes(finalMeshes) : null;
-  viewer.clearMeshes();
-  if (debugFinalMesh) viewer.loadDecodedMesh(debugFinalMesh);
-  if (steps.length > 0) {
-    debugSlider.max = String(steps.length - 1);
-    showDebugStep(0);
-    setDebugBarVisible(true);
-  }
-}
-
-function handleEvalResult(data: any) {
-  setDebugBarVisible(false);
-  viewer.clearMeshes();
-  if (data.mesh) viewer.loadMesh(data.mesh as MeshData);
-  const excludeFiles = new Set<string>();
-  if (data.sources) {
-    for (const [path, entry] of Object.entries(data.sources as Record<string, SourceEntry>)) {
-      if (entry.kind === SOURCE_STDLIB) excludeFiles.add(path);
-    }
-  }
-  viewer.setPosMap(data.posMap ?? [], excludeFiles);
-  viewer.centerOnBed();
-  viewer.fitToView();
-  showStats(data.stats, data.time);
-}
 
 /** Shorten a path to just the filename, for tab display. */
 function tabLabel(path: string): string {
@@ -454,8 +404,7 @@ export function renderTabs() {
   onDebugFilesChangeCb?.();
   persistOpenTabs();
   tabBar.innerHTML = '';
-  // Only show tabs the user has explicitly opened
-  const openTabs = Object.keys(tabs);
+  const openTabs = tabOrder;
 
   const leftArrow = document.createElement('button');
   leftArrow.className = 'tab-arrow';
@@ -523,6 +472,39 @@ export function renderTabs() {
     tab.appendChild(closeBtn);
 
     tab.addEventListener('click', () => switchToTab(path));
+
+    // Drag to reorder
+    tab.draggable = true;
+    tab.dataset.tabPath = path;
+    tab.addEventListener('dragstart', (e) => {
+      e.dataTransfer!.effectAllowed = 'move';
+      e.dataTransfer!.setData('text/plain', path);
+      tab.classList.add('dragging');
+    });
+    tab.addEventListener('dragend', () => {
+      tab.classList.remove('dragging');
+    });
+    tab.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'move';
+      tab.classList.add('drag-over');
+    });
+    tab.addEventListener('dragleave', () => {
+      tab.classList.remove('drag-over');
+    });
+    tab.addEventListener('drop', (e) => {
+      e.preventDefault();
+      tab.classList.remove('drag-over');
+      const draggedPath = e.dataTransfer!.getData('text/plain');
+      if (draggedPath === path) return;
+      const fromIdx = tabOrder.indexOf(draggedPath);
+      const toIdx = tabOrder.indexOf(path);
+      if (fromIdx < 0 || toIdx < 0) return;
+      tabOrder.splice(fromIdx, 1);
+      tabOrder.splice(toIdx, 0, draggedPath);
+      renderTabs();
+    });
+
     scrollContainer.appendChild(tab);
   }
 
@@ -553,7 +535,7 @@ async function closeTab(file: string) {
   }
   if (activeTab === file) {
     // Switch to another open tab
-    const remaining = Object.keys(tabs).filter(k => k !== file);
+    const remaining = tabOrder.filter(k => k !== file);
     if (remaining.length > 0) {
       switchToTab(remaining[0]);
     } else {
@@ -561,10 +543,9 @@ async function closeTab(file: string) {
     }
   }
   editor.disposeModel(file);
-  delete tabs[file];
+  removeTab(file);
   renderTabs();
-  // Tell backend which tabs are still open — it prunes unreachable sources.
-  PruneSources(Object.keys(tabs));
+  // Stateless eval — no backend pruning needed.
   // Clear viewport if no tabs remain
   if (Object.keys(tabs).length === 0) {
     viewer.clearMeshes();
@@ -635,25 +616,13 @@ export async function showDebugStep(index: number) {
   debugSlider.value = String(index);
   debugLabel.textContent = `Step ${index + 1}/${debugSteps.length}: ${debugSteps[index].op}`;
 
-  const gen = ++debugStepGen;
-
-  // Fetch meshes lazily — synthetic Final step already has its mesh
-  let stepWithMeshes: DebugStepData;
+  // Display the step — per-step mesh lazy loading is not yet implemented for HTTP eval.
   const step = debugSteps[index];
-  const hasMeshes = step.meshes && step.meshes.length > 0;
-  if (hasMeshes) {
-    stepWithMeshes = step;
-  } else {
-    const meshes = await GetDebugStepMeshes(index);
-    if (gen !== debugStepGen) return; // stale — user moved on
-    stepWithMeshes = { ...step, meshes: meshes as unknown as DebugStepData['meshes'] };
-  }
-  // Final step: use the same display path as a normal run
   if (step.op === 'Final' && debugFinalMesh) {
     viewer.clearMeshes();
     viewer.loadDecodedMesh(debugFinalMesh);
-  } else {
-    viewer.loadDebugStep(stepWithMeshes);
+  } else if (step.meshes && step.meshes.length > 0 && debugBinary) {
+    viewer.loadDebugStep(step, debugBinary);
   }
   viewer.centerOnBed();
   viewer.fitToView();
@@ -674,16 +643,12 @@ export async function showDebugStep(index: number) {
 
 /** Trigger evaluation with the given entry point. */
 export function reeval(entry: string, libPath?: string) {
-  const key = libPath || activeTab;
-  if (debugMode) {
-    Debug(key, entry, entryOverrides);
-  } else {
-    Run(key, entry, entryOverrides);
-  }
+  if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+  runViaHTTP();
 }
 
 export function stop() {
-  Stop();
+  cancelEval();
 }
 
 export function toggleRun() {
@@ -694,25 +659,143 @@ export function toggleRun() {
   }
 }
 
-// Auto-run guard: sends source updates to the runner.
+let debounceTimer: number | null = null;
+const DEBOUNCE_MS = 500;
+
+// Auto-run guard: debounces keystroke changes and sends eval via HTTP.
 // Called by editor onChange.
 export function autoRun() {
   if (debugMode) return;
   markDirty();
   onSourceChangeCb?.(editor.getContent());
-  run();
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = window.setTimeout(() => {
+    debounceTimer = null;
+    runViaHTTP();
+  }, DEBOUNCE_MS);
 }
 
-// Send current source to the runner for parsing, checking, and auto-eval.
+// Send current sources via HTTP for parsing, checking, and auto-eval.
 export function run() {
   editor.clearDebugLine();
-  const source = editor.getContent();
-  UpdateSource(activeTab, source);
+  runViaHTTP();
 }
 
-/** Refresh editor UI without dispatching an eval — check-only run. */
+/** Refresh editor UI — triggers a check-only run via HTTP. */
 export function refreshEditorUI() {
-  UpdateSource(activeTab, editor.getContent());
+  runViaHTTP();
+}
+
+async function runViaHTTP() {
+  const sources = editor.getAllSources();
+  const picked = tabs[activeTab]?.pickedEntry ?? null;
+  setRunState('running');
+  const t0 = performance.now();
+  try {
+    const resp = await evalRequest({
+      sources,
+      key: activeTab,
+      entry: picked?.name,
+      overrides: entryOverrides,
+      debug: debugMode,
+    });
+    resp.header.time = (performance.now() - t0) / 1000;
+    handleHTTPResult(resp);
+  } catch (e: any) {
+    if (e instanceof DOMException && e.name === 'AbortError') return;
+    console.error('eval request failed:', e);
+  } finally {
+    setRunState('idle');
+  }
+}
+
+function handleHTTPResult(resp: EvalResponse) {
+  const data = resp.header;
+
+  // --- Check data (always present) ---
+  editor.clearError();
+  editor.clearMarkers();
+  errorDiv.style.display = 'none';
+  errorDiv.textContent = '';
+  errorDiv.onclick = null;
+  errorDiv.style.cursor = '';
+
+  const errors = data.errors ?? [];
+  if (errors.length > 0) editor.setMarkers(errors);
+
+  lastResult = data;
+  syncTabsWithSources(data);
+  pushEditorData(data);
+  renderTabs(); // refresh tab icons (star, book, lock) from updated source kinds
+
+  const fns = (data.entryPoints ?? []) as EntryPoint[];
+
+  // Check-only response (no mesh, no debug)
+  if (!data.mesh && !data.debugFinal) {
+    handleCheckOnly(data, errors, fns);
+    return;
+  }
+
+  const newPicked = onEntryPointsCb?.(fns);
+  if (newPicked) getTab(activeTab).pickedEntry = newPicked;
+
+  if (data.debugSteps) {
+    handleDebugHTTPResult(data, resp.binary);
+  } else {
+    handleEvalHTTPResult(data, resp.binary);
+  }
+}
+
+function handleEvalHTTPResult(data: any, binary: ArrayBuffer) {
+  setDebugBarVisible(false);
+  viewer.clearMeshes();
+  if (data.mesh) {
+    const decoded = decodeBinaryMesh(binary, data.mesh as BinaryMeshMeta);
+    viewer.loadDecodedMesh(decoded);
+  }
+  const excludeFiles = new Set<string>();
+  if (data.sources) {
+    for (const [path, entry] of Object.entries(data.sources as Record<string, SourceEntry>)) {
+      if (entry.kind === SOURCE_STDLIB) excludeFiles.add(path);
+    }
+  }
+  viewer.setPosMap(data.posMap ?? [], excludeFiles);
+  viewer.centerOnBed();
+  viewer.fitToView();
+  showStats(data.stats, data.time);
+}
+
+function handleDebugHTTPResult(data: any, binary: ArrayBuffer) {
+  setDebugBarVisible(false);
+  debugBinary = binary;
+  const steps = (data.debugSteps ?? []) as unknown as DebugStepData[];
+  const finalMetas = (data.debugFinal ?? []) as BinaryMeshMeta[];
+
+  // Decode final meshes from binary
+  if (finalMetas.length > 0) {
+    const finalMeshes: DecodedMesh[] = finalMetas.map(meta => decodeBinaryMesh(binary, meta));
+    // Add a "Final" step with the decoded meshes (re-use existing debug step UI)
+    steps.push({
+      op: 'Final',
+      meshes: [], // per-step meshes not available in binary response
+      line: 0, col: 0, file: '',
+    });
+    data.debugSteps = steps;
+    renderTabs();
+    debugFinalMesh = finalMeshes.length === 1 ? finalMeshes[0] : null; // TODO: merge if multiple
+  } else {
+    data.debugSteps = steps;
+    renderTabs();
+    debugFinalMesh = null;
+  }
+
+  viewer.clearMeshes();
+  if (debugFinalMesh) viewer.loadDecodedMesh(debugFinalMesh);
+  if (steps.length > 0) {
+    debugSlider.max = String(steps.length - 1);
+    showDebugStep(0);
+    setDebugBarVisible(true);
+  }
 }
 
 /** Open a tab with the given key and source, switching to it if already open. */
@@ -721,7 +804,7 @@ function openTab(key: string, source: string, label?: string, readOnly?: boolean
     switchToTab(key);
     return;
   }
-  tabs[key] = { path: key, dirty: false, cursor: null, label: label || tabLabel(key) };
+  addTab(key, { path: key, dirty: false, cursor: null, label: label || tabLabel(key), pickedEntry: null });
   activeTab = key;
   editor.setCurrentSource(key);
   editor.switchModel(key, source);
@@ -773,8 +856,8 @@ async function doSave(forceDialog: boolean) {
   const path = await SaveFile(source, savePath);
   if (!path) return;
   if (path !== tab.path) {
-    delete tabs[activeTab];
-    tabs[path] = { path, dirty: false, cursor: tab.cursor, label: tabLabel(path) };
+    removeTab(activeTab);
+    addTab(path, { path, dirty: false, cursor: tab.cursor, label: tabLabel(path), pickedEntry: null });
     activeTab = path;
     editor.setCurrentSource(path);
   }
@@ -903,25 +986,27 @@ export function setEntryOverrides(overrides: Record<string, any>) { entryOverrid
 
 /** Open a library tab without navigating to a specific line.
  *  file may be an import path or disk path. If import path, resolves to disk path. */
-export async function openLibraryTab(file: string, source: string) {
+export function openLibraryTab(file: string, source: string) {
   const sources = lastResult?.sources ?? {};
+  // If file is an import path (e.g. "facet/gears"), resolve to disk path
   if (!sources[file]) {
-    const resolved = await GetLibraryFilePath(file);
-    if (resolved) file = resolved;
+    for (const [diskPath, entry] of Object.entries(sources)) {
+      if ((entry as SourceEntry).importPath === file) {
+        file = diskPath;
+        break;
+      }
+    }
   }
   if (sources[file] && !source) {
     source = sources[file].text;
   }
-  if (source && !sources[file]) {
-    sources[file] = { text: source, kind: SOURCE_LIBRARY };
-  }
   getTab(file);
-  await switchToTab(file);
+  switchToTab(file);
 }
 
 /** Open a library file in a read-only tab and navigate to the given position.
  *  file may be an import path or disk path. If import path, resolves to disk path. */
-export async function openLibraryFile(file: string, source: string, line: number, col: number) {
-  await openLibraryTab(file, source);
+export function openLibraryFile(file: string, source: string, line: number, col: number) {
+  openLibraryTab(file, source);
   editor.revealLine(line, col);
 }

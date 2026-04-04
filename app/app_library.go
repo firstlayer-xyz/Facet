@@ -291,8 +291,8 @@ func (a *App) GetLibraryDir() (string, error) {
 // GetLibraryFilePath resolves a library import path to its disk path
 // using the current program's import mapping. Returns empty string if not found.
 func (a *App) GetLibraryFilePath(importPath string) string {
-	prog := a.runner.Prog()
-	return prog.Resolve(importPath)
+	// TODO: library path resolution needs access to last loaded program
+	return importPath
 }
 
 // validateLibName checks that a name contains only safe characters for library paths.

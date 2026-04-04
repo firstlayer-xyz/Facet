@@ -1,10 +1,10 @@
 package evaluator
 
 import (
-	"facet/app/pkg/fctlang/loader"
-	"facet/app/pkg/fctlang/parser"
 	"fmt"
 
+	"facet/app/pkg/fctlang/loader"
+	"facet/app/pkg/fctlang/parser"
 	"facet/app/pkg/manifold"
 )
 

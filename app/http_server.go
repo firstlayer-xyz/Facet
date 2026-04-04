@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -61,8 +61,9 @@ type checkSyntaxInput struct {
 
 type getDocumentationInput struct{}
 
-// startMCPServer creates and starts an HTTP MCP server on a random localhost port.
-func (a *App) startMCPServer() (int, error) {
+// startHTTPServer creates and starts a localhost HTTP server on a random port.
+// It serves the MCP endpoint at /mcp and the eval endpoint at /eval.
+func (a *App) startHTTPServer() (int, error) {
 	state := newMCPState()
 	a.mcpState = state
 
@@ -149,19 +150,10 @@ func (a *App) startMCPServer() (int, error) {
 		Name:        "get_last_run",
 		Description: "Wait for the current build to finish (if one is in progress) and return the results: build stats (triangles, vertices, volume, surface area, bounding box), per-solid bounding boxes with piece counts, and any errors. Call this after edit_code or replace_code to verify the result.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input getLastRunInput) (*mcp.CallToolResult, any, error) {
-		tctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-
-		result := a.runner.WaitForResult(tctx)
-		if result == nil {
-			return &mcp.CallToolResult{
-				IsError: true,
-				Content: []mcp.Content{&mcp.TextContent{Text: "Timed out waiting for build result."}},
-			}, nil, nil
-		}
-
+		// TODO: get_last_run needs access to last eval result
+		_, _ = ctx, req
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: result.JSON()}},
+			Content: []mcp.Content{&mcp.TextContent{Text: `{"error":"get_last_run not yet implemented for HTTP eval"}`}},
 		}, nil, nil
 	})
 
@@ -180,20 +172,19 @@ func (a *App) startMCPServer() (int, error) {
 			}, nil, nil
 		}
 
-		// Check-only — UpdateSource parses, resolves, and checks
-		// Frontend autoRun handles UpdateSource after editor content changes
-		tctx2, cancel2 := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel2()
-		result := a.runner.WaitForResult(tctx2)
-		if result == nil || len(result.Errors) == 0 {
+		resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/check", a.mcpPort),
+			"application/json",
+			strings.NewReader(fmt.Sprintf(`{"source":%q}`, source)))
+		if err != nil {
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: `{"valid":true,"errors":[]}`}},
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "check failed: " + err.Error()}},
 			}, nil, nil
 		}
-
-		data, _ := json.Marshal(map[string]interface{}{"valid": false, "errors": result.Errors})
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: string(data)}},
+			Content: []mcp.Content{&mcp.TextContent{Text: string(body)}},
 		}, nil, nil
 	})
 
@@ -267,25 +258,27 @@ func (a *App) startMCPServer() (int, error) {
 	})
 
 	// Start HTTP listener
-	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+	handleMcp := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		return server
 	}, &mcp.StreamableHTTPOptions{Stateless: true})
 
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", handler)
+	mux.Handle("/mcp", handleMcp)
+	mux.Handle("/eval", a.evalHTTPHandler())
+	mux.HandleFunc("/check", handleCheck)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return 0, fmt.Errorf("failed to start MCP server: %w", err)
+		return 0, fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 
 	port := listener.Addr().(*net.TCPAddr).Port
-	log.Printf("[mcp] HTTP server listening on http://127.0.0.1:%d/mcp", port)
+	log.Printf("[http] server listening on http://127.0.0.1:%d (mcp, eval)", port)
 
 	httpServer := &http.Server{Handler: mux}
 	go func() {
 		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Printf("[mcp] server error: %v", err)
+			log.Printf("[http] server error: %v", err)
 		}
 	}()
 

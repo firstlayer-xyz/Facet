@@ -9,6 +9,7 @@ import (
 	"facet/app/pkg/manifold"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,6 +122,31 @@ func TestAllExamples(t *testing.T) {
 				t.Logf("%s: %d solids", name, len(result.Solids))
 			}
 		})
+	}
+}
+
+func TestConstraintViolationOnReassign(t *testing.T) {
+	// Reassigning a constrained variable to a value outside the constraint should error.
+	src := `
+fn Main() {
+    var x = 10 mm where [0:100] mm
+    x = 200 mm
+    return Cube(size: Vec3{x: x, y: x, z: x})
+}
+`
+	prog := parseTestProg(t, src)
+	checkErrs := fctchecker.Check(prog).Errors
+	for _, ce := range checkErrs {
+		t.Errorf("[check] %s", ce.Message)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := evaluator.Eval(ctx, prog, testMainKey, nil, "Main")
+	if err == nil {
+		t.Fatal("expected constraint violation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "constraint") && !strings.Contains(err.Error(), "range") {
+		t.Fatalf("expected constraint error, got: %v", err)
 	}
 }
 

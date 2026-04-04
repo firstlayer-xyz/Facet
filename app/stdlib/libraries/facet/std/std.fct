@@ -80,9 +80,9 @@ type Color {
 
 # Color from RGB (0–1 per channel), alpha defaults to 1.
 fn Color(
-    r Number,
-    g Number,
-    b Number,
+    r Number = 0,
+    g Number = 0,
+    b Number = 0,
     a Number = 1,
 ) Color {
     return Color{r: r, g: g, b: b, a: a}
@@ -160,6 +160,11 @@ fn Cylinder(r, h Length) Solid {
 
 fn Cylinder(r1, r2, h Length) Solid {
     return _cylinder(h, r1, r2)
+}
+
+# Cone along Z from Z=0 to Z=`h` with base radius `r`.
+fn Cone(r, h Length) Solid {
+    return _cylinder(h, r, 0 mm)
 }
 
 # ---------------------------------------------------------------------------
@@ -1537,6 +1542,10 @@ fn Solid.Color(c Color) Solid {
 
 fn Solid.Color(hex String) Solid {
     return self.Color(c: Color(hex: hex))
+}
+
+fn Solid.Color(r Number = 0, g Number = 0, b Number = 0, a Number = 1) Solid {
+    return _color(self, r, g, b)
 }
 
 # Creates a solid from a signed-distance-field (SDF). The SDF returns negative inside, positive outside.

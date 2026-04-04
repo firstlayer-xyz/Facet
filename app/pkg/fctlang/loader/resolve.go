@@ -313,7 +313,7 @@ func (r *resolver) loadLocalLib(rawPath string) (*resolvedLib, error) {
 	// Fall back to embedded stdlib
 	embeddedPath := "libraries/" + rawPath + "/" + base + ".fct"
 	if data, err := stdlib.Libraries.ReadFile(embeddedPath); err == nil {
-		src, err := parser.Parse(string(data), "", parser.SourceLibrary)
+		src, err := parser.Parse(string(data), "", parser.SourceCached)
 		if err != nil {
 			return nil, fmt.Errorf("parse embedded %s: %w", embeddedPath, err)
 		}
@@ -363,7 +363,7 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", fctFile, err)
 		}
-		src, err := parser.Parse(string(data), "", parser.SourceLibrary)
+		src, err := parser.Parse(string(data), "", parser.SourceCached)
 		if err != nil {
 			return nil, fmt.Errorf("parse %s: %w", fctFile, err)
 		}
@@ -371,19 +371,19 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 		return &resolvedLib{src: src, dir: baseDir, fctFile: fctFile, modTime: info.ModTime()}, nil
 	}
 
-	// Try git clone
+	// Try git clone (result is also cached — not user-editable)
 	dir, err := resolveLibPath(r.ctx, r.libDir, r.gitCacheDir, r.installedLibs, rawPath)
 	if err != nil {
 		return nil, err
 	}
-	src, err := loadLibraryDir(dir)
+	src, err := loadLibraryDir(dir, parser.SourceCached)
 	if err != nil {
 		// Only attempt git pull for paths inside the git cache dir.
 		// Installed lib overrides point into the user's working tree —
 		// pulling/recloning those would destroy the project.
 		if strings.HasPrefix(dir, r.gitCacheDir+string(filepath.Separator)) {
 			if pullErr := pullIfGitRepo(r.ctx, dir); pullErr == nil {
-				src, err = loadLibraryDir(dir)
+				src, err = loadLibraryDir(dir, parser.SourceCached)
 			}
 		}
 		if err != nil {
@@ -430,14 +430,14 @@ func validateLibPath(path string) error {
 
 // loadLibraryDir parses the single .fct file in dir and returns the Source
 // with Text populated.
-func loadLibraryDir(dir string) (*parser.Source, error) {
+func loadLibraryDir(dir string, kind parser.SourceKind) (*parser.Source, error) {
 	name := filepath.Base(dir)
 	file := filepath.Join(dir, name+".fct")
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil, fmt.Errorf("expected %s.fct in %s", name, dir)
 	}
-	src, err := parser.Parse(string(data), "", parser.SourceLibrary)
+	src, err := parser.Parse(string(data), "", kind)
 	if err != nil {
 		return nil, fmt.Errorf("%s.fct: %w", name, err)
 	}
