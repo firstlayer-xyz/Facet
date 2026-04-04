@@ -644,6 +644,7 @@ export async function showDebugStep(index: number) {
 /** Trigger evaluation with the given entry point. */
 export function reeval(entry: string, libPath?: string) {
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+  getTab(activeTab).pickedEntry = { name: entry, libPath: libPath || '' };
   runViaHTTP();
 }
 

@@ -21,7 +21,7 @@ import {
   centerBtn, autoRotateBtn, headTrackBtn, openBtn, saveBtn, settingsBtn, docsBtn, runBtn,
   debugBtn, assistantBtn, exportBtn, slicerBtn, fullCodeBtn, filesBtn, errorDiv, tabBar,
   debugBar, debugPrevBtn, debugNextBtn, debugSlider, debugLabel, statsBar, compilingOverlay,
-  viewpointBar, vpPresetBtn, vpPresetMenu, panelResizer,
+  viewpointBar, vpPresetBtn, vpPresetMenu, hiddenLinesBtn, panelResizer,
   previewLockBtn, previewFileBtn, previewFileMenu,
 } from './toolbar';
 import { FileTree } from './filetree';
@@ -754,7 +754,19 @@ viewpointBar.addEventListener('click', (e) => {
   const isWire = renderBtn.dataset.renderId === 'wireframe';
   viewer.setWireframeMode(false);
   viewer.setDrawingMode(isWire);
+  // Show/hide hidden lines toggle
+  hiddenLinesBtn.style.display = isWire ? '' : 'none';
+  if (!isWire) {
+    hiddenLinesBtn.classList.remove('active');
+    viewer.setHiddenLines(false);
+  }
   if (isWire) viewer.setViewpoint(currentPreset);
+});
+
+hiddenLinesBtn.addEventListener('click', () => {
+  const on = !hiddenLinesBtn.classList.contains('active');
+  hiddenLinesBtn.classList.toggle('active', on);
+  viewer.setHiddenLines(on);
 });
 
 // Preset dropdown — toggle

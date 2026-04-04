@@ -169,6 +169,14 @@ for (const [id, label] of [['3d', '3D'], ['wireframe', 'Wire']] as const) {
 }
 viewpointBar.appendChild(vpSeg);
 
+// ── Hidden lines toggle (only visible in Wire mode) ──
+export const hiddenLinesBtn = document.createElement('button');
+hiddenLinesBtn.className = 'vp-seg-btn vp-hidden-btn';
+hiddenLinesBtn.textContent = 'Hidden';
+hiddenLinesBtn.title = 'Show hidden lines (dashed)';
+hiddenLinesBtn.style.display = 'none';
+viewpointBar.appendChild(hiddenLinesBtn);
+
 // ── Separator ──
 const vpBarSep1 = document.createElement('div');
 vpBarSep1.className = 'vp-bar-sep';
