@@ -32,26 +32,6 @@ interface ThemeEntry {
   label: string;
 }
 
-/** All editor themes (for editor theme selector). */
-export const THEMES: ThemeEntry[] = [
-  { id: 'facet-orange-light', label: 'Facet - Orange Light' },
-  { id: 'facet-orange-dark', label: 'Facet - Orange Dark' },
-  { id: 'facet-green-light', label: 'Facet - Green Light' },
-  { id: 'facet-green-dark', label: 'Facet - Green Dark' },
-  { id: 'facet-digital-blue-light', label: 'Facet - Digital Blue Light' },
-  { id: 'facet-digital-blue-dark', label: 'Facet - Digital Blue Dark' },
-  { id: 'cobalt', label: 'Cobalt' },
-  { id: 'dracula', label: 'Dracula' },
-  { id: 'github-dark', label: 'GitHub Dark' },
-  { id: 'monokai', label: 'Monokai' },
-  { id: 'night-owl', label: 'Night Owl' },
-  { id: 'nord', label: 'Nord' },
-  { id: 'solarized-dark', label: 'Solarized Dark' },
-  { id: 'solarized-light', label: 'Solarized Light' },
-  { id: 'tomorrow-night', label: 'Tomorrow Night' },
-  { id: 'tomorrow', label: 'Tomorrow' },
-];
-
 /** UI themes for the appearance selector. Each has light + dark palette variants.
  *  The dark mode switch picks which variant is used. */
 export const UI_THEMES: ThemeEntry[] = [
@@ -449,10 +429,6 @@ export function applyUIPalette(palette: UIPalette): void {
   root.style.setProperty('--ui-error-bg', palette.errorBg);
   root.style.setProperty('--ui-error-border', palette.errorBorder);
   root.style.setProperty('--ui-msg-user-bg', palette.msgUserBg);
-}
-
-export function getThemePalette(name: string): UIPalette {
-  return THEME_PALETTES[name] ?? THEME_PALETTES['facet-orange-light'];
 }
 
 interface PaletteField {

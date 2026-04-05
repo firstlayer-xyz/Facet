@@ -130,12 +130,8 @@ func (e *evaluator) run() (*EvalResult, error) {
 
 	var solids []*manifold.Solid
 	switch r := result.(type) {
-	case *manifold.SolidFuture:
-		s, err := r.Resolve()
-		if err != nil {
-			return nil, err
-		}
-		solids = []*manifold.Solid{s}
+	case *manifold.Solid:
+		solids = []*manifold.Solid{r}
 	case *structVal:
 		if r.typeName != "PolyMesh" {
 			return nil, e.errAt(entryFn.Pos, "%s() must return a Solid, PolyMesh, or Array of Solids, got %s", e.entryPoint, r.typeName)
@@ -144,11 +140,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		sf, err := pm.ToSolid()
-		if err != nil {
-			return nil, err
-		}
-		s, err := sf.Resolve()
+		s, err := pm.ToSolid()
 		if err != nil {
 			return nil, err
 		}
@@ -185,15 +177,14 @@ func (e *evaluator) run() (*EvalResult, error) {
 	}
 	posToIDs := make(map[posKey]map[uint32]bool)
 	for _, track := range *e.solidTracks {
-		s, err := track.Future.Resolve()
-		if err != nil || len(s.FaceMap) == 0 {
+		if len(track.Solid.FaceMap) == 0 {
 			continue
 		}
 		key := posKey{track.File, track.Line, track.Col}
 		if posToIDs[key] == nil {
 			posToIDs[key] = make(map[uint32]bool)
 		}
-		for id := range s.FaceMap {
+		for id := range track.Solid.FaceMap {
 			posToIDs[key][id] = true
 		}
 	}
@@ -218,20 +209,16 @@ func (e *evaluator) run() (*EvalResult, error) {
 	return &EvalResult{Solids: solids, Stats: stats, PosMap: posMap}, nil
 }
 
-// extractSolids validates that all elements of an array are SolidFutures, resolves them, and returns them.
+// extractSolids validates that all elements of an array are Solids and returns them.
 func extractSolids(entryPoint string, arr array) ([]*manifold.Solid, error) {
 	if len(arr.elems) == 0 {
 		return nil, fmt.Errorf("%s() returned an empty array; expected at least one Solid", entryPoint)
 	}
 	solids := make([]*manifold.Solid, len(arr.elems))
 	for i, elem := range arr.elems {
-		sf, ok := elem.(*manifold.SolidFuture)
+		s, ok := elem.(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s() array element %d is %s, expected Solid", entryPoint, i, typeName(elem))
-		}
-		s, err := sf.Resolve()
-		if err != nil {
-			return nil, fmt.Errorf("%s() array element %d: %w", entryPoint, i, err)
 		}
 		solids[i] = s
 	}
@@ -281,11 +268,7 @@ func arrangeGridSeparate(solids []*manifold.Solid) ([]*manifold.Solid, error) {
 		dx := cx - curCX
 		dy := cy - curCY
 		dz := -boxes[i].minZ
-		translated, err := manifold.ImmediateSolid(s).Translate(dx, dy, dz).Resolve()
-		if err != nil {
-			return nil, err
-		}
-		result[i] = translated
+		result[i] = s.Translate(dx, dy, dz)
 	}
 	return result, nil
 }

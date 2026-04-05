@@ -36,10 +36,10 @@ import {
   openExample, openFile, openRecentFile, saveFile, saveFileAs, newFile, exportMesh, sendToSlicer,
   reeval, toggleDebug, toggleDocs, openDocsToEntry, openLibraryFile, openLibraryTab,
   switchToTab,
-  getSources, getActiveTabValue, getActiveLabel, restoreTabCursor,
+  getSources, getActiveTabValue, getActiveLabel, addRestoredTab, renderTabs,
   isPreviewLocked, setPreviewLocked, isDebugStepping,
-  setOnTabChange, setOnSourceChange, setOnDebugFilesChange, setOnEntryPoints,
-  setEntryOverrides, refreshEditorUI,
+  setOnTabChange, setOnSourceChange, setOnDebugFilesChange, setOnDebugExit, setOnEntryPoints,
+  setEntryOverrides, refreshEditorUI, showError,
 } from './app';
 import { resolveThemePalette, resolveUiTheme, resolveEditorTheme, applyUIPalette } from './themes';
 
@@ -47,14 +47,10 @@ let settings: Awaited<ReturnType<typeof loadSettings>>;
 let viewer: Viewer;
 
 import { promptNewLibrary, showSlicerPicker } from './dialogs';
+import { initFullCode, toggleFullCode } from './fullcode';
 
-/** Resolve UI palette and apply to CSS vars, viewport, and editor theme. */
-function applyCurrentTheme(): void {
-  // UI palette (from appearance settings)
-  const uiId = resolveUiTheme(settings.appearance.uiTheme, settings.appearance.darkMode);
-  const palette = resolveThemePalette(uiId, settings.appearance.themeOverrides, settings.appearance.customThemes);
-  applyUIPalette(palette);
-  viewer.applySettings({
+function buildViewerAppearance(palette: ReturnType<typeof resolveThemePalette>, appearance: typeof settings.appearance) {
+  return {
     backgroundColor: palette.viewBg,
     meshColor: palette.viewMesh ?? palette.accent,
     meshMetalness: palette.viewMeshMetalness,
@@ -65,10 +61,19 @@ function applyCurrentTheme(): void {
     ambientIntensity: palette.viewAmbientIntensity,
     gridMajorColor: palette.viewGridMajor,
     gridMinorColor: palette.viewGridMinor,
-    bed: settings.appearance.bed,
-    gridSize: settings.appearance.gridSize,
-    gridSpacing: settings.appearance.gridSpacing,
-  });
+    bed: appearance.bed,
+    gridSize: appearance.gridSize,
+    gridSpacing: appearance.gridSpacing,
+  };
+}
+
+/** Resolve UI palette and apply to CSS vars, viewport, and editor theme. */
+function applyCurrentTheme(): void {
+  // UI palette (from appearance settings)
+  const uiId = resolveUiTheme(settings.appearance.uiTheme, settings.appearance.darkMode);
+  const palette = resolveThemePalette(uiId, settings.appearance.themeOverrides, settings.appearance.customThemes);
+  applyUIPalette(palette);
+  viewer.applySettings(buildViewerAppearance(palette, settings.appearance));
 
   // Editor theme (follows UI theme)
   editorRef?.setTheme(resolveEditorTheme(
@@ -78,11 +83,13 @@ function applyCurrentTheme(): void {
   ));
 }
 
-// Docs panel
-const docsPanel = new DocsPanel(canvasContainer, async () => {
+async function handleDocsToggle() {
   const active = await toggleDocs();
   docsBtn.classList.toggle('active', active);
-});
+}
+
+// Docs panel
+const docsPanel = new DocsPanel(canvasContainer, handleDocsToggle);
 
 // Assistant panel
 let editorRef: EditorHandle | null = null;
@@ -109,7 +116,6 @@ const assistantPanel = new AssistantPanel(
     }
   },
   (newCode: string) => { editorRef?.setContentSilent(newCode); refreshEditorUI(); },
-  () => viewer.captureScreenshot(),
 );
 
 // Async init — loadSettings reads from Go backend
@@ -132,21 +138,7 @@ async function init() {
   const _initUiId = resolveUiTheme(settings.appearance.uiTheme, settings.appearance.darkMode);
   const _initPalette = resolveThemePalette(_initUiId, settings.appearance.themeOverrides, settings.appearance.customThemes);
   applyUIPalette(_initPalette);
-  viewer = new Viewer(canvasContainer, {
-    backgroundColor: _initPalette.viewBg,
-    meshColor: _initPalette.viewMesh ?? _initPalette.accent,
-    meshMetalness: _initPalette.viewMeshMetalness,
-    meshRoughness: _initPalette.viewMeshRoughness,
-    edgeColor: _initPalette.viewEdgeColor,
-    edgeOpacity: _initPalette.viewEdgeOpacity,
-    edgeThreshold: _initPalette.viewEdgeThreshold,
-    ambientIntensity: _initPalette.viewAmbientIntensity,
-    gridMajorColor: _initPalette.viewGridMajor,
-    gridMinorColor: _initPalette.viewGridMinor,
-    bed: settings.appearance.bed,
-    gridSize: settings.appearance.gridSize,
-    gridSpacing: settings.appearance.gridSpacing,
-  });
+  viewer = new Viewer(canvasContainer, buildViewerAppearance(_initPalette, settings.appearance));
 
   // Initialize app module with all dependencies
   initApp({
@@ -159,46 +151,62 @@ async function init() {
     debugLabel,
     centerBtn,
     autoRotateBtn,
-    debugBtn,
     tabBar,
     statsBar,
     compilingOverlay,
+  });
+
+  initFullCode({
+    viewer, editorPanel, viewportPanel, canvasContainer, divider,
+    panelResizer, app, fullCodeBtn, autoRotateBtn,
   });
 
   // Restore saved tab state or load default tutorial
   const savedTabs = (settings as any).savedTabs as { path: string; label: string; cursor: { lineNumber: number; column: number } | null }[] | undefined;
   const savedActiveTab = (settings as any).activeTab as string | undefined;
 
-  let initialSource = '';
-  let initialFileKey = 'example:Tutorial.fct';
-  let initialReadOnly = true;
+  // Load a saved tab's source — handles both example: and filesystem paths.
+  async function loadSavedTab(path: string): Promise<{ source: string; path: string; readOnly: boolean } | null> {
+    if (path.startsWith('example:')) {
+      const name = path.slice('example:'.length);
+      const source = await GetExample(name);
+      return { source, path, readOnly: true };
+    }
+    const result = await OpenRecentFile(path);
+    if (result?.source) {
+      return { source: result.source, path: result.path, readOnly: false };
+    }
+    return null;
+  }
 
-  // Find the first tab to load as the initial editor content
-  const firstTab = savedTabs?.[0] ?? null;
-  if (firstTab) {
+  // Load all saved tabs, skipping any that fail (file deleted, example removed, etc.)
+  type LoadedTab = { source: string; path: string; readOnly: boolean; cursor: { lineNumber: number; column: number } | null };
+  const loadedTabs: LoadedTab[] = [];
+  for (const saved of savedTabs ?? []) {
     try {
-      const result = await OpenRecentFile(firstTab.path);
-      if (result?.source) {
-        initialSource = result.source;
-        initialFileKey = result.path;
-        initialReadOnly = false;
+      const loaded = await loadSavedTab(saved.path);
+      if (loaded) {
+        loadedTabs.push({ ...loaded, cursor: saved.cursor });
       }
     } catch {
-      // file no longer exists — fall through to tutorial
+      // file no longer exists — skip
     }
   }
-  if (!initialSource) {
-    initialSource = await GetDefaultSource();
-    initialFileKey = 'example:Tutorial.fct';
-    initialReadOnly = true;
+
+  // Fall back to default tutorial when no saved tabs could be loaded
+  if (loadedTabs.length === 0) {
+    const source = await GetDefaultSource();
+    loadedTabs.push({ source, path: 'example:Tutorial.fct', readOnly: true, cursor: null });
   }
 
-  const editor = createEditor(editorPanel, initialSource, autoRun, async (name) => {
+  // First loaded tab initializes the editor
+  const first = loadedTabs[0];
+  const editor = createEditor(editorPanel, first.source, autoRun, async (name) => {
     await openDocsToEntry(name);
     docsBtn.classList.add('active');
   }, (file, source, line, col) => {
     openLibraryFile(file, source, line, col);
-  }, initialFileKey);
+  }, first.path);
   editor.setWordWrap(settings.editor.wordWrap);
   editor.setTheme(resolveEditorTheme(
     settings.appearance.uiTheme,
@@ -229,39 +237,24 @@ async function init() {
     });
   });
 
-  // Set initial file and show tab
-  const initialLabel = initialFileKey.startsWith('example:')
-    ? initialFileKey.replace(/^example:/, '').replace(/\.fct$/, '')
-    : undefined;
-  setInitialFile(initialFileKey, initialLabel, initialReadOnly);
-  if (firstTab?.cursor) {
-    editor.revealLine(firstTab.cursor.lineNumber, firstTab.cursor.column);
+  // Register all loaded tabs
+  setInitialFile(first.path, undefined, first.readOnly);
+  if (first.cursor) {
+    editor.revealLine(first.cursor.lineNumber, first.cursor.column);
   }
+  for (let i = 1; i < loadedTabs.length; i++) {
+    const tab = loadedTabs[i];
+    editor.preloadModel(tab.path, tab.source);
+    addRestoredTab(tab.path, tab.cursor);
+  }
+  if (loadedTabs.length > 1) renderTabs();
 
-  // Restore remaining saved tabs
-  if (savedTabs && savedTabs.length > 1) {
-    for (const saved of savedTabs) {
-      if (saved.path === initialFileKey) continue; // already open
-      try {
-        const result = await OpenRecentFile(saved.path);
-        if (result?.source) {
-          await openLibraryTab(result.path, result.source);
-          // Restore cursor for this tab
-          if (saved.cursor) {
-            restoreTabCursor(saved.path, saved.cursor);
-          }
-        }
-      } catch {
-        // file no longer exists — skip
-      }
-    }
-  }
   // Switch to the previously active tab
   if (savedActiveTab && savedActiveTab !== getActiveTabValue()) {
     switchToTab(savedActiveTab);
-    const savedTab = savedTabs?.find(t => t.path === savedActiveTab);
-    if (savedTab?.cursor) {
-      editor.revealLine(savedTab.cursor.lineNumber, savedTab.cursor.column);
+    const saved = loadedTabs.find(t => t.path === savedActiveTab);
+    if (saved?.cursor) {
+      editor.revealLine(saved.cursor.lineNumber, saved.cursor.column);
     }
   }
 
@@ -372,7 +365,7 @@ async function init() {
           sigSpan.className = 'pv-fn-sig';
           const fnParams = fn.params || [];
           sigSpan.textContent = fnParams.length > 0
-            ? '(' + fnParams.map((p: any) => `${p.name}: ${p.type}`).join(', ') + ')'
+            ? '(' + fnParams.map(p => `${p.name}: ${p.type}`).join(', ') + ')'
             : '()';
 
           item.appendChild(chk);
@@ -421,6 +414,10 @@ async function init() {
     if (previewFileMenu.classList.contains('show')) buildPreviewMenu();
   });
 
+  setOnDebugExit(() => {
+    debugBtn.classList.remove('active');
+  });
+
   // Preview file dropdown toggle
   previewFileBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -429,10 +426,12 @@ async function init() {
     previewFileBtn.classList.toggle('open', open);
   });
 
-  // Close on outside click
+  // Close all dropdowns on outside click (preview file + viewpoint preset)
   document.addEventListener('click', () => {
     previewFileMenu.classList.remove('show');
     previewFileBtn.classList.remove('open');
+    vpPresetMenu.classList.remove('show');
+    vpPresetBtn.classList.remove('open');
   });
 
   // Preview lock toggle
@@ -450,9 +449,9 @@ async function init() {
     }
   });
 
-  // Initial tree render (source is initialSource which was set into editor)
-  fileTree.update(initialSource, initialFileKey);
-  updatePreviewLabel(initialFileKey);
+  // Initial tree render
+  fileTree.update(first.source, first.path);
+  updatePreviewLabel(first.path);
 
   // Files button toggle
   filesBtn.addEventListener('click', () => {
@@ -510,8 +509,7 @@ headTrackBtn.addEventListener('click', async () => {
     );
     headTrackBtn.classList.toggle('active', active);
   } catch (err: any) {
-    errorDiv.textContent = err?.message || 'Camera access denied';
-    errorDiv.style.display = 'block';
+    showError(err?.message || 'Camera access denied');
   }
 });
 
@@ -565,16 +563,13 @@ EventsOn('menu:export', (format: string) => exportMesh(format));
 
 // Run menu
 EventsOn('menu:run', () => toggleRun());
-EventsOn('menu:debug', () => { const active = toggleDebug(); debugBtn.classList.toggle('active', active); });
+EventsOn('menu:debug', handleDebugToggle);
 
 // View menu
-EventsOn('menu:fullcode', () => { if (fullCodeActive) exitFullCode(); else enterFullCode(); });
+EventsOn('menu:fullcode', toggleFullCode);
 EventsOn('menu:toggle-grid', () => viewer.toggleGrid());
 EventsOn('menu:toggle-axes', () => viewer.toggleAxes());
-EventsOn('menu:docs', async () => {
-  const active = await toggleDocs();
-  docsBtn.classList.toggle('active', active);
-});
+EventsOn('menu:docs', handleDocsToggle);
 
 // Model menu
 EventsOn('menu:assistant', () => assistantBtn.click());
@@ -588,11 +583,12 @@ EventsOn('menu:settings', () => settingsBtn.click());
 runBtn.addEventListener('click', toggleRun);
 
 // Debug toggle
-debugBtn.addEventListener('click', () => {
+function handleDebugToggle() {
   const active = toggleDebug();
   debugBtn.classList.toggle('active', active);
   if (active) run();
-});
+}
+debugBtn.addEventListener('click', handleDebugToggle);
 
 // Assistant toggle
 assistantBtn.addEventListener('click', () => {
@@ -603,130 +599,7 @@ assistantBtn.addEventListener('click', () => {
 });
 
 // Docs toggle
-docsBtn.addEventListener('click', async () => {
-  const active = await toggleDocs();
-  docsBtn.classList.toggle('active', active);
-});
-
-// Full-code view toggle — editor fills the screen, viewport shrinks to a floating preview
-let fullCodeActive = false;
-let fullCodeAutoRotating = false;
-let fullCodeDragMove: ((e: MouseEvent) => void) | null = null;
-let fullCodeDragUp: (() => void) | null = null;
-
-function enterFullCode() {
-  fullCodeActive = true;
-  fullCodeBtn.classList.remove('active'); // preview is now hidden
-
-  // Collapse viewport, expand editor
-  divider.style.display = 'none';
-  viewportPanel.style.display = 'none';
-  editorPanel.style.flex = '1';
-
-  // Lift assistant panel out of the hidden viewport panel so it can
-  // still float over the editor when toggled.
-  const assistantEl = document.getElementById('assistant-panel');
-  if (assistantEl) { app.appendChild(assistantEl); assistantEl.classList.add('fullcode-float'); }
-
-  // Create floating preview anchored to the bottom-right of the editor panel
-  const preview = document.createElement('div');
-  preview.id = 'mini-preview';
-  editorPanel.style.overflow = 'visible';
-  editorPanel.appendChild(preview);
-  // Drag handle bar at top of preview — separates drag from orbit controls
-  const dragBar = document.createElement('div');
-  dragBar.id = 'mini-preview-drag';
-  preview.appendChild(dragBar);
-
-  preview.appendChild(canvasContainer);
-
-  // Zoom button to restore split view
-  const zoomBtn = document.createElement('button');
-  zoomBtn.id = 'mini-preview-zoom';
-  zoomBtn.title = 'Restore split view';
-  zoomBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
-  zoomBtn.addEventListener('click', (e) => { e.stopPropagation(); exitFullCode(); });
-  preview.appendChild(zoomBtn);
-
-  // Make preview draggable via drag bar only
-  let dragOffsetX = 0, dragOffsetY = 0, dragging = false;
-  dragBar.addEventListener('mousedown', (e) => {
-    dragging = true;
-    dragOffsetX = e.clientX - preview.getBoundingClientRect().left;
-    dragOffsetY = e.clientY - preview.getBoundingClientRect().top;
-    dragBar.style.cursor = 'grabbing';
-    e.preventDefault();
-  });
-  fullCodeDragMove = (e: MouseEvent) => {
-    if (!dragging) return;
-    const parent = preview.parentElement!;
-    const parentRect = parent.getBoundingClientRect();
-    let x = e.clientX - parentRect.left - dragOffsetX;
-    let y = e.clientY - parentRect.top - dragOffsetY;
-    // Clamp to parent bounds
-    x = Math.max(0, Math.min(x, parentRect.width - preview.offsetWidth));
-    y = Math.max(0, Math.min(y, parentRect.height - preview.offsetHeight));
-    preview.style.left = x + 'px';
-    preview.style.top = y + 'px';
-    preview.style.right = 'auto';
-    preview.style.bottom = 'auto';
-  };
-  fullCodeDragUp = () => {
-    if (dragging) {
-      dragging = false;
-      dragBar.style.cursor = '';
-    }
-  };
-  document.addEventListener('mousemove', fullCodeDragMove);
-  document.addEventListener('mouseup', fullCodeDragUp);
-
-  // Force renderer to adopt new (smaller) container dimensions
-  requestAnimationFrame(() => viewer.resize());
-
-  // Start auto-rotate (track whether it was already on)
-  fullCodeAutoRotating = viewer.isAutoRotating();
-  if (!fullCodeAutoRotating) {
-    viewer.toggleAutoRotate();
-  }
-  autoRotateBtn.classList.add('active');
-}
-
-function exitFullCode() {
-  if (fullCodeDragMove) { document.removeEventListener('mousemove', fullCodeDragMove); fullCodeDragMove = null; }
-  if (fullCodeDragUp) { document.removeEventListener('mouseup', fullCodeDragUp); fullCodeDragUp = null; }
-
-  fullCodeActive = false;
-  fullCodeBtn.classList.add('active'); // preview is visible again
-
-  // Move canvas back before panelResizer
-  viewportPanel.insertBefore(canvasContainer, panelResizer);
-
-  document.getElementById('mini-preview')?.remove();
-
-  // Return assistant panel to the viewport panel
-  const assistantEl = document.getElementById('assistant-panel');
-  if (assistantEl) { assistantEl.classList.remove('fullcode-float'); viewportPanel.insertBefore(assistantEl, panelResizer); }
-
-  // Restore layout
-  divider.style.display = '';
-  viewportPanel.style.display = '';
-  editorPanel.style.flex = '';
-  editorPanel.style.overflow = '';
-
-  // Force renderer to fill the restored viewport
-  requestAnimationFrame(() => viewer.resize());
-
-  // Stop auto-rotate (it was started by enterFullCode)
-  if (!fullCodeAutoRotating && viewer.isAutoRotating()) {
-    viewer.toggleAutoRotate();
-    autoRotateBtn.classList.remove('active');
-  }
-}
-
-fullCodeBtn.addEventListener('click', () => {
-  if (fullCodeActive) exitFullCode();
-  else enterFullCode();
-});
+docsBtn.addEventListener('click', handleDocsToggle);
 
 // Viewpoint bar — [3D | Wire] | [ISO ▾] | [Persp | Ortho]
 let currentPreset: DrawingViewpoint = 'iso';
@@ -744,23 +617,32 @@ function setPreset(vp: DrawingViewpoint) {
   viewer.setViewpoint(vp);
 }
 
-// Render mode seg (3D / Wire)
+// Viewpoint bar — delegated click handler for render mode and projection toggle
 viewpointBar.addEventListener('click', (e) => {
   const target = e.target as HTMLElement;
+  // Render mode (3D / Wire)
   const renderBtn = target.closest<HTMLButtonElement>('.vp-seg-btn[data-render-id]');
-  if (!renderBtn) return;
-  for (const btn of viewpointBar.querySelectorAll<HTMLButtonElement>('.vp-seg-btn[data-render-id]')) btn.classList.remove('active');
-  renderBtn.classList.add('active');
-  const isWire = renderBtn.dataset.renderId === 'wireframe';
-  viewer.setWireframeMode(false);
-  viewer.setDrawingMode(isWire);
-  // Show/hide hidden lines toggle
-  hiddenLinesBtn.style.display = isWire ? '' : 'none';
-  if (!isWire) {
-    hiddenLinesBtn.classList.remove('active');
-    viewer.setHiddenLines(false);
+  if (renderBtn) {
+    for (const btn of viewpointBar.querySelectorAll<HTMLButtonElement>('.vp-seg-btn[data-render-id]')) btn.classList.remove('active');
+    renderBtn.classList.add('active');
+    const isWire = renderBtn.dataset.renderId === 'wireframe';
+    viewer.setWireframeMode(false);
+    viewer.setDrawingMode(isWire);
+    hiddenLinesBtn.style.display = isWire ? '' : 'none';
+    if (!isWire) {
+      hiddenLinesBtn.classList.remove('active');
+      viewer.setHiddenLines(false);
+    }
+    if (isWire) viewer.setViewpoint(currentPreset);
+    return;
   }
-  if (isWire) viewer.setViewpoint(currentPreset);
+  // Projection toggle (Persp / Ortho)
+  const projBtn = target.closest<HTMLButtonElement>('.vp-seg-btn[data-proj-id]');
+  if (projBtn) {
+    for (const btn of viewpointBar.querySelectorAll<HTMLButtonElement>('.vp-seg-btn[data-proj-id]')) btn.classList.remove('active');
+    projBtn.classList.add('active');
+    viewer.setOrthoProjection(projBtn.dataset.projId === 'ortho');
+  }
 });
 
 hiddenLinesBtn.addEventListener('click', () => {
@@ -785,20 +667,6 @@ vpPresetMenu.addEventListener('click', (e) => {
   setPreset(item.dataset.viewpoint as DrawingViewpoint);
 });
 
-document.addEventListener('click', () => {
-  vpPresetMenu.classList.remove('show');
-  vpPresetBtn.classList.remove('open');
-});
-
-// Projection toggle (Persp / Ortho)
-viewpointBar.addEventListener('click', (e) => {
-  const projBtn = (e.target as HTMLElement).closest<HTMLButtonElement>('.vp-seg-btn[data-proj-id]');
-  if (!projBtn) return;
-  for (const btn of viewpointBar.querySelectorAll<HTMLButtonElement>('.vp-seg-btn[data-proj-id]')) btn.classList.remove('active');
-  projBtn.classList.add('active');
-  viewer.setOrthoProjection(projBtn.dataset.projId === 'ortho');
-});
-
 // Export (toolbar button + titlebar button both trigger export)
 exportBtn.addEventListener('click', () => exportMesh());
 document.getElementById('titlebar-export-btn')!.addEventListener('click', () => exportMesh());
@@ -806,8 +674,7 @@ document.getElementById('titlebar-export-btn')!.addEventListener('click', () => 
 async function pickAndSendToSlicer() {
   const slicers = await DetectSlicers();
   if (!slicers || slicers.length === 0) {
-    errorDiv.textContent = 'No slicer found — install BambuStudio, OrcaSlicer, PrusaSlicer, Cura, or AnycubicSlicer';
-    errorDiv.style.display = 'block';
+    showError('No slicer found — install BambuStudio, OrcaSlicer, PrusaSlicer, Cura, or AnycubicSlicer');
     return;
   }
   if (slicers.length === 1) {

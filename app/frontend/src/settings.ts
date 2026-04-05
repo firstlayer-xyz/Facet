@@ -1,5 +1,6 @@
 import type { CustomTheme } from './themes';
 import { PatchSettings, GetSettings } from '../wailsjs/go/main/App';
+import type { SettingsPageContext, PageResult } from './settings_appearance';
 import { buildAppearancePage } from './settings_appearance';
 import { buildEditorPage } from './settings_editor';
 import { buildLibrariesPage } from './settings_libraries';
@@ -196,54 +197,23 @@ export function createSettingsPanel(
   const sidebar = document.createElement('div');
   sidebar.id = 'settings-sidebar';
 
-  const appearanceBtn = document.createElement('button');
-  appearanceBtn.className = 'settings-sidebar-btn active';
-  appearanceBtn.innerHTML = paletteIcon;
-  appearanceBtn.title = 'Appearance';
+  function sidebarButton(icon: string, title: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.className = 'settings-sidebar-btn';
+    btn.innerHTML = icon;
+    btn.title = title;
+    sidebar.appendChild(btn);
+    return btn;
+  }
 
-  const editorBtn = document.createElement('button');
-  editorBtn.className = 'settings-sidebar-btn';
-  editorBtn.innerHTML = editorIcon;
-  editorBtn.title = 'Editor';
-
-  const librariesBtn = document.createElement('button');
-  librariesBtn.className = 'settings-sidebar-btn';
-  librariesBtn.innerHTML = packageIcon;
-  librariesBtn.title = 'Libraries';
-
-  const assistantSettingsBtn = document.createElement('button');
-  assistantSettingsBtn.className = 'settings-sidebar-btn';
-  assistantSettingsBtn.innerHTML = assistantIcon;
-  assistantSettingsBtn.title = 'Assistant';
-
-  const cameraBtn = document.createElement('button');
-  cameraBtn.className = 'settings-sidebar-btn';
-  cameraBtn.innerHTML = cameraIcon;
-  cameraBtn.title = 'Camera';
-
-  const slicerSettingsBtn = document.createElement('button');
-  slicerSettingsBtn.className = 'settings-sidebar-btn';
-  slicerSettingsBtn.innerHTML = slicerIcon;
-  slicerSettingsBtn.title = 'Slicer';
-
-  const memoryBtn = document.createElement('button');
-  memoryBtn.className = 'settings-sidebar-btn';
-  memoryBtn.innerHTML = memoryIcon;
-  memoryBtn.title = 'Memory';
-
-  const debugSettingsBtn = document.createElement('button');
-  debugSettingsBtn.className = 'settings-sidebar-btn';
-  debugSettingsBtn.innerHTML = debugIcon;
-  debugSettingsBtn.title = 'Log';
-
-  sidebar.appendChild(appearanceBtn);
-  sidebar.appendChild(editorBtn);
-  sidebar.appendChild(librariesBtn);
-  sidebar.appendChild(assistantSettingsBtn);
-  sidebar.appendChild(slicerSettingsBtn);
-  sidebar.appendChild(cameraBtn);
-  sidebar.appendChild(memoryBtn);
-  sidebar.appendChild(debugSettingsBtn);
+  const appearanceBtn = sidebarButton(paletteIcon, 'Appearance');
+  const editorBtn = sidebarButton(editorIcon, 'Editor');
+  const librariesBtn = sidebarButton(packageIcon, 'Libraries');
+  const assistantSettingsBtn = sidebarButton(assistantIcon, 'Assistant');
+  const slicerSettingsBtn = sidebarButton(slicerIcon, 'Slicer');
+  const cameraBtn = sidebarButton(cameraIcon, 'Camera');
+  const memoryBtn = sidebarButton(memoryIcon, 'Memory');
+  const debugSettingsBtn = sidebarButton(debugIcon, 'Log');
 
   // Content area
   const content = document.createElement('div');
@@ -351,61 +321,36 @@ export function createSettingsPanel(
   closeBtn.addEventListener('click', close);
 
   // Page switching
-  const allBtns = [appearanceBtn, editorBtn, librariesBtn, assistantSettingsBtn, slicerSettingsBtn, cameraBtn, memoryBtn, debugSettingsBtn];
-  const pageTitles: Record<string, string> = {
-    appearance: 'Appearance', editor: 'Editor', libraries: 'Libraries',
-    assistant: 'Assistant', slicer: 'Slicer', camera: 'Camera', memory: 'Memory', debug: 'Log',
+  const pages: Record<string, { title: string; btn: HTMLButtonElement; build: (ctx: SettingsPageContext) => PageResult }> = {
+    appearance: { title: 'Appearance', btn: appearanceBtn, build: buildAppearancePage },
+    editor: { title: 'Editor', btn: editorBtn, build: buildEditorPage },
+    libraries: { title: 'Libraries', btn: librariesBtn, build: buildLibrariesPage },
+    assistant: { title: 'Assistant', btn: assistantSettingsBtn, build: buildAssistantPage },
+    slicer: { title: 'Slicer', btn: slicerSettingsBtn, build: buildSlicerPage },
+    camera: { title: 'Camera', btn: cameraBtn, build: buildCameraPage },
+    memory: { title: 'Memory', btn: memoryBtn, build: buildMemoryPage },
+    debug: { title: 'Log', btn: debugSettingsBtn, build: buildDebugPage },
   };
 
-  function showPage(page: 'appearance' | 'editor' | 'libraries' | 'assistant' | 'slicer' | 'camera' | 'memory' | 'debug') {
-    // Clean up previous page resources
+  function showPage(name: string) {
+    const page = pages[name];
+    if (!page) return;
     if (pageCleanup) {
       pageCleanup();
       pageCleanup = null;
     }
     content.innerHTML = '';
-    titleSpan.textContent = pageTitles[page] || '';
-    allBtns.forEach(b => b.classList.remove('active'));
-
-    let result;
-    if (page === 'appearance') {
-      appearanceBtn.classList.add('active');
-      result = buildAppearancePage(ctx);
-    } else if (page === 'editor') {
-      editorBtn.classList.add('active');
-      result = buildEditorPage(ctx);
-    } else if (page === 'libraries') {
-      librariesBtn.classList.add('active');
-      result = buildLibrariesPage(ctx);
-    } else if (page === 'slicer') {
-      slicerSettingsBtn.classList.add('active');
-      result = buildSlicerPage(ctx);
-    } else if (page === 'camera') {
-      cameraBtn.classList.add('active');
-      result = buildCameraPage(ctx);
-    } else if (page === 'memory') {
-      memoryBtn.classList.add('active');
-      result = buildMemoryPage(ctx);
-    } else if (page === 'debug') {
-      debugSettingsBtn.classList.add('active');
-      result = buildDebugPage();
-    } else {
-      assistantSettingsBtn.classList.add('active');
-      result = buildAssistantPage(ctx);
-    }
-
+    titleSpan.textContent = page.title;
+    for (const p of Object.values(pages)) p.btn.classList.remove('active');
+    page.btn.classList.add('active');
+    const result = page.build(ctx);
     content.appendChild(result.el);
     pageCleanup = result.cleanup || null;
   }
 
-  appearanceBtn.addEventListener('click', () => showPage('appearance'));
-  editorBtn.addEventListener('click', () => showPage('editor'));
-  librariesBtn.addEventListener('click', () => showPage('libraries'));
-  assistantSettingsBtn.addEventListener('click', () => showPage('assistant'));
-  slicerSettingsBtn.addEventListener('click', () => showPage('slicer'));
-  cameraBtn.addEventListener('click', () => showPage('camera'));
-  memoryBtn.addEventListener('click', () => showPage('memory'));
-  debugSettingsBtn.addEventListener('click', () => showPage('debug'));
+  for (const [name, page] of Object.entries(pages)) {
+    page.btn.addEventListener('click', () => showPage(name));
+  }
 
   // Default to appearance
   showPage('appearance');

@@ -201,7 +201,7 @@ func (e *evaluator) evalFunction(fn *parser.Function, args map[string]value) (va
 	}
 	result, err := e.execBody(fn.Body, fn.ReturnType, locals)
 	if err == nil {
-		if rs, ok := result.(*manifold.SolidFuture); ok {
+		if rs, ok := result.(*manifold.Solid); ok {
 			e.trackSolid(fn.Pos, rs)
 		}
 	}
@@ -234,7 +234,7 @@ func (e *evaluator) evalMethodFunction(fn *parser.Function, self value, args map
 	}
 	result, err := e.execBody(fn.Body, fn.ReturnType, locals)
 	if err == nil {
-		if rs, ok := result.(*manifold.SolidFuture); ok {
+		if rs, ok := result.(*manifold.Solid); ok {
 			e.trackSolid(fn.Pos, rs)
 		}
 	}
@@ -245,6 +245,12 @@ func (e *evaluator) evalMethodFunction(fn *parser.Function, self value, args map
 // Scope is built as: globals → captured (overrides) → args.
 // Globals are included as fallback so recursive lambdas can reference themselves by name.
 func (e *evaluator) callFunctionVal(fv *functionVal, args map[string]value) (value, error) {
+	e.callDepth++
+	if e.callDepth > maxCallDepth {
+		e.callDepth--
+		return nil, fmt.Errorf("maximum call depth exceeded (%d) — possible infinite recursion", maxCallDepth)
+	}
+	defer func() { e.callDepth-- }()
 	if len(args) != len(fv.params) {
 		return nil, fmt.Errorf("function expects %d arguments, got %d", len(fv.params), len(args))
 	}

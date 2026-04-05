@@ -136,9 +136,6 @@ func (a *App) buildMenu() *menu.Menu {
 
 	// Model menu
 	modelMenu := appMenu.AddSubmenu("Model")
-	modelMenu.AddText("Parameters", keys.Combo("p", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:params")
-	})
 	modelMenu.AddText("AI Assistant", keys.Combo("a", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
 		wailsRuntime.EventsEmit(a.ctx, "menu:assistant")
 	})

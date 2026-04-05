@@ -132,6 +132,14 @@ export class Viewer {
   private lastPickedFaceGroup = -1;
   private lastPickCycleIndex = 0;
 
+  // Bound event handlers for cleanup in dispose()
+  private onMouseDown: (e: MouseEvent) => void;
+  private onMouseUp: (e: MouseEvent) => void;
+  private onFocus: () => void;
+  private onBlur: () => void;
+  private onKeyDown: (e: KeyboardEvent) => void;
+  private onKeyUp: (e: KeyboardEvent) => void;
+
   constructor(container: HTMLElement, appearance?: ViewerAppearance) {
     this.container = container;
 
@@ -232,11 +240,15 @@ export class Viewer {
     this.resizeObserver = new ResizeObserver(() => this.onResize());
     this.resizeObserver.observe(this.container);
 
-    // Face-click detection (distinguish click from drag)
-    container.addEventListener('mousedown', (e) => {
+    // Face-click detection (distinguish click from drag) + keyboard orbital controls
+    container.setAttribute('tabindex', '0');
+    container.style.outline = 'none';
+
+    this.onMouseDown = (e: MouseEvent) => {
       this.pickMouseDown = { x: e.clientX, y: e.clientY, time: Date.now() };
-    });
-    container.addEventListener('mouseup', (e) => {
+      container.focus();
+    };
+    this.onMouseUp = (e: MouseEvent) => {
       if (!this.pickMouseDown) return;
       const dx = e.clientX - this.pickMouseDown.x;
       const dy = e.clientY - this.pickMouseDown.y;
@@ -246,36 +258,46 @@ export class Viewer {
       if (dist < 5 && elapsed < 300) {
         this.handleFacePick(e);
       }
-    });
-
-    // Keyboard orbital controls — focus on click, blur on outside click
-    container.setAttribute('tabindex', '0');
-    container.style.outline = 'none';
-    container.addEventListener('mousedown', () => {
-      container.focus();
-    });
-    container.addEventListener('focus', () => {
+    };
+    this.onFocus = () => {
       this.viewportFocused = true;
       this.showControlsOverlay();
-    });
-    container.addEventListener('blur', () => {
+    };
+    this.onBlur = () => {
       this.viewportFocused = false;
       this.keysDown.clear();
       this.hideControlsOverlay();
-    });
-    container.addEventListener('keydown', (e) => {
+    };
+    this.onKeyDown = (e: KeyboardEvent) => {
       if (!this.viewportFocused) return;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract'].includes(e.code)) {
         e.preventDefault();
         this.keysDown.add(e.code);
       }
-    });
-    container.addEventListener('keyup', (e) => {
+    };
+    this.onKeyUp = (e: KeyboardEvent) => {
       this.keysDown.delete(e.code);
-    });
+    };
+
+    container.addEventListener('mousedown', this.onMouseDown);
+    container.addEventListener('mouseup', this.onMouseUp);
+    container.addEventListener('focus', this.onFocus);
+    container.addEventListener('blur', this.onBlur);
+    container.addEventListener('keydown', this.onKeyDown);
+    container.addEventListener('keyup', this.onKeyUp);
 
     // Start render loop
     this.animate();
+  }
+
+  private createMeshMaterial(opts: { vertexColors?: boolean; color?: number }): THREE.MeshStandardMaterial {
+    return new THREE.MeshStandardMaterial({
+      metalness: this.meshMetalness,
+      roughness: this.meshRoughness,
+      flatShading: true,
+      side: THREE.DoubleSide,
+      ...opts,
+    });
   }
 
   loadDecodedMesh(decoded: DecodedMesh): void {
@@ -318,25 +340,13 @@ export class Viewer {
       }
       geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
       mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry,
-        new THREE.MeshStandardMaterial({
-          vertexColors: true,
-          metalness: this.meshMetalness,
-          roughness: this.meshRoughness,
-          flatShading: true,
-          side: THREE.DoubleSide,
-        }));
+        this.createMeshMaterial({ vertexColors: true }));
     } else if (decoded.expanded) {
       // Pre-expanded but no face groups — simple material
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(decoded.expanded, 3));
       mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry,
-        new THREE.MeshStandardMaterial({
-          color: this.meshColor,
-          metalness: this.meshMetalness,
-          roughness: this.meshRoughness,
-          flatShading: true,
-          side: THREE.DoubleSide,
-        }));
+        this.createMeshMaterial({ color: this.meshColor }));
     } else {
       // Fallback: indexed geometry (old path for debug step meshes, etc.)
       const geometry = new THREE.BufferGeometry();
@@ -374,17 +384,11 @@ export class Viewer {
         }
         nonIndexed.setAttribute('color', new THREE.BufferAttribute(colors, 4));
         mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(nonIndexed,
-          new THREE.MeshStandardMaterial({
-            vertexColors: true, metalness: this.meshMetalness, roughness: this.meshRoughness,
-            flatShading: true, side: THREE.DoubleSide,
-          }));
+          this.createMeshMaterial({ vertexColors: true }));
         geometry.dispose();
       } else {
         mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry,
-          new THREE.MeshStandardMaterial({
-            color: this.meshColor, metalness: this.meshMetalness, roughness: this.meshRoughness,
-            flatShading: true, side: THREE.DoubleSide,
-          }));
+          this.createMeshMaterial({ color: this.meshColor }));
       }
     }
 
@@ -561,7 +565,6 @@ export class Viewer {
 
 
     if (intersects.length === 0) {
-      this.clearHighlight();
       this.onFaceClickCb?.('', 0, 0);
       return;
     }
@@ -570,7 +573,6 @@ export class Viewer {
     const mesh = hit.object as THREE.Mesh<THREE.BufferGeometry, THREE.Material>;
     const faceGroups = mesh.userData.faceGroups as Uint32Array | undefined;
     if (!faceGroups || hit.faceIndex == null) {
-      this.clearHighlight();
       return;
     }
 
@@ -578,7 +580,6 @@ export class Viewer {
     const entries = this.reversePosMap.get(faceGroupID);
 
     if (!entries || entries.length === 0) {
-      this.clearHighlight();
       return;
     }
 
@@ -827,6 +828,12 @@ export class Viewer {
   }
 
   dispose(): void {
+    this.container.removeEventListener('mousedown', this.onMouseDown);
+    this.container.removeEventListener('mouseup', this.onMouseUp);
+    this.container.removeEventListener('focus', this.onFocus);
+    this.container.removeEventListener('blur', this.onBlur);
+    this.container.removeEventListener('keydown', this.onKeyDown);
+    this.container.removeEventListener('keyup', this.onKeyUp);
     this.resizeObserver.disconnect();
     this.renderer.dispose();
   }
@@ -1267,7 +1274,7 @@ export class Viewer {
     ctx.fillText(text, 32, 32);
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
-    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
     return new THREE.Sprite(mat);
   }
 

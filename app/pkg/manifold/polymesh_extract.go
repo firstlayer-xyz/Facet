@@ -67,22 +67,20 @@ func ExtractPolyMesh(s *Solid) *PolyMesh {
 
 // createSolidFromMeshWithFaceIDs creates a Manifold from mesh data with per-triangle faceIDs.
 // The faceIDs survive through boolean operations, enabling polygon reconstruction.
-func createSolidFromMeshWithFaceIDs(verts []float32, indices, faceIDs []uint32) (*SolidFuture, error) {
+func createSolidFromMeshWithFaceIDs(verts []float32, indices, faceIDs []uint32) (*Solid, error) {
 	if len(verts) == 0 || len(indices) == 0 || len(faceIDs) == 0 {
 		return nil, fmt.Errorf("createSolidFromMeshWithFaceIDs: empty vertex, index, or faceID data")
 	}
-	return startSolidFuture(func() (*Solid, error) {
-		ptr := C.facet_solid_from_mesh_with_face_ids(
-			(*C.float)(unsafe.Pointer(&verts[0])), C.size_t(len(verts)/3),
-			(*C.uint32_t)(unsafe.Pointer(&indices[0])), C.size_t(len(indices)/3),
-			(*C.uint32_t)(unsafe.Pointer(&faceIDs[0])), C.size_t(len(faceIDs)))
-		if ptr == nil {
-			return nil, fmt.Errorf("createSolidFromMeshWithFaceIDs: manifold creation failed")
-		}
-		s := newSolid(ptr)
-		origID := uint32(C.facet_original_id(s.ptr))
-		runtime.KeepAlive(s)
-		s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-		return s, nil
-	}), nil
+	ptr := C.facet_solid_from_mesh_with_face_ids(
+		(*C.float)(unsafe.Pointer(&verts[0])), C.size_t(len(verts)/3),
+		(*C.uint32_t)(unsafe.Pointer(&indices[0])), C.size_t(len(indices)/3),
+		(*C.uint32_t)(unsafe.Pointer(&faceIDs[0])), C.size_t(len(faceIDs)))
+	if ptr == nil {
+		return nil, fmt.Errorf("createSolidFromMeshWithFaceIDs: manifold creation failed")
+	}
+	s := newSolid(ptr)
+	origID := uint32(C.facet_original_id(s.ptr))
+	runtime.KeepAlive(s)
+	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
+	return s, nil
 }

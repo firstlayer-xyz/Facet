@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"facet/app/pkg/fctlang/formatter"
@@ -305,11 +306,11 @@ func parseAutoPull(raw json.RawMessage) bool {
 
 // hasDirtyFiles is set by the frontend whenever the dirty state changes.
 // Checked by beforeClose to prompt for unsaved changes.
-var hasDirtyFiles bool
+var hasDirtyFiles atomic.Bool
 
 // SetDirtyState is called by the frontend to report whether any files have unsaved changes.
 func (a *App) SetDirtyState(dirty bool) {
-	hasDirtyFiles = dirty
+	hasDirtyFiles.Store(dirty)
 }
 
 // beforeClose is called when the user tries to close the window.
@@ -318,7 +319,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	// Emit event so frontend can persist tab state
 	wailsRuntime.EventsEmit(ctx, "app:before-close")
 
-	if !hasDirtyFiles {
+	if !hasDirtyFiles.Load() {
 		return false // allow close
 	}
 	result, err := wailsRuntime.MessageDialog(ctx, wailsRuntime.MessageDialogOptions{
@@ -374,8 +375,8 @@ func cleanupScratchFiles() {
 // rebuildSystemPrompt rebuilds the cached AI system prompt from the language
 // spec, curated examples, and library catalog. Safe to call from any goroutine.
 func (a *App) rebuildSystemPrompt() {
-	catalog := buildLibraryCatalog()
-	prompt := buildSystemPrompt(catalog)
+	catalog := collectLibDocEntries()
+	prompt := buildFullSystemPrompt(catalog)
 	a.assistantMu.Lock()
 	a.cachedSystemPrompt = prompt
 	a.assistantMu.Unlock()

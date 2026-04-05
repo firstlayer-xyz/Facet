@@ -16,7 +16,7 @@ func init() {
 	builtinRegistry["_translate"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_translate"
 		switch r := args[0].(type) {
-		case *manifold.SolidFuture:
+		case *manifold.Solid:
 			if len(args) != 4 {
 				return nil, fmt.Errorf("%s() expects 3 arguments, got %d", name, len(args)-1)
 			}
@@ -33,7 +33,7 @@ func init() {
 				return nil, err
 			}
 			return r.Translate(x, y, z), nil
-		case *manifold.SketchFuture:
+		case *manifold.Sketch:
 			if len(args) != 3 {
 				return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args)-1)
 			}
@@ -54,7 +54,7 @@ func init() {
 	builtinRegistry["_rotate"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_rotate"
 		switch r := args[0].(type) {
-		case *manifold.SolidFuture:
+		case *manifold.Solid:
 			if len(args) != 7 {
 				return nil, fmt.Errorf("%s() expects 6 arguments (rx, ry, rz, ox, oy, oz), got %d", name, len(args)-1)
 			}
@@ -83,7 +83,7 @@ func init() {
 				return nil, err
 			}
 			return r.RotateAt(rx, ry, rz, ox, oy, oz), nil
-		case *manifold.SketchFuture:
+		case *manifold.Sketch:
 			if len(args) != 2 {
 				return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args)-1)
 			}
@@ -100,7 +100,7 @@ func init() {
 	builtinRegistry["_scale"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_scale"
 		switch r := args[0].(type) {
-		case *manifold.SolidFuture:
+		case *manifold.Solid:
 			if len(args) != 7 {
 				return nil, fmt.Errorf("%s() expects 6 arguments (x, y, z, ox, oy, oz), got %d", name, len(args)-1)
 			}
@@ -129,7 +129,7 @@ func init() {
 				return nil, err
 			}
 			return r.Scale(x, y, z, ox, oy, oz), nil
-		case *manifold.SketchFuture:
+		case *manifold.Sketch:
 			if len(args) != 5 {
 				return nil, fmt.Errorf("%s() expects 4 arguments (x, y, px, py), got %d", name, len(args)-1)
 			}
@@ -158,7 +158,7 @@ func init() {
 	builtinRegistry["_mirror"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_mirror"
 		switch r := args[0].(type) {
-		case *manifold.SolidFuture:
+		case *manifold.Solid:
 			if len(args) != 5 {
 				return nil, fmt.Errorf("%s() expects 4 arguments (nx, ny, nz, offset), got %d", name, len(args)-1)
 			}
@@ -179,7 +179,7 @@ func init() {
 				return nil, err
 			}
 			return r.Mirror(nx, ny, nz, offset), nil
-		case *manifold.SketchFuture:
+		case *manifold.Sketch:
 			if len(args) != 4 {
 				return nil, fmt.Errorf("%s() expects 3 arguments (ax, ay, offset), got %d", name, len(args)-1)
 			}
@@ -210,15 +210,11 @@ func init() {
 			return v
 		}
 		switch r := args[0].(type) {
-		case *manifold.SolidFuture:
+		case *manifold.Solid:
 			if len(args) != 1 {
 				return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
 			}
-			s, err := r.Resolve()
-			if err != nil {
-				return nil, err
-			}
-			minX, minY, minZ, maxX, maxY, maxZ := s.BoundingBox()
+			minX, minY, minZ, maxX, maxY, maxZ := r.BoundingBox()
 			minX, minY, minZ = sanitize(minX), sanitize(minY), sanitize(minZ)
 			maxX, maxY, maxZ = sanitize(maxX), sanitize(maxY), sanitize(maxZ)
 			return &structVal{
@@ -228,15 +224,11 @@ func init() {
 					"max": makePtVecStruct3("Vec3", maxX, maxY, maxZ),
 				},
 			}, nil
-		case *manifold.SketchFuture:
+		case *manifold.Sketch:
 			if len(args) != 1 {
 				return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
 			}
-			p, err := r.Resolve()
-			if err != nil {
-				return nil, err
-			}
-			minX, minY, maxX, maxY := p.BoundingBox()
+			minX, minY, maxX, maxY := r.BoundingBox()
 			minX, minY = sanitize(minX), sanitize(minY)
 			maxX, maxY = sanitize(maxX), sanitize(maxY)
 			return &structVal{
@@ -254,7 +246,7 @@ func init() {
 	builtinRegistry["_fillet"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_fillet"
 		switch r := args[0].(type) {
-		case *manifold.SketchFuture:
+		case *manifold.Sketch:
 			if len(args) != 2 {
 				return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args)-1)
 			}
@@ -273,7 +265,7 @@ func init() {
 	builtinRegistry["_chamfer"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_chamfer"
 		switch r := args[0].(type) {
-		case *manifold.SketchFuture:
+		case *manifold.Sketch:
 			if len(args) != 2 {
 				return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args)-1)
 			}
@@ -295,7 +287,7 @@ func init() {
 
 	builtinRegistry["_trim"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_trim"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -323,7 +315,7 @@ func init() {
 
 	builtinRegistry["_smooth"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_smooth"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -343,7 +335,7 @@ func init() {
 
 	builtinRegistry["_refine"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_refine"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -359,7 +351,7 @@ func init() {
 
 	builtinRegistry["_simplify"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_simplify"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -375,7 +367,7 @@ func init() {
 
 	builtinRegistry["_refine_to_length"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_refine_to_length"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -391,30 +383,26 @@ func init() {
 
 	builtinRegistry["_genus"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_genus"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
 		if len(args) != 1 {
 			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
 		}
-		s, err := r.Resolve()
-		if err != nil {
-			return nil, err
-		}
-		return float64(s.Genus()), nil
+		return float64(r.Genus()), nil
 	}
 
 	builtinRegistry["_min_gap"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_min_gap"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
 		if len(args) != 3 {
 			return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args)-1)
 		}
-		other, ok := args[1].(*manifold.SolidFuture)
+		other, ok := args[1].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s() expects Solid as first argument, got %s", name, typeName(args[1]))
 		}
@@ -422,15 +410,7 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		sa, err := r.Resolve()
-		if err != nil {
-			return nil, err
-		}
-		sb, err := other.Resolve()
-		if err != nil {
-			return nil, err
-		}
-		return length{mm: sa.MinGap(sb, searchLen)}, nil
+		return length{mm: r.MinGap(other, searchLen)}, nil
 	}
 
 	builtinRegistry["_split"] = func(e *evaluator, args []value) (value, error) {
@@ -450,23 +430,16 @@ func init() {
 				elems[i] = p
 			}
 			return array{elems: elems, elemType: "String"}, nil
-		case *manifold.SolidFuture:
+		case *manifold.Solid:
 			if len(args) != 2 {
 				return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args)-1)
 			}
-			cutter, ok := args[1].(*manifold.SolidFuture)
+			cutter, ok := args[1].(*manifold.Solid)
 			if !ok {
 				return nil, fmt.Errorf("%s() expects Solid, got %s", name, typeName(args[1]))
 			}
-			futures, err := manifold.SplitSolid(r, cutter)
-			if err != nil {
-				return nil, err
-			}
-			elems := make([]value, len(futures))
-			for i, f := range futures {
-				elems[i] = f
-			}
-			return array{elems: elems, elemType: "Solid"}, nil
+			pair := manifold.SplitSolid(r, cutter)
+			return array{elems: []value{pair[0], pair[1]}, elemType: "Solid"}, nil
 		default:
 			return nil, fmt.Errorf("%s: expected String or Solid, got %s", name, typeName(args[0]))
 		}
@@ -474,7 +447,7 @@ func init() {
 
 	builtinRegistry["_split_plane"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_split_plane"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -497,52 +470,37 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		futures, err := manifold.SplitSolidByPlane(r, nx, ny, nz, offset)
-		if err != nil {
-			return nil, err
-		}
-		elems := make([]value, len(futures))
-		for i, f := range futures {
-			elems[i] = f
-		}
-		return array{elems: elems, elemType: "Solid"}, nil
+		pair := manifold.SplitSolidByPlane(r, nx, ny, nz, offset)
+		return array{elems: []value{pair[0], pair[1]}, elemType: "Solid"}, nil
 	}
 
 	builtinRegistry["_volume"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_volume"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
 		if len(args) != 1 {
 			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
 		}
-		s, err := r.Resolve()
-		if err != nil {
-			return nil, err
-		}
-		return float64(s.Volume()), nil
+		return float64(r.Volume()), nil
 	}
 
 	builtinRegistry["_surface_area"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_surface_area"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
 		if len(args) != 1 {
 			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
 		}
-		s, err := r.Resolve()
-		if err != nil {
-			return nil, err
-		}
-		return float64(s.SurfaceArea()), nil
+		return float64(r.SurfaceArea()), nil
 	}
 
 	builtinRegistry["_slice"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_slice"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -558,7 +516,7 @@ func init() {
 
 	builtinRegistry["_project"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_project"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -570,7 +528,7 @@ func init() {
 
 	builtinRegistry["_warp"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_warp"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -579,7 +537,7 @@ func init() {
 		}
 		fv, ok := args[1].(*functionVal)
 		if !ok {
-			return nil, fmt.Errorf("%s() expects parser.Function, got %s", name, typeName(args[1]))
+			return nil, fmt.Errorf("%s() expects Function, got %s", name, typeName(args[1]))
 		}
 		var warpErr error
 		result := r.Warp(func(x, y, z float64) (float64, float64, float64) {
@@ -607,7 +565,7 @@ func init() {
 
 	builtinRegistry["_color"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_color"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -631,7 +589,7 @@ func init() {
 
 	builtinRegistry["_color_hex"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_color_hex"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
@@ -651,34 +609,26 @@ func init() {
 
 	builtinRegistry["_polymesh"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_polymesh"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
 		if len(args) != 1 {
 			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
 		}
-		s, err := r.Resolve()
-		if err != nil {
-			return nil, err
-		}
-		return polyMeshToStructVal(manifold.ExtractPolyMesh(s)), nil
+		return polyMeshToStructVal(manifold.ExtractPolyMesh(r)), nil
 	}
 
 	builtinRegistry["_mesh"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_mesh"
-		r, ok := args[0].(*manifold.SolidFuture)
+		r, ok := args[0].(*manifold.Solid)
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
 		if len(args) != 1 {
 			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
 		}
-		s, err := r.Resolve()
-		if err != nil {
-			return nil, err
-		}
-		m := manifold.ExtractMeshShared(s)
+		m := manifold.ExtractMeshShared(r)
 		// Build vertices array of Vec3
 		numVerts := len(m.Vertices) / 3
 		verts := make([]value, numVerts)

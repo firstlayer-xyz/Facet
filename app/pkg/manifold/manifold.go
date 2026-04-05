@@ -7,16 +7,17 @@ package manifold
 */
 import "C"
 import (
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"math"
 	"runtime"
 	"unsafe"
 )
 
-// newSolid wraps a C ManifoldManifold pointer and registers a finalizer to free it.
-func newSolid(ptr *C.ManifoldManifold) *Solid {
+// newSolid wraps a C ManifoldPtr pointer and registers a finalizer to free it.
+func newSolid(ptr *C.ManifoldPtr) *Solid {
+	if ptr == nil {
+		return nil
+	}
 	sz := uint64(C.facet_solid_memory_size(ptr))
 	s := &Solid{ptr: ptr, memSize: sz}
 	runtime.ExternalAlloc(sz)
@@ -66,30 +67,6 @@ type DisplayMesh struct {
 
 }
 
-// MarshalJSON serializes a DisplayMesh as base64-encoded JSON (for backward compat with tests/MCP).
-func (m *DisplayMesh) MarshalJSON() ([]byte, error) {
-	type wireFormat struct {
-		Vertices    string            `json:"vertices"`
-		Indices     string            `json:"indices"`
-		FaceGroups  string            `json:"faceGroups,omitempty"`
-		FaceColors  map[string]string `json:"faceColors,omitempty"`
-		VertexCount int               `json:"vertexCount"`
-		IndexCount  int               `json:"indexCount"`
-	}
-	var fgB64 string
-	if len(m.FaceGroupRaw) > 0 {
-		fgB64 = base64.StdEncoding.EncodeToString(m.FaceGroupRaw)
-	}
-	return json.Marshal(wireFormat{
-		Vertices:    base64.StdEncoding.EncodeToString(m.VertRaw),
-		Indices:     base64.StdEncoding.EncodeToString(m.IdxRaw),
-		FaceGroups:  fgB64,
-		FaceColors:  m.FaceColorMap,
-		VertexCount: m.VertexCount,
-		IndexCount:  m.IndexCount,
-	})
-}
-
 // NoColor is the sentinel value for FaceInfo.Color indicating no color is assigned.
 const NoColor uint32 = 0xFFFFFFFF
 
@@ -99,9 +76,9 @@ type FaceInfo struct {
 	Color uint32
 }
 
-// Solid wraps a C ManifoldManifold pointer for use in boolean operations.
+// Solid wraps a C ManifoldPtr pointer for use in boolean operations.
 type Solid struct {
-	ptr     *C.ManifoldManifold
+	ptr     *C.ManifoldPtr
 	memSize uint64               // cached ExternalMemSize, set once at creation
 	FaceMap map[uint32]FaceInfo  // originalID → face metadata (nil if empty)
 }
@@ -121,7 +98,10 @@ func (s *Solid) ToMesh() *Mesh {
 
 // ToMesh converts a Sketch to a renderable mesh via thin extrusion.
 func (p *Sketch) ToMesh() *Mesh {
-	solid := extrude(p, 0.001, 0, 0, 1, 1)
+	solid, err := p.Extrude(0.001, 0, 0, 1, 1)
+	if err != nil {
+		return nil
+	}
 	m := extractMesh(solid.ptr)
 	runtime.KeepAlive(solid)
 	return m
@@ -137,7 +117,10 @@ func (s *Solid) ToDisplayMesh() *DisplayMesh {
 
 // ToDisplayMesh converts a Sketch to a DisplayMesh via thin extrusion.
 func (p *Sketch) ToDisplayMesh() *DisplayMesh {
-	solid := extrude(p, 0.001, 0, 0, 1, 1)
+	solid, err := p.Extrude(0.001, 0, 0, 1, 1)
+	if err != nil {
+		return nil
+	}
 	m := extractDisplayMesh(solid.ptr, nil)
 	appendExpandedData(m, solid.ptr, 40)
 	runtime.KeepAlive(solid)
@@ -145,7 +128,7 @@ func (p *Sketch) ToDisplayMesh() *DisplayMesh {
 }
 
 // appendExpandedData adds pre-expanded positions and edge lines to an existing DisplayMesh.
-func appendExpandedData(dm *DisplayMesh, ptr *C.ManifoldManifold, edgeThresholdDeg float32) {
+func appendExpandedData(dm *DisplayMesh, ptr *C.ManifoldPtr, edgeThresholdDeg float32) {
 	var cPositions *C.float
 	var cNumPositions C.int
 	var cFaceIDs *C.uint32_t
@@ -231,9 +214,9 @@ func (s *Solid) withFaceMap() map[uint32]FaceInfo {
 	return m
 }
 
-// setColor sets the color on all existing FaceMap entries.
+// SetColor sets a uniform RGB color on all vertices.
 // Face IDs are auto-assigned by C at creation time; no new IDs are created here.
-func setColor(s *Solid, r, g, b float64) *Solid {
+func (s *Solid) SetColor(r, g, b float64) *Solid {
 	color := uint32(int(r*255+0.5)<<16 | int(g*255+0.5)<<8 | int(b*255+0.5))
 	for id, fi := range s.FaceMap {
 		fi.Color = color
@@ -242,12 +225,12 @@ func setColor(s *Solid, r, g, b float64) *Solid {
 	return s
 }
 
-// ---------------------------------------------------------------------------
-// 3D Primitives (unexported sync helpers)
-// ---------------------------------------------------------------------------
-
-func createCube(x, y, z float64) *Solid {
-	ptr := C.facet_cube(C.double(x), C.double(y), C.double(z))
+// newSolidWithOrigin wraps a C ManifoldPtr pointer, registers a finalizer,
+// and initializes a single-entry FaceMap using the solid's originalID.
+func newSolidWithOrigin(ptr *C.ManifoldPtr) *Solid {
+	if ptr == nil {
+		return nil
+	}
 	s := newSolid(ptr)
 	origID := uint32(C.facet_original_id(s.ptr))
 	runtime.KeepAlive(s)
@@ -255,34 +238,59 @@ func createCube(x, y, z float64) *Solid {
 	return s
 }
 
-func createSphere(radius float64, segments int) *Solid {
-	ptr := C.facet_sphere(C.double(radius), C.int(segments))
-	s := newSolid(ptr)
-	origID := uint32(C.facet_original_id(s.ptr))
+// transformSolid wraps a unary C transform that produces a new ManifoldPtr.
+// The caller passes the already-evaluated C result pointer; this function keeps
+// the source solid alive, wraps the result, and copies the FaceMap.
+func transformSolid(s *Solid, ptr *C.ManifoldPtr) *Solid {
 	runtime.KeepAlive(s)
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
-}
-
-func createCylinder(height, radiusLow, radiusHigh float64, segments int) *Solid {
-	ptr := C.facet_cylinder(C.double(height), C.double(radiusLow), C.double(radiusHigh), C.int(segments))
-	s := newSolid(ptr)
-	origID := uint32(C.facet_original_id(s.ptr))
-	runtime.KeepAlive(s)
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
+	r := newSolid(ptr)
+	r.FaceMap = s.withFaceMap()
+	return r
 }
 
 // ---------------------------------------------------------------------------
-// 2D Primitives (unexported sync helpers)
+// 3D Primitives
 // ---------------------------------------------------------------------------
 
-func createSquare(x, y float64) *Sketch {
+// CreateCube creates a box with the given dimensions.
+func CreateCube(x, y, z float64) (*Solid, error) {
+	s := newSolidWithOrigin(C.facet_cube(C.double(x), C.double(y), C.double(z)))
+	if s == nil {
+		return nil, fmt.Errorf("manifold: failed to create cube")
+	}
+	return s, nil
+}
+
+// CreateSphere creates a sphere with the given radius and segment count.
+func CreateSphere(radius float64, segments int) (*Solid, error) {
+	s := newSolidWithOrigin(C.facet_sphere(C.double(radius), C.int(segments)))
+	if s == nil {
+		return nil, fmt.Errorf("manifold: failed to create sphere")
+	}
+	return s, nil
+}
+
+// CreateCylinder creates a cylinder (or cone if radii differ).
+func CreateCylinder(height, radiusLow, radiusHigh float64, segments int) (*Solid, error) {
+	s := newSolidWithOrigin(C.facet_cylinder(C.double(height), C.double(radiusLow), C.double(radiusHigh), C.int(segments)))
+	if s == nil {
+		return nil, fmt.Errorf("manifold: failed to create cylinder")
+	}
+	return s, nil
+}
+
+// ---------------------------------------------------------------------------
+// 2D Primitives
+// ---------------------------------------------------------------------------
+
+// CreateSquare creates a 2D rectangle.
+func CreateSquare(x, y float64) *Sketch {
 	ptr := C.facet_square(C.double(x), C.double(y))
 	return newSketch(ptr)
 }
 
-func createCircle(radius float64, segments int) *Sketch {
+// CreateCircle creates a 2D circle.
+func CreateCircle(radius float64, segments int) *Sketch {
 	ptr := C.facet_circle(C.double(radius), C.int(segments))
 	return newSketch(ptr)
 }
@@ -297,8 +305,12 @@ type Point3D struct {
 	X, Y, Z float64
 }
 
-func createPolygon(points []Point2D) *Sketch {
+// CreatePolygon creates a 2D sketch from a slice of points.
+func CreatePolygon(points []Point2D) (*Sketch, error) {
 	n := len(points)
+	if n < 3 {
+		return nil, fmt.Errorf("Polygon requires at least 3 points, got %d", n)
+	}
 	// Ensure CCW winding (positive signed area) so extrusion normals face +Z.
 	// Shoelace formula: positive = CCW, negative = CW.
 	var area2 float64
@@ -307,7 +319,6 @@ func createPolygon(points []Point2D) *Sketch {
 		area2 += points[i].X*points[j].Y - points[j].X*points[i].Y
 	}
 	if area2 < 0 {
-		// CW winding — reverse to CCW
 		for i, j := 0, n-1; i < j; i, j = i+1, j-1 {
 			points[i], points[j] = points[j], points[i]
 		}
@@ -318,14 +329,15 @@ func createPolygon(points []Point2D) *Sketch {
 		coords[i*2+1] = C.double(p.Y)
 	}
 	ptr := C.facet_polygon(&coords[0], C.size_t(n))
-	return newSketch(ptr)
+	return newSketch(ptr), nil
 }
 
 // ---------------------------------------------------------------------------
-// 3D Boolean Operations (unexported sync helpers)
+// 3D Boolean Operations
 // ---------------------------------------------------------------------------
 
-func union(a, b *Solid) *Solid {
+// Union computes the boolean union of two solids.
+func (a *Solid) Union(b *Solid) *Solid {
 	ptr := C.facet_union(a.ptr, b.ptr)
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
@@ -334,7 +346,8 @@ func union(a, b *Solid) *Solid {
 	return s
 }
 
-func difference(a, b *Solid) *Solid {
+// Difference computes the boolean difference of two solids.
+func (a *Solid) Difference(b *Solid) *Solid {
 	ptr := C.facet_difference(a.ptr, b.ptr)
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
@@ -343,7 +356,8 @@ func difference(a, b *Solid) *Solid {
 	return s
 }
 
-func intersection(a, b *Solid) *Solid {
+// Intersection computes the boolean intersection of two solids.
+func (a *Solid) Intersection(b *Solid) *Solid {
 	ptr := C.facet_intersection(a.ptr, b.ptr)
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
@@ -352,7 +366,8 @@ func intersection(a, b *Solid) *Solid {
 	return s
 }
 
-func insert(a, b *Solid) *Solid {
+// Insert cuts a hole in a for b, removes floating inner plugs, and seats b.
+func (a *Solid) Insert(b *Solid) *Solid {
 	ptr := C.facet_insert(a.ptr, b.ptr)
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
@@ -361,8 +376,9 @@ func insert(a, b *Solid) *Solid {
 	return s
 }
 
-func decomposeSolid(s *Solid) []*Solid {
-	var outArr **C.ManifoldManifold
+// DecomposeSolid splits a solid into its disconnected connected components.
+func DecomposeSolid(s *Solid) []*Solid {
+	var outArr **C.ManifoldPtr
 	n := int(C.facet_decompose(s.ptr, &outArr))
 	runtime.KeepAlive(s)
 	if n == 0 {
@@ -379,24 +395,27 @@ func decomposeSolid(s *Solid) []*Solid {
 }
 
 // ---------------------------------------------------------------------------
-// 2D Boolean Operations (unexported sync helpers)
+// 2D Boolean Operations
 // ---------------------------------------------------------------------------
 
-func sketchUnion(a, b *Sketch) *Sketch {
+// Union computes the boolean union of two sketches.
+func (a *Sketch) Union(b *Sketch) *Sketch {
 	ptr := C.facet_cs_union(a.ptr, b.ptr)
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
 	return newSketch(ptr)
 }
 
-func sketchDifference(a, b *Sketch) *Sketch {
+// Difference computes the boolean difference of two sketches.
+func (a *Sketch) Difference(b *Sketch) *Sketch {
 	ptr := C.facet_cs_difference(a.ptr, b.ptr)
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
 	return newSketch(ptr)
 }
 
-func sketchIntersection(a, b *Sketch) *Sketch {
+// Intersection computes the boolean intersection of two sketches.
+func (a *Sketch) Intersection(b *Sketch) *Sketch {
 	ptr := C.facet_cs_intersection(a.ptr, b.ptr)
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
@@ -404,167 +423,124 @@ func sketchIntersection(a, b *Sketch) *Sketch {
 }
 
 // ---------------------------------------------------------------------------
-// 2D → 3D (unexported sync helpers)
+// 2D → 3D
 // ---------------------------------------------------------------------------
 
-func extrude(p *Sketch, height float64, slices int, twist, scaleX, scaleY float64) *Solid {
+// Extrude extrudes a sketch upward by height.
+func (p *Sketch) Extrude(height float64, slices int, twist, scaleX, scaleY float64) (*Solid, error) {
 	ptr := C.facet_extrude(p.ptr, C.double(height), C.int(slices), C.double(twist), C.double(scaleX), C.double(scaleY))
 	runtime.KeepAlive(p)
-	s := newSolid(ptr)
-	origID := uint32(C.facet_original_id(s.ptr))
-	runtime.KeepAlive(s)
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
+	s := newSolidWithOrigin(ptr)
+	if s == nil {
+		return nil, fmt.Errorf("manifold: failed to extrude")
+	}
+	return s, nil
 }
 
-func revolve(p *Sketch, segments int, degrees float64) *Solid {
+// Revolve revolves a sketch around the Y axis.
+func (p *Sketch) Revolve(segments int, degrees float64) (*Solid, error) {
 	ptr := C.facet_revolve(p.ptr, C.int(segments), C.double(degrees))
 	runtime.KeepAlive(p)
-	s := newSolid(ptr)
-	origID := uint32(C.facet_original_id(s.ptr))
-	runtime.KeepAlive(s)
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
+	s := newSolidWithOrigin(ptr)
+	if s == nil {
+		return nil, fmt.Errorf("manifold: failed to revolve")
+	}
+	return s, nil
 }
 
-func sweep(p *Sketch, path []Point3D) *Solid {
+// Sweep extrudes a sketch along a 3D path.
+func (p *Sketch) Sweep(path []Point3D) (*Solid, error) {
+	if len(path) < 2 {
+		return nil, fmt.Errorf("Sweep requires at least 2 path points, got %d", len(path))
+	}
 	flat := make([]C.double, len(path)*3)
 	for i, pt := range path {
 		flat[i*3], flat[i*3+1], flat[i*3+2] = C.double(pt.X), C.double(pt.Y), C.double(pt.Z)
 	}
 	ptr := C.facet_sweep(p.ptr, &flat[0], C.size_t(len(path)))
 	runtime.KeepAlive(p)
-	s := newSolid(ptr)
-	origID := uint32(C.facet_original_id(s.ptr))
-	runtime.KeepAlive(s)
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
+	s := newSolidWithOrigin(ptr)
+	if s == nil {
+		return nil, fmt.Errorf("manifold: failed to sweep")
+	}
+	return s, nil
 }
 
 // ---------------------------------------------------------------------------
-// 3D → 2D (unexported sync helpers)
+// 3D → 2D
 // ---------------------------------------------------------------------------
 
-func slice(s *Solid, height float64) *Sketch {
+// Slice takes a cross-section of a solid at the given Z height.
+func (s *Solid) Slice(height float64) *Sketch {
 	ptr := C.facet_slice(s.ptr, C.double(height))
 	runtime.KeepAlive(s)
 	return newSketch(ptr)
 }
 
-func project(s *Solid) *Sketch {
+// Project projects a solid onto the XY plane.
+func (s *Solid) Project() *Sketch {
 	ptr := C.facet_project(s.ptr)
 	runtime.KeepAlive(s)
 	return newSketch(ptr)
 }
 
 // ---------------------------------------------------------------------------
-// 3D Transforms (unexported sync helpers)
+// 3D Transforms
 // ---------------------------------------------------------------------------
 
-func translate(s *Solid, x, y, z float64) *Solid {
-	ptr := C.facet_translate(s.ptr, C.double(x), C.double(y), C.double(z))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+// Translate moves a solid by (x, y, z).
+func (s *Solid) Translate(x, y, z float64) *Solid {
+	return transformSolid(s, C.facet_translate(s.ptr, C.double(x), C.double(y), C.double(z)))
 }
 
-
 func scale(s *Solid, x, y, z float64) *Solid {
-	ptr := C.facet_scale(s.ptr, C.double(x), C.double(y), C.double(z))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+	return transformSolid(s, C.facet_scale(s.ptr, C.double(x), C.double(y), C.double(z)))
 }
 
 func mirror(s *Solid, nx, ny, nz float64) *Solid {
-	ptr := C.facet_mirror(s.ptr, C.double(nx), C.double(ny), C.double(nz))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+	return transformSolid(s, C.facet_mirror(s.ptr, C.double(nx), C.double(ny), C.double(nz)))
 }
 
-// scaleLocal scales a solid pivoting at its bounding box min corner.
-func scaleLocal(s *Solid, x, y, z float64) *Solid {
-	ptr := C.facet_scale_local(s.ptr, C.double(x), C.double(y), C.double(z))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+// Rotate rotates a solid by (x, y, z) degrees around each axis, pivoting on
+// the bounding box center so the solid spins in place.
+func (s *Solid) Rotate(x, y, z float64) *Solid {
+	return transformSolid(s, C.facet_rotate_local(s.ptr, C.double(x), C.double(y), C.double(z)))
 }
 
-// rotateLocal rotates a solid around its bounding box center.
-func rotateLocal(s *Solid, x, y, z float64) *Solid {
-	ptr := C.facet_rotate_local(s.ptr, C.double(x), C.double(y), C.double(z))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+// Scale scales a solid by (x, y, z) around pivot point (ox, oy, oz).
+func (s *Solid) Scale(x, y, z, ox, oy, oz float64) *Solid {
+	return scale(s.Translate(-ox, -oy, -oz), x, y, z).Translate(ox, oy, oz)
 }
 
-// mirrorLocal mirrors a solid across a plane through its bounding box center.
-func mirrorLocal(s *Solid, nx, ny, nz float64) *Solid {
-	ptr := C.facet_mirror_local(s.ptr, C.double(nx), C.double(ny), C.double(nz))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
-}
-
-// scaleAt scales a solid by (x, y, z) around pivot point (ox, oy, oz).
-func scaleAt(s *Solid, x, y, z, ox, oy, oz float64) *Solid {
-	return translate(scale(translate(s, -ox, -oy, -oz), x, y, z), ox, oy, oz)
-}
-
-// mirrorAt mirrors a solid across the plane with normal (nx, ny, nz) at signed
+// Mirror mirrors a solid across the plane with normal (nx, ny, nz) at signed
 // distance offset from the world origin. The normal is normalized internally.
-func mirrorAt(s *Solid, nx, ny, nz, offset float64) *Solid {
+func (s *Solid) Mirror(nx, ny, nz, offset float64) *Solid {
 	ln := math.Sqrt(nx*nx + ny*ny + nz*nz)
 	if ln == 0 {
 		return s
 	}
 	dx, dy, dz := nx/ln*offset, ny/ln*offset, nz/ln*offset
-	return translate(mirror(translate(s, -dx, -dy, -dz), nx, ny, nz), dx, dy, dz)
+	return mirror(s.Translate(-dx, -dy, -dz), nx, ny, nz).Translate(dx, dy, dz)
 }
 
-// sketchScaleAt scales a sketch by (x, y) around pivot point (px, py).
-func sketchScaleAt(p *Sketch, x, y, px, py float64) *Sketch {
-	return sketchTranslate(sketchScale(sketchTranslate(p, -px, -py), x, y), px, py)
-}
-
-// sketchMirrorAt mirrors a sketch across the axis (ax, ay) at signed distance
-// offset from the world origin. The axis is normalized internally.
-func sketchMirrorAt(p *Sketch, ax, ay, offset float64) *Sketch {
-	ln := math.Sqrt(ax*ax + ay*ay)
-	if ln == 0 {
-		return p
-	}
-	dx, dy := ax/ln*offset, ay/ln*offset
-	return sketchTranslate(sketchMirror(sketchTranslate(p, -dx, -dy), ax, ay), dx, dy)
-}
-
-// rotateAt rotates a solid by (rx, ry, rz) degrees around pivot point (ox, oy, oz).
-func rotateAt(s *Solid, rx, ry, rz, ox, oy, oz float64) *Solid {
-	ptr := C.facet_rotate_at(s.ptr, C.double(rx), C.double(ry), C.double(rz), C.double(ox), C.double(oy), C.double(oz))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+// RotateAt rotates a solid by (rx, ry, rz) degrees around pivot point (ox, oy, oz).
+func (s *Solid) RotateAt(rx, ry, rz, ox, oy, oz float64) *Solid {
+	return transformSolid(s, C.facet_rotate_at(s.ptr, C.double(rx), C.double(ry), C.double(rz), C.double(ox), C.double(oy), C.double(oz)))
 }
 
 // ---------------------------------------------------------------------------
-// 2D Transforms (unexported sync helpers)
+// 2D Transforms
 // ---------------------------------------------------------------------------
 
-func sketchTranslate(p *Sketch, x, y float64) *Sketch {
+// Translate moves a sketch by (x, y).
+func (p *Sketch) Translate(x, y float64) *Sketch {
 	ptr := C.facet_cs_translate(p.ptr, C.double(x), C.double(y))
 	runtime.KeepAlive(p)
 	return newSketch(ptr)
 }
 
-func sketchRotate(p *Sketch, degrees float64) *Sketch {
+// RotateOrigin rotates a sketch by degrees around the world origin (0, 0).
+func (p *Sketch) RotateOrigin(degrees float64) *Sketch {
 	ptr := C.facet_cs_rotate(p.ptr, C.double(degrees))
 	runtime.KeepAlive(p)
 	return newSketch(ptr)
@@ -582,25 +558,35 @@ func sketchMirror(p *Sketch, ax, ay float64) *Sketch {
 	return newSketch(ptr)
 }
 
-// sketchRotateLocal rotates a sketch around its bounding box center.
-func sketchRotateLocal(p *Sketch, degrees float64) *Sketch {
+// Rotate rotates a sketch by degrees, pivoting on the bounding box center.
+func (p *Sketch) Rotate(degrees float64) *Sketch {
 	ptr := C.facet_cs_rotate_local(p.ptr, C.double(degrees))
 	runtime.KeepAlive(p)
 	return newSketch(ptr)
 }
 
-// sketchMirrorLocal mirrors a sketch across an axis through its bounding box center.
-func sketchMirrorLocal(p *Sketch, ax, ay float64) *Sketch {
-	ptr := C.facet_cs_mirror_local(p.ptr, C.double(ax), C.double(ay))
-	runtime.KeepAlive(p)
-	return newSketch(ptr)
+// Scale scales a sketch by (x, y) around pivot point (px, py).
+func (p *Sketch) Scale(x, y, px, py float64) *Sketch {
+	return sketchScale(p.Translate(-px, -py), x, y).Translate(px, py)
+}
+
+// Mirror mirrors a sketch across the axis (ax, ay) at signed distance offset
+// from the world origin. The axis is normalized internally.
+func (p *Sketch) Mirror(ax, ay, offset float64) *Sketch {
+	ln := math.Sqrt(ax*ax + ay*ay)
+	if ln == 0 {
+		return p
+	}
+	dx, dy := ax/ln*offset, ay/ln*offset
+	return sketchMirror(p.Translate(-dx, -dy), ax, ay).Translate(dx, dy)
 }
 
 // ---------------------------------------------------------------------------
-// 3D Operations (unexported sync helpers)
+// 3D Operations
 // ---------------------------------------------------------------------------
 
-func hull(s *Solid) *Solid {
+// Hull computes the convex hull of a solid.
+func (s *Solid) Hull() *Solid {
 	ptr := C.facet_hull(s.ptr)
 	runtime.KeepAlive(s)
 	r := newSolid(ptr)
@@ -618,8 +604,9 @@ func hull(s *Solid) *Solid {
 	return r
 }
 
-func batchHull(solids []*Solid) *Solid {
-	ptrs := make([]*C.ManifoldManifold, len(solids))
+// BatchHull computes the convex hull of multiple solids together.
+func BatchHull(solids []*Solid) *Solid {
+	ptrs := make([]*C.ManifoldPtr, len(solids))
 	for i, s := range solids {
 		ptrs[i] = s.ptr
 	}
@@ -645,7 +632,8 @@ func batchHull(solids []*Solid) *Solid {
 	return r
 }
 
-func hullPoints(points []Point3D) *Solid {
+// HullPoints computes the convex hull of a set of 3D points.
+func HullPoints(points []Point3D) *Solid {
 	n := len(points)
 	coords := make([]C.double, n*3)
 	for i, p := range points {
@@ -653,52 +641,32 @@ func hullPoints(points []Point3D) *Solid {
 		coords[i*3+1] = C.double(p.Y)
 		coords[i*3+2] = C.double(p.Z)
 	}
-	ptr := C.facet_hull_points(&coords[0], C.size_t(n))
-	s := newSolid(ptr)
-	origID := uint32(C.facet_original_id(s.ptr))
-	runtime.KeepAlive(s)
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
+	return newSolidWithOrigin(C.facet_hull_points(&coords[0], C.size_t(n)))
 }
 
-func trimByPlane(s *Solid, nx, ny, nz, offset float64) *Solid {
-	ptr := C.facet_trim_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+// TrimByPlane trims a solid by the plane defined by normal and offset.
+func (s *Solid) TrimByPlane(nx, ny, nz, offset float64) *Solid {
+	return transformSolid(s, C.facet_trim_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset)))
 }
 
-func smoothOut(s *Solid, minSharpAngle, minSmoothness float64) *Solid {
-	ptr := C.facet_smooth_out(s.ptr, C.double(minSharpAngle), C.double(minSmoothness))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+// SmoothOut smooths sharp edges of a solid.
+func (s *Solid) SmoothOut(minSharpAngle, minSmoothness float64) *Solid {
+	return transformSolid(s, C.facet_smooth_out(s.ptr, C.double(minSharpAngle), C.double(minSmoothness)))
 }
 
-func refine(s *Solid, n int) *Solid {
-	ptr := C.facet_refine(s.ptr, C.int(n))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+// Refine subdivides the mesh of a solid n times.
+func (s *Solid) Refine(n int) *Solid {
+	return transformSolid(s, C.facet_refine(s.ptr, C.int(n)))
 }
 
-func simplify(s *Solid, tolerance float64) *Solid {
-	ptr := C.facet_simplify(s.ptr, C.double(tolerance))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+// Simplify reduces the triangle count of a solid by merging edges shorter than tolerance.
+func (s *Solid) Simplify(tolerance float64) *Solid {
+	return transformSolid(s, C.facet_simplify(s.ptr, C.double(tolerance)))
 }
 
-func refineToLength(s *Solid, length float64) *Solid {
-	ptr := C.facet_refine_to_length(s.ptr, C.double(length))
-	runtime.KeepAlive(s)
-	r := newSolid(ptr)
-	r.FaceMap = s.withFaceMap()
-	return r
+// RefineToLength subdivides edges longer than the given length.
+func (s *Solid) RefineToLength(length float64) *Solid {
+	return transformSolid(s, C.facet_refine_to_length(s.ptr, C.double(length)))
 }
 
 // Genus returns the topological genus of the solid (0 = sphere-like, 1 = torus-like, etc.).
@@ -716,7 +684,8 @@ func (s *Solid) MinGap(other *Solid, searchLength float64) float64 {
 	return float64(result)
 }
 
-func splitSolid(m, cutter *Solid) (*Solid, *Solid) {
+// SplitSolid splits m by cutter, returning [inside, outside].
+func SplitSolid(m, cutter *Solid) [2]*Solid {
 	pair := C.facet_split(m.ptr, cutter.ptr)
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(cutter)
@@ -725,10 +694,11 @@ func splitSolid(m, cutter *Solid) (*Solid, *Solid) {
 	first.FaceMap = fm
 	second := newSolid(pair.second)
 	second.FaceMap = fm
-	return first, second
+	return [2]*Solid{first, second}
 }
 
-func splitByPlane(s *Solid, nx, ny, nz, offset float64) (*Solid, *Solid) {
+// SplitSolidByPlane splits a solid by an infinite plane, returning [above, below].
+func SplitSolidByPlane(s *Solid, nx, ny, nz, offset float64) [2]*Solid {
 	pair := C.facet_split_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset))
 	runtime.KeepAlive(s)
 	fm := s.withFaceMap()
@@ -736,15 +706,16 @@ func splitByPlane(s *Solid, nx, ny, nz, offset float64) (*Solid, *Solid) {
 	first.FaceMap = fm
 	second := newSolid(pair.second)
 	second.FaceMap = fm
-	return first, second
+	return [2]*Solid{first, second}
 }
 
-func composeSolids(solids []*Solid) *Solid {
-	ptrs := make([]*C.ManifoldManifold, len(solids))
+// ComposeSolids assembles non-overlapping solids into one without boolean operations.
+func ComposeSolids(solids []*Solid) *Solid {
+	ptrs := make([]*C.ManifoldPtr, len(solids))
 	for i, s := range solids {
 		ptrs[i] = s.ptr
 	}
-	ptr := C.facet_compose((**C.ManifoldManifold)(unsafe.Pointer(&ptrs[0])), C.int(len(solids)))
+	ptr := C.facet_compose((**C.ManifoldPtr)(unsafe.Pointer(&ptrs[0])), C.int(len(solids)))
 	for _, s := range solids {
 		runtime.KeepAlive(s)
 	}
@@ -756,16 +727,18 @@ func composeSolids(solids []*Solid) *Solid {
 }
 
 // ---------------------------------------------------------------------------
-// 2D Operations (unexported sync helpers)
+// 2D Operations
 // ---------------------------------------------------------------------------
 
-func sketchHull(p *Sketch) *Sketch {
+// Hull computes the convex hull of a sketch.
+func (p *Sketch) Hull() *Sketch {
 	ptr := C.facet_cs_hull(p.ptr)
 	runtime.KeepAlive(p)
 	return newSketch(ptr)
 }
 
-func sketchBatchHull(sketches []*Sketch) *Sketch {
+// SketchBatchHull computes the convex hull of multiple sketches together.
+func SketchBatchHull(sketches []*Sketch) *Sketch {
 	ptrs := make([]*C.ManifoldCrossSection, len(sketches))
 	for i, p := range sketches {
 		ptrs[i] = p.ptr
@@ -775,7 +748,8 @@ func sketchBatchHull(sketches []*Sketch) *Sketch {
 	return newSketch(ptr)
 }
 
-func loft(sketches []*Sketch, heights []float64) *Solid {
+// Loft creates a solid by blending between cross-sections at different heights.
+func Loft(sketches []*Sketch, heights []float64) *Solid {
 	ptrs := make([]*C.ManifoldCrossSection, len(sketches))
 	for i, s := range sketches {
 		ptrs[i] = s.ptr
@@ -786,14 +760,11 @@ func loft(sketches []*Sketch, heights []float64) *Solid {
 	}
 	ptr := C.facet_loft(&ptrs[0], C.size_t(len(sketches)), &hs[0], C.size_t(len(heights)))
 	runtime.KeepAlive(sketches)
-	s := newSolid(ptr)
-	origID := uint32(C.facet_original_id(s.ptr))
-	runtime.KeepAlive(s)
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
+	return newSolidWithOrigin(ptr)
 }
 
-func sketchOffset(p *Sketch, delta float64, segments int) *Sketch {
+// Offset offsets a sketch's edges by delta with round join.
+func (p *Sketch) Offset(delta float64, segments int) *Sketch {
 	ptr := C.facet_cs_offset(p.ptr, C.double(delta), C.int(segments))
 	runtime.KeepAlive(p)
 	return newSketch(ptr)
@@ -887,9 +858,9 @@ func MergeMeshes(meshes []*Mesh) *Mesh {
 	return merged
 }
 
-// extractMesh converts a ManifoldManifold into a Go Mesh with shared vertices and indices.
+// extractMesh converts a ManifoldPtr into a Go Mesh with shared vertices and indices.
 // Normals are omitted; the frontend uses flatShading (GPU-computed face normals).
-func extractMesh(m *C.ManifoldManifold) *Mesh {
+func extractMesh(m *C.ManifoldPtr) *Mesh {
 	var cVerts *C.float
 	var cNumVerts C.int
 	var cIndices *C.uint32_t
@@ -926,7 +897,27 @@ func colorFromFaceInfo(fi FaceInfo) string {
 // extractDisplayMesh copies mesh data directly from C buffers as raw bytes,
 // skipping intermediate Go typed slices. faceMap is used to build
 // faceGroupID → hex color and faceGroupID → source position lookups.
-func extractDisplayMesh(m *C.ManifoldManifold, faceMap map[uint32]FaceInfo) *DisplayMesh {
+// buildFaceColorMap constructs a faceID→hex color map from a slice of face IDs
+// and a FaceInfo map. Only face IDs with a non-NoColor entry are included.
+func buildFaceColorMap(faceIDs []uint32, faceMap map[uint32]FaceInfo) map[string]string {
+	var fcMap map[string]string
+	seen := make(map[uint32]bool)
+	for _, fid := range faceIDs {
+		if seen[fid] {
+			continue
+		}
+		seen[fid] = true
+		if fi, ok := faceMap[fid]; ok && fi.Color != NoColor {
+			if fcMap == nil {
+				fcMap = make(map[string]string)
+			}
+			fcMap[fmt.Sprintf("%d", fid)] = colorFromFaceInfo(fi)
+		}
+	}
+	return fcMap
+}
+
+func extractDisplayMesh(m *C.ManifoldPtr, faceMap map[uint32]FaceInfo) *DisplayMesh {
 	var cVerts *C.float
 	var cNumVerts, cNumProp C.int
 	var cIndices *C.uint32_t
@@ -981,19 +972,7 @@ func extractDisplayMesh(m *C.ManifoldManifold, faceMap map[uint32]FaceInfo) *Dis
 		fgCount = nFaceIDs
 
 		faceIDs := unsafe.Slice((*uint32)(unsafe.Pointer(cFaceIDs)), nFaceIDs)
-		seen := make(map[uint32]bool)
-		for _, fid := range faceIDs {
-			if seen[fid] {
-				continue
-			}
-			seen[fid] = true
-			if fi, ok := faceMap[fid]; ok && fi.Color != NoColor {
-				if fcMap == nil {
-					fcMap = make(map[string]string)
-				}
-				fcMap[fmt.Sprintf("%d", fid)] = colorFromFaceInfo(fi)
-			}
-		}
+		fcMap = buildFaceColorMap(faceIDs, faceMap)
 	}
 
 	return &DisplayMesh{
@@ -1107,7 +1086,7 @@ func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
 		return extractDisplayMesh(solids[0].ptr, merged)
 	}
 
-	ptrs := make([]*C.ManifoldManifold, len(solids))
+	ptrs := make([]*C.ManifoldPtr, len(solids))
 	for i, s := range solids {
 		ptrs[i] = s.ptr
 	}
@@ -1168,19 +1147,7 @@ func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
 		fgCount = nFaceIDs
 
 		faceIDs := unsafe.Slice((*uint32)(unsafe.Pointer(cFaceIDs)), nFaceIDs)
-		seen := make(map[uint32]bool)
-		for _, fid := range faceIDs {
-			if seen[fid] {
-				continue
-			}
-			seen[fid] = true
-			if fi, ok := merged[fid]; ok && fi.Color != NoColor {
-				if fcMap == nil {
-					fcMap = make(map[string]string)
-				}
-				fcMap[fmt.Sprintf("%d", fid)] = colorFromFaceInfo(fi)
-			}
-		}
+		fcMap = buildFaceColorMap(faceIDs, merged)
 	}
 
 	return &DisplayMesh{
@@ -1220,7 +1187,7 @@ func MergeExtractExpandedMeshes(solids []*Solid, edgeThresholdDeg float32) *Disp
 			&cEdgeLines, &cNumEdges,
 			C.float(edgeThresholdDeg))
 	} else {
-		ptrs := make([]*C.ManifoldManifold, len(solids))
+		ptrs := make([]*C.ManifoldPtr, len(solids))
 		for i, s := range solids {
 			ptrs[i] = s.ptr
 		}
@@ -1302,137 +1269,4 @@ func buildDisplayMesh(verts []float32, indices []uint32, faceGroups []uint32) *D
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Public Future Creator Functions
-// ---------------------------------------------------------------------------
 
-// CreateCube creates a box with the given dimensions.
-func CreateCube(x, y, z float64) *SolidFuture {
-	return startSolidFuture(func() (*Solid, error) {
-		return createCube(x, y, z), nil
-	})
-}
-
-// CreateSphere creates a sphere with the given radius and segment count.
-func CreateSphere(radius float64, segments int) *SolidFuture {
-	return startSolidFuture(func() (*Solid, error) {
-		return createSphere(radius, segments), nil
-	})
-}
-
-// CreateCylinder creates a cylinder (or cone if radii differ).
-func CreateCylinder(height, radiusLow, radiusHigh float64, segments int) *SolidFuture {
-	return startSolidFuture(func() (*Solid, error) {
-		return createCylinder(height, radiusLow, radiusHigh, segments), nil
-	})
-}
-
-// CreateSquare creates a 2D rectangle.
-func CreateSquare(x, y float64) *SketchFuture {
-	return startSketchFuture(func() (*Sketch, error) {
-		return createSquare(x, y), nil
-	})
-}
-
-// CreateCircle creates a 2D circle.
-func CreateCircle(radius float64, segments int) *SketchFuture {
-	return startSketchFuture(func() (*Sketch, error) {
-		return createCircle(radius, segments), nil
-	})
-}
-
-// CreatePolygon creates a 2D sketch from a slice of points.
-func CreatePolygon(points []Point2D) *SketchFuture {
-	return startSketchFuture(func() (*Sketch, error) {
-		if len(points) < 3 {
-			return nil, fmt.Errorf("Polygon requires at least 3 points, got %d", len(points))
-		}
-		return createPolygon(points), nil
-	})
-}
-
-// ---------------------------------------------------------------------------
-// Public Future Batch Functions
-// ---------------------------------------------------------------------------
-
-// BatchHull computes the convex hull of multiple solid futures together.
-func BatchHull(futures []*SolidFuture) *SolidFuture {
-	return startSolidFuture(func() (*Solid, error) {
-		if len(futures) == 0 {
-			return nil, fmt.Errorf("BatchHull requires at least 1 solid")
-		}
-		solids := make([]*Solid, len(futures))
-		for i, f := range futures {
-			s, err := f.Resolve()
-			if err != nil {
-				return nil, err
-			}
-			solids[i] = s
-		}
-		return batchHull(solids), nil
-	})
-}
-
-// SketchBatchHull computes the convex hull of multiple sketch futures together.
-func SketchBatchHull(futures []*SketchFuture) *SketchFuture {
-	return startSketchFuture(func() (*Sketch, error) {
-		if len(futures) == 0 {
-			return nil, fmt.Errorf("SketchBatchHull requires at least 1 sketch")
-		}
-		sketches := make([]*Sketch, len(futures))
-		for i, f := range futures {
-			s, err := f.Resolve()
-			if err != nil {
-				return nil, err
-			}
-			sketches[i] = s
-		}
-		return sketchBatchHull(sketches), nil
-	})
-}
-
-// Loft creates a solid by blending between cross-sections at different heights.
-func Loft(futures []*SketchFuture, heights []float64) *SolidFuture {
-	return startSolidFuture(func() (*Solid, error) {
-		if len(futures) < 2 {
-			return nil, fmt.Errorf("Loft requires at least 2 cross-sections, got %d", len(futures))
-		}
-		if len(heights) == 0 {
-			return nil, fmt.Errorf("Loft requires at least 1 height")
-		}
-		sketches := make([]*Sketch, len(futures))
-		for i, f := range futures {
-			s, err := f.Resolve()
-			if err != nil {
-				return nil, err
-			}
-			sketches[i] = s
-		}
-		return loft(sketches, heights), nil
-	})
-}
-
-// HullPoints computes the convex hull of a set of 3D points.
-func HullPoints(points []Point3D) *SolidFuture {
-	return startSolidFuture(func() (*Solid, error) {
-		if len(points) == 0 {
-			return nil, fmt.Errorf("HullPoints requires at least 1 point")
-		}
-		return hullPoints(points), nil
-	})
-}
-
-// DecomposeSolid splits a solid into its disconnected connected components.
-// The future is resolved eagerly because the count is not known until computed.
-func DecomposeSolid(sf *SolidFuture) ([]*SolidFuture, error) {
-	s, err := sf.Resolve()
-	if err != nil {
-		return nil, err
-	}
-	solids := decomposeSolid(s)
-	futures := make([]*SolidFuture, len(solids))
-	for i, sol := range solids {
-		futures[i] = ImmediateSolid(sol)
-	}
-	return futures, nil
-}

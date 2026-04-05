@@ -2,6 +2,7 @@ package manifold
 
 import (
 	_ "embed"
+	"log"
 	"os"
 	"sync"
 )
@@ -18,15 +19,18 @@ func DefaultFontPath() string {
 	defaultFontOnce.Do(func() {
 		f, err := os.CreateTemp("", "facet-font-*.ttf")
 		if err != nil {
+			log.Printf("warning: failed to initialize default font: %v", err)
 			return
 		}
 		if _, err := f.Write(defaultFontData); err != nil {
 			f.Close()
 			os.Remove(f.Name())
+			log.Printf("warning: failed to initialize default font: %v", err)
 			return
 		}
 		if err := f.Close(); err != nil {
 			os.Remove(f.Name())
+			log.Printf("warning: failed to initialize default font: %v", err)
 			return
 		}
 		defaultFontPath = f.Name()

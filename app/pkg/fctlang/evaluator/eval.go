@@ -10,7 +10,7 @@ import (
 )
 
 // value represents a runtime value in the evaluator.
-// It is either a float64, a length, a *manifold.SolidFuture, or a *manifold.SketchFuture.
+// It is either a float64, a length, a *manifold.Solid, or a *manifold.Sketch.
 type value any
 
 // constVal wraps a value to mark it as const (immutable binding).
@@ -93,8 +93,8 @@ type functionVal struct {
 
 // DebugMesh captures a single mesh tagged with a role for debug visualization.
 type DebugMesh struct {
-	Role string               `json:"role"`
-	Mesh *manifold.DisplayMesh `json:"mesh"`
+	Role string
+	Mesh *manifold.DisplayMesh
 }
 
 // debugShape is anything that can produce a renderable display mesh (Solid or Sketch).
@@ -110,21 +110,21 @@ type debugEntry struct {
 
 // DebugStep captures one geometry operation and its associated meshes.
 type DebugStep struct {
-	Op      string       `json:"op"`
-	Meshes  []DebugMesh  `json:"meshes"`  // populated lazily by ResolveMeshes
-	Line    int          `json:"line"`
-	Col     int          `json:"col"`
-	File    string       `json:"file"` // disk path of the source file
-	entries []debugEntry // unexported — holds shape ptrs, not serialized
+	Op      string
+	Meshes  []DebugMesh  // populated lazily by ResolveMeshes
+	Line    int
+	Col     int
+	File    string       // disk path of the source file
+	entries []debugEntry // unexported — holds shape ptrs until ResolveMeshes
 }
 
 // DebugResult holds the evaluated solids plus the step-by-step debug trace.
 // Final is populated by callers (not the evaluator) with render meshes for display.
 type DebugResult struct {
-	Solids []*manifold.Solid `json:"-"`
-	Final  []*manifold.DisplayMesh `json:"final"` // render meshes — populated by caller
-	Steps  []DebugStep       `json:"steps"`
-	Files  map[string]string `json:"files"` // path → source text (for editor display)
+	Solids []*manifold.Solid
+	Final  []*manifold.DisplayMesh // render meshes — populated by caller
+	Steps  []DebugStep
+	Files  map[string]string // path → source text (for editor display)
 }
 
 // ModelStats holds computed model statistics from evaluation.
@@ -146,12 +146,12 @@ type PosEntry struct {
 	FaceIDs []uint32 `json:"faceIDs"`
 }
 
-// SolidTrack records a source position and the SolidFuture produced there.
+// SolidTrack records a source position and the Solid produced there.
 type SolidTrack struct {
-	File   string
-	Line   int
-	Col    int
-	Future *manifold.SolidFuture
+	File  string
+	Line  int
+	Col   int
+	Solid *manifold.Solid
 }
 
 // EvalResult holds the evaluated solids and model statistics.
@@ -162,7 +162,28 @@ type EvalResult struct {
 	PosMap []PosEntry
 }
 
-// Eval evaluates a parsed facet program and returns the resulting meshes and stats.
+// newEvaluator creates an evaluator with all shared fields initialized.
+func newEvaluator(ctx context.Context, prog loader.Program, currentKey string, overrides map[string]interface{}, entryPoint string) *evaluator {
+	tracks := make([]SolidTrack, 0)
+	e := &evaluator{
+		ctx:          ctx,
+		prog:         prog,
+		currentKey:   currentKey,
+		entryPoint:   entryPoint,
+		libEvalCache: make(map[string]map[string]value),
+		libLoadStack: make(map[string]bool),
+		libSources:   make(map[string]string),
+		solidTracks:  &tracks,
+	}
+	if currentKey != "" {
+		e.file = currentKey
+	}
+	if overrides != nil {
+		e.overrides = convertOverrides(prog, currentKey, overrides, entryPoint)
+	}
+	return e
+}
+
 // Eval evaluates a parsed facet program. entryPoint must name a function that returns a Solid.
 // Libraries must be resolved via ResolveLibraries before calling Eval.
 // The context can be used to cancel evaluation mid-execution.
@@ -171,14 +192,7 @@ func Eval(ctx context.Context, prog loader.Program, currentKey string, overrides
 	if entryPoint == "" {
 		return nil, fmt.Errorf("entry point not set")
 	}
-	tracks := make([]SolidTrack, 0)
-	e := &evaluator{ctx: ctx, prog: prog, currentKey: currentKey, entryPoint: entryPoint, libEvalCache: make(map[string]map[string]value), libLoadStack: make(map[string]bool), libSources: make(map[string]string), solidTracks: &tracks}
-	if currentKey != "" {
-		e.file = currentKey
-	}
-	if overrides != nil {
-		e.overrides = convertOverrides(prog, currentKey, overrides, entryPoint)
-	}
+	e := newEvaluator(ctx, prog, currentKey, overrides, entryPoint)
 	return e.run()
 }
 
@@ -190,14 +204,8 @@ func EvalDebug(ctx context.Context, prog loader.Program, currentKey string, over
 	if entryPoint == "" {
 		return nil, fmt.Errorf("entry point not set")
 	}
-	tracks := make([]SolidTrack, 0)
-	e := &evaluator{ctx: ctx, prog: prog, currentKey: currentKey, entryPoint: entryPoint, debug: true, libEvalCache: make(map[string]map[string]value), libLoadStack: make(map[string]bool), libSources: make(map[string]string), solidTracks: &tracks}
-	if currentKey != "" {
-		e.file = currentKey
-	}
-	if overrides != nil {
-		e.overrides = convertOverrides(prog, currentKey, overrides, entryPoint)
-	}
+	e := newEvaluator(ctx, prog, currentKey, overrides, entryPoint)
+	e.debug = true
 	result, err := e.run()
 	if err != nil {
 		return nil, err
@@ -257,33 +265,26 @@ type libRef struct {
 	path string // import path of the library
 }
 
-type debugRole struct {
-	role  string
-	shape debugShape
-}
-
-// trackSolid records a source position and the SolidFuture produced there.
-func (e *evaluator) trackSolid(pos parser.Pos, sf *manifold.SolidFuture) {
+// trackSolid records a source position and the Solid produced there.
+func (e *evaluator) trackSolid(pos parser.Pos, s *manifold.Solid) {
 	*e.solidTracks = append(*e.solidTracks, SolidTrack{
-		File: e.file, Line: pos.Line, Col: pos.Col, Future: sf,
+		File: e.file, Line: pos.Line, Col: pos.Col, Solid: s,
 	})
 }
 
-// trackIfSolid tracks the value at pos if it is (or wraps) a SolidFuture.
+// trackIfSolid tracks the value at pos if it is (or wraps) a Solid.
 func (e *evaluator) trackIfSolid(pos parser.Pos, v value) {
-	if sf, ok := unwrap(v).(*manifold.SolidFuture); ok {
-		e.trackSolid(pos, sf)
+	if s, ok := unwrap(v).(*manifold.Solid); ok {
+		e.trackSolid(pos, s)
 	}
 }
 
-func (e *evaluator) recordStep(op string, pos parser.Pos, roles ...debugRole) {
+func (e *evaluator) recordStep(op string, pos parser.Pos, entries ...debugEntry) {
 	if !e.debug {
 		return
 	}
 	step := DebugStep{Op: op, Line: pos.Line, Col: pos.Col, File: e.file}
-	for _, r := range roles {
-		step.entries = append(step.entries, debugEntry{Role: r.role, Shape: r.shape})
-	}
+	step.entries = append(step.entries, entries...)
 	e.steps = append(e.steps, step)
 }
 

@@ -48,7 +48,6 @@ let debugSlider: HTMLInputElement;
 let debugLabel: HTMLElement;
 let centerBtn: HTMLElement;
 let autoRotateBtn: HTMLElement;
-let debugBtn: HTMLElement;
 let tabBar: HTMLElement;
 let statsBar: HTMLElement;
 let compilingOverlay: HTMLElement;
@@ -71,6 +70,7 @@ let tabs: Record<string, TabState> = {};
 let tabOrder: string[] = []; // explicit ordering for drag reorder
 let activeTab = '';
 
+/** Get or create a tab. Use `ensureTab` when you only need the side effect. */
 function getTab(key: string): TabState {
   if (!tabs[key]) {
     tabs[key] = { path: key, dirty: false, cursor: null, label: tabLabel(key), pickedEntry: null };
@@ -78,6 +78,7 @@ function getTab(key: string): TabState {
   }
   return tabs[key];
 }
+const ensureTab = getTab;
 
 function addTab(key: string, state: TabState) {
   tabs[key] = state;
@@ -93,20 +94,21 @@ function isReadOnly(path: string): boolean {
   return isReadOnlyKind(lastResult?.sources?.[path]?.kind ?? SOURCE_USER);
 }
 
-// Dirty flag for the active main file
-let dirty = false;
+function isDirty(): boolean {
+  return tabs[activeTab]?.dirty ?? false;
+}
 
 // Cached result from last run:result event
 let lastResult: any = null;
 
 // Preview lock — when true, switching editor tabs does not auto-run the new tab's source
 let previewLocked = false;
-let lockedTab = ''; // the activeTab captured when lock was engaged
 
 // Callbacks for external UI components
 let onTabChangeCb: ((tab: string) => void) | null = null;
 let onSourceChangeCb: ((source: string) => void) | null = null;
 let onDebugFilesChangeCb: (() => void) | null = null;
+let onDebugExitCb: (() => void) | null = null;
 // Returns the picked entry point name (or null to skip running).
 let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } | null) | null = null;
 
@@ -115,7 +117,6 @@ let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } |
 // The entry point name itself is NOT stored here — it flows through function
 // parameters to Run()/Debug(), so it's impossible to eval without one.
 let entryOverrides: Record<string, any> = {};
-
 /** Set the file path on startup (no discard prompt, no re-persist). */
 export function setInitialFile(path: string, label?: string, readOnly?: boolean) {
   addTab(path, { path, dirty: false, cursor: null, label: label || tabLabel(path), pickedEntry: null });
@@ -126,24 +127,28 @@ export function setInitialFile(path: string, label?: string, readOnly?: boolean)
   renderTabs();
 }
 
+/** Register a tab restored from saved state without switching the editor or triggering a run.
+ *  The Monaco model should already be pre-created via editor.switchModel(). */
+export function addRestoredTab(path: string, cursor: { lineNumber: number; column: number } | null) {
+  addTab(path, { path, dirty: false, cursor, label: tabLabel(path), pickedEntry: null });
+}
+
 function anyDirty(): boolean {
   return Object.values(tabs).some(t => t.dirty);
 }
 
 function markDirty() {
-  if (!dirty) {
-    dirty = true;
-    const tab = tabs[activeTab];
-    if (tab) tab.dirty = true;
+  const tab = tabs[activeTab];
+  if (tab && !tab.dirty) {
+    tab.dirty = true;
     updateWindowTitle();
     SetDirtyState(true);
   }
 }
 function markClean() {
-  if (dirty) {
-    dirty = false;
-    const tab = tabs[activeTab];
-    if (tab) tab.dirty = false;
+  const tab = tabs[activeTab];
+  if (tab && tab.dirty) {
+    tab.dirty = false;
     updateWindowTitle();
     SetDirtyState(anyDirty());
   }
@@ -175,12 +180,9 @@ function persistOpenTabs() {
 function updateWindowTitle() {
   const tab = tabs[activeTab];
   const name = tab ? tab.label || tabLabel(activeTab) : 'Untitled';
-  const prefix = dirty ? '\u25cf ' : '';
+  const prefix = isDirty() ? '\u25cf ' : '';
   SetWindowTitle(`${prefix}${name} \u2014 Facet`);
 }
-
-// Docs state
-let docsMode = false;
 
 // Run state — driven by Go-side events ("run:start" / "run:idle")
 type RunState = 'idle' | 'running';
@@ -216,7 +218,6 @@ export interface AppDeps {
   debugLabel: HTMLElement;
   centerBtn: HTMLElement;
   autoRotateBtn: HTMLElement;
-  debugBtn: HTMLElement;
   tabBar: HTMLElement;
   statsBar: HTMLElement;
   compilingOverlay: HTMLElement;
@@ -232,15 +233,12 @@ export function initApp(deps: AppDeps) {
   debugLabel = deps.debugLabel;
   centerBtn = deps.centerBtn;
   autoRotateBtn = deps.autoRotateBtn;
-  debugBtn = deps.debugBtn;
   tabBar = deps.tabBar;
   statsBar = deps.statsBar;
   compilingOverlay = deps.compilingOverlay;
 
   // Persist tabs when app is about to close
   EventsOn('app:before-close', () => persistOpenTabs());
-
-  // Run state is now managed by runViaHTTP() — no Go-side events needed.
 
 }
 
@@ -361,23 +359,22 @@ function pushEditorData(data: any) {
   }
 }
 
-function handleCheckOnly(data: any, errors: any[], fns: EntryPoint[]) {
+function handleCheckOnly(_data: any, errors: any[], fns: EntryPoint[]) {
   viewer.setPosMap([]);
   if (errors.length > 0) {
     const e = errors[0];
     hideStats();
     const prefix = e.file ? `[${e.file}${e.line > 0 ? ':' + e.line : ''}] ` : '';
-    errorDiv.textContent = prefix + e.message;
-    errorDiv.style.display = 'block';
+    showError(prefix + e.message);
     if (e.line > 0 && !e.file) {
       errorDiv.style.cursor = 'pointer';
       editor.highlightError(e.line);
       errorDiv.onclick = () => editor.revealLine(e.line, e.col || 1);
     } else if (e.line > 0 && e.file) {
       errorDiv.style.cursor = 'pointer';
-      errorDiv.onclick = async () => {
-        getTab(e.file);
-        await switchToTab(e.file);
+      errorDiv.onclick = () => {
+        ensureTab(e.file);
+        switchToTab(e.file);
         editor.highlightError(e.line);
         editor.revealLine(e.line, e.col || 1);
       };
@@ -395,6 +392,10 @@ function handleCheckOnly(data: any, errors: any[], fns: EntryPoint[]) {
 /** Shorten a path to just the filename, for tab display. */
 function tabLabel(path: string): string {
   if (!path) return 'Untitled';
+  if (path.startsWith('example:')) {
+    const name = path.slice('example:'.length);
+    return name.endsWith('.fct') ? name.slice(0, -4) : name;
+  }
   const parts = path.split('/');
   const name = parts[parts.length - 1] || path;
   return name.endsWith('.fct') ? name.slice(0, -4) : name;
@@ -425,7 +426,7 @@ export function renderTabs() {
     tab.className = 'tab' + (activeTab === path ? ' active' : '');
     tab.title = path;
 
-    const sourceKind = lastResult?.sources?.[path]?.kind ?? 0;
+    const sourceKind = lastResult?.sources?.[path]?.kind ?? SOURCE_USER;
     if (sourceKind === SOURCE_EXAMPLE) {
       // Example — star icon
       const star = document.createElement('span');
@@ -542,16 +543,35 @@ async function closeTab(file: string) {
       activeTab = '';
     }
   }
+  // Cancel any in-flight eval if the active tab is being closed
+  if (file === activeTab) cancelEval();
+
   editor.disposeModel(file);
   removeTab(file);
+
+  // Exit debug mode if the entry-point tab was closed
+  if (debugMode && file === debugEntryTab) {
+    debugMode = false;
+    setDebugBarVisible(false);
+    editor.clearDebugLine();
+    viewer.clearMeshes();
+    viewer.setPosMap([]);
+    hideStats();
+    debugFinalMesh = null;
+    debugEntryTab = '';
+    lastResult = null;
+    onDebugExitCb?.();
+  }
+
   renderTabs();
-  // Stateless eval — no backend pruning needed.
+
   // Clear viewport if no tabs remain
   if (Object.keys(tabs).length === 0) {
     viewer.clearMeshes();
     viewer.setPosMap([]);
     hideStats();
-    errorDiv.style.display = 'none';
+    clearError();
+    setDebugBarVisible(false);
   }
   // Notify file tree / preview of the tab change
   onTabChangeCb?.(activeTab);
@@ -564,8 +584,6 @@ export function switchToTab(file: string) {
   getTab(activeTab).cursor = editor.getCursorPosition();
 
   activeTab = file;
-  // Sync module-level dirty flag with the new active tab
-  dirty = getTab(file).dirty;
   editor.setCurrentSource(file);
 
   // Switch editor model — source comes from sources map or editor's own model cache
@@ -648,13 +666,9 @@ export function reeval(entry: string, libPath?: string) {
   runViaHTTP();
 }
 
-export function stop() {
-  cancelEval();
-}
-
 export function toggleRun() {
   if (runState === 'running') {
-    stop();
+    cancelEval();
   } else {
     run();
   }
@@ -716,10 +730,7 @@ function handleHTTPResult(resp: EvalResponse) {
   // --- Check data (always present) ---
   editor.clearError();
   editor.clearMarkers();
-  errorDiv.style.display = 'none';
-  errorDiv.textContent = '';
-  errorDiv.onclick = null;
-  errorDiv.style.cursor = '';
+  clearError();
 
   const errors = data.errors ?? [];
   if (errors.length > 0) editor.setMarkers(errors);
@@ -782,13 +793,12 @@ function handleDebugHTTPResult(data: any, binary: ArrayBuffer) {
       line: 0, col: 0, file: '',
     });
     data.debugSteps = steps;
-    renderTabs();
     debugFinalMesh = finalMeshes.length === 1 ? finalMeshes[0] : null; // TODO: merge if multiple
   } else {
     data.debugSteps = steps;
-    renderTabs();
     debugFinalMesh = null;
   }
+  renderTabs();
 
   viewer.clearMeshes();
   if (debugFinalMesh) viewer.loadDecodedMesh(debugFinalMesh);
@@ -843,7 +853,8 @@ async function formatSource(source: string): Promise<string> {
   if (!formatOnSave || isReadOnly(activeTab)) return source;
   try {
     return await FormatCode(source);
-  } catch {
+  } catch (e) {
+    console.warn('FormatCode failed:', e);
     return source;
   }
 }
@@ -857,10 +868,14 @@ async function doSave(forceDialog: boolean) {
   const path = await SaveFile(source, savePath);
   if (!path) return;
   if (path !== tab.path) {
-    removeTab(activeTab);
+    const oldKey = activeTab;
+    // Create a model under the new path and switch to it before disposing the old one
+    editor.switchModel(path, source);
+    editor.setCurrentSource(path);
+    editor.disposeModel(oldKey);
+    removeTab(oldKey);
     addTab(path, { path, dirty: false, cursor: tab.cursor, label: tabLabel(path), pickedEntry: null });
     activeTab = path;
-    editor.setCurrentSource(path);
   }
   if (lastResult?.sources?.[activeTab]) {
     lastResult.sources[activeTab].text = source;
@@ -880,6 +895,19 @@ export async function newFile() {
   patchSettings({ activeTab: key });
 }
 
+export function showError(err: unknown) {
+  const msg = (err as any)?.message || String(err);
+  errorDiv.textContent = msg;
+  errorDiv.style.display = 'block';
+}
+
+function clearError() {
+  errorDiv.style.display = 'none';
+  errorDiv.textContent = '';
+  errorDiv.onclick = null;
+  errorDiv.style.cursor = '';
+}
+
 function currentEvalParams() {
   const picked = tabs[activeTab]?.pickedEntry;
   return {
@@ -894,10 +922,8 @@ export async function exportMesh(format: string = '3mf') {
   try {
     const p = currentEvalParams();
     await ExportMesh(format, p.sources, p.key, p.entry, p.overrides);
-  } catch (err: any) {
-    const msg = err?.message || String(err);
-    errorDiv.textContent = msg;
-    errorDiv.style.display = 'block';
+  } catch (err) {
+    showError(err);
   }
 }
 
@@ -905,10 +931,8 @@ export async function sendToSlicer(id: string) {
   try {
     const p = currentEvalParams();
     await SendToSlicer(id, p.sources, p.key, p.entry, p.overrides);
-  } catch (err: any) {
-    const msg = err?.message || String(err);
-    errorDiv.textContent = msg;
-    errorDiv.style.display = 'block';
+  } catch (err) {
+    showError(err);
   }
 }
 
@@ -934,23 +958,21 @@ export function toggleDebug() {
     if (debugEntryTab && debugEntryTab !== activeTab && tabs[debugEntryTab]) {
       switchToTab(debugEntryTab);
     }
+    debugEntryTab = '';
   }
   return debugMode;
 }
 
-async function openDocs(): Promise<boolean> {
-  if (docsPanel.isVisible()) return true;
-  docsMode = true;
+async function openDocs(): Promise<void> {
+  if (docsPanel.isVisible()) return;
   const guides = await GetDocGuides().catch(() => [] as any[]);
   docsPanel.show(lastResult?.docIndex ?? [], guides);
   viewer.setVisible(false);
   setDebugBarVisible(false);
-  return true;
 }
 
 export async function toggleDocs() {
-  docsMode = !docsMode;
-  if (docsMode) {
+  if (!docsPanel.isVisible()) {
     await openDocs();
   } else {
     docsPanel.hide();
@@ -959,7 +981,7 @@ export async function toggleDocs() {
       setDebugBarVisible(true);
     }
   }
-  return docsMode;
+  return docsPanel.isVisible();
 }
 
 export async function openDocsToEntry(name: string): Promise<void> {
@@ -971,10 +993,6 @@ export async function openDocsToEntry(name: string): Promise<void> {
 
 export function getSources(): Record<string, SourceEntry> { return lastResult?.sources ?? {}; }
 export function getActiveTabValue(): string { return activeTab; }
-export function restoreTabCursor(path: string, cursor: { lineNumber: number; column: number }) {
-  const tab = tabs[path];
-  if (tab) tab.cursor = cursor;
-}
 export function getActiveLabel(): string {
   const tab = tabs[activeTab];
   return tab ? tab.label || tabLabel(activeTab) : 'Untitled';
@@ -984,15 +1002,13 @@ export function isPreviewLocked(): boolean { return previewLocked; }
 export function isDebugStepping(): boolean { return debugStepping; }
 export function setPreviewLocked(locked: boolean) {
   previewLocked = locked;
-  if (locked) lockedTab = activeTab;
 }
 
 export function setOnTabChange(cb: (tab: string) => void) { onTabChangeCb = cb; }
 export function setOnSourceChange(cb: (source: string) => void) { onSourceChangeCb = cb; }
 export function setOnDebugFilesChange(cb: () => void) { onDebugFilesChangeCb = cb; }
+export function setOnDebugExit(cb: () => void) { onDebugExitCb = cb; }
 export function setOnEntryPoints(cb: (fns: EntryPoint[]) => { name: string; libPath: string } | null) { onEntryPointsCb = cb; }
-export function getEntryPoints(): EntryPoint[] { return lastResult?.entryPoints ?? []; }
-
 export function setEntryOverrides(overrides: Record<string, any>) { entryOverrides = overrides; }
 
 
@@ -1013,7 +1029,7 @@ export function openLibraryTab(file: string, source: string) {
   if (sources[file] && !source) {
     source = sources[file].text;
   }
-  getTab(file);
+  ensureTab(file);
   switchToTab(file);
 }
 

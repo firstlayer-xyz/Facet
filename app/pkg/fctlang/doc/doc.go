@@ -94,6 +94,49 @@ func FormatSignature(fn *parser.Function) string {
 	return b.String()
 }
 
+// extractDocEntries extracts doc entries (functions, methods, types, fields) from
+// a parsed Source. The library string is set on each entry (empty for stdlib/user code).
+func extractDocEntries(src *parser.Source, library string) []DocEntry {
+	var entries []DocEntry
+	for _, fn := range src.Functions() {
+		if strings.HasPrefix(fn.Name, "_") {
+			continue
+		}
+		kind := "function"
+		name := fn.Name
+		if fn.ReceiverType != "" {
+			kind = "method"
+			name = fmt.Sprintf("%s.%s", fn.ReceiverType, fn.Name)
+		}
+		entries = append(entries, DocEntry{
+			Name:      name,
+			Signature: FormatSignature(fn),
+			Doc:       parser.DocComment(fn.Comments),
+			Kind:      kind,
+			Library:   library,
+		})
+	}
+	for _, sd := range src.StructDecls() {
+		entries = append(entries, DocEntry{
+			Name:      sd.Name,
+			Signature: formatStructSignature(sd),
+			Doc:       parser.DocComment(sd.Comments),
+			Kind:      "type",
+			Library:   library,
+		})
+		for _, f := range sd.Fields {
+			entries = append(entries, DocEntry{
+				Name:      fmt.Sprintf("%s.%s", sd.Name, f.Name),
+				Signature: f.Type,
+				Doc:       fmt.Sprintf("Field of %s (type %s)", sd.Name, f.Type),
+				Kind:      "field",
+				Library:   library,
+			})
+		}
+	}
+	return entries
+}
+
 // BuildLibDocEntries extracts doc entries from .fct files in a filesystem library directory.
 // It walks libDir looking for <name>/<name>.fct library files and parses their doc comments.
 func BuildLibDocEntries(libDir string) []DocEntry {
@@ -114,50 +157,13 @@ func BuildLibDocEntries(libDir string) []DocEntry {
 		if err != nil {
 			return nil
 		}
-		src := string(data)
-		libProg, err := parser.Parse(src, "", parser.SourceUser)
+		libProg, err := parser.Parse(string(data), "", parser.SourceUser)
 		if err != nil {
 			return nil
 		}
-		// Derive namespace from path relative to libDir
 		dir := filepath.Dir(path)
 		ns, _ := filepath.Rel(libDir, dir)
-		for _, fn := range libProg.Functions() {
-			if strings.HasPrefix(fn.Name, "_") {
-				continue
-			}
-			kind := "function"
-			name := fn.Name
-			if fn.ReceiverType != "" {
-				kind = "method"
-				name = fmt.Sprintf("%s.%s", fn.ReceiverType, fn.Name)
-			}
-			entries = append(entries, DocEntry{
-				Name:      name,
-				Signature: FormatSignature(fn),
-				Doc:       parser.DocComment(fn.Comments),
-				Kind:      kind,
-				Library:   ns,
-			})
-		}
-		for _, sd := range libProg.StructDecls() {
-			entries = append(entries, DocEntry{
-				Name:      sd.Name,
-				Signature: formatStructSignature(sd),
-				Doc:       parser.DocComment(sd.Comments),
-				Kind:      "type",
-				Library:   ns,
-			})
-			for _, f := range sd.Fields {
-				entries = append(entries, DocEntry{
-					Name:      fmt.Sprintf("%s.%s", sd.Name, f.Name),
-					Signature: f.Type,
-					Doc:       fmt.Sprintf("Field of %s (type %s)", sd.Name, f.Type),
-					Kind:      "field",
-					Library:   ns,
-				})
-			}
-		}
+		entries = append(entries, extractDocEntries(libProg, ns)...)
 		return nil
 	})
 	return entries
@@ -172,36 +178,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 	if stdlibSrc == nil {
 		stdlibSrc = stdlibDocSource()
 	}
-	for _, fn := range stdlibSrc.Functions() {
-		// Skip _-prefixed internal builtins that might sneak through
-		if strings.HasPrefix(fn.Name, "_") {
-			continue
-		}
-		kind := "function"
-		name := fn.Name
-		if fn.ReceiverType != "" {
-			kind = "method"
-			name = fmt.Sprintf("%s.%s", fn.ReceiverType, fn.Name)
-		}
-		entries = append(entries, DocEntry{
-			Name:      name,
-			Signature: FormatSignature(fn),
-			Doc:       parser.DocComment(fn.Comments),
-			Kind:      kind,
-		})
-	}
-
-	// 1b. Stdlib struct fields
-	for _, sd := range stdlibSrc.StructDecls() {
-		for _, f := range sd.Fields {
-			entries = append(entries, DocEntry{
-				Name:      fmt.Sprintf("%s.%s", sd.Name, f.Name),
-				Signature: f.Type,
-				Doc:       fmt.Sprintf("Field of %s (type %s)", sd.Name, f.Type),
-				Kind:      "field",
-			})
-		}
-	}
+	entries = append(entries, extractDocEntries(stdlibSrc, "")...)
 
 	// 2. Built-in library entries (facet/gears, etc. — excluding facet/std which is already covered)
 	_ = fs.WalkDir(stdlib.Libraries, "libraries", func(path string, d fs.DirEntry, err error) error {
@@ -220,89 +197,21 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 		if err != nil {
 			return nil
 		}
-		src := string(data)
-		libProg, err := parser.Parse(src, "", parser.SourceUser)
+		libProg, err := parser.Parse(string(data), "", parser.SourceUser)
 		if err != nil {
 			return nil
 		}
 		// Derive library namespace from path: "libraries/facet/gears" → "facet/gears"
 		dir := filepath.Dir(path)
 		ns, _ := filepath.Rel("libraries", dir)
-		for _, fn := range libProg.Functions() {
-			if strings.HasPrefix(fn.Name, "_") {
-				continue
-			}
-			kind := "function"
-			name := fn.Name
-			if fn.ReceiverType != "" {
-				kind = "method"
-				name = fmt.Sprintf("%s.%s", fn.ReceiverType, fn.Name)
-			}
-			entries = append(entries, DocEntry{
-				Name:      name,
-				Signature: FormatSignature(fn),
-				Doc:       parser.DocComment(fn.Comments),
-				Kind:      kind,
-				Library:   ns,
-			})
-		}
-		for _, sd := range libProg.StructDecls() {
-			entries = append(entries, DocEntry{
-				Name:      sd.Name,
-				Signature: formatStructSignature(sd),
-				Doc:       parser.DocComment(sd.Comments),
-				Kind:      "type",
-				Library:   ns,
-			})
-			for _, f := range sd.Fields {
-				entries = append(entries, DocEntry{
-					Name:      fmt.Sprintf("%s.%s", sd.Name, f.Name),
-					Signature: f.Type,
-					Doc:       fmt.Sprintf("Field of %s (type %s)", sd.Name, f.Type),
-					Kind:      "field",
-					Library:   ns,
-				})
-			}
-		}
+		entries = append(entries, extractDocEntries(libProg, ns)...)
 		return nil
 	})
 
 	// 3. User-defined functions/methods and structs
 	prog, err := parser.Parse(source, "", parser.SourceUser)
 	if err == nil && prog != nil {
-		for _, fn := range prog.Functions() {
-			if strings.HasPrefix(fn.Name, "_") {
-				continue
-			}
-			kind := "function"
-			name := fn.Name
-			if fn.ReceiverType != "" {
-				kind = "method"
-				name = fmt.Sprintf("%s.%s", fn.ReceiverType, fn.Name)
-			}
-			entries = append(entries, DocEntry{
-				Name:      name,
-				Signature: FormatSignature(fn),
-				Doc:       parser.DocComment(fn.Comments),
-				Kind:      kind,
-			})
-		}
-		for _, sd := range prog.StructDecls() {
-			entries = append(entries, DocEntry{
-				Name:      sd.Name,
-				Signature: formatStructSignature(sd),
-				Doc:       parser.DocComment(sd.Comments),
-				Kind:      "type",
-			})
-			for _, f := range sd.Fields {
-				entries = append(entries, DocEntry{
-					Name:      fmt.Sprintf("%s.%s", sd.Name, f.Name),
-					Signature: f.Type,
-					Doc:       fmt.Sprintf("Field of %s (type %s)", sd.Name, f.Type),
-					Kind:      "field",
-				})
-			}
-		}
+		entries = append(entries, extractDocEntries(prog, "")...)
 	}
 
 	// 4. Built-in types

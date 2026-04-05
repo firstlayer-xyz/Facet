@@ -305,19 +305,6 @@ func (e *typeEnv) lookup(name string) (typeInfo, bool) {
 	return unknown(), false
 }
 
-// lookupStructName returns the struct name for a variable, or "" if not a struct.
-func (e *typeEnv) lookupStructName(name string) (string, bool) {
-	if t, ok := e.types[name]; ok {
-		if t.ft == typeStruct && t.structName != "" {
-			return t.structName, true
-		}
-		return "", false
-	}
-	if e.parent != nil {
-		return e.parent.lookupStructName(name)
-	}
-	return "", false
-}
 
 // builtinSig describes the parameter types and return type for a builtin function.
 type builtinSig struct {

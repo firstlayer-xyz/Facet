@@ -1,15 +1,16 @@
 package manifold
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"math"
 	"testing"
 	"unsafe"
 )
 
 func TestDisplayMeshCube(t *testing.T) {
-	cube := CreateCube(10, 10, 10)
+	cube, err := CreateCube(10, 10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
 	dm := cube.ToDisplayMesh()
 
 	if dm.VertexCount == 0 {
@@ -33,13 +34,12 @@ func TestDisplayMeshCube(t *testing.T) {
 
 func TestDisplayMeshMatchesMesh(t *testing.T) {
 	// DisplayMesh and Mesh should produce equivalent vertex/index data
-	sphereFuture := CreateSphere(5, 16)
-	sphere, err := sphereFuture.Resolve()
+	sphere, err := CreateSphere(5, 16)
 	if err != nil {
-		t.Fatalf("Resolve: %v", err)
+		t.Fatal(err)
 	}
 	mesh := sphere.ToMesh()
-	dm := sphereFuture.ToDisplayMesh()
+	dm := sphere.ToDisplayMesh()
 
 	if dm.VertexCount != len(mesh.Vertices)/3 {
 		t.Errorf("vertex count mismatch: DisplayMesh=%d, Mesh=%d", dm.VertexCount, len(mesh.Vertices)/3)
@@ -67,49 +67,12 @@ func TestDisplayMeshMatchesMesh(t *testing.T) {
 	}
 }
 
-func TestDisplayMeshMarshalJSON(t *testing.T) {
-	cube := CreateCube(5, 5, 5)
-	dm := cube.ToDisplayMesh()
-
-	data, err := json.Marshal(dm)
-	if err != nil {
-		t.Fatalf("MarshalJSON failed: %v", err)
-	}
-
-	var parsed struct {
-		Vertices    string `json:"vertices"`
-		Indices     string `json:"indices"`
-		VertexCount int    `json:"vertexCount"`
-		IndexCount  int    `json:"indexCount"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("Unmarshal failed: %v", err)
-	}
-
-	if parsed.VertexCount != dm.VertexCount {
-		t.Errorf("vertexCount: got %d, want %d", parsed.VertexCount, dm.VertexCount)
-	}
-	if parsed.IndexCount != dm.IndexCount {
-		t.Errorf("indexCount: got %d, want %d", parsed.IndexCount, dm.IndexCount)
-	}
-	if parsed.Vertices != base64.StdEncoding.EncodeToString(dm.VertRaw) {
-		t.Error("vertices base64 mismatch")
-	}
-	if parsed.Indices != base64.StdEncoding.EncodeToString(dm.IdxRaw) {
-		t.Error("indices base64 mismatch")
-	}
-
-	// Verify no normals field in output
-	var raw map[string]json.RawMessage
-	json.Unmarshal(data, &raw)
-	if _, ok := raw["normals"]; ok {
-		t.Error("JSON should not contain normals field")
-	}
-}
-
 func TestDisplayMeshEmpty(t *testing.T) {
 	// Empty solid should produce empty DisplayMesh
-	cube := CreateCube(0, 0, 0)
+	cube, err := CreateCube(0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	dm := cube.ToDisplayMesh()
 
 	if dm.VertexCount != 0 {
@@ -127,8 +90,15 @@ func TestDisplayMeshEmpty(t *testing.T) {
 }
 
 func Test_mergeDisplayMeshes(t *testing.T) {
-	a := CreateCube(5, 5, 5)
-	b := CreateCube(3, 3, 3).Translate(10, 0, 0)
+	a, err := CreateCube(5, 5, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := CreateCube(3, 3, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = b.Translate(10, 0, 0)
 	dmA := a.ToDisplayMesh()
 	dmB := b.ToDisplayMesh()
 
@@ -177,7 +147,10 @@ func Test_mergeDisplayMeshes(t *testing.T) {
 }
 
 func Test_mergeDisplayMeshesSingle(t *testing.T) {
-	cube := CreateCube(5, 5, 5)
+	cube, err := CreateCube(5, 5, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
 	dm := cube.ToDisplayMesh()
 
 	merged := mergeDisplayMeshes([]*DisplayMesh{dm})
@@ -201,7 +174,10 @@ func TestDisplayMeshSketch(t *testing.T) {
 
 func TestDisplayMeshVertexValues(t *testing.T) {
 	// Create a known cube and verify vertex positions are reasonable
-	cube := CreateCube(10, 10, 10)
+	cube, err := CreateCube(10, 10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
 	dm := cube.ToDisplayMesh()
 
 	verts := unsafe.Slice((*float32)(unsafe.Pointer(&dm.VertRaw[0])), dm.VertexCount*3)
@@ -238,16 +214,15 @@ func TestDisplayMeshVertexValues(t *testing.T) {
 }
 
 func TestDisplayMeshFaceMap(t *testing.T) {
-	cube := CreateCube(10, 10, 10)
-	s, err := cube.Resolve()
+	cube, err := CreateCube(10, 10, 10)
 	if err != nil {
-		t.Fatalf("Resolve: %v", err)
+		t.Fatal(err)
 	}
-	if len(s.FaceMap) == 0 {
+	if len(cube.FaceMap) == 0 {
 		t.Fatal("expected FaceMap to be populated after creation")
 	}
 
-	dm := s.ToDisplayMesh()
+	dm := cube.ToDisplayMesh()
 	t.Logf("FaceGroupRaw len: %d", len(dm.FaceGroupRaw))
 	t.Logf("FaceGroupCount: %d", dm.FaceGroupCount)
 }

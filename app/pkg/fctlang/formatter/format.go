@@ -186,9 +186,6 @@ func (f *formatter) writeTrailingComment(comments []parser.Comment) {
 	}
 }
 
-func (f *formatter) formatVarDecl(v *parser.VarStmt) {
-	f.formatVarDeclTrailing(v, nil)
-}
 
 func (f *formatter) formatVarDeclTrailing(v *parser.VarStmt, trailing []parser.Comment) {
 	f.writeIndent()

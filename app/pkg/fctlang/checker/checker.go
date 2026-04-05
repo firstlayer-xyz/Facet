@@ -343,13 +343,14 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog
 				fn.Name, fn.ReturnType, retType.displayName()))
 		}
 	}
-	if !hasYieldAtTopLevel(fn.Body) {
+	hasYield := hasYieldAtTopLevel(fn.Body)
+	if !hasYield {
 		hasReturn := fn.ReturnType != "" || containsReturn(fn.Body)
 		if hasReturn && !returnsOnAllPaths(fn.Body) {
 			c.addError(fn.Pos, fmt.Sprintf("%s() does not return on all code paths", fn.Name))
 		}
 	}
-	if !hasYieldAtTopLevel(fn.Body) {
+	if !hasYield {
 		retTypes := c.collectReturnTypes(fn.Body, env)
 		if len(retTypes) > 1 {
 			first := retTypes[0]
@@ -475,7 +476,6 @@ type checker struct {
 	varTypes              VarTypeMap
 	currentSrcKey         string
 	libVarToPath          map[string]string // lib variable name → lib path in prog
-	userStructs           map[string]bool
 	inferredReturns       map[string]typeInfo
 	inferredReturnStructs map[string]string
 	// returnElemType is set when checking a function with a declared array return type.
@@ -495,7 +495,6 @@ func initChecker(prog loader.Program) *checker {
 		libVarToPath:          make(map[string]string),
 		inferredReturns:       make(map[string]typeInfo),
 		inferredReturnStructs: make(map[string]string),
-		userStructs:           make(map[string]bool),
 	}
 	if stdSrc := prog.Std(); stdSrc != nil {
 		for _, fn := range stdSrc.Functions() {
@@ -515,7 +514,6 @@ func initChecker(prog loader.Program) *checker {
 	for _, src := range prog.Sources {
 		for _, sd := range src.StructDecls() {
 			c.structDecls[sd.Name] = sd
-			c.userStructs[sd.Name] = true
 		}
 		c.registerOpFuncs(src.Functions())
 	}
@@ -556,9 +554,6 @@ func (c *checker) resolveOpParamDisplayName(typeName string) string {
 	ti := typeFromNameStr(typeName)
 	if ti.ft != typeUnknown {
 		return ti.displayName()
-	}
-	if _, ok := c.structDecls[typeName]; ok {
-		return typeName
 	}
 	return typeName
 }
@@ -605,16 +600,12 @@ func (c *checker) recordVarType(name string, env *typeEnv) {
 	}
 }
 
-func (c *checker) errorFile() string {
-	return c.currentSrcKey
-}
-
 func (c *checker) addError(pos parser.Pos, msg string) {
-	c.errors = append(c.errors, parser.SourceError{File: c.errorFile(), Line: pos.Line, Col: pos.Col, Message: msg})
+	c.errors = append(c.errors, parser.SourceError{File: c.currentSrcKey, Line: pos.Line, Col: pos.Col, Message: msg})
 }
 
 func (c *checker) addErrorSpan(pos parser.Pos, endCol int, msg string) {
-	c.errors = append(c.errors, parser.SourceError{File: c.errorFile(), Line: pos.Line, Col: pos.Col, EndCol: endCol, Message: msg})
+	c.errors = append(c.errors, parser.SourceError{File: c.currentSrcKey, Line: pos.Line, Col: pos.Col, EndCol: endCol, Message: msg})
 }
 
 func bareStructName(name string) string {

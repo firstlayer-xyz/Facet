@@ -24,13 +24,11 @@ export class AssistantPanel {
   private getErrors: () => string;
   private onApplyCode: (newCode: string, searchFor?: string) => void;
   private onSetEditorSilent: (newCode: string) => void;
-  private captureScreenshot: () => string;
   private offToken: (() => void) | null = null;
   private offDone: (() => void) | null = null;
   private offError: (() => void) | null = null;
   private offToolUse: (() => void) | null = null;
   private offReplaceCode: (() => void) | null = null;
-  private offEditCode: (() => void) | null = null;
   private offThinking: (() => void) | null = null;
 
   constructor(
@@ -39,14 +37,12 @@ export class AssistantPanel {
     getErrors: () => string,
     onApplyCode: (newCode: string, searchFor?: string) => void,
     onSetEditorSilent: (newCode: string) => void,
-    captureScreenshot: () => string,
   ) {
     this.container = container;
     this.getEditorCode = getEditorCode;
     this.getErrors = getErrors;
     this.onApplyCode = onApplyCode;
     this.onSetEditorSilent = onSetEditorSilent;
-    this.captureScreenshot = captureScreenshot;
 
     this.panel = document.createElement('div');
     this.panel.id = 'assistant-panel';
@@ -218,9 +214,6 @@ export class AssistantPanel {
     this.offReplaceCode = EventsOn('assistant:replace-code', (code: string) => {
       this.onSetEditorSilent(code);
     });
-    this.offEditCode = EventsOn('assistant:edit-code', (data: { search: string; replace: string }) => {
-      this.onSetEditorSilent(data.replace);
-    });
     // Thinking indicator — shown after tool results, before next assistant message
     this.offThinking = EventsOn('assistant:thinking', (callNum: number) => {
       this.showThinkingIndicator(callNum);
@@ -233,7 +226,6 @@ export class AssistantPanel {
     if (this.offError) { this.offError(); this.offError = null; }
     if (this.offToolUse) { this.offToolUse(); this.offToolUse = null; }
     if (this.offReplaceCode) { this.offReplaceCode(); this.offReplaceCode = null; }
-    if (this.offEditCode) { this.offEditCode(); this.offEditCode = null; }
     if (this.offThinking) { this.offThinking(); this.offThinking = null; }
   }
 
@@ -524,12 +516,7 @@ export class AssistantPanel {
   }
 
   private showError(msg: string): void {
-    this.streaming = false;
-    this.receivedFirstToken = false;
-    this.sendBtn.textContent = 'Send';
-    this.sendBtn.classList.remove('assistant-send-btn-stop');
-    this.removeThinking();
-    this.removeToolUseIndicator();
+    this.finishStream();
     const div = document.createElement('div');
     div.className = 'assistant-msg assistant-msg-error';
     div.textContent = 'Error: ' + msg;
@@ -550,12 +537,11 @@ export class AssistantPanel {
     this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
   }
 
-  private escapeHtml(text: string): string {
+  private static escapeHtml(text: string): string {
     return text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\n/g, '<br>');
+      .replace(/>/g, '&gt;');
   }
 
   private renderMarkdown(text: string): string {
@@ -603,22 +589,18 @@ export class AssistantPanel {
     // Render each segment to HTML
     return segments.map(seg => {
       if (seg.type === 'edit') {
-        const escapedReplace = seg.replace
-          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const esc = AssistantPanel.escapeHtml;
         return `<div class="assistant-edit-block" data-search="${encodeURIComponent(seg.search)}" data-replace="${encodeURIComponent(seg.replace)}">` +
           `<div class="edit-block-label">Edit</div>` +
-          `<pre><code class="language-facet">${escapedReplace}</code></pre>` +
+          `<pre><code class="language-facet">${esc(seg.replace)}</code></pre>` +
           `</div>`;
       }
       if (seg.type === 'code') {
-        const escapedCode = seg.code
-          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const cls = seg.lang ? ` class="language-${seg.lang}"` : '';
-        return `<pre><code${cls}>${escapedCode}</code></pre>`;
+        return `<pre><code${cls}>${AssistantPanel.escapeHtml(seg.code)}</code></pre>`;
       }
       // Plain text: escape, then apply inline markdown
-      let html = seg.content
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      let html = AssistantPanel.escapeHtml(seg.content);
       html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
       html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       html = html.replace(/\n/g, '<br>');

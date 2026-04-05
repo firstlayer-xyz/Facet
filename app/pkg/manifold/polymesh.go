@@ -806,7 +806,7 @@ func (pm *PolyMesh) ScaleUniform(factor float64) *PolyMesh {
 // ToSolid converts the PolyMesh to a Manifold Solid by fan-triangulating faces.
 // Each polygon face is tagged with a unique faceID so that polygon boundaries
 // survive through Manifold's boolean operations and can be reconstructed later.
-func (pm *PolyMesh) ToSolid() (*SolidFuture, error) {
+func (pm *PolyMesh) ToSolid() (*Solid, error) {
 	// Convert vertices to float32
 	verts := make([]float32, len(pm.Vertices))
 	for i, v := range pm.Vertices {

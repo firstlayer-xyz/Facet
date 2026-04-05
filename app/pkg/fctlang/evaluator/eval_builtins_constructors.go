@@ -30,7 +30,10 @@ func (e *evaluator) builtinCube(args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := manifold.CreateCube(x, y, z)
+	result, err := manifold.CreateCube(x, y, z)
+	if err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -50,7 +53,10 @@ func (e *evaluator) builtinSphere(args []value) (value, error) {
 		}
 		segments = int(n)
 	}
-	result := manifold.CreateSphere(radius, segments)
+	result, err := manifold.CreateSphere(radius, segments)
+	if err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -78,7 +84,10 @@ func (e *evaluator) builtinCylinder(args []value) (value, error) {
 		}
 		segments = int(n)
 	}
-	result := manifold.CreateCylinder(height, radiusLow, radiusHigh, segments)
+	result, err := manifold.CreateCylinder(height, radiusLow, radiusHigh, segments)
+	if err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -164,7 +173,10 @@ func (e *evaluator) builtinNewPolygon(args []value) (value, error) {
 		}
 		points[i] = manifold.Point2D{X: x, Y: y}
 	}
-	result := manifold.CreatePolygon(points)
+	result, err := manifold.CreatePolygon(points)
+	if err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -182,27 +194,27 @@ func (e *evaluator) builtinHull(_ *parser.CallExpr, args []value) (value, error)
 
 	// Determine type from first element
 	switch arr.elems[0].(type) {
-	case *manifold.SolidFuture:
-		futures := make([]*manifold.SolidFuture, len(arr.elems))
+	case *manifold.Solid:
+		solids := make([]*manifold.Solid, len(arr.elems))
 		for i, elem := range arr.elems {
-			s, ok := elem.(*manifold.SolidFuture)
+			s, ok := elem.(*manifold.Solid)
 			if !ok {
 				return nil, fmt.Errorf("_hull() element %d must be a Solid, got %s", i+1, typeName(elem))
 			}
-			futures[i] = s
+			solids[i] = s
 		}
-		result := manifold.BatchHull(futures)
+		result := manifold.BatchHull(solids)
 		return result, nil
-	case *manifold.SketchFuture:
-		futures := make([]*manifold.SketchFuture, len(arr.elems))
+	case *manifold.Sketch:
+		sketches := make([]*manifold.Sketch, len(arr.elems))
 		for i, elem := range arr.elems {
-			p, ok := elem.(*manifold.SketchFuture)
+			p, ok := elem.(*manifold.Sketch)
 			if !ok {
 				return nil, fmt.Errorf("_hull() element %d must be a Sketch, got %s", i+1, typeName(elem))
 			}
-			futures[i] = p
+			sketches[i] = p
 		}
-		result := manifold.SketchBatchHull(futures)
+		result := manifold.SketchBatchHull(sketches)
 		return result, nil
 	case *structVal:
 		if sv := arr.elems[0].(*structVal); sv == nil || sv.typeName != "Vec3" {
@@ -240,17 +252,17 @@ func (e *evaluator) builtinBatchBool(name string, args []value) (value, error) {
 	}
 
 	switch arr.elems[0].(type) {
-	case *manifold.SolidFuture:
-		futures := make([]*manifold.SolidFuture, len(arr.elems))
+	case *manifold.Solid:
+		solids := make([]*manifold.Solid, len(arr.elems))
 		for i, elem := range arr.elems {
-			s, sOk := elem.(*manifold.SolidFuture)
+			s, sOk := elem.(*manifold.Solid)
 			if !sOk {
 				return nil, fmt.Errorf("%s() element %d must be a Solid, got %s", name, i+1, typeName(elem))
 			}
-			futures[i] = s
+			solids[i] = s
 		}
-		result := futures[0]
-		for _, f := range futures[1:] {
+		result := solids[0]
+		for _, f := range solids[1:] {
 			switch name {
 			case "_union":
 				result = result.Union(f)
@@ -261,17 +273,17 @@ func (e *evaluator) builtinBatchBool(name string, args []value) (value, error) {
 			}
 		}
 		return result, nil
-	case *manifold.SketchFuture:
-		futures := make([]*manifold.SketchFuture, len(arr.elems))
+	case *manifold.Sketch:
+		sketches := make([]*manifold.Sketch, len(arr.elems))
 		for i, elem := range arr.elems {
-			p, pOk := elem.(*manifold.SketchFuture)
+			p, pOk := elem.(*manifold.Sketch)
 			if !pOk {
 				return nil, fmt.Errorf("%s() element %d must be a Sketch, got %s", name, i+1, typeName(elem))
 			}
-			futures[i] = p
+			sketches[i] = p
 		}
-		result := futures[0]
-		for _, f := range futures[1:] {
+		result := sketches[0]
+		for _, f := range sketches[1:] {
 			switch name {
 			case "_union":
 				result = result.Union(f)
@@ -309,23 +321,23 @@ func (e *evaluator) builtinLoft(args []value) (value, error) {
 	if len(profilesArr.elems) < 2 {
 		return nil, fmt.Errorf("_loft() requires at least 2 profiles, got %d", len(profilesArr.elems))
 	}
-	futures := make([]*manifold.SketchFuture, len(profilesArr.elems))
+	sketches := make([]*manifold.Sketch, len(profilesArr.elems))
 	for i, elem := range profilesArr.elems {
-		sf, ok := elem.(*manifold.SketchFuture)
+		sf, ok := elem.(*manifold.Sketch)
 		if !ok {
 			return nil, fmt.Errorf("_loft() profiles[%d] must be a Sketch, got %s", i, typeName(elem))
 		}
-		futures[i] = sf
+		sketches[i] = sf
 	}
 	heights := make([]float64, len(heightsArr.elems))
 	for i, elem := range heightsArr.elems {
-		l, ok := elem.(length)
-		if !ok {
-			return nil, fmt.Errorf("_loft() heights[%d] must be a Length, got %s", i, typeName(elem))
+		h, err := requireLength("_loft", i+1, elem)
+		if err != nil {
+			return nil, fmt.Errorf("_loft() heights[%d]: %w", i, err)
 		}
-		heights[i] = l.mm
+		heights[i] = h
 	}
-	return manifold.Loft(futures, heights), nil
+	return manifold.Loft(sketches, heights), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -389,7 +401,7 @@ func (e *evaluator) builtinNewText(args []value) (value, error) {
 		}
 		fontPath = filepath.Join(cwd, fontPath)
 	}
-	return manifold.CreateText(fontPath, text, size), nil
+	return manifold.CreateText(fontPath, text, size)
 }
 
 // ---------------------------------------------------------------------------

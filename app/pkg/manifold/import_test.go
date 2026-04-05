@@ -112,11 +112,7 @@ f 1 4 3
 	if solid == nil {
 		t.Fatal("expected non-nil Solid")
 	}
-	s, err := solid.Resolve()
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	vol := s.Volume()
+	vol := solid.Volume()
 	if vol < 1.0 {
 		t.Errorf("expected positive volume, got %f", vol)
 	}
@@ -176,11 +172,7 @@ func TestImportMeshSTLRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ImportMesh: %v", err)
 	}
-	s, err := solid.Resolve()
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	vol := s.Volume()
+	vol := solid.Volume()
 	if math.Abs(vol-1.0) > 0.01 {
 		t.Errorf("expected volume ~1.0, got %f", vol)
 	}

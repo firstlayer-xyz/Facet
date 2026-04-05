@@ -1,11 +1,12 @@
 package evaluator
 
-import "fmt"
+import (
+	"facet/app/pkg/manifold"
+	"fmt"
+)
 
 func init() {
-	// PolyMesh methods
-
-	polyMeshMethod := func(name string, body func(*structVal, []value) (value, error)) builtinFn {
+	structMethod := func(name string, body func(*structVal, []value) (value, error)) builtinFn {
 		return func(e *evaluator, args []value) (value, error) {
 			sv, ok := args[0].(*structVal)
 			if !ok {
@@ -15,70 +16,38 @@ func init() {
 		}
 	}
 
+	// Zero-arg PolyMesh → PolyMesh Conway operators.
+	// Each entry names a builtin and the corresponding PolyMesh method.
+	for _, m := range []struct {
+		name string
+		op   func(*manifold.PolyMesh) *manifold.PolyMesh
+	}{
+		{"_dual", (*manifold.PolyMesh).Dual},
+		{"_ambo", (*manifold.PolyMesh).Ambo},
+		{"_kis", (*manifold.PolyMesh).Kis},
+		{"_truncate", (*manifold.PolyMesh).Truncate},
+		{"_expand", (*manifold.PolyMesh).Expand},
+		{"_snub", (*manifold.PolyMesh).Snub},
+	} {
+		op := m.op // capture for closure
+		name := m.name
+		builtinRegistry[name] = structMethod(name, func(sv *structVal, args []value) (value, error) {
+			if len(args) != 0 {
+				return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
+			}
+			pm, err := structValToPolyMesh(sv)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			return polyMeshToStructVal(op(pm)), nil
+		})
+	}
+
+	// PolyMesh methods with arguments or different return types.
 	for _, m := range []struct {
 		name string
 		fn   func(*structVal, []value) (value, error)
 	}{
-		{"_dual", func(sv *structVal, args []value) (value, error) {
-			if len(args) != 0 {
-				return nil, fmt.Errorf("_dual() expects 0 arguments, got %d", len(args))
-			}
-			pm, err := structValToPolyMesh(sv)
-			if err != nil {
-				return nil, fmt.Errorf("_dual: %w", err)
-			}
-			return polyMeshToStructVal(pm.Dual()), nil
-		}},
-		{"_ambo", func(sv *structVal, args []value) (value, error) {
-			if len(args) != 0 {
-				return nil, fmt.Errorf("_ambo() expects 0 arguments, got %d", len(args))
-			}
-			pm, err := structValToPolyMesh(sv)
-			if err != nil {
-				return nil, fmt.Errorf("_ambo: %w", err)
-			}
-			return polyMeshToStructVal(pm.Ambo()), nil
-		}},
-		{"_kis", func(sv *structVal, args []value) (value, error) {
-			if len(args) != 0 {
-				return nil, fmt.Errorf("_kis() expects 0 arguments, got %d", len(args))
-			}
-			pm, err := structValToPolyMesh(sv)
-			if err != nil {
-				return nil, fmt.Errorf("_kis: %w", err)
-			}
-			return polyMeshToStructVal(pm.Kis()), nil
-		}},
-		{"_truncate", func(sv *structVal, args []value) (value, error) {
-			if len(args) != 0 {
-				return nil, fmt.Errorf("_truncate() expects 0 arguments, got %d", len(args))
-			}
-			pm, err := structValToPolyMesh(sv)
-			if err != nil {
-				return nil, fmt.Errorf("_truncate: %w", err)
-			}
-			return polyMeshToStructVal(pm.Truncate()), nil
-		}},
-		{"_expand", func(sv *structVal, args []value) (value, error) {
-			if len(args) != 0 {
-				return nil, fmt.Errorf("_expand() expects 0 arguments, got %d", len(args))
-			}
-			pm, err := structValToPolyMesh(sv)
-			if err != nil {
-				return nil, fmt.Errorf("_expand: %w", err)
-			}
-			return polyMeshToStructVal(pm.Expand()), nil
-		}},
-		{"_snub", func(sv *structVal, args []value) (value, error) {
-			if len(args) != 0 {
-				return nil, fmt.Errorf("_snub() expects 0 arguments, got %d", len(args))
-			}
-			pm, err := structValToPolyMesh(sv)
-			if err != nil {
-				return nil, fmt.Errorf("_snub: %w", err)
-			}
-			return polyMeshToStructVal(pm.Snub()), nil
-		}},
 		{"_canonicalize", func(sv *structVal, args []value) (value, error) {
 			const name = "_canonicalize"
 			pm, err := structValToPolyMesh(sv)
@@ -160,25 +129,15 @@ func init() {
 			return pm.ToDisplayMesh(), nil
 		}},
 	} {
-		builtinRegistry[m.name] = polyMeshMethod(m.name, m.fn)
+		builtinRegistry[m.name] = structMethod(m.name, m.fn)
 	}
 
 	// Mesh methods
 
-	meshMethod := func(name string, body func(*structVal, []value) (value, error)) builtinFn {
-		return func(e *evaluator, args []value) (value, error) {
-			sv, ok := args[0].(*structVal)
-			if !ok {
-				return nil, fmt.Errorf("%s: expected struct, got %s", name, typeName(args[0]))
-			}
-			return body(sv, args[1:])
-		}
-	}
-
-	builtinRegistry["_face_normals"] = meshMethod("_face_normals", func(sv *structVal, args []value) (value, error) {
+	builtinRegistry["_face_normals"] = structMethod("_face_normals", func(sv *structVal, args []value) (value, error) {
 		return meshFaceNormals(sv, args)
 	})
-	builtinRegistry["_vertex_normals"] = meshMethod("_vertex_normals", func(sv *structVal, args []value) (value, error) {
+	builtinRegistry["_vertex_normals"] = structMethod("_vertex_normals", func(sv *structVal, args []value) (value, error) {
 		return meshVertexNormals(sv, args)
 	})
 

@@ -71,8 +71,14 @@ func tokenName(t TokenType) string {
 		return "&="
 	case TokenAmpAmp:
 		return "&&"
+	case TokenPipe:
+		return "|"
+	case TokenPipeEq:
+		return "|="
 	case TokenPipePipe:
 		return "||"
+	case TokenReserved:
+		return "reserved keyword"
 	case TokenReturn:
 		return "return"
 	case TokenVar:

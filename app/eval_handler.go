@@ -88,17 +88,23 @@ func (a *App) GetHTTPPort() int {
 	return a.mcpPort
 }
 
-// handleEval processes a stateless eval request: Load → Check → Eval → binary response.
-func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
-	start := time.Now()
-
-	// Load from scratch
+// loaderOpts returns the library directory and loader options from the current config.
+func loaderOpts() (string, *loader.Options) {
 	libDir, _ := libraryDir()
 	cfg := loadConfig()
 	opts := &loader.Options{}
 	if len(cfg.InstalledLibs) > 0 {
 		opts.InstalledLibs = cfg.InstalledLibs
 	}
+	return libDir, opts
+}
+
+// handleEval processes a stateless eval request: Load → Check → Eval → binary response.
+func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
+	start := time.Now()
+
+	// Load from scratch
+	libDir, opts := loaderOpts()
 	prog, err := loader.LoadMulti(ctx, req.Sources, req.Key, libDir, opts)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -119,7 +125,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 	if docSrc := prog.Sources[req.Key]; docSrc != nil {
 		docText = docSrc.Text
 	}
-	docIndex := buildDocIndex(libDir, docText)
+	docIndex := buildDocIndex(docText)
 
 	// Build entry points
 	var entryPoints []EntryPoint
@@ -204,7 +210,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 	stats := evalResult.Stats
 	stats.Triangles += merged.IndexCount / 3
 	stats.Vertices += merged.VertexCount
-	_, globalMin, globalMax := solidBBoxes(evalResult.Solids)
+	globalMin, globalMax := solidBounds(evalResult.Solids)
 	stats.BBoxMin = globalMin
 	stats.BBoxMax = globalMax
 
@@ -217,14 +223,18 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 	writeBinaryResponse(w, header, binaryData)
 }
 
+// setCORS sets standard CORS headers on the response.
+func setCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}
+
 // evalHTTPHandler returns an http.HandlerFunc that cancels the previous eval
 // and dispatches to handleEval with a fresh context.
 func (a *App) evalHTTPHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// CORS
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		setCORS(w)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -343,20 +353,37 @@ func buildSourcesMap(prog loader.Program) map[string]SourceEntry {
 	return sources
 }
 
+// collectLibDocEntries collects deduplicated doc entries from both built-in and git-cached libraries.
+func collectLibDocEntries() []doc.DocEntry {
+	libDir, _ := libraryDir()
+	dirs := []string{libDir, loader.DefaultGitCacheDir()}
+	var entries []doc.DocEntry
+	seen := map[string]bool{}
+	for _, dir := range dirs {
+		for _, e := range doc.BuildLibDocEntries(dir) {
+			key := e.Name + "|" + e.Library
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			entries = append(entries, e)
+		}
+	}
+	return entries
+}
+
 // buildDocIndex builds the documentation index from the primary source and library directories.
-func buildDocIndex(libDir, sourceText string) []doc.DocEntry {
+func buildDocIndex(sourceText string) []doc.DocEntry {
 	entries := doc.BuildDocIndex(sourceText, nil)
 	seen := make(map[string]bool)
 	for _, e := range entries {
 		seen[e.Name+"|"+e.Library] = true
 	}
-	for _, dir := range []string{libDir, loader.DefaultGitCacheDir()} {
-		for _, e := range doc.BuildLibDocEntries(dir) {
-			key := e.Name + "|" + e.Library
-			if !seen[key] {
-				seen[key] = true
-				entries = append(entries, e)
-			}
+	for _, e := range collectLibDocEntries() {
+		key := e.Name + "|" + e.Library
+		if !seen[key] {
+			seen[key] = true
+			entries = append(entries, e)
 		}
 	}
 	return entries
@@ -370,9 +397,7 @@ type checkRequest struct {
 
 // handleCheck parses and type-checks source code without evaluating it.
 func handleCheck(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	setCORS(w)
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -387,12 +412,7 @@ func handleCheck(w http.ResponseWriter, r *http.Request) {
 		req.Key = "check.fct"
 	}
 
-	libDir, _ := libraryDir()
-	cfg := loadConfig()
-	opts := &loader.Options{}
-	if len(cfg.InstalledLibs) > 0 {
-		opts.InstalledLibs = cfg.InstalledLibs
-	}
+	libDir, opts := loaderOpts()
 
 	prog, err := loader.Load(r.Context(), req.Source, req.Key, parser.SourceUser, libDir, opts)
 	if err != nil {
@@ -415,12 +435,7 @@ func handleCheck(w http.ResponseWriter, r *http.Request) {
 // evalSolids runs a fresh Load → Check → Eval and returns the resulting solids.
 // Used by export/slicer which need geometry but not a binary HTTP response.
 func evalSolids(ctx context.Context, req evalRequest) ([]*manifold.Solid, error) {
-	libDir, _ := libraryDir()
-	cfg := loadConfig()
-	opts := &loader.Options{}
-	if len(cfg.InstalledLibs) > 0 {
-		opts.InstalledLibs = cfg.InstalledLibs
-	}
+	libDir, opts := loaderOpts()
 	prog, err := loader.LoadMulti(ctx, req.Sources, req.Key, libDir, opts)
 	if err != nil {
 		return nil, err

@@ -25,19 +25,7 @@ func (p *Source) MarshalJSON() ([]byte, error) {
 
 // MarshalJSON serializes a VarStmt to JSON.
 func (v *VarStmt) MarshalJSON() ([]byte, error) {
-	m := map[string]interface{}{
-		"type":  "VarStmt",
-		"name":  v.Name,
-		"value": marshalExpr(v.Value),
-		"pos":   v.Pos,
-	}
-	if v.IsConst {
-		m["isConst"] = true
-	}
-	if v.Constraint != nil {
-		m["constraint"] = marshalExpr(v.Constraint)
-	}
-	return json.Marshal(m)
+	return json.Marshal(marshalStmt(v))
 }
 
 // MarshalJSON serializes a Function to JSON.
@@ -383,6 +371,19 @@ func marshalExpr(e Expr) interface{} {
 			"path": e.Path,
 			"pos":  e.Pos,
 		}
+	case *SliceExpr:
+		m := map[string]interface{}{
+			"type":   "SliceExpr",
+			"object": marshalExpr(e.Receiver),
+			"pos":    e.Pos,
+		}
+		if e.Start != nil {
+			m["low"] = marshalExpr(e.Start)
+		}
+		if e.End != nil {
+			m["high"] = marshalExpr(e.End)
+		}
+		return m
 	case *LambdaExpr:
 		return map[string]interface{}{
 			"type":       "LambdaExpr",

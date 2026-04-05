@@ -151,31 +151,31 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 	}
 
 	switch r := receiver.(type) {
-	case *manifold.SolidFuture:
+	case *manifold.Solid:
 		candidates := findMethods(e.stdMethods["Solid"], mc.Method, "*", len(argMap))
 		if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, argMap, e, stdlibCall(r)); ok {
 			if err != nil {
 				return nil, err
 			}
-			if rs, ok := result.(*manifold.SolidFuture); ok {
+			if rs, ok := result.(*manifold.Solid); ok {
 				e.trackSolid(mc.Pos, rs)
-				e.recordStep(mc.Method, mc.Pos, debugRole{"input", r}, debugRole{"result", rs})
+				e.recordStep(mc.Method, mc.Pos, debugEntry{"input", r}, debugEntry{"result", rs})
 			}
 			return result, nil
 		}
 		return nil, e.errAt(mc.Pos, "Solid has no method %q", mc.Method)
 
-	case *manifold.SketchFuture:
+	case *manifold.Sketch:
 		candidates := findMethods(e.stdMethods["Sketch"], mc.Method, "*", len(argMap))
 		if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, candidates, argMap, e, stdlibCall(r)); ok {
 			if err != nil {
 				return nil, err
 			}
-			if rs, ok := result.(*manifold.SolidFuture); ok {
+			if rs, ok := result.(*manifold.Solid); ok {
 				e.trackSolid(mc.Pos, rs)
-				e.recordStep(mc.Method, mc.Pos, debugRole{"input", r}, debugRole{"result", rs})
-			} else if rsk, ok := result.(*manifold.SketchFuture); ok {
-				e.recordStep(mc.Method, mc.Pos, debugRole{"input", r}, debugRole{"result", rsk})
+				e.recordStep(mc.Method, mc.Pos, debugEntry{"input", r}, debugEntry{"result", rs})
+			} else if rsk, ok := result.(*manifold.Sketch); ok {
+				e.recordStep(mc.Method, mc.Pos, debugEntry{"input", r}, debugEntry{"result", rsk})
 			}
 			return result, nil
 		}
@@ -195,7 +195,7 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 			return nil, err
 		}
 		e.steps = append(e.steps, libEval.steps...)
-		if rs, ok := result.(*manifold.SolidFuture); ok {
+		if rs, ok := result.(*manifold.Solid); ok {
 			e.trackSolid(mc.Pos, rs)
 		}
 		return result, nil
@@ -207,7 +207,7 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 			func(fn *parser.Function, args map[string]value) (value, error) {
 				return e.evalMethodFunction(fn, r, args)
 			}); ok {
-			if rs, ok := result.(*manifold.SolidFuture); ok {
+			if rs, ok := result.(*manifold.Solid); ok {
 				e.trackSolid(mc.Pos, rs)
 			}
 			return result, err
@@ -226,7 +226,7 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 					return nil, err
 				}
 				e.steps = append(e.steps, libEval.steps...)
-				if rs, ok := result.(*manifold.SolidFuture); ok {
+				if rs, ok := result.(*manifold.Solid); ok {
 					e.trackSolid(mc.Pos, rs)
 				}
 				return result, nil
@@ -236,7 +236,7 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		// Stdlib methods for this struct type (e.g. Box methods)
 		stdCandidates := findMethods(e.stdMethods[r.typeName], mc.Method, "*", len(argMap))
 		if result, err, ok := e.resolveOverload(mc.Pos, mc.Method, stdCandidates, argMap, e, stdlibCall(r)); ok {
-			if rs, ok := result.(*manifold.SolidFuture); ok {
+			if rs, ok := result.(*manifold.Solid); ok {
 				e.trackSolid(mc.Pos, rs)
 			}
 			return result, err

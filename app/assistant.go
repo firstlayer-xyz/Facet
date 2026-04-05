@@ -14,7 +14,6 @@ import (
 
 	"facet/app/docs"
 	"facet/app/pkg/fctlang/doc"
-	"facet/app/pkg/fctlang/loader"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -217,7 +216,7 @@ func (a *App) GetDefaultSystemPrompt() string {
 		return a.cachedSystemPrompt
 	}
 	// Fallback: build on demand if not yet cached
-	return buildSystemPrompt(nil)
+	return buildFullSystemPrompt(nil)
 }
 
 // PickImageFile opens a native file dialog for selecting an image file
@@ -348,14 +347,6 @@ var curatedExamples = []string{
 	"Shark.fct",
 }
 
-// buildSystemPrompt assembles the AI system prompt.
-// When MCP tools are available, only the short role/workflow prompt is used —
-// the language spec, color guide, examples, and library catalog are fetched
-// on-demand via the get_documentation tool.
-// When MCP is NOT available (generic CLIs), the full prompt with all docs is included.
-func buildSystemPrompt(libEntries []doc.DocEntry) string {
-	return buildFullSystemPrompt(libEntries)
-}
 
 // buildMCPSystemPrompt returns the short system prompt for MCP-enabled CLIs.
 // Claude fetches docs on-demand via get_documentation.
@@ -399,80 +390,73 @@ func buildFullSystemPrompt(libEntries []doc.DocEntry) string {
 	}
 
 	// Section 5: Library catalog
-	if len(libEntries) > 0 {
-		sb.WriteString("\n## Available Libraries\n\n")
-		sb.WriteString("Users can import these libraries with `var X = lib \"<import path>\";` then call `X.Function(...)`.\n")
-
-		// Group entries by library namespace
-		type libGroup struct {
-			importPath string
-			entries    []doc.DocEntry
-		}
-		orderKeys := []string{}
-		groups := map[string]*libGroup{}
-		for _, e := range libEntries {
-			if e.Library == "" {
-				continue
-			}
-			g, ok := groups[e.Library]
-			if !ok {
-				g = &libGroup{importPath: gitCacheNSToImportPath(e.Library)}
-				groups[e.Library] = g
-				orderKeys = append(orderKeys, e.Library)
-			}
-			g.entries = append(g.entries, e)
-		}
-		for _, ns := range orderKeys {
-			g := groups[ns]
-			// Use the last segment as the display name
-			displayName := ns
-			if idx := strings.LastIndex(ns, "/"); idx >= 0 {
-				displayName = ns[idx+1:]
-			}
-			sb.WriteString("\n### ")
-			sb.WriteString(displayName)
-			sb.WriteByte('\n')
-			if g.importPath != "" {
-				sb.WriteString("Import: `var X = lib \"")
-				sb.WriteString(g.importPath)
-				sb.WriteString("\";`\n")
-			}
-			for _, e := range g.entries {
-				sb.WriteString("- `")
-				sb.WriteString(e.Signature)
-				sb.WriteString("`")
-				if e.Doc != "" {
-					sb.WriteString(" — ")
-					// Use first line of doc only
-					doc := e.Doc
-					if idx := strings.IndexByte(doc, '\n'); idx >= 0 {
-						doc = doc[:idx]
-					}
-					sb.WriteString(doc)
-				}
-				sb.WriteByte('\n')
-			}
-		}
+	if catalog := formatLibraryCatalog(libEntries); catalog != "" {
+		sb.WriteString("\n")
+		sb.WriteString(catalog)
 	}
 
 	return sb.String()
 }
 
-// buildLibraryCatalog collects doc entries from both built-in and git-cached libraries.
-func buildLibraryCatalog() []doc.DocEntry {
-	var entries []doc.DocEntry
-	seen := make(map[string]bool)
-	libDir, _ := libraryDir()
-	for _, dir := range []string{libDir, loader.DefaultGitCacheDir()} {
-		for _, e := range doc.BuildLibDocEntries(dir) {
-			key := e.Name + "|" + e.Library
-			if !seen[key] {
-				seen[key] = true
-				entries = append(entries, e)
+// formatLibraryCatalog renders a list of doc entries as a markdown library catalog.
+// Returns an empty string if there are no entries.
+func formatLibraryCatalog(libEntries []doc.DocEntry) string {
+	if len(libEntries) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## Available Libraries\n\n")
+	sb.WriteString("Users can import these libraries with `var X = lib \"<import path>\";` then call `X.Function(...)`.\n")
+
+	type libGroup struct {
+		importPath string
+		entries    []doc.DocEntry
+	}
+	orderKeys := []string{}
+	groups := map[string]*libGroup{}
+	for _, e := range libEntries {
+		if e.Library == "" {
+			continue
+		}
+		g, ok := groups[e.Library]
+		if !ok {
+			g = &libGroup{importPath: gitCacheNSToImportPath(e.Library)}
+			groups[e.Library] = g
+			orderKeys = append(orderKeys, e.Library)
+		}
+		g.entries = append(g.entries, e)
+	}
+	for _, ns := range orderKeys {
+		g := groups[ns]
+		displayName := ns
+		if idx := strings.LastIndex(ns, "/"); idx >= 0 {
+			displayName = ns[idx+1:]
+		}
+		sb.WriteString("\n### ")
+		sb.WriteString(displayName)
+		sb.WriteByte('\n')
+		if g.importPath != "" {
+			sb.WriteString("Import: `var X = lib \"")
+			sb.WriteString(g.importPath)
+			sb.WriteString("\";`\n")
+		}
+		for _, e := range g.entries {
+			sb.WriteString("- `")
+			sb.WriteString(e.Signature)
+			sb.WriteString("`")
+			if e.Doc != "" {
+				sb.WriteString(" — ")
+				d := e.Doc
+				if idx := strings.IndexByte(d, '\n'); idx >= 0 {
+					d = d[:idx]
+				}
+				sb.WriteString(d)
 			}
+			sb.WriteByte('\n')
 		}
 	}
-	return entries
+	return sb.String()
 }
 
 // gitCacheNSToImportPath converts a library namespace derived from the git cache

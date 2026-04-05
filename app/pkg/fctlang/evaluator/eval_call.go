@@ -177,28 +177,17 @@ func (e *evaluator) callResolved(call *parser.CallExpr, fn *parser.Function, arg
 	if stdlib {
 		savedFile := e.file
 		e.file = loader.StdlibPath
-		result, err := e.evalFunction(fn, args)
-		e.file = savedFile
-		if err != nil {
-			return nil, e.wrapErr(call.Pos, err)
-		}
-		if s, ok := result.(*manifold.SolidFuture); ok {
-			e.trackSolid(call.Pos, s)
-			e.recordStep(call.Name, call.Pos, debugRole{"result", s})
-		} else if sk, ok := result.(*manifold.SketchFuture); ok {
-			e.recordStep(call.Name, call.Pos, debugRole{"result", sk})
-		}
-		return result, nil
+		defer func() { e.file = savedFile }()
 	}
 	result, err := e.evalFunction(fn, args)
 	if err != nil {
 		return nil, e.wrapErr(call.Pos, err)
 	}
-	if s, ok := result.(*manifold.SolidFuture); ok {
+	if s, ok := result.(*manifold.Solid); ok {
 		e.trackSolid(call.Pos, s)
-		e.recordStep(call.Name, call.Pos, debugRole{"result", s})
-	} else if sk, ok := result.(*manifold.SketchFuture); ok {
-		e.recordStep(call.Name, call.Pos, debugRole{"result", sk})
+		e.recordStep(call.Name, call.Pos, debugEntry{Role: "result", Shape: s})
+	} else if sk, ok := result.(*manifold.Sketch); ok {
+		e.recordStep(call.Name, call.Pos, debugEntry{Role: "result", Shape: sk})
 	}
 	return result, nil
 }

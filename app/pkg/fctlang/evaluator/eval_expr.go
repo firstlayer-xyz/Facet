@@ -21,7 +21,7 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 			return nil, e.errAt(ex.Pos, "undefined variable %q", ex.Name)
 		}
 		val := unwrap(v)
-		if sf, ok := val.(*manifold.SolidFuture); ok {
+		if sf, ok := val.(*manifold.Solid); ok {
 			e.trackSolid(ex.Pos, sf)
 		}
 		return val, nil

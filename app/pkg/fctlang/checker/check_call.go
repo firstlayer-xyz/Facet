@@ -794,10 +794,10 @@ func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *type
 				if valMM, ok3 := tryConstLengthMM(g.Value); ok3 {
 					if con.Exclusive {
 						if valMM < startMM || valMM >= endMM {
-							c.addError(g.Pos, fmt.Sprintf("value is out of range"))
+							c.addError(g.Pos, "value is out of range")
 						}
 					} else if valMM < startMM || valMM > endMM {
-						c.addError(g.Pos, fmt.Sprintf("value is out of range"))
+						c.addError(g.Pos, "value is out of range")
 					}
 				}
 			}

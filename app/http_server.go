@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"facet/app/docs"
-	"facet/app/pkg/fctlang/doc"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -182,58 +181,9 @@ func (a *App) startHTTPServer() (int, error) {
 		sb.WriteString("\n\n")
 		sb.WriteString(docs.ColorGuide)
 
-		libEntries := buildLibraryCatalog()
-		if len(libEntries) > 0 {
-			sb.WriteString("\n\n## Available Libraries\n\n")
-			sb.WriteString("Users can import these libraries with `var X = lib \"<import path>\";` then call `X.Function(...)`.\n")
-
-			type libGroup struct {
-				importPath string
-				entries    []doc.DocEntry
-			}
-			orderKeys := []string{}
-			groups := map[string]*libGroup{}
-			for _, e := range libEntries {
-				if e.Library == "" {
-					continue
-				}
-				g, ok := groups[e.Library]
-				if !ok {
-					g = &libGroup{importPath: gitCacheNSToImportPath(e.Library)}
-					groups[e.Library] = g
-					orderKeys = append(orderKeys, e.Library)
-				}
-				g.entries = append(g.entries, e)
-			}
-			for _, ns := range orderKeys {
-				g := groups[ns]
-				displayName := ns
-				if idx := strings.LastIndex(ns, "/"); idx >= 0 {
-					displayName = ns[idx+1:]
-				}
-				sb.WriteString("\n### ")
-				sb.WriteString(displayName)
-				sb.WriteByte('\n')
-				if g.importPath != "" {
-					sb.WriteString("Import: `var X = lib \"")
-					sb.WriteString(g.importPath)
-					sb.WriteString("\";`\n")
-				}
-				for _, e := range g.entries {
-					sb.WriteString("- `")
-					sb.WriteString(e.Signature)
-					sb.WriteString("`")
-					if e.Doc != "" {
-						sb.WriteString(" — ")
-						d := e.Doc
-						if idx := strings.IndexByte(d, '\n'); idx >= 0 {
-							d = d[:idx]
-						}
-						sb.WriteString(d)
-					}
-					sb.WriteByte('\n')
-				}
-			}
+		if catalog := formatLibraryCatalog(collectLibDocEntries()); catalog != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(catalog)
 		}
 
 		return &mcp.CallToolResult{

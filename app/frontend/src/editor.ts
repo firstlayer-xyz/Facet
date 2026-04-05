@@ -21,6 +21,7 @@ import 'monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHint
 import { registerFacetLanguage } from './facet-language';
 import { registerThemes } from './themes';
 import { ListLibraries, ListLocalLibraries } from '../wailsjs/go/main/App';
+import type { DocEntry } from './docs';
 
 // Monaco worker setup — only the base editor worker is needed
 self.MonacoEnvironment = {
@@ -85,37 +86,33 @@ interface AccentColors {
   selectionDark: string;
 }
 
-function defineAccentThemes(name: string, accent: AccentColors): void {
-  // Light rules: shared tokens + accent-specific constants
-  const lightRules: monaco.editor.ITokenThemeRule[] = [
-    { token: 'keyword.control', foreground: '7c3aed' },
-    { token: 'keyword.other.unit', foreground: '7c3aed' },
-    { token: 'support.type', foreground: '0d7377' },
-    { token: 'constant.numeric', foreground: accent.light },
-    { token: 'constant.numeric.float', foreground: accent.light },
-    { token: 'constant.language', foreground: accent.light },
-    { token: 'string.quoted.double', foreground: '2a7e3b' },
-    { token: 'string.quoted.other', foreground: '2a7e3b' },
-    { token: 'comment.line', foreground: '999999' },
-    { token: 'keyword.operator', foreground: '0d7377' },
-    { token: 'variable.other', foreground: '3a3a3a' },
-    { token: 'punctuation.delimiter', foreground: '3a3a3a' },
-  ];
+// Token color definitions — each entry maps to { light, dark } foreground colors.
+// Accent-colored tokens use null and are filled per-theme.
+const TOKEN_COLORS: [string, string | null, string | null][] = [
+  ['keyword.control',       '7c3aed', 'c49cff'],
+  ['keyword.other.unit',    '7c3aed', 'c49cff'],
+  ['support.type',          '0d7377', '4dd4d8'],
+  ['constant.numeric',       null,     null   ],
+  ['constant.numeric.float', null,     null   ],
+  ['constant.language',      null,     null   ],
+  ['string.quoted.double',  '2a7e3b', '7ecc8d'],
+  ['string.quoted.other',   '2a7e3b', '7ecc8d'],
+  ['comment.line',          '999999', '666666'],
+  ['keyword.operator',      '0d7377', '4dd4d8'],
+  ['variable.other',        '3a3a3a', 'cccccc'],
+  ['punctuation.delimiter', '3a3a3a', 'cccccc'],
+];
 
-  const darkRules: monaco.editor.ITokenThemeRule[] = [
-    { token: 'keyword.control', foreground: 'c49cff' },
-    { token: 'keyword.other.unit', foreground: 'c49cff' },
-    { token: 'support.type', foreground: '4dd4d8' },
-    { token: 'constant.numeric', foreground: accent.dark },
-    { token: 'constant.numeric.float', foreground: accent.dark },
-    { token: 'constant.language', foreground: accent.dark },
-    { token: 'string.quoted.double', foreground: '7ecc8d' },
-    { token: 'string.quoted.other', foreground: '7ecc8d' },
-    { token: 'comment.line', foreground: '666666' },
-    { token: 'keyword.operator', foreground: '4dd4d8' },
-    { token: 'variable.other', foreground: 'cccccc' },
-    { token: 'punctuation.delimiter', foreground: 'cccccc' },
-  ];
+function defineAccentThemes(name: string, accent: AccentColors): void {
+  function buildRules(variant: 'light' | 'dark'): monaco.editor.ITokenThemeRule[] {
+    const accentColor = variant === 'light' ? accent.light : accent.dark;
+    return TOKEN_COLORS.map(([token, light, dark]) => ({
+      token,
+      foreground: (variant === 'light' ? light : dark) ?? accentColor,
+    }));
+  }
+  const lightRules = buildRules('light');
+  const darkRules = buildRules('dark');
 
   monaco.editor.defineTheme(`facet-${name}-light`, {
     base: 'vs',
@@ -160,13 +157,6 @@ defineAccentThemes('digital-blue', {
   selectionLight: '#c8d8f8', selectionDark: '#1a2a4a',
 });
 
-export interface DocEntry {
-  name: string;
-  signature: string;
-  doc: string;
-  kind: string;
-  library: string;
-}
 
 interface CheckError {
   file: string;
@@ -178,7 +168,6 @@ interface CheckError {
 
 export interface EditorHandle {
   getContent(): string;
-  getModelContent(fileKey: string): string;
   getAllSources(): Record<string, string>;
   highlightError(line: number): void;
   clearError(): void;
@@ -189,7 +178,7 @@ export interface EditorHandle {
   setContent(text: string): void;
   setContentSilent(text: string): void;
   switchModel(fileKey: string, content: string): void;
-  resetMainModel(key: string, content: string): void;
+  preloadModel(fileKey: string, content: string): void;
   disposeModel(fileKey: string): void;
   setReadOnly(ro: boolean): void;
   setWordWrap(on: boolean): void;
@@ -197,7 +186,7 @@ export interface EditorHandle {
   updateDocIndex(entries: DocEntry[]): void;
   updateVarTypes(types: Record<string, Record<string, string>>): void;
   setCurrentSource(sourceKey: string): void;
-  updateDeclarations(decls: Record<string, { line: number; col: number; file?: string }>): void;
+  updateDeclarations(decls: Record<string, { line: number; col: number; file?: string; kind?: string }>): void;
   updateFileSources(sources: Record<string, string>): void;
   getCursorPosition(): { lineNumber: number; column: number };
   onCursorChange(cb: (line: number, col: number) => void): void;
@@ -262,6 +251,21 @@ export function createEditor(
 
   const errorCollection = ed.createDecorationsCollection();
   const debugCollection = ed.createDecorationsCollection();
+
+  function setLineDecoration(collection: monaco.editor.IEditorDecorationsCollection, line: number, className: string) {
+    if (line < 1 || line > ed.getModel()!.getLineCount()) return;
+    collection.set([{ range: new monaco.Range(line, 1, line, 1), options: { isWholeLine: true, className } }]);
+  }
+
+  function replaceContent(text: string, silent: boolean) {
+    if (silent) suppressChange = true;
+    try {
+      const fullRange = ed.getModel()!.getFullModelRange();
+      ed.executeEdits(silent ? 'setContentSilent' : 'setContent', [{ range: fullRange, text }]);
+    } finally {
+      if (silent) suppressChange = false;
+    }
+  }
 
   // Register command for hover "→ Open in Docs" links and context menu
   if (onOpenDocs) {
@@ -406,10 +410,22 @@ export function createEditor(
     return resolveDeclaration(name, isCallSite);
   }
 
-  // Context key: true when cursor is on a word with a known declaration
+  // "Open Library" context menu — detect lib "path" on current line
+  function getLibPathAtCursor(editor: monaco.editor.ICodeEditor): string | null {
+    const pos = editor.getPosition();
+    if (!pos) return null;
+    const line = editor.getModel()?.getLineContent(pos.lineNumber) ?? '';
+    const match = line.match(/lib\s+"([^"]+)"/);
+    if (!match) return null;
+    return match[1];
+  }
+
+  // Context keys updated on every cursor move (single listener for both)
   const hasDeclKey = ed.createContextKey<boolean>('facet.hasDeclaration', false);
+  const hasLibPathKey = ed.createContextKey<boolean>('facet.hasLibPath', false);
   ed.onDidChangeCursorPosition(() => {
     hasDeclKey.set(findDecl(ed) !== null);
+    hasLibPathKey.set(getLibPathAtCursor(ed) !== null);
   });
 
   ed.addAction({
@@ -423,31 +439,14 @@ export function createEditor(
       const decl = findDecl(ed);
       if (!decl) return;
       if (decl.file && onGoToFile) {
-        // Cross-file: open the library file in a tab
         const source = fileSources[decl.file] ?? '';
         onGoToFile(decl.file, source, decl.line, decl.col);
       } else {
-        // Same file: navigate within the editor
         ed.setPosition({ lineNumber: decl.line, column: decl.col });
         ed.revealLineInCenter(decl.line);
         ed.focus();
       }
     },
-  });
-
-  // "Open Library" context menu — detect lib "path" on current line
-  function getLibPathAtCursor(editor: monaco.editor.ICodeEditor): string | null {
-    const pos = editor.getPosition();
-    if (!pos) return null;
-    const line = editor.getModel()?.getLineContent(pos.lineNumber) ?? '';
-    const match = line.match(/lib\s+"([^"]+)"/);
-    if (!match) return null;
-    return match[1];
-  }
-
-  const hasLibPathKey = ed.createContextKey<boolean>('facet.hasLibPath', false);
-  ed.onDidChangeCursorPosition(() => {
-    hasLibPathKey.set(getLibPathAtCursor(ed) !== null);
   });
 
   ed.addAction({
@@ -615,8 +614,8 @@ export function createEditor(
 
       // Fetch installed libraries
       const [remote, local] = await Promise.all([
-        ListLibraries().catch(() => []),
-        ListLocalLibraries().catch(() => []),
+        ListLibraries().catch(e => { console.warn('ListLibraries failed:', e); return []; }),
+        ListLocalLibraries().catch(e => { console.warn('ListLocalLibraries failed:', e); return []; }),
       ]);
 
       const paths: string[] = [];
@@ -722,11 +721,6 @@ export function createEditor(
       return ed.getModel()!.getValue();
     },
 
-    getModelContent(fileKey: string): string {
-      const m = models.get(fileKey);
-      return m ? m.getValue() : '';
-    },
-
     getAllSources(): Record<string, string> {
       const result: Record<string, string> = {};
       for (const [key, model] of models) {
@@ -736,14 +730,7 @@ export function createEditor(
     },
 
     highlightError(line: number) {
-      if (line < 1 || line > ed.getModel()!.getLineCount()) return;
-      errorCollection.set([{
-        range: new monaco.Range(line, 1, line, 1),
-        options: {
-          isWholeLine: true,
-          className: 'monaco-error-line',
-        },
-      }]);
+      setLineDecoration(errorCollection, line, 'monaco-error-line');
     },
 
     clearError() {
@@ -777,15 +764,10 @@ export function createEditor(
     },
 
     highlightDebugLine(line: number) {
-      if (line < 1 || line > ed.getModel()!.getLineCount()) return;
-      debugCollection.set([{
-        range: new monaco.Range(line, 1, line, 1),
-        options: {
-          isWholeLine: true,
-          className: 'monaco-debug-line',
-        },
-      }]);
-      ed.revealLineInCenter(line);
+      setLineDecoration(debugCollection, line, 'monaco-debug-line');
+      if (line >= 1 && line <= ed.getModel()!.getLineCount()) {
+        ed.revealLineInCenter(line);
+      }
     },
 
     clearDebugLine() {
@@ -793,24 +775,11 @@ export function createEditor(
     },
 
     setContent(text: string) {
-      const fullRange = ed.getModel()!.getFullModelRange();
-      ed.executeEdits('setContent', [{
-        range: fullRange,
-        text,
-      }]);
+      replaceContent(text, false);
     },
 
     setContentSilent(text: string) {
-      suppressChange = true;
-      try {
-        const fullRange = ed.getModel()!.getFullModelRange();
-        ed.executeEdits('setContentSilent', [{
-          range: fullRange,
-          text,
-        }]);
-      } finally {
-        suppressChange = false;
-      }
+      replaceContent(text, true);
     },
 
     switchModel(fileKey: string, content: string) {
@@ -829,14 +798,10 @@ export function createEditor(
       }
     },
 
-    resetMainModel(key: string, content: string) {
-      const old = models.get(mainKey);
-      mainKey = key;
-      currentSourceKey = key;
-      const m = monaco.editor.createModel(content, 'facet');
-      models.set(key, m);
-      ed.setModel(m);
-      old?.dispose();
+    preloadModel(fileKey: string, content: string) {
+      if (!models.has(fileKey)) {
+        models.set(fileKey, monaco.editor.createModel(content, 'facet'));
+      }
     },
 
     disposeModel(fileKey: string) {

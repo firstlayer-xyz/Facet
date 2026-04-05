@@ -4,6 +4,19 @@ import {
   ListLibraryFolders, PullAllLibraries, RevealInFileManager, UpdateLibrary,
 } from '../wailsjs/go/main/App';
 
+async function asyncButton(btn: HTMLButtonElement, loadingText: string, action: () => Promise<void>) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = loadingText;
+  try {
+    await action();
+    btn.textContent = 'Done';
+  } catch {
+    btn.textContent = 'Error';
+  }
+  setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2000);
+}
+
 interface LibraryInfo {
   id: string;
   name: string;
@@ -61,43 +74,19 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
   const pullAllBtn = document.createElement('button');
   pullAllBtn.className = 'settings-module-remove';
   pullAllBtn.textContent = 'Pull All';
-  pullAllBtn.addEventListener('click', async () => {
-    pullAllBtn.disabled = true;
-    pullAllBtn.textContent = 'Pulling...';
-    try {
-      await PullAllLibraries();
-      pullAllBtn.textContent = 'Done';
-      loadAndRender();
-    } catch (e: any) {
-      console.error('PullAllLibraries:', e);
-      pullAllBtn.textContent = 'Error';
-    }
-    setTimeout(() => {
-      pullAllBtn.textContent = 'Pull All';
-      pullAllBtn.disabled = false;
-    }, 2000);
-  });
+  pullAllBtn.addEventListener('click', () => asyncButton(pullAllBtn, 'Pulling...', async () => {
+    await PullAllLibraries();
+    loadAndRender();
+  }));
   cachedHeaderRow.appendChild(pullAllBtn);
 
   const clearCacheBtn = document.createElement('button');
   clearCacheBtn.className = 'settings-module-remove';
   clearCacheBtn.textContent = 'Clear Cache';
-  clearCacheBtn.addEventListener('click', async () => {
-    clearCacheBtn.disabled = true;
-    clearCacheBtn.textContent = 'Clearing...';
-    try {
-      await ClearLibCache();
-      clearCacheBtn.textContent = 'Done';
-      loadAndRender();
-    } catch (e: any) {
-      console.error('ClearLibCache:', e);
-      clearCacheBtn.textContent = 'Error';
-    }
-    setTimeout(() => {
-      clearCacheBtn.textContent = 'Clear Cache';
-      clearCacheBtn.disabled = false;
-    }, 2000);
-  });
+  clearCacheBtn.addEventListener('click', () => asyncButton(clearCacheBtn, 'Clearing...', async () => {
+    await ClearLibCache();
+    loadAndRender();
+  }));
   cachedHeaderRow.appendChild(clearCacheBtn);
 
   page.appendChild(cachedHeaderRow);
@@ -218,36 +207,18 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
           const updateBtn = document.createElement('button');
           updateBtn.className = 'settings-module-remove';
           updateBtn.textContent = 'Update';
-          updateBtn.addEventListener('click', async () => {
-            updateBtn.disabled = true;
-            updateBtn.textContent = '...';
-            try {
-              await UpdateLibrary(lib.id, lib.ref);
-              updateBtn.textContent = 'Done';
-            } catch (e: any) {
-              console.error('UpdateLibrary:', e);
-              updateBtn.textContent = 'Error';
-            }
-            setTimeout(() => { updateBtn.disabled = false; updateBtn.textContent = 'Update'; }, 2000);
-          });
+          updateBtn.addEventListener('click', () => asyncButton(updateBtn, '...', async () => {
+            await UpdateLibrary(lib.id, lib.ref);
+          }));
 
           const forkBtn = document.createElement('button');
           forkBtn.className = 'settings-module-remove';
           forkBtn.textContent = 'Fork';
           forkBtn.title = 'Copy to local libraries for editing';
-          forkBtn.addEventListener('click', async () => {
-            forkBtn.disabled = true;
-            forkBtn.textContent = '...';
-            try {
-              await ForkLibrary(lib.id, lib.ref);
-              forkBtn.textContent = 'Done';
-              loadAndRender();
-            } catch (e: any) {
-              console.error('ForkLibrary:', e);
-              forkBtn.textContent = 'Error';
-            }
-            setTimeout(() => { forkBtn.disabled = false; forkBtn.textContent = 'Fork'; }, 2000);
-          });
+          forkBtn.addEventListener('click', () => asyncButton(forkBtn, '...', async () => {
+            await ForkLibrary(lib.id, lib.ref);
+            loadAndRender();
+          }));
 
           actions.appendChild(revealBtn);
           actions.appendChild(updateBtn);

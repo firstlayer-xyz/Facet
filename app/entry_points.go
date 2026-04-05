@@ -48,13 +48,6 @@ type ParamConstraint struct {
 	Values    []interface{} `json:"values,omitempty"`    // for enum constraints
 }
 
-// SolidBBox describes the axis-aligned bounding box of a single solid.
-type SolidBBox struct {
-	Min    [3]float64 `json:"min"`    // [x, y, z]
-	Max    [3]float64 `json:"max"`    // [x, y, z]
-	Pieces int        `json:"pieces"` // number of disconnected components
-}
-
 func isValidEntryPoint(fn *parser.Function, inferredReturnTypes map[string]string) bool {
 	if fn.ReceiverType != "" {
 		return false
@@ -238,19 +231,13 @@ func exprUnit(e parser.Expr) string {
 	return ""
 }
 
-func solidBBoxes(solids []*manifold.Solid) (boxes []SolidBBox, globalMin, globalMax [3]float64) {
-	boxes = make([]SolidBBox, len(solids))
+func solidBounds(solids []*manifold.Solid) (globalMin, globalMax [3]float64) {
 	if len(solids) > 0 {
 		globalMin = [3]float64{math.MaxFloat64, math.MaxFloat64, math.MaxFloat64}
 		globalMax = [3]float64{-math.MaxFloat64, -math.MaxFloat64, -math.MaxFloat64}
 	}
-	for i, s := range solids {
+	for _, s := range solids {
 		mnX, mnY, mnZ, mxX, mxY, mxZ := s.BoundingBox()
-		boxes[i] = SolidBBox{
-			Min:    [3]float64{sanitizeBBox(mnX), sanitizeBBox(mnY), sanitizeBBox(mnZ)},
-			Max:    [3]float64{sanitizeBBox(mxX), sanitizeBBox(mxY), sanitizeBBox(mxZ)},
-			Pieces: s.NumComponents(),
-		}
 		globalMin[0] = math.Min(globalMin[0], mnX)
 		globalMin[1] = math.Min(globalMin[1], mnY)
 		globalMin[2] = math.Min(globalMin[2], mnZ)
@@ -258,6 +245,12 @@ func solidBBoxes(solids []*manifold.Solid) (boxes []SolidBBox, globalMin, global
 		globalMax[1] = math.Max(globalMax[1], mxY)
 		globalMax[2] = math.Max(globalMax[2], mxZ)
 	}
+	globalMin[0] = sanitizeBBox(globalMin[0])
+	globalMin[1] = sanitizeBBox(globalMin[1])
+	globalMin[2] = sanitizeBBox(globalMin[2])
+	globalMax[0] = sanitizeBBox(globalMax[0])
+	globalMax[1] = sanitizeBBox(globalMax[1])
+	globalMax[2] = sanitizeBBox(globalMax[2])
 	return
 }
 

@@ -2,8 +2,6 @@ package evaluator
 
 import (
 	"fmt"
-
-	"facet/app/pkg/manifold"
 )
 
 // requireLength extracts the mm value from a length argument.
@@ -44,25 +42,6 @@ func requireAngle(funcName string, argNum int, v value) (float64, error) {
 	return a.deg, nil
 }
 
-// requireSolid resolves a *manifold.SolidFuture and returns the *manifold.Solid.
-func requireSolid(funcName string, argNum int, v value) (*manifold.Solid, error) {
-	v = unwrap(v)
-	sf, ok := v.(*manifold.SolidFuture)
-	if !ok {
-		return nil, fmt.Errorf("%s() argument %d must be a Solid, got %s", funcName, argNum, typeName(v))
-	}
-	return sf.Resolve()
-}
-
-// requireSketch resolves a *manifold.SketchFuture and returns the *manifold.Sketch.
-func requireSketch(funcName string, argNum int, v value) (*manifold.Sketch, error) {
-	v = unwrap(v)
-	pf, ok := v.(*manifold.SketchFuture)
-	if !ok {
-		return nil, fmt.Errorf("%s() argument %d must be a Sketch, got %s", funcName, argNum, typeName(v))
-	}
-	return pf.Resolve()
-}
 
 // requireString extracts a string from a value.
 func requireString(funcName string, argNum int, v value) (string, error) {

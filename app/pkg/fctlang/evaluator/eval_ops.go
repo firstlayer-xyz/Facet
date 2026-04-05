@@ -121,10 +121,10 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 	}
 
 	// Solid boolean operations: +, -, &
-	lsf, lIsSolid := lv.(*manifold.SolidFuture)
-	rsf, rIsSolid := rv.(*manifold.SolidFuture)
+	lsf, lIsSolid := lv.(*manifold.Solid)
+	rsf, rIsSolid := rv.(*manifold.Solid)
 	if lIsSolid && rIsSolid {
-		var result *manifold.SolidFuture
+		var result *manifold.Solid
 		var opName string
 		switch ex.Op {
 		case "+":
@@ -141,16 +141,16 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 			goto solidOpFunc
 		}
 		e.trackSolid(ex.Pos, result)
-		e.recordStep(opName, ex.Pos, debugRole{"lhs", lsf}, debugRole{"rhs", rsf}, debugRole{"result", result})
+		e.recordStep(opName, ex.Pos, debugEntry{"lhs", lsf}, debugEntry{"rhs", rsf}, debugEntry{"result", result})
 		return result, nil
 	solidOpFunc:
 	}
 
 	// Sketch boolean operations: +, -, &
-	lpf, lIsProfile := lv.(*manifold.SketchFuture)
-	rpf, rIsProfile := rv.(*manifold.SketchFuture)
+	lpf, lIsProfile := lv.(*manifold.Sketch)
+	rpf, rIsProfile := rv.(*manifold.Sketch)
 	if lIsProfile && rIsProfile {
-		var result *manifold.SketchFuture
+		var result *manifold.Sketch
 		var opName string
 		switch ex.Op {
 		case "+":
@@ -165,7 +165,7 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		default:
 			return nil, e.errAt(ex.Pos, "operator %s not supported on Sketch values", ex.Op)
 		}
-		e.recordStep(opName, ex.Pos, debugRole{"lhs", lpf}, debugRole{"rhs", rpf}, debugRole{"result", result})
+		e.recordStep(opName, ex.Pos, debugEntry{"lhs", lpf}, debugEntry{"rhs", rpf}, debugEntry{"result", result})
 		return result, nil
 	}
 
@@ -257,8 +257,8 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 	}
 
 	// Length arithmetic (promotes Number to Length when mixed)
-	lmm, lok := asLength(lv)
-	rmm, rok := asLength(rv)
+	lmm, lok := asNumber(lv)
+	rmm, rok := asNumber(rv)
 	if !lok || !rok {
 		return nil, e.errAt(ex.Pos, "operator %s: incompatible types %s and %s", ex.Op, typeName(lv), typeName(rv))
 	}
@@ -315,28 +315,16 @@ func registerOpFunc(m map[opFuncKey]*parser.Function, fn *parser.Function) {
 	switch len(fn.Params) {
 	case 1:
 		// Unary operator
-		key := opFuncKey{op: fn.Name, leftType: opParamTypeName(fn.Params[0].Type)}
+		key := opFuncKey{op: fn.Name, leftType: fn.Params[0].Type}
 		m[key] = fn
 	case 2:
 		// Binary operator
 		key := opFuncKey{
 			op:        fn.Name,
-			leftType:  opParamTypeName(fn.Params[0].Type),
-			rightType: opParamTypeName(fn.Params[1].Type),
+			leftType:  fn.Params[0].Type,
+			rightType: fn.Params[1].Type,
 		}
 		m[key] = fn
 	}
 }
 
-// opParamTypeName returns the runtime type name for a parameter type string.
-// This maps AST type names to the runtime typeName() values used for dispatch.
-func opParamTypeName(t string) string {
-	// Most type names match directly. Handle the common cases.
-	switch t {
-	case "Solid", "Sketch", "Length", "Angle", "Number", "Bool", "String",
-		"Vec2", "Vec3":
-		return t
-	default:
-		return t // struct types and others pass through
-	}
-}

@@ -53,9 +53,9 @@ func typeName(v value) string {
 		return "Length"
 	case angle:
 		return "Angle"
-	case *manifold.SolidFuture:
+	case *manifold.Solid:
 		return "Solid"
-	case *manifold.SketchFuture:
+	case *manifold.Sketch:
 		return "Sketch"
 	case bool:
 		return "Bool"
@@ -129,7 +129,7 @@ func checkType(declaredType string, v value) bool {
 	}
 	switch declaredType {
 	case "Solid":
-		_, ok := v.(*manifold.SolidFuture)
+		_, ok := v.(*manifold.Solid)
 		return ok
 	case "Length":
 		_, ok := v.(length)
@@ -147,7 +147,7 @@ func checkType(declaredType string, v value) bool {
 		sv, ok := v.(*structVal)
 		return ok && sv.typeName == declaredType
 	case "Sketch":
-		_, ok := v.(*manifold.SketchFuture)
+		_, ok := v.(*manifold.Sketch)
 		return ok
 	case "Bool":
 		_, ok := v.(bool)
@@ -223,18 +223,6 @@ func (e *evaluator) coerceToType(declType string, v value, locals map[string]val
 	case "Angle":
 		if n, ok := v.(float64); ok {
 			return angle{deg: n}
-		}
-	case "Vec2":
-		if sv, ok := v.(*structVal); ok && sv.typeName == "" {
-			if err := e.coerceAnonymousStruct(sv, declType, locals); err == nil {
-				return sv
-			}
-		}
-	case "Vec3":
-		if sv, ok := v.(*structVal); ok && sv.typeName == "" {
-			if err := e.coerceAnonymousStruct(sv, declType, locals); err == nil {
-				return sv
-			}
 		}
 	default:
 		if sv, ok := v.(*structVal); ok && sv.typeName == "" {

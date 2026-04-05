@@ -145,13 +145,9 @@ func TestScaleToRadius(t *testing.T) {
 func TestToSolidRoundTrip(t *testing.T) {
 	// Create a PolyMesh, convert to Solid, extract back, verify structure
 	cube := newPlatoCube().ScaleToRadius(10.0)
-	sf, err := cube.ToSolid()
+	solid, err := cube.ToSolid()
 	if err != nil {
 		t.Fatalf("ToSolid: %v", err)
-	}
-	solid, err := sf.Resolve()
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
 	}
 
 	// Volume should be positive

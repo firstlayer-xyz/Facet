@@ -1,5 +1,30 @@
 package parser
 
+// compoundOp maps compound assignment tokens (+=, -=, etc.) to their
+// corresponding binary operator string. Returns ("", false) for non-compound tokens.
+func compoundOp(t TokenType) (string, bool) {
+	switch t {
+	case TokenPlusEq:
+		return "+", true
+	case TokenMinusEq:
+		return "-", true
+	case TokenStarEq:
+		return "*", true
+	case TokenSlashEq:
+		return "/", true
+	case TokenModEq:
+		return "%", true
+	case TokenCaretEq:
+		return "^", true
+	case TokenAmpEq:
+		return "&", true
+	case TokenPipeEq:
+		return "|", true
+	default:
+		return "", false
+	}
+}
+
 // parseForExpr → "for" forClause { "," forClause } "{" body "}"
 // forClause    → IDENT "," IDENT expr   (enumerate: index, value)
 //              | IDENT expr              (regular)
@@ -263,28 +288,8 @@ func (p *parser) parseBodyStmts(isForYield bool, context string) ([]Stmt, error)
 		// ident = expr ; → assignment
 		// ident += expr ; → compound assignment (desugars to ident = ident + expr)
 		if ident, ok := expr.(*IdentExpr); ok {
-			var compoundOp string
-			switch p.cur.Type {
-			case TokenEquals:
-				// plain assignment
-			case TokenPlusEq:
-				compoundOp = "+"
-			case TokenMinusEq:
-				compoundOp = "-"
-			case TokenStarEq:
-				compoundOp = "*"
-			case TokenSlashEq:
-				compoundOp = "/"
-			case TokenModEq:
-				compoundOp = "%"
-			case TokenCaretEq:
-				compoundOp = "^"
-			case TokenAmpEq:
-				compoundOp = "&"
-			case TokenPipeEq:
-				compoundOp = "|"
-			}
-			if p.cur.Type == TokenEquals || compoundOp != "" {
+			op, isCompound := compoundOp(p.cur.Type)
+			if p.cur.Type == TokenEquals || isCompound {
 				if err := p.rejectUnderscoreIdent(Token{Text: ident.Name, Line: ident.Pos.Line, Col: ident.Pos.Col}, "assignment"); err != nil {
 					return nil, err
 				}
@@ -296,8 +301,8 @@ func (p *parser) parseBodyStmts(isForYield bool, context string) ([]Stmt, error)
 				if err != nil {
 					return nil, err
 				}
-				if compoundOp != "" {
-					val = &BinaryExpr{Op: compoundOp, Left: ident, Right: val, Pos: Pos{opLine, opCol}}
+				if isCompound {
+					val = &BinaryExpr{Op: op, Left: ident, Right: val, Pos: Pos{opLine, opCol}}
 				}
 				if _, err := p.expect(TokenSemicolon); err != nil {
 					return nil, err
@@ -312,28 +317,8 @@ func (p *parser) parseBodyStmts(isForYield bool, context string) ([]Stmt, error)
 		// field.access = expr ; → field assignment
 		// field.access += expr ; → compound field assignment
 		if fa, ok := expr.(*FieldAccessExpr); ok {
-			var compoundOp string
-			switch p.cur.Type {
-			case TokenEquals:
-				// plain assignment
-			case TokenPlusEq:
-				compoundOp = "+"
-			case TokenMinusEq:
-				compoundOp = "-"
-			case TokenStarEq:
-				compoundOp = "*"
-			case TokenSlashEq:
-				compoundOp = "/"
-			case TokenModEq:
-				compoundOp = "%"
-			case TokenCaretEq:
-				compoundOp = "^"
-			case TokenAmpEq:
-				compoundOp = "&"
-			case TokenPipeEq:
-				compoundOp = "|"
-			}
-			if p.cur.Type == TokenEquals || compoundOp != "" {
+			op, isCompound := compoundOp(p.cur.Type)
+			if p.cur.Type == TokenEquals || isCompound {
 				if err := p.rejectUnderscoreIdent(Token{Text: fa.Field, Line: fa.Pos.Line, Col: fa.Pos.Col}, "field assignment"); err != nil {
 					return nil, err
 				}
@@ -345,8 +330,8 @@ func (p *parser) parseBodyStmts(isForYield bool, context string) ([]Stmt, error)
 				if err != nil {
 					return nil, err
 				}
-				if compoundOp != "" {
-					val = &BinaryExpr{Op: compoundOp, Left: fa, Right: val, Pos: Pos{opLine, opCol}}
+				if isCompound {
+					val = &BinaryExpr{Op: op, Left: fa, Right: val, Pos: Pos{opLine, opCol}}
 				}
 				if _, err := p.expect(TokenSemicolon); err != nil {
 					return nil, err

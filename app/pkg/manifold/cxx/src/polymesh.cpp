@@ -11,16 +11,16 @@
 using namespace manifold;
 
 // Same casting pattern as Manifold's conv.h
-static Manifold* as_cpp(ManifoldManifold* m) {
+static Manifold* as_cpp(ManifoldPtr* m) {
   return reinterpret_cast<Manifold*>(m);
 }
-static ManifoldManifold* as_c(Manifold* m) {
-  return reinterpret_cast<ManifoldManifold*>(m);
+static ManifoldPtr* as_c(Manifold* m) {
+  return reinterpret_cast<ManifoldPtr*>(m);
 }
 
 extern "C" {
 
-ManifoldManifold* facet_solid_from_mesh_with_face_ids(
+ManifoldPtr* facet_solid_from_mesh_with_face_ids(
     float* vert_props, size_t n_verts,
     uint32_t* tri_verts, size_t n_tris,
     uint32_t* face_ids, size_t n_face_ids) {
@@ -35,7 +35,7 @@ ManifoldManifold* facet_solid_from_mesh_with_face_ids(
 }
 
 void facet_extract_polymesh(
-    ManifoldManifold* manifold,
+    ManifoldPtr* manifold,
     double** out_vertices, int* out_num_verts,
     int** out_face_indices, int* out_face_indices_len,
     int** out_face_sizes, int* out_num_faces) {

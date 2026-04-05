@@ -121,15 +121,3 @@ func floatEqual(a, b float64) bool {
 	return diff/largest < 1e-12
 }
 
-// asLength extracts the mm value from a length or bare number.
-func asLength(v value) (float64, bool) {
-	v = unwrap(v)
-	switch n := v.(type) {
-	case length:
-		return n.mm, true
-	case float64:
-		return n, true
-	default:
-		return 0, false
-	}
-}

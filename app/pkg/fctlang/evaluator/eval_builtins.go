@@ -38,8 +38,8 @@ func init() {
 			if len(args) != 2 {
 				return nil, fmt.Errorf("_insert() expects 2 arguments, got %d", len(args))
 			}
-			sa, oka := args[0].(*manifold.SolidFuture)
-			sb, okb := args[1].(*manifold.SolidFuture)
+			sa, oka := args[0].(*manifold.Solid)
+			sb, okb := args[1].(*manifold.Solid)
 			if !oka || !okb {
 				return nil, fmt.Errorf("_insert() expects Solid, Solid")
 			}
@@ -49,16 +49,13 @@ func init() {
 			if len(args) != 1 {
 				return nil, fmt.Errorf("_decompose() expects 1 argument, got %d", len(args))
 			}
-			sf, ok := args[0].(*manifold.SolidFuture)
+			sf, ok := args[0].(*manifold.Solid)
 			if !ok {
 				return nil, fmt.Errorf("_decompose() expects Solid, got %s", typeName(args[0]))
 			}
-			futures, err := manifold.DecomposeSolid(sf)
-			if err != nil {
-				return nil, err
-			}
-			elems := make([]value, len(futures))
-			for i, f := range futures {
+			parts := manifold.DecomposeSolid(sf)
+			elems := make([]value, len(parts))
+			for i, f := range parts {
 				elems[i] = f
 			}
 			return array{elems: elems, elemType: "Solid"}, nil
@@ -74,15 +71,15 @@ func init() {
 			if len(arr.elems) == 0 {
 				return nil, fmt.Errorf("_compose() requires at least one Solid")
 			}
-			futures := make([]*manifold.SolidFuture, len(arr.elems))
+			solids := make([]*manifold.Solid, len(arr.elems))
 			for i, elem := range arr.elems {
-				sf, ok := elem.(*manifold.SolidFuture)
+				sf, ok := elem.(*manifold.Solid)
 				if !ok {
 					return nil, fmt.Errorf("_compose() element %d is %s, expected Solid", i, typeName(elem))
 				}
-				futures[i] = sf
+				solids[i] = sf
 			}
-			return manifold.ComposeSolids(futures), nil
+			return manifold.ComposeSolids(solids), nil
 		},
 		// Trig
 		"_sin":   builtinSin,
@@ -158,7 +155,7 @@ func init() {
 			}
 			fv, ok := args[0].(*functionVal)
 			if !ok {
-				return nil, fmt.Errorf("_level_set() argument 1 must be parser.Function, got %s", typeName(args[0]))
+				return nil, fmt.Errorf("_level_set() argument 1 must be Function, got %s", typeName(args[0]))
 			}
 			boxSV, ok := args[1].(*structVal)
 			if !ok || boxSV.typeName != "Box" {
