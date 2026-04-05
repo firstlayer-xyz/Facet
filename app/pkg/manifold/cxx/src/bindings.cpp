@@ -4,6 +4,7 @@
 #include "manifold/polygon.h"
 #include "manifold/meshIO.h"
 
+#define _USE_MATH_DEFINES
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
