@@ -254,6 +254,9 @@ func transformSolid(s *Solid, ptr *C.ManifoldPtr) *Solid {
 
 // CreateCube creates a box with the given dimensions.
 func CreateCube(x, y, z float64) (*Solid, error) {
+	if x <= 0 || y <= 0 || z <= 0 {
+		return nil, fmt.Errorf("Cube: all dimensions must be positive, got (%.4g, %.4g, %.4g)", x, y, z)
+	}
 	s := newSolidWithOrigin(C.facet_cube(C.double(x), C.double(y), C.double(z)))
 	if s == nil {
 		return nil, fmt.Errorf("manifold: failed to create cube")
@@ -263,6 +266,9 @@ func CreateCube(x, y, z float64) (*Solid, error) {
 
 // CreateSphere creates a sphere with the given radius and segment count.
 func CreateSphere(radius float64, segments int) (*Solid, error) {
+	if radius <= 0 {
+		return nil, fmt.Errorf("Sphere: radius must be positive, got %.4g", radius)
+	}
 	s := newSolidWithOrigin(C.facet_sphere(C.double(radius), C.int(segments)))
 	if s == nil {
 		return nil, fmt.Errorf("manifold: failed to create sphere")
@@ -272,6 +278,15 @@ func CreateSphere(radius float64, segments int) (*Solid, error) {
 
 // CreateCylinder creates a cylinder (or cone if radii differ).
 func CreateCylinder(height, radiusLow, radiusHigh float64, segments int) (*Solid, error) {
+	if height == 0 {
+		return nil, fmt.Errorf("Cylinder: height must be non-zero")
+	}
+	if radiusLow < 0 || radiusHigh < 0 {
+		return nil, fmt.Errorf("Cylinder: radii must be non-negative, got (%.4g, %.4g)", radiusLow, radiusHigh)
+	}
+	if radiusLow == 0 && radiusHigh == 0 {
+		return nil, fmt.Errorf("Cylinder: at least one radius must be positive")
+	}
 	s := newSolidWithOrigin(C.facet_cylinder(C.double(height), C.double(radiusLow), C.double(radiusHigh), C.int(segments)))
 	if s == nil {
 		return nil, fmt.Errorf("manifold: failed to create cylinder")
@@ -428,6 +443,9 @@ func (a *Sketch) Intersection(b *Sketch) *Sketch {
 
 // Extrude extrudes a sketch upward by height.
 func (p *Sketch) Extrude(height float64, slices int, twist, scaleX, scaleY float64) (*Solid, error) {
+	if height == 0 {
+		return nil, fmt.Errorf("Extrude: height must be non-zero")
+	}
 	ptr := C.facet_extrude(p.ptr, C.double(height), C.int(slices), C.double(twist), C.double(scaleX), C.double(scaleY))
 	runtime.KeepAlive(p)
 	s := newSolidWithOrigin(ptr)

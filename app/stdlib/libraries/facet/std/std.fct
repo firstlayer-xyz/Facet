@@ -150,16 +150,16 @@ fn Cylinder(
     return _cylinder(height, bottom, top, segments)
 }
 
-fn Cylinder(radius, height Length) Solid {
-    return _cylinder(height, radius, radius)
+fn Cylinder(radius, height Length, segments Number = 0) Solid {
+    return _cylinder(height, radius, radius, segments)
 }
 
-fn Cylinder(r, h Length) Solid {
-    return _cylinder(h, r, r)
+fn Cylinder(r, h Length, segments Number = 0) Solid {
+    return _cylinder(h, r, r, segments)
 }
 
-fn Cylinder(r1, r2, h Length) Solid {
-    return _cylinder(h, r1, r2)
+fn Cylinder(r1, r2, h Length, segments Number = 0) Solid {
+    return _cylinder(h, r1, r2, segments)
 }
 
 # Cone along Z from Z=0 to Z=`h` with base radius `r`.
@@ -483,6 +483,23 @@ fn Solid.MinGap(with Solid, reach Length) Length {
 # Blends between two or more cross-sections placed at the corresponding `heights`.
 fn Loft(profiles []Sketch, heights []Length) Solid {
     return _loft(profiles, heights)
+}
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+# Arrange an array of solids in a grid along the X/Y plane.
+# All solids are repositioned — their original positions are discarded.
+# `cols` sets the number of columns (default: auto, roughly square).
+# `gap` sets spacing between cells (default: auto, 10% of the largest cell dimension).
+# Use `cols: 1` for a single column, `cols: len(solids)` for a single row.
+# ```
+# fn Main() []Solid {
+#     return Grid([Cube(10 mm), Sphere(5 mm), Cylinder(3 mm, 15 mm)])
+# }
+# ```
+fn Grid(solids []Solid, cols Number = 0, gap Length = -1 mm) []Solid {
+    return _grid(solids, cols, gap)
 }
 
 # ---------------------------------------------------------------------------

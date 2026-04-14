@@ -1,0 +1,21 @@
+fn Main(
+    numLinks Number = 8 where [2:20:1],
+    majorR Length = 10 mm where [5:20] mm,
+    minorR Length = 2 mm where [1:4] mm,
+) []Solid {
+    var inner = majorR - 2 * minorR
+    var step = (majorR + inner) / 1.25
+    return for i [0:<numLinks] {
+        var lnk = Circle(radius: minorR).Move(x: majorR, y: 0 mm).Revolve()
+        if i % 2 != 0 {
+            lnk = lnk.Rotate(rx: 40, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin)
+                .Color(hex: "#C0C0C0")
+        } else {
+            lnk = lnk
+                .Rotate(rx: -40 deg, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin)
+                .Color(hex: "#B8860B")
+        }
+        lnk = lnk.Move(x: i * step, y: 0 mm, z: 0)
+        yield lnk
+    }
+}

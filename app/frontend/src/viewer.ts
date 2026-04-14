@@ -767,6 +767,7 @@ export class Viewer {
     }
 
     const sphere = this._getMeshBoundingSphere();
+    if (sphere.radius <= 0) return;
 
     const fov = this.perspCamera.fov * (Math.PI / 180);
     const distance = (sphere.radius / Math.sin(fov / 2)) * 1.2;
@@ -965,6 +966,7 @@ export class Viewer {
     } else {
       if (this.userMeshes.length === 0) return;
       const sphere = this._getMeshBoundingSphere();
+      if (sphere.radius <= 0) return;
       const fov = this.perspCamera.fov * (Math.PI / 180);
       const distance = (sphere.radius * 1.3) / Math.sin(fov / 2);
       this.perspCamera.up.copy(up);
@@ -1042,6 +1044,7 @@ export class Viewer {
     if (this.userMeshes.length === 0) return;
 
     const sphere = this._getMeshBoundingSphere();
+    if (sphere.radius <= 0) return;
 
     const aspect = this.container.clientWidth / this.container.clientHeight;
     const halfSize = sphere.radius * 1.3;

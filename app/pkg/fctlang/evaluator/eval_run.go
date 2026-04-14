@@ -162,13 +162,6 @@ func (e *evaluator) run() (*EvalResult, error) {
 		stats.SurfaceArea += s.SurfaceArea()
 	}
 
-	// Arrange multi-object results in a grid layout
-	if len(solids) > 1 {
-		solids, err = arrangeGridSeparate(solids)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	// Build PosMap: resolve solidTracks to face IDs
 	type posKey struct {
@@ -225,39 +218,42 @@ func extractSolids(entryPoint string, arr array) ([]*manifold.Solid, error) {
 	return solids, nil
 }
 
-// arrangeGridSeparate places multiple solids in a grid layout.
-func arrangeGridSeparate(solids []*manifold.Solid) ([]*manifold.Solid, error) {
-	if len(solids) == 1 {
-		return solids, nil
+// arrangeGrid places solids in a grid layout.
+// cols <= 0 means auto (ceil(sqrt(n))). gap < 0 means auto (10% of largest cell dimension).
+// All solids are translated so their Z minimum is 0 and they are arranged in a cols-wide grid along X/Y.
+func arrangeGrid(solids []*manifold.Solid, cols int, gap float64) []*manifold.Solid {
+	n := len(solids)
+	if n == 0 {
+		return solids
 	}
 
-	// Compute bounding box for each solid, track max width (X) and max depth (Y)
+	type bbox struct{ minX, minY, minZ, maxX, maxY, maxZ float64 }
+	boxes := make([]bbox, n)
 	var maxWidth, maxDepth float64
-	type bbox struct {
-		minX, minY, minZ, maxX, maxY, maxZ float64
-	}
-	boxes := make([]bbox, len(solids))
 	for i, s := range solids {
 		minX, minY, minZ, maxX, maxY, maxZ := s.BoundingBox()
 		boxes[i] = bbox{minX, minY, minZ, maxX, maxY, maxZ}
-		w := maxX - minX
-		d := maxY - minY
-		if w > maxWidth {
+		if w := maxX - minX; w > maxWidth {
 			maxWidth = w
 		}
-		if d > maxDepth {
+		if d := maxY - minY; d > maxDepth {
 			maxDepth = d
 		}
 	}
 
-	// Grid layout parameters
-	cols := int(math.Ceil(math.Sqrt(float64(len(solids)))))
-	gap := math.Max(maxWidth, maxDepth) * 0.1
+	if cols <= 0 {
+		cols = int(math.Ceil(math.Sqrt(float64(n))))
+	}
+	if cols > n {
+		cols = n
+	}
+	if gap < 0 {
+		gap = math.Max(maxWidth, maxDepth) * 0.1
+	}
 	cellW := maxWidth + gap
 	cellD := maxDepth + gap
 
-	// Translate each solid to its grid cell
-	result := make([]*manifold.Solid, len(solids))
+	result := make([]*manifold.Solid, n)
 	for i, s := range solids {
 		col := i % cols
 		row := i / cols
@@ -270,5 +266,5 @@ func arrangeGridSeparate(solids []*manifold.Solid) ([]*manifold.Solid, error) {
 		dz := -boxes[i].minZ
 		result[i] = s.Translate(dx, dy, dz)
 	}
-	return result, nil
+	return result
 }

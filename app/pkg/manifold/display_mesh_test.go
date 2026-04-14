@@ -68,24 +68,10 @@ func TestDisplayMeshMatchesMesh(t *testing.T) {
 }
 
 func TestDisplayMeshEmpty(t *testing.T) {
-	// Empty solid should produce empty DisplayMesh
-	cube, err := CreateCube(0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dm := cube.ToDisplayMesh()
-
-	if dm.VertexCount != 0 {
-		t.Errorf("expected 0 vertices, got %d", dm.VertexCount)
-	}
-	if dm.IndexCount != 0 {
-		t.Errorf("expected 0 indices, got %d", dm.IndexCount)
-	}
-	if len(dm.VertRaw) != 0 {
-		t.Error("expected empty vertex bytes")
-	}
-	if len(dm.IdxRaw) != 0 {
-		t.Error("expected empty index bytes")
+	// Zero-dimension cube should return an error, not degenerate geometry
+	_, err := CreateCube(0, 0, 0)
+	if err == nil {
+		t.Fatal("expected error for zero-dimension cube")
 	}
 }
 

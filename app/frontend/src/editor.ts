@@ -503,12 +503,12 @@ export function createEditor(
 
   // Clear decorations and markers on content change
   ed.onDidChangeModelContent(() => {
-    errorCollection.clear();
-    debugCollection.clear();
-    const m = ed.getModel();
-    if (m) monaco.editor.setModelMarkers(m, 'facet-check', []);
-    if (!suppressChange && onChange) {
-      onChange();
+    if (!suppressChange) {
+      errorCollection.clear();
+      debugCollection.clear();
+      const m = ed.getModel();
+      if (m) monaco.editor.setModelMarkers(m, 'facet-check', []);
+      if (onChange) onChange();
     }
   });
 

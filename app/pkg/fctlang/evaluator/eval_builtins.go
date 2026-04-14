@@ -130,6 +130,39 @@ func init() {
 				},
 			}, nil
 		},
+		// Layout
+		"_grid": func(_ *evaluator, args []value) (value, error) {
+			const name = "_grid"
+			if len(args) != 3 {
+				return nil, fmt.Errorf("%s() expects 3 arguments (solids, cols, gap), got %d", name, len(args))
+			}
+			arr, ok := args[0].(array)
+			if !ok {
+				return nil, fmt.Errorf("%s() argument 1 must be []Solid, got %s", name, typeName(args[0]))
+			}
+			solids := make([]*manifold.Solid, len(arr.elems))
+			for i, elem := range arr.elems {
+				s, ok := elem.(*manifold.Solid)
+				if !ok {
+					return nil, fmt.Errorf("%s() element %d must be Solid, got %s", name, i, typeName(elem))
+				}
+				solids[i] = s
+			}
+			cols, err := requireNumber(name, 2, args[1])
+			if err != nil {
+				return nil, err
+			}
+			gap, err := requireLength(name, 3, args[2])
+			if err != nil {
+				return nil, err
+			}
+			result := arrangeGrid(solids, int(cols), gap)
+			elems := make([]value, len(result))
+			for i, s := range result {
+				elems[i] = s
+			}
+			return array{elems: elems, elemType: "Solid"}, nil
+		},
 		// IO / Mesh
 		"_load_mesh":       func(e *evaluator, args []value) (value, error) { return e.builtinLoadMesh(args) },
 		"_text":            func(e *evaluator, args []value) (value, error) { return e.builtinNewText(args) },
