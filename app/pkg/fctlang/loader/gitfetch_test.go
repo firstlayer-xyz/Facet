@@ -8,6 +8,22 @@ import (
 )
 
 func TestParseLibPathLocal(t *testing.T) {
+	lp, err := ParseLibPath("facet/gears@v1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !lp.IsLocal {
+		t.Error("expected IsLocal=true")
+	}
+	if lp.Raw != "facet/gears@v1" {
+		t.Errorf("expected Raw='facet/gears@v1', got %q", lp.Raw)
+	}
+	if lp.Ref != "v1" {
+		t.Errorf("expected Ref='v1', got %q", lp.Ref)
+	}
+}
+
+func TestParseLibPathLocalNoRef(t *testing.T) {
 	lp, err := ParseLibPath("facet/gears")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -15,8 +31,23 @@ func TestParseLibPathLocal(t *testing.T) {
 	if !lp.IsLocal {
 		t.Error("expected IsLocal=true")
 	}
+	if lp.Ref != "" {
+		t.Errorf("expected empty Ref, got %q", lp.Ref)
+	}
 	if lp.Raw != "facet/gears" {
 		t.Errorf("expected Raw='facet/gears', got %q", lp.Raw)
+	}
+}
+
+func Test_resolveLibPathLocalNoRef(t *testing.T) {
+	libDir := t.TempDir()
+	dir, err := resolveLibPath(context.Background(), libDir, "", nil, "facet/gears")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := filepath.Join(libDir, "facet/gears")
+	if dir != want {
+		t.Errorf("expected %q, got %q", want, dir)
 	}
 }
 
@@ -79,8 +110,9 @@ func TestParseLibPathErrors(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"single segment", "foo", "at least 2 segments"},
-		{"remote no ref", "github.com/user/repo", "require @ref"},
+		{"remote no ref", "github.com/user/repo", "remote imports require @ref"},
+		{"single segment", "foo@v1", "at least 2 segments"},
+		{"single segment no ref", "foo", "at least 2 segments"},
 		{"remote too few segments", "github.com/user@v1", "at least host/user/repo"},
 		{"empty ref", "github.com/user/repo@", "empty ref"},
 	}
@@ -99,7 +131,7 @@ func TestParseLibPathErrors(t *testing.T) {
 
 func Test_resolveLibPathLocal(t *testing.T) {
 	libDir := t.TempDir()
-	dir, err := resolveLibPath(context.Background(), libDir, "", nil, "facet/gears")
+	dir, err := resolveLibPath(context.Background(), libDir, "", nil, "facet/gears@v1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -111,7 +143,7 @@ func Test_resolveLibPathLocal(t *testing.T) {
 
 func Test_resolveLibPathLocalValidation(t *testing.T) {
 	// Ensure path traversal is rejected
-	_, err := resolveLibPath(context.Background(), "/tmp", "", nil, "foo/../bar")
+	_, err := resolveLibPath(context.Background(), "/tmp", "", nil, "foo/../bar@v1")
 	if err == nil {
 		t.Fatal("expected error for path traversal")
 	}

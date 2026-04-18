@@ -3,7 +3,7 @@ package parser
 import "strings"
 
 // Function represents a function declaration.
-// ReceiverType is non-empty for method definitions (e.g. "Solid" for Solid.Translate).
+// ReceiverType is non-empty for method definitions (e.g. "Solid" for Solid.Move).
 // IsOperator is true for operator functions (e.g. fn +(Vec3 a, b) Vec3 { ... }).
 type Function struct {
 	ReturnType   string
@@ -229,6 +229,23 @@ type NumberLit struct {
 }
 
 func (*NumberLit) exprNode() {}
+
+// IsNumericLiteral reports whether expr is a bare numeric literal — i.e. a
+// NumberLit, or a unary +/- applied to a NumberLit.  Bare literals are
+// "untyped" and coerce freely between Number and Length in mixed-unit
+// arithmetic; committed Number variables do not.
+func IsNumericLiteral(expr Expr) bool {
+	switch e := expr.(type) {
+	case *NumberLit:
+		return true
+	case *UnaryExpr:
+		if e.Op == "-" || e.Op == "+" {
+			_, ok := e.Operand.(*NumberLit)
+			return ok
+		}
+	}
+	return false
+}
 
 
 // UnaryExpr represents a unary operation (e.g. -x, !b).

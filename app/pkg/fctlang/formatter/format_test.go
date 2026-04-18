@@ -61,7 +61,7 @@ return 2
 `,
 		},
 		{
-			name: "for-yield body",
+			name: "for-yield body collapses when short",
 			input: `fn Main() {
 var arr = for i [0:<3] {
 yield i * 2
@@ -70,8 +70,24 @@ return arr
 }
 `,
 			want: `fn Main() {
+    var arr = for i [0:<3] { yield i * 2 }
+    return arr
+}
+`,
+		},
+		{
+			name: "for-yield body stays multi-line when too long",
+			input: `fn Main() {
+var arr = for i [0:<3] {
+yield Cube(x: 10 mm, y: 20 mm, z: 30 mm).Move(v: Vec3{x: i * 5 mm, y: 0 mm, z: 0 mm})
+}
+return arr
+}
+`,
+			want: `fn Main() {
     var arr = for i [0:<3] {
-        yield i * 2
+        yield Cube(x: 10 mm, y: 20 mm, z: 30 mm)
+            .Move(v: Vec3{x: i * 5 mm, y: 0 mm, z: 0 mm})
     }
     return arr
 }
@@ -179,21 +195,53 @@ return self
 		{
 			name: "deeply nested",
 			input: `fn Main() {
-if true {
-if false {
-return 1
+if side_length_is_a_fairly_long_name > 10 mm {
+if another_descriptive_condition_name {
+return ComputeSomethingReasonablyVerbose()
 }
 }
 return 0
 }
 `,
 			want: `fn Main() {
-    if true {
-        if false {
-            return 1
+    if side_length_is_a_fairly_long_name > 10 mm {
+        if another_descriptive_condition_name {
+            return ComputeSomethingReasonablyVerbose()
         }
     }
     return 0
+}
+`,
+		},
+		{
+			name: "short if collapses to single line",
+			input: `fn Main() {
+var x = 1 mm
+if x > 0 mm {
+x = 2 mm
+}
+return x
+}
+`,
+			want: `fn Main() {
+    var x = 1 mm
+    if x > 0 mm { x = 2 mm }
+    return x
+}
+`,
+		},
+		{
+			name: "if with else stays multi-line",
+			input: `fn Main() {
+if true { return 1 } else { return 2 }
+}
+`,
+			want: `fn Main() {
+    if true {
+        return 1
+    } else {
+        return 2
+    }
 }
 `,
 		},
@@ -235,12 +283,12 @@ return Vec3{x: 1 mm, y: 0 mm, z: 0 mm}
 		{
 			name: "method chain splits on dot",
 			input: `fn Main() {
-return Cube(x: 10 mm, y: 10 mm, z: 10 mm).Translate(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})
+return Cube(x: 10 mm, y: 10 mm, z: 10 mm).Move(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})
 }
 `,
 			want: `fn Main() {
     return Cube(x: 10 mm, y: 10 mm, z: 10 mm)
-        .Translate(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})
+        .Move(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})
 }
 `,
 		},
@@ -387,7 +435,7 @@ return SomeFunction(alpha: 100 mm, beta: 200 mm, gamma: 300 mm, delta: 400 mm)
 `,
 		},
 		{
-			name: "fold expression",
+			name: "fold expression collapses when short",
 			input: `fn Main() {
 return fold acc, elem [1, 2, 3] {
 yield acc + elem
@@ -395,9 +443,7 @@ yield acc + elem
 }
 `,
 			want: `fn Main() {
-    return fold acc, elem [1, 2, 3] {
-        yield acc + elem
-    }
+    return fold acc, elem [1, 2, 3] { yield acc + elem }
 }
 `,
 		},
@@ -506,7 +552,7 @@ func TestFormatIdempotent(t *testing.T) {
 }
 
 func TestFormatSliceExpr(t *testing.T) {
-	input := "fn Main() {\n    var x = [1, 2, 3]\n    var a = x[1:3]\n    var b = x[:2]\n    var c = x[1:]\n    return Cube(size: 10 mm)\n}\n"
+	input := "fn Main() {\n    var x = [1, 2, 3]\n    var a = x[1:3]\n    var b = x[:2]\n    var c = x[1:]\n    return Cube(s: 10 mm)\n}\n"
 	got := formatString(input)
 	if !strings.Contains(got, "x[1:3]") {
 		t.Errorf("expected x[1:3] in output, got:\n%s", got)
@@ -520,7 +566,7 @@ func TestFormatSliceExpr(t *testing.T) {
 }
 
 func TestFormatStringEscapes(t *testing.T) {
-	input := "fn Main() {\n    var x = \"hello\\nworld\"\n    return Cube(size: 10 mm)\n}\n"
+	input := "fn Main() {\n    var x = \"hello\\nworld\"\n    return Cube(s: 10 mm)\n}\n"
 	got := formatString(input)
 	if !strings.Contains(got, `"hello\nworld"`) {
 		t.Errorf("expected escaped string in output, got:\n%s", got)
@@ -528,7 +574,7 @@ func TestFormatStringEscapes(t *testing.T) {
 }
 
 func TestFormatNegativeIndex(t *testing.T) {
-	input := "fn Main() {\n    var x = [1, 2, 3]\n    var a = x[-1]\n    return Cube(size: a * 1 mm)\n}\n"
+	input := "fn Main() {\n    var x = [1, 2, 3]\n    var a = x[-1]\n    return Cube(s: a * 1 mm)\n}\n"
 	got := formatString(input)
 	if !strings.Contains(got, "x[-1]") {
 		t.Errorf("expected x[-1] in output, got:\n%s", got)

@@ -203,8 +203,7 @@ func (e *evaluator) builtinHull(_ *parser.CallExpr, args []value) (value, error)
 			}
 			solids[i] = s
 		}
-		result := manifold.BatchHull(solids)
-		return result, nil
+		return manifold.BatchHull(solids)
 	case *manifold.Sketch:
 		sketches := make([]*manifold.Sketch, len(arr.elems))
 		for i, elem := range arr.elems {
@@ -214,8 +213,7 @@ func (e *evaluator) builtinHull(_ *parser.CallExpr, args []value) (value, error)
 			}
 			sketches[i] = p
 		}
-		result := manifold.SketchBatchHull(sketches)
-		return result, nil
+		return manifold.SketchBatchHull(sketches)
 	case *structVal:
 		if sv := arr.elems[0].(*structVal); sv == nil || sv.typeName != "Vec3" {
 			return nil, fmt.Errorf("_hull() elements must be Solids, Sketches, or Vec3, got %s", typeName(arr.elems[0]))
@@ -228,8 +226,7 @@ func (e *evaluator) builtinHull(_ *parser.CallExpr, args []value) (value, error)
 			}
 			pts[i] = manifold.Point3D{X: x, Y: y, Z: z}
 		}
-		result := manifold.HullPoints(pts)
-		return result, nil
+		return manifold.HullPoints(pts)
 	default:
 		return nil, fmt.Errorf("_hull() elements must be Solids, Sketches, or Vec3, got %s", typeName(arr.elems[0]))
 	}
@@ -337,7 +334,7 @@ func (e *evaluator) builtinLoft(args []value) (value, error) {
 		}
 		heights[i] = h
 	}
-	return manifold.Loft(sketches, heights), nil
+	return manifold.Loft(sketches, heights)
 }
 
 // ---------------------------------------------------------------------------

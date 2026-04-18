@@ -8,10 +8,10 @@ Use `.Color()` on any solid. Two forms are available:
 
 ```facet
 # Hex string (recommended)
-var red_box = Cube(size: 10 mm).Color(hex: "#FF0000")
+var red_box = Cube(s: 10 mm).Color(hex: "#FF0000")
 
 # RGB floats (0-1 per channel)
-var blue_box = Cube(size: 10 mm).Color(c: Color(r: 0, g: 0, b: 1))
+var blue_box = Cube(s: 10 mm).Color(c: Color(r: 0, g: 0, b: 1))
 ```
 
 Hex strings support `#RGB`, `#RRGGBB`, and `#RRGGBBAA` formats.

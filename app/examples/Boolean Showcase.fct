@@ -7,8 +7,9 @@
 # cylinder gains a cubic notch where they overlapped.
 # ---------------------------------------------------------------------------
 fn DemoExclude() Solid {
-    var box = Cube(size: Vec3{x: 30 mm, y: 30 mm, z: 30 mm})
-    var cyl = Cylinder(bottom: 10 mm, top: 10 mm, height: 30 mm)
+    var box = Cube(s: Vec3{x: 30 mm, y: 30 mm, z: 30 mm})
+    var cyl = Cylinder(r: 10 mm, h: 30 mm)
+        .AlignCenter(pos: Vec3{})
     return box.Exclude(with: cyl)
 }
 
@@ -26,12 +27,12 @@ fn DemoEvenOdd() Solid {
     var r = 15 mm # cylinder radius
     var h = 8 mm # cylinder height
     var d = 22 mm # center-to-center spacing (< 2r so they overlap)
-    var c1 = Cylinder(bottom: r, top: r, height: h)
-        .Translate(v: Vec3{x: -d / 2, y: 0 mm, z: 0 mm})
-    var c2 = Cylinder(bottom: r, top: r, height: h)
-        .Translate(v: Vec3{x: d / 2, y: 0 mm, z: 0 mm})
-    var c3 = Cylinder(bottom: r, top: r, height: h)
-        .Translate(v: Vec3{x: 0 mm, y: d * 0.866, z: 0 mm})
+    var c1 = Cylinder(r: r, h: h)
+        .AlignCenter(pos: Vec3{x: -d / 2})
+    var c2 = Cylinder(r: r, h: h)
+        .AlignCenter(pos: Vec3{x: d / 2})
+    var c3 = Cylinder(r: r, h: h)
+        .AlignCenter(pos: Vec3{y: d * 0.866})
     return EvenOdd(solids: [c1, c2, c3])
 }
 
@@ -44,15 +45,14 @@ fn DemoEvenOdd() Solid {
 # bore, with the pipe tube properly joined.
 # ---------------------------------------------------------------------------
 fn DemoInsert() Solid {
-    var wall = Cube(size: Vec3{x: 60 mm, y: 60 mm, z: 20 mm})
-    var pipe = Cylinder(bottom: 9 mm, top: 9 mm, height: 40 mm) - Cylinder(
-        bottom: 6 mm,
-        top: 6 mm,
-        height: 40 mm
-    )
+    var wall = Cube(s: Vec3{x: 60 mm, y: 60 mm, z: 20 mm})
+        .AlignCenter(pos: Vec3{})
+    var pipe = Cylinder(r: 9 mm, h: 40 mm)
+        .AlignCenter(pos: Vec3{}) - Cylinder(r: 6 mm, h: 40 mm
+    ).AlignCenter(pos: Vec3{})
     return wall | pipe
 }
 
 fn Main() {
-    return [DemoExclude(), DemoEvenOdd(), DemoInsert()]
+    return Layout(solids: [DemoExclude(), DemoEvenOdd(), DemoInsert()])
 }

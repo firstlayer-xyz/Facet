@@ -1,11 +1,7 @@
 package main
 
 import (
-	"bufio"
-	"context"
-	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -203,20 +199,12 @@ func queryModels(cliID, binPath string) []string {
 
 // SetAssistantConfig stores the assistant configuration.
 func (a *App) SetAssistantConfig(config AssistantConfig) {
-	a.assistantMu.Lock()
-	defer a.assistantMu.Unlock()
-	a.assistantConfig = config
+	a.assistant.SetConfig(config)
 }
 
 // GetDefaultSystemPrompt returns the dynamically assembled system prompt.
 func (a *App) GetDefaultSystemPrompt() string {
-	a.assistantMu.Lock()
-	defer a.assistantMu.Unlock()
-	if a.cachedSystemPrompt != "" {
-		return a.cachedSystemPrompt
-	}
-	// Fallback: build on demand if not yet cached
-	return buildFullSystemPrompt(nil)
+	return a.assistant.GetDefaultSystemPrompt()
 }
 
 // PickImageFile opens a native file dialog for selecting an image file
@@ -238,103 +226,17 @@ func (a *App) PickImageFile() (string, error) {
 // Current editor code and errors are included as context.
 // imagePaths is a list of image file paths to attach (Claude only).
 func (a *App) SendAssistantMessage(userMessage string, editorCode string, errors string, imagePaths []string) error {
-	a.assistantMu.Lock()
-	if a.cancelAssistant != nil {
-		a.cancelAssistant()
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	a.cancelAssistant = cancel
-	config := a.assistantConfig
-	sessionID := a.sessionID
-	a.assistantMu.Unlock()
-
-	cliID := config.CLI
-	if cliID == "" {
-		cliID = "claude"
-	}
-
-	// Find the CLI binary
-	var binName string
-	for _, cli := range knownCLIs {
-		if cli.ID == cliID {
-			binName = cli.Bin
-			break
-		}
-	}
-	if binName == "" {
-		cancel()
-		return fmt.Errorf("unknown CLI: %s", cliID)
-	}
-	binPath := findBinary(binName)
-	if binPath == "" {
-		cancel()
-		return fmt.Errorf("%s CLI not found", binName)
-	}
-
-	sysPrompt := config.SystemPrompt
-	if sysPrompt == "" {
-		if cliID == "claude" && a.mcpPort > 0 {
-			// MCP-enabled: short prompt, Claude fetches docs on-demand via tools
-			sysPrompt = buildMCPSystemPrompt()
-		} else {
-			// Generic CLIs: full prompt with all docs inlined
-			sysPrompt = a.GetDefaultSystemPrompt()
-		}
-	}
-
-	// Store editor code for MCP tools to read
-	if a.mcpState != nil {
-		a.mcpState.setEditorCode(editorCode)
-	}
-
-	fullPrompt := buildPrompt(userMessage, editorCode, errors, imagePaths)
-
-	log.Printf("[assistant] starting %s CLI, model=%q, images=%d, prompt length=%d",
-		cliID, config.Model, len(imagePaths), len(fullPrompt))
-
-	go func() {
-		defer cancel()
-		var err error
-		if cliID == "claude" {
-			var result streamResult
-			result, err = a.runClaudeStream(ctx, binPath, fullPrompt, sessionID, imagePaths, config.Model, sysPrompt)
-			if err == nil && result.sessionID != "" {
-				a.assistantMu.Lock()
-				a.sessionID = result.sessionID
-				a.assistantMu.Unlock()
-			}
-		} else {
-			err = a.runGenericCLIStream(ctx, cliID, binPath, fullPrompt, config.Model, sysPrompt)
-		}
-		if err != nil {
-			log.Printf("[assistant] error: %v", err)
-			if ctx.Err() != nil {
-				return
-			}
-			wailsRuntime.EventsEmit(a.ctx, "assistant:error", err.Error())
-			return
-		}
-		wailsRuntime.EventsEmit(a.ctx, "assistant:done", "")
-	}()
-
-	return nil
+	return a.assistant.Send(userMessage, editorCode, errors, imagePaths, a.mcp)
 }
 
 // CancelAssistant cancels any in-flight assistant request.
 func (a *App) CancelAssistant() {
-	a.assistantMu.Lock()
-	defer a.assistantMu.Unlock()
-	if a.cancelAssistant != nil {
-		a.cancelAssistant()
-		a.cancelAssistant = nil
-	}
+	a.assistant.Cancel()
 }
 
 // ClearAssistantHistory resets the conversation by clearing the session ID.
 func (a *App) ClearAssistantHistory() {
-	a.assistantMu.Lock()
-	defer a.assistantMu.Unlock()
-	a.sessionID = ""
+	a.assistant.ClearHistory()
 }
 
 // curatedExamples lists the example filenames included in the AI system prompt.
@@ -556,260 +458,3 @@ func filterEnv(env []string, keys ...string) []string {
 	return out
 }
 
-// runClaudeStream runs the claude CLI with --output-format stream-json and
-// parses the NDJSON output line by line, emitting text deltas as they arrive.
-func (a *App) runClaudeStream(ctx context.Context, binPath, prompt, sessionID string, imagePaths []string, model, sysPrompt string) (streamResult, error) {
-	maxTurns := a.assistantConfig.MaxTurns
-	if maxTurns <= 0 {
-		maxTurns = 10
-	}
-
-	args := []string{
-		"-p",
-		"--output-format", "stream-json",
-		"--verbose",
-		"--system-prompt", sysPrompt,
-		"--max-turns", fmt.Sprintf("%d", maxTurns),
-	}
-
-	// Connect to the in-process MCP server for tool use
-	if a.mcpPort > 0 {
-		mcpConfig := fmt.Sprintf(`{"mcpServers":{"facet":{"type":"http","url":"http://127.0.0.1:%d/mcp"}}}`, a.mcpPort)
-		args = append(args, "--mcp-config", mcpConfig, "--strict-mcp-config", "--allowedTools", "mcp__facet__*")
-	} else {
-		// No MCP: disable all tools so Claude responds with text only
-		args = append(args, "--tools", "")
-	}
-
-	for _, img := range imagePaths {
-		args = append(args, "--file", img)
-	}
-
-	if model != "" {
-		args = append(args, "--model", model)
-	}
-
-	if sessionID != "" {
-		args = append(args, "--resume", sessionID)
-	}
-
-	cmd := exec.CommandContext(ctx, binPath, args...)
-	cmd.Stdin = strings.NewReader(prompt)
-	cmd.Dir = os.TempDir() // Prevent access to user directories (Photos, Desktop, etc.)
-
-	// Unset CLAUDECODE so a nested Claude Code session doesn't crash.
-	cmd.Env = filterEnv(os.Environ(), "CLAUDECODE", "CLAUDE_CODE")
-
-	log.Printf("[assistant] running: %s %v", binPath, args)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return streamResult{}, fmt.Errorf("failed to create stdout pipe: %v", err)
-	}
-	stderrR, err := cmd.StderrPipe()
-	if err != nil {
-		return streamResult{}, fmt.Errorf("failed to create stderr pipe: %v", err)
-	}
-
-	// Stream stderr in the background so we see errors immediately
-	var stderrBuf strings.Builder
-	go func() {
-		s := bufio.NewScanner(stderrR)
-		for s.Scan() {
-			line := s.Text()
-			stderrBuf.WriteString(line)
-			stderrBuf.WriteByte('\n')
-			log.Printf("[assistant] stderr: %s", line)
-		}
-	}()
-
-	if err := cmd.Start(); err != nil {
-		return streamResult{}, fmt.Errorf("failed to start claude: %v", err)
-	}
-	var result streamResult
-	emittedAny := false
-	toolCallCount := 0
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
-
-	for scanner.Scan() {
-		if ctx.Err() != nil {
-			break
-		}
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		var event map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			log.Printf("[assistant] non-json line: %.100s", line)
-			continue
-		}
-
-		eventType, _ := event["type"].(string)
-
-		// --- Message-level events (Claude CLI stream-json format) ---
-		// type="assistant": message with content blocks (text and/or tool_use)
-		// type="user": tool results
-		// type="result": final summary (has "result" text and session_id)
-
-		if eventType == "assistant" {
-			if msg, ok := event["message"].(map[string]interface{}); ok {
-				if content, ok := msg["content"].([]interface{}); ok {
-					for _, block := range content {
-						cb, ok := block.(map[string]interface{})
-						if !ok {
-							continue
-						}
-						switch cb["type"] {
-						case "text":
-							if text, ok := cb["text"].(string); ok && text != "" {
-								emittedAny = true
-								wailsRuntime.EventsEmit(a.ctx, "assistant:token", text)
-							}
-						case "tool_use":
-							toolCallCount++
-							if toolName, ok := cb["name"].(string); ok {
-								wailsRuntime.EventsEmit(a.ctx, "assistant:tool-use", toolName, toolCallCount)
-							}
-						}
-					}
-				}
-			}
-			continue
-		}
-
-		// type="user": tool results returned — Claude will think about next step
-		if eventType == "user" {
-			wailsRuntime.EventsEmit(a.ctx, "assistant:thinking", toolCallCount)
-			continue
-		}
-
-		// --- Legacy streaming delta format (older Claude CLI versions) ---
-		if eventType == "content_block_start" {
-			if cb, ok := event["content_block"].(map[string]interface{}); ok {
-				if cb["type"] == "tool_use" {
-					toolCallCount++
-					if toolName, ok := cb["name"].(string); ok {
-						wailsRuntime.EventsEmit(a.ctx, "assistant:tool-use", toolName, toolCallCount)
-					}
-				}
-			}
-		}
-		if text := extractTextDelta(event); text != "" {
-			emittedAny = true
-			wailsRuntime.EventsEmit(a.ctx, "assistant:token", text)
-			continue
-		}
-
-		// --- Result event: session_id and fallback text ---
-		if _, hasResult := event["result"]; hasResult {
-			if sid, ok := event["session_id"].(string); ok && sid != "" {
-				result.sessionID = sid
-				log.Printf("[assistant] session_id: %s", sid)
-			}
-			if !emittedAny {
-				if text, ok := event["result"].(string); ok && text != "" {
-					wailsRuntime.EventsEmit(a.ctx, "assistant:token", text)
-				}
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil && ctx.Err() == nil {
-		return result, fmt.Errorf("claude: output read error: %v", err)
-	}
-
-	if err := cmd.Wait(); err != nil {
-		if ctx.Err() != nil {
-			return result, fmt.Errorf("claude was cancelled")
-		}
-		errMsg := stderrBuf.String()
-		if errMsg != "" {
-			return result, fmt.Errorf("claude error: %s", strings.TrimSpace(errMsg))
-		}
-		return result, fmt.Errorf("claude error: %v", err)
-	}
-
-	return result, nil
-}
-
-// runGenericCLIStream runs a non-Claude AI CLI, pipes the prompt to stdin,
-// and streams stdout text back as assistant tokens.
-func (a *App) runGenericCLIStream(ctx context.Context, cliID, binPath, prompt, model, sysPrompt string) error {
-	var args []string
-	switch cliID {
-	case "ollama":
-		m := model
-		if m == "" {
-			m = "llama3"
-		}
-		args = []string{"run", m, "--nowordwrap"}
-		if sysPrompt != "" {
-			args = append(args, "--system", sysPrompt)
-		}
-	case "aichat":
-		if model != "" {
-			args = append(args, "-m", model)
-		}
-		if sysPrompt != "" {
-			args = append(args, "-S", sysPrompt)
-		}
-	case "llm":
-		if model != "" {
-			args = append(args, "-m", model)
-		}
-		if sysPrompt != "" {
-			args = append(args, "-s", sysPrompt)
-		}
-	case "chatgpt":
-		if model != "" {
-			args = append(args, "-m", model)
-		}
-		if sysPrompt != "" {
-			args = append(args, "-p", sysPrompt)
-		}
-	default:
-		return fmt.Errorf("unsupported CLI: %s", cliID)
-	}
-
-	cmd := exec.CommandContext(ctx, binPath, args...)
-	cmd.Stdin = strings.NewReader(prompt)
-	cmd.Dir = os.TempDir() // Prevent access to user directories (Photos, Desktop, etc.)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %v", err)
-	}
-	var stderrBuf strings.Builder
-	cmd.Stderr = &stderrBuf
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start %s: %v", cliID, err)
-	}
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
-	for scanner.Scan() {
-		if ctx.Err() != nil {
-			break
-		}
-		line := scanner.Text()
-		wailsRuntime.EventsEmit(a.ctx, "assistant:token", line+"\n")
-	}
-	if err := scanner.Err(); err != nil && ctx.Err() == nil {
-		return fmt.Errorf("%s: output read error: %v", cliID, err)
-	}
-
-	if err := cmd.Wait(); err != nil {
-		if ctx.Err() != nil {
-			return fmt.Errorf("%s was cancelled", cliID)
-		}
-		errMsg := stderrBuf.String()
-		if errMsg != "" {
-			return fmt.Errorf("%s error: %s", cliID, strings.TrimSpace(errMsg))
-		}
-		return fmt.Errorf("%s error: %v", cliID, err)
-	}
-
-	return nil
-}

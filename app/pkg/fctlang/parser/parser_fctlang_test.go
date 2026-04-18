@@ -9,7 +9,7 @@ import (
 )
 
 func TestParseMinimal(t *testing.T) {
-	src := `fn Main() Solid { return Cylinder(bottom: 10, top: 10, height: 10); }`
+	src := `fn Main() Solid { return Cylinder(r1: 10, r2: 10, h: 10); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -65,7 +65,7 @@ func TestParseMultiFunction(t *testing.T) {
 	src := `
 # helper function
 fn Bar() Solid {
-    return Sphere(radius: 5);
+    return Sphere(r: 5);
 }
 
 fn Main() Solid {
@@ -147,7 +147,7 @@ func TestParseFunctionWithParams(t *testing.T) {
 }
 
 func TestParseFloatLiteral(t *testing.T) {
-	src := `fn Main() Solid { return Sphere(radius: 3.14); }`
+	src := `fn Main() Solid { return Sphere(r: 3.14); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -168,7 +168,7 @@ func TestParseFloatLiteral(t *testing.T) {
 }
 
 func TestParseRatioLiteral(t *testing.T) {
-	src := `fn Main() Solid { return Cube(size: {x: 1/2 mm, y: 3/4 mm, z: 7/8 mm}); }`
+	src := `fn Main() Solid { return Cube(s: {x: 1/2 mm, y: 3/4 mm, z: 7/8 mm}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -215,7 +215,7 @@ func TestParseRatioLiteral(t *testing.T) {
 
 func TestParseRatioPlainNumber(t *testing.T) {
 	// Ratio without a unit → plain NumberLit
-	src := `fn Main() Solid { return Cube(size: {x: 5 mm, y: 1/2, z: 10 mm}); }`
+	src := `fn Main() Solid { return Cube(s: {x: 5 mm, y: 1/2, z: 10 mm}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -240,7 +240,7 @@ func TestParseRatioPlainNumber(t *testing.T) {
 }
 
 func TestParseLengthLiteral(t *testing.T) {
-	src := `fn Main() Solid { return Cylinder(bottom: 1 ft, top: 2.5 cm, height: 100 mm); }`
+	src := `fn Main() Solid { return Cylinder(r1: 1 ft, r2: 2.5 cm, h: 100 mm); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -283,7 +283,7 @@ func TestParseLengthLiteral(t *testing.T) {
 func TestParseVarStatement(t *testing.T) {
 	src := `fn Main() Solid {
 		var size = 10 mm;
-		return Cube(size: {x: size, y: size, z: size});
+		return Cube(s: {x: size, y: size, z: size});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -320,7 +320,7 @@ func TestParseVarStatement(t *testing.T) {
 }
 
 func TestInferredReturnType(t *testing.T) {
-	src := `fn Main() { return Cube(size: {x: 1, y: 2, z: 3}); }`
+	src := `fn Main() { return Cube(s: {x: 1, y: 2, z: 3}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -352,7 +352,7 @@ func TestComments(t *testing.T) {
 # this is a comment
 fn Main() {
     var s = 10 mm; # inline comment
-    return Cube(size: {x: s, y: s, z: s});
+    return Cube(s: {x: s, y: s, z: s});
 }
 `
 	prog, err := parser.Parse(src, "", parser.SourceUser)
@@ -373,7 +373,7 @@ func TestErrorUnexpectedCharacter(t *testing.T) {
 }
 
 func TestParseDotCall(t *testing.T) {
-	src := `fn Main() { return Cube(size: {x: 10, y: 10, z: 10}).Translate(v: {x: 1, y: 2, z: 3}); }`
+	src := `fn Main() { return Cube(s: {x: 10, y: 10, z: 10}).Move(v: {x: 1, y: 2, z: 3}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -383,8 +383,8 @@ func TestParseDotCall(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected parser.MethodCallExpr, got %T", ret.Value)
 	}
-	if mc.Method != "Translate" {
-		t.Errorf("method = %q, want %q", mc.Method, "Translate")
+	if mc.Method != "Move" {
+		t.Errorf("method = %q, want %q", mc.Method, "Move")
 	}
 	if len(mc.Args) != 1 {
 		t.Errorf("expected 1 arg, got %d", len(mc.Args))
@@ -399,7 +399,7 @@ func TestParseDotCall(t *testing.T) {
 }
 
 func TestParseDotChain(t *testing.T) {
-	src := `fn Main() { return Cube(size: {x: 10, y: 10, z: 10}).Translate(v: {x: 1, y: 2, z: 3}).Rotate(rx: 0, ry: 45, rz: 0); }`
+	src := `fn Main() { return Cube(s: {x: 10, y: 10, z: 10}).Move(v: {x: 1, y: 2, z: 3}).Rotate(x: 0, y: 45, z: 0); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -413,13 +413,13 @@ func TestParseDotChain(t *testing.T) {
 	if mc.Method != "Rotate" {
 		t.Errorf("outer method = %q, want %q", mc.Method, "Rotate")
 	}
-	// Inner should be Translate
+	// Inner should be Move
 	inner, ok := mc.Receiver.(*parser.MethodCallExpr)
 	if !ok {
 		t.Fatalf("expected inner parser.MethodCallExpr, got %T", mc.Receiver)
 	}
-	if inner.Method != "Translate" {
-		t.Errorf("inner method = %q, want %q", inner.Method, "Translate")
+	if inner.Method != "Move" {
+		t.Errorf("inner method = %q, want %q", inner.Method, "Move")
 	}
 	// Innermost should be Cube call
 	call, ok := inner.Receiver.(*parser.CallExpr)
@@ -433,8 +433,8 @@ func TestParseDotChain(t *testing.T) {
 
 func TestParseDotOnVariable(t *testing.T) {
 	src := `fn Main() {
-		var box = Cube(size: {x: 10, y: 10, z: 10});
-		return box.Translate(v: {x: 1, y: 2, z: 3});
+		var box = Cube(s: {x: 10, y: 10, z: 10});
+		return box.Move(v: {x: 1, y: 2, z: 3});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -445,8 +445,8 @@ func TestParseDotOnVariable(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected parser.MethodCallExpr, got %T", ret.Value)
 	}
-	if mc.Method != "Translate" {
-		t.Errorf("method = %q, want %q", mc.Method, "Translate")
+	if mc.Method != "Move" {
+		t.Errorf("method = %q, want %q", mc.Method, "Move")
 	}
 	ident, ok := mc.Receiver.(*parser.IdentExpr)
 	if !ok {
@@ -458,7 +458,7 @@ func TestParseDotOnVariable(t *testing.T) {
 }
 
 func TestParseDotOnParenExpr(t *testing.T) {
-	src := `fn Main() { return (Cube(size: {x: 10, y: 10, z: 10}) + Sphere(radius: 5)).Translate(v: {x: 0, y: 0, z: 0}); }`
+	src := `fn Main() { return (Cube(s: {x: 10, y: 10, z: 10}) + Sphere(r: 5)).Move(v: {x: 0, y: 0, z: 0}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -468,8 +468,8 @@ func TestParseDotOnParenExpr(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected parser.MethodCallExpr, got %T", ret.Value)
 	}
-	if mc.Method != "Translate" {
-		t.Errorf("method = %q, want %q", mc.Method, "Translate")
+	if mc.Method != "Move" {
+		t.Errorf("method = %q, want %q", mc.Method, "Move")
 	}
 	if len(mc.Args) != 1 {
 		t.Errorf("expected 1 arg, got %d", len(mc.Args))
@@ -482,7 +482,7 @@ func TestParseDotOnParenExpr(t *testing.T) {
 }
 
 func TestParseAngleLiteralDeg(t *testing.T) {
-	src := `fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(rx: 45 deg, ry: 0 deg, rz: 0 deg); }`
+	src := `fn Main() { return Cube(s: {x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(x: 45 deg, y: 0 deg, z: 0 deg); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -516,7 +516,7 @@ func TestParseAngleLiteralDeg(t *testing.T) {
 }
 
 func TestParseAngleLiteralRad(t *testing.T) {
-	src := `fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(rx: 3.14159265358979 rad, ry: 0 deg, rz: 0 deg); }`
+	src := `fn Main() { return Cube(s: {x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(x: 3.14159265358979 rad, y: 0 deg, z: 0 deg); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -674,7 +674,7 @@ func TestParseForYield(t *testing.T) {
 		var pts = for i[0:<6] {
 			yield Vec2{x: i, y: i};
 		};
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -886,7 +886,7 @@ func TestParseStringLiteral(t *testing.T) {
 
 func TestParseLibExpr(t *testing.T) {
 	src := `var T = lib "facet/gears";
-fn Main() { return Cube(size: {x: 10, y: 10, z: 10}); }`
+fn Main() { return Cube(s: {x: 10, y: 10, z: 10}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -908,7 +908,7 @@ fn Main() { return Cube(size: {x: 10, y: 10, z: 10}); }`
 }
 
 func TestParseDefaultParam(t *testing.T) {
-	src := `fn Make(size Length, count Number = 32) Solid { return Cube(size: Vec3{x: size, y: size, z: size}); }`
+	src := `fn Make(size Length, count Number = 32) Solid { return Cube(s: Vec3{x: size, y: size, z: size}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1026,7 +1026,7 @@ type Vec3 {
     z Length;
 }
 
-fn Main() { return Cube(size: {x: 10, y: 10, z: 10}); }
+fn Main() { return Cube(s: {x: 10, y: 10, z: 10}); }
 `
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1062,7 +1062,7 @@ type Vec3 {
 
 fn Main() {
     var v = Vec3 { x: 10 mm, y: 20 mm, z: 30 mm };
-    return Cube(size: {x: 10, y: 10, z: 10});
+    return Cube(s: {x: 10, y: 10, z: 10});
 }
 `
 	prog, err := parser.Parse(src, "", parser.SourceUser)
@@ -1095,7 +1095,7 @@ type Dims {
 
 fn Main() {
     var d = Dims { w: 10 mm, h: 5 mm };
-    return Cube(size: {x: d.w, y: d.h, z: d.w});
+    return Cube(s: {x: d.w, y: d.h, z: d.w});
 }
 `
 	prog, err := parser.Parse(src, "", parser.SourceUser)
@@ -1141,7 +1141,7 @@ fn Vec3.Length() Number {
     return Sqrt(n: self.x * self.x);
 }
 
-fn Main() { return Cube(size: {x: 10, y: 10, z: 10}); }
+fn Main() { return Cube(s: {x: 10, y: 10, z: 10}); }
 `
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1164,7 +1164,7 @@ fn Main() { return Cube(size: {x: 10, y: 10, z: 10}); }
 
 func TestParseImplicitReturnFunction(t *testing.T) {
 	// Without explicit return, the last expression becomes an ExprStmt.
-	src := `fn Main() { Cube(size: {x: 10, y: 10, z: 10}) }`
+	src := `fn Main() { Cube(s: {x: 10, y: 10, z: 10}) }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1186,7 +1186,7 @@ func TestParseImplicitReturnFunction(t *testing.T) {
 	}
 
 	// With explicit return, it stays a ReturnStmt.
-	src2 := `fn Main() { return Cube(size: {x: 10, y: 10, z: 10}); }`
+	src2 := `fn Main() { return Cube(s: {x: 10, y: 10, z: 10}); }`
 	prog2, err := parser.Parse(src2, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1210,7 +1210,7 @@ func TestParseImplicitReturnFunction(t *testing.T) {
 
 func TestParseBlockExprRemoved(t *testing.T) {
 	// Block expressions are no longer supported — { expr } as an expression should fail to parse
-	src := `fn Main() { return Cylinder(bottom: 10 mm, top: 10 mm, height: { 5 mm }); }`
+	src := `fn Main() { return Cylinder(r1: 10 mm, r2: 10 mm, h: { 5 mm }); }`
 	_, err := parser.Parse(src, "", parser.SourceUser)
 	if err == nil {
 		t.Fatal("expected parse error for block expression, got nil")
@@ -1274,7 +1274,7 @@ func TestParseImplicitYieldForYield(t *testing.T) {
 		var pts = for i [0:<6] {
 			Vec2{x: i, y: i}
 		};
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1300,7 +1300,7 @@ func TestParseImplicitReturnFold(t *testing.T) {
 		var result = fold a, b [0:<3] {
 			a + b
 		};
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1351,7 +1351,7 @@ func TestParseImplicitReturnMixed(t *testing.T) {
 func TestParseAssert(t *testing.T) {
 	src := `fn Main() {
 		assert true;
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1380,7 +1380,7 @@ func TestParseAssert(t *testing.T) {
 func TestParseAssertWithMessage(t *testing.T) {
 	src := `fn Main() {
 		assert 1 < 2, "one should be less than two";
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1403,7 +1403,7 @@ func TestParseAssertWithMessage(t *testing.T) {
 
 func TestParseBareExpressionMidBody(t *testing.T) {
 	// Bare expressions mid-body are valid ExprStmt.
-	src := `fn Main() { Cube(size: {x: 10, y: 10, z: 10}); return Cube(size: {x: 1, y: 1, z: 1}); }`
+	src := `fn Main() { Cube(s: {x: 10, y: 10, z: 10}); return Cube(s: {x: 1, y: 1, z: 1}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1420,7 +1420,7 @@ func TestParseBareExpressionMidBody(t *testing.T) {
 func TestParseBooleanNot(t *testing.T) {
 	src := `fn Main() {
 		var x = !true;
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1447,7 +1447,7 @@ func TestParseBooleanNot(t *testing.T) {
 func TestParseUnaryMinusNumber(t *testing.T) {
 	src := `fn Main() {
 		var x = -5;
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1474,7 +1474,7 @@ func TestParseUnaryMinusNumber(t *testing.T) {
 func TestParseUnaryMinusLength(t *testing.T) {
 	src := `fn Main() {
 		var x = -5 mm;
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1504,7 +1504,7 @@ func TestParseUnaryMinusLength(t *testing.T) {
 func TestParseUnaryMinusAngle(t *testing.T) {
 	src := `fn Main() {
 		var x = -45 deg;
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1534,7 +1534,7 @@ func TestParseUnaryMinusAngle(t *testing.T) {
 func TestParseUnaryMinusParenExpr(t *testing.T) {
 	src := `fn Main() {
 		var x = -(10 + 5);
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1561,7 +1561,7 @@ func TestParseUnaryMinusParenExpr(t *testing.T) {
 func TestParseDoubleNegation(t *testing.T) {
 	src := `fn Main() {
 		var x = --5;
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1590,7 +1590,7 @@ func TestParseMultiVarForYield(t *testing.T) {
 		var pts = for i [0:<3], j [0:<3] {
 			yield Vec2{x: i, y: j};
 		};
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1618,7 +1618,7 @@ func TestParseMultiVarForYieldThreeClauses(t *testing.T) {
 		var pts = for i [0:<2], j [0:<2], k [0:<2] {
 			yield i + j + k;
 		};
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1641,7 +1641,7 @@ func TestParseMultiVarForYieldThreeClauses(t *testing.T) {
 
 func TestParseVarConstraintRange(t *testing.T) {
 	src := `var x = 10 where [0:100];
-fn Main() { return Cube(size: {x: x, y: x, z: x}); }`
+fn Main() { return Cube(s: {x: x, y: x, z: x}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1669,7 +1669,7 @@ fn Main() { return Cube(size: {x: x, y: x, z: x}); }`
 
 func TestParseVarConstraintLengthRange(t *testing.T) {
 	src := `var w = 10 mm where [1:100] mm;
-fn Main() { return Cube(size: {x: w, y: w, z: w}); }`
+fn Main() { return Cube(s: {x: w, y: w, z: w}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1694,7 +1694,7 @@ fn Main() { return Cube(size: {x: w, y: w, z: w}); }`
 
 func TestParseVarConstraintLengthBounds(t *testing.T) {
 	src := `var w2 = 10 mm where [1 mm:100 mm];
-fn Main() { return Cube(size: {x: w2, y: w2, z: w2}); }`
+fn Main() { return Cube(s: {x: w2, y: w2, z: w2}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1714,7 +1714,7 @@ fn Main() { return Cube(size: {x: w2, y: w2, z: w2}); }`
 
 func TestParseVarConstraintAngleRange(t *testing.T) {
 	src := `var a = 45 deg where [0:360] deg;
-fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
+fn Main() { return Cube(s: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1742,7 +1742,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 
 func TestParseVarConstraintEnum(t *testing.T) {
 	src := `var s = "m3" where ["m3", "m4", "m5"];
-fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
+fn Main() { return Cube(s: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1762,7 +1762,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 
 func TestParseVarConstraintStepped(t *testing.T) {
 	src := `var stepped = 5 where [0:100:5];
-fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
+fn Main() { return Cube(s: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1783,7 +1783,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 
 func TestParseVarConstraintExclusive(t *testing.T) {
 	src := `var exclusive = 5 where [0:<100];
-fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
+fn Main() { return Cube(s: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1800,7 +1800,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 
 func TestParseVarConstraintFreeform(t *testing.T) {
 	src := `var freeform = 42 where [];
-fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
+fn Main() { return Cube(s: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1817,7 +1817,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 
 func TestParseVarNoConstraint(t *testing.T) {
 	src := `var plain = 42;
-fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
+fn Main() { return Cube(s: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1831,7 +1831,7 @@ fn Main() { return Cube(size: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 func TestParseVarConstraintLocal(t *testing.T) {
 	src := `fn Main() {
 		var x = 10 where [0:100];
-		return Cube(size: {x: x, y: x, z: x});
+		return Cube(s: {x: x, y: x, z: x});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1852,7 +1852,7 @@ func TestParseForYieldEnumerate(t *testing.T) {
 		var result = for i, v []Length[1 mm, 2 mm, 3 mm] {
 			yield v;
 		};
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1880,7 +1880,7 @@ func TestParseForYieldEnumerateWithCartesian(t *testing.T) {
 		var result = for i, v [1, 2], j [0:<3] {
 			yield v;
 		};
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1917,7 +1917,7 @@ func TestParseForYieldRegularNoIndex(t *testing.T) {
 		var result = for v [1, 2, 3] {
 			yield v;
 		};
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1941,7 +1941,7 @@ func TestParseIndexExpr(t *testing.T) {
 	src := `fn Main() {
 		var arr = []Number[10, 20, 30];
 		var x = arr[0];
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -1973,7 +1973,7 @@ func TestParseIndexChained(t *testing.T) {
 	src := `fn Main() {
 		var arr = []Number[[1, 2], [3, 4]];
 		var x = arr[0][1];
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -2000,7 +2000,7 @@ func TestParseIndexWithDot(t *testing.T) {
 	src := `fn Main() {
 		var pts = []Vec2[{x: 1 mm, y: 2 mm}];
 		var x = pts[0].x;
-		return Cube(size: {x: 10, y: 10, z: 10});
+		return Cube(s: {x: 10, y: 10, z: 10});
 	}`
 	_, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -2010,7 +2010,7 @@ func TestParseIndexWithDot(t *testing.T) {
 
 func TestParseUnitExprParen(t *testing.T) {
 	// (1 + 2) mm should parse as UnitExpr wrapping a BinaryExpr
-	src := `fn Main() { return Cylinder(bottom: (1 + 2) mm, top: 10, height: 10); }`
+	src := `fn Main() { return Cylinder(r1: (1 + 2) mm, r2: 10, h: 10); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -2039,7 +2039,7 @@ func TestParseUnitExprParen(t *testing.T) {
 func TestParseUnitExprCallResult(t *testing.T) {
 	// Foo() mm should parse as UnitExpr wrapping a CallExpr
 	src := `fn Foo() Number { 42 }
-	fn Main() { return Cylinder(bottom: Foo() mm, top: 10, height: 10); }`
+	fn Main() { return Cylinder(r1: Foo() mm, r2: 10, h: 10); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -2068,7 +2068,7 @@ func TestParseUnitExprCallResult(t *testing.T) {
 
 func TestParseUnitExprAngle(t *testing.T) {
 	// (90 / 2) deg should parse as UnitExpr with IsAngle=true
-	src := `fn Main() { return Cube(size: {x: 10, y: 10, z: 10}).Rotate(rx: (90 / 2) deg, ry: 0 deg, rz: 0 deg); }`
+	src := `fn Main() { return Cube(s: {x: 10, y: 10, z: 10}).Rotate(x: (90 / 2) deg, y: 0 deg, z: 0 deg); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -2093,7 +2093,7 @@ func TestParseUnitExprAngle(t *testing.T) {
 
 func TestParseUnitExprNoDoubleLiteral(t *testing.T) {
 	// 5 mm should parse as UnitExpr wrapping NumberLit(5)
-	src := `fn Main() { return Cylinder(bottom: 5 mm, top: 10, height: 10); }`
+	src := `fn Main() { return Cylinder(r1: 5 mm, r2: 10, h: 10); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -2127,7 +2127,7 @@ func TestParseUnitExprVariable(t *testing.T) {
 	// x mm should parse as UnitExpr wrapping IdentExpr
 	src := `fn Main() {
 		var x = 5;
-		return Cylinder(bottom: x mm, top: 10, height: 10);
+		return Cylinder(r1: x mm, r2: 10, h: 10);
 	}`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
@@ -2156,7 +2156,7 @@ func TestParseUnitExprVariable(t *testing.T) {
 }
 
 func TestParseAssignment(t *testing.T) {
-	src := `fn Main() { var x = 10 mm; x = 20 mm; return Cube(size: {x: x, y: x, z: x}); }`
+	src := `fn Main() { var x = 10 mm; x = 20 mm; return Cube(s: {x: x, y: x, z: x}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -2175,7 +2175,7 @@ func TestParseAssignment(t *testing.T) {
 }
 
 func TestParseAssignmentRejectUnderscore(t *testing.T) {
-	src := `fn Main() { _foo = 10; return Cube(size: {x: 1 mm, y: 1 mm, z: 1 mm}); }`
+	src := `fn Main() { _foo = 10; return Cube(s: {x: 1 mm, y: 1 mm, z: 1 mm}); }`
 	_, err := parser.Parse(src, "", parser.SourceUser)
 	if err == nil {
 		t.Fatal("expected error for _-prefixed assignment")
@@ -2198,7 +2198,7 @@ func TestParseCompoundAssignment(t *testing.T) {
 		{"^=", "^"},
 	}
 	for _, tc := range ops {
-		src := fmt.Sprintf(`fn Main() { var x = 10 mm; x %s 5 mm; return Cube(size: {x: x, y: x, z: x}); }`, tc.op)
+		src := fmt.Sprintf(`fn Main() { var x = 10 mm; x %s 5 mm; return Cube(s: {x: x, y: x, z: x}); }`, tc.op)
 		prog, err := parser.Parse(src, "", parser.SourceUser)
 		if err != nil {
 			t.Fatalf("%s: unexpected error: %v", tc.op, err)

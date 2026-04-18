@@ -1,6 +1,6 @@
 import type { CustomTheme } from './themes';
 import { PatchSettings, GetSettings } from '../wailsjs/go/main/App';
-import type { SettingsPageContext, PageResult } from './settings_appearance';
+import type { SettingsPageContext, PageResult } from './settings_ui';
 import { buildAppearancePage } from './settings_appearance';
 import { buildEditorPage } from './settings_editor';
 import { buildLibrariesPage } from './settings_libraries';
@@ -42,6 +42,17 @@ export interface AppSettings {
   slicer: {
     defaultSlicer: string; // slicer ID or '' for auto-detect
   };
+
+  // Go-owned persisted keys (preserved through mergeWithDefaults via ...parsed
+  // spread). Optional because a fresh install has no history.
+  savedTabs?: SavedTab[];
+  activeTab?: string;
+}
+
+export interface SavedTab {
+  path: string;
+  label: string;
+  cursor: { lineNumber: number; column: number } | null;
 }
 
 export interface LibraryEntry {
@@ -99,12 +110,13 @@ function mergeWithDefaults(parsed: any): AppSettings {
     appearance.darkMode = parsed.appearance.autoTheme ? 'auto' : 'light';
     delete (appearance as any).autoTheme;
   }
-  // Migrate old theme IDs with explicit light/dark to base names
+  // Migrate old theme IDs with explicit light/dark to base names.
+  // Only list entries that actually rename — identity mappings were noise.
   const themeRenames: Record<string, string> = {
-    'github-dark': 'github', 'solarized-dark': 'solarized', 'solarized-light': 'solarized',
-    'tomorrow-night': 'tomorrow', 'tomorrow': 'tomorrow',
-    'cobalt': 'cobalt', 'dracula': 'dracula', 'monokai': 'monokai',
-    'night-owl': 'night-owl', 'nord': 'nord',
+    'github-dark': 'github',
+    'solarized-dark': 'solarized',
+    'solarized-light': 'solarized',
+    'tomorrow-night': 'tomorrow',
   };
   if (appearance.uiTheme in themeRenames) {
     appearance.uiTheme = themeRenames[appearance.uiTheme];
@@ -130,22 +142,40 @@ function mergeWithDefaults(parsed: any): AppSettings {
   };
 }
 
-export async function loadSettings(): Promise<AppSettings> {
-  // One-time migration from localStorage to Go backend
-  try {
-    const oldRaw = localStorage.getItem(STORAGE_KEY);
-    if (oldRaw) {
-      await PatchSettings(oldRaw);
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  } catch { /* ignore */ }
+/**
+ * Thrown when the on-disk settings file exists but cannot be read or parsed.
+ * Treated as a hard error rather than silently resetting to defaults —
+ * overwriting the user's real settings with defaults loses data that may be
+ * painfully recreated (installed libraries, assistant config, etc.).
+ */
+export class SettingsCorruptError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'SettingsCorruptError';
+  }
+}
 
+export async function loadSettings(): Promise<AppSettings> {
+  // One-time migration from localStorage to Go backend. If the migration write
+  // fails, we keep the localStorage copy so a retry on the next launch has a
+  // chance to succeed — don't silently drop the data.
+  const oldRaw = localStorage.getItem(STORAGE_KEY);
+  if (oldRaw) {
+    await PatchSettings(oldRaw);
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  let json: string;
   try {
-    const json = await GetSettings();
+    json = await GetSettings();
+  } catch (err) {
+    throw new SettingsCorruptError(err);
+  }
+  try {
     const parsed = JSON.parse(json);
     return mergeWithDefaults(parsed);
-  } catch {
-    return structuredClone(defaults);
+  } catch (err) {
+    throw new SettingsCorruptError(err);
   }
 }
 

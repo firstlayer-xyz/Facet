@@ -18,10 +18,12 @@ else()
   set(_ARCH "amd64")
 endif()
 set(FREETYPE_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/freetype/install-${_OS}-${_ARCH}")
+set(ASSIMP_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/assimp/install-${_OS}-${_ARCH}")
 
 add_library(facet_cxx STATIC src/bindings.cpp src/polymesh.cpp src/text.cpp)
 target_include_directories(facet_cxx
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/manifold/include
           ${FREETYPE_INSTALL_DIR}/include/freetype2
+          ${ASSIMP_INSTALL_DIR}/include
 )

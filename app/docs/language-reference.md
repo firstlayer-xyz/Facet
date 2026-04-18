@@ -82,17 +82,17 @@ Hand-written recursive-descent parser.
 
 | Goal | Code |
 |------|------|
-| Simple box | `Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 5 mm})` |
-| Uniform cube | `Cube(size: 10 mm)` |
+| Simple box | `Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 5 mm})` |
+| Uniform cube | `Cube(s: 10 mm)` |
 | Sphere | `Sphere(radius: 8 mm)` |
 | Cylinder | `Cylinder(bottom: 5 mm, top: 5 mm, height: 20 mm)` |
 | Extrude a profile | `Circle(radius: 5 mm).Extrude(height: 20 mm)` |
 | Revolve a profile | `Circle(radius: 3 mm).Move(x: 10 mm, y: 0 mm).Revolve()` |
 | Drill a hole | `box - Cylinder(radius: 3 mm, height: 30 mm)` |
-| Move a solid | `.Translate(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})` |
-| Rotate a solid | `.Rotate(rx: 0 deg, ry: 0 deg, rz: 45 deg, pivot: WorldOrigin)` |
+| Move a solid | `.Move(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})` |
+| Rotate a solid | `.Rotate(x: 0 deg, y: 0 deg, z: 45 deg, around: Vec3{})` |
 | Mirror across YZ plane | `.Mirror(nx: 1, ny: 0, nz: 0, offset: 0 mm)` |
-| Repeat in a line | `.LinearPattern(count: 4, spacingX: 10 mm, spacingY: 0 mm, spacingZ: 0 mm)` |
+| Repeat in a line | `.LinearPattern(count: 4, spacing: Vec3{x: 10 mm})` |
 | Repeat in a ring | `.CircularPattern(count: 6)` |
 | Fillet a profile | `sketch.Fillet(radius: 2 mm).Extrude(height: 5 mm)` |
 | Interactive slider | `r Length = 5 mm where [1:20] mm` (on fn params) |
@@ -105,7 +105,7 @@ Hand-written recursive-descent parser.
 
 ```
 fn MyCube() {
-    return Cube(size: 10 mm)
+    return Cube(s: 10 mm)
 }
 ```
 
@@ -115,7 +115,7 @@ Any function starting with a capital letter is an entry point. `Main` is a commo
 
 ```
 fn Bracket(size Length = 10 mm where [1:50] mm) Solid {
-    return Cube(size: size)
+    return Cube(s: size)
 }
 ```
 
@@ -206,7 +206,7 @@ Concatenation with `+`: `"hello" + " world"`.
 | `PI` | `π` | 3.14159265... |
 | `TAU` | `τ` | 6.28318530... |
 | `E` | | 2.71828182... |
-| `WorldOrigin` | | `Vec3{x: 0 mm, y: 0 mm, z: 0 mm}` — pivot for rotations, scales, and mirrors |
+| `Vec3{}` | | `Vec3{x: 0 mm, y: 0 mm, z: 0 mm}` — pivot for rotations, scales, and mirrors |
 
 ## Variables
 
@@ -488,7 +488,7 @@ var z = Name {};                                    # all defaults
 Omit the type name — the struct is coerced to the expected parameter type:
 
 ```
-Cube(size: {20 mm, 10 mm, 5 mm})     # coerced to Vec3
+Cube(s: {20 mm, 10 mm, 5 mm})     # coerced to Vec3
 solid.Move(v: {5 mm, 0 mm, 0 mm})    # coerced to Vec3
 ```
 
@@ -550,4 +550,4 @@ fn helper(x Length) Solid { ... }                              # lowercase = pri
 
 The standard library (`std.fct`) is auto-included and provides all user-facing functions and methods. It wraps internal `_snake_case` builtins in `CamelCase` APIs. The stdlib is self-documenting — see the **API Reference** panel in the app for full signatures and examples.
 
-Key categories: 3D constructors (`Cube`, `Sphere`, `Cylinder`), 2D constructors (`Square`, `Circle`, `Polygon`), transforms (`Translate`, `Move`, `Rotate`, `Scale`, `Mirror`), boolean ops (`Union`, `Difference`, `Intersection`, `Hull`), patterns (`LinearPattern`, `CircularPattern`), alignment (`AlignLeft`, `AlignCenterX`, `StackOn`), measurement (`Bounds`, `Volume`, `SurfaceArea`), math (`Sin`, `Cos`, `Min`, `Max`, `Sqrt`, `Lerp`), text (`Text`), mesh ops (`Mesh`, `PolyMesh`, `Warp`, `LevelSet`).
+Key categories: 3D constructors (`Cube`, `Sphere`, `Cylinder`), 2D constructors (`Square`, `Circle`, `Polygon`), transforms (`Move`, `Rotate`, `Scale`, `Mirror`), boolean ops (`Union`, `Difference`, `Intersection`, `Hull`), patterns (`LinearPattern`, `CircularPattern`), alignment (`AlignLeft`, `AlignCenter`, `StackOn`), measurement (`Bounds`, `Volume`, `SurfaceArea`), math (`Sin`, `Cos`, `Min`, `Max`, `Sqrt`, `Lerp`), text (`Text`), mesh ops (`Mesh`, `PolyMesh`, `Warp`, `LevelSet`).

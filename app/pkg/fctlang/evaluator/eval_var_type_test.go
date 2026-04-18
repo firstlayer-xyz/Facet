@@ -13,7 +13,7 @@ import (
 func TestEvalVarParamAcceptsNumber(t *testing.T) {
 	src := `
 fn Identity(x var) var { return x }
-fn Main() Solid { var n = Identity(x: 42); return Cube(size: Vec3{x: n mm, y: n mm, z: n mm}) }
+fn Main() Solid { var n = Identity(x: 42); return Cube(s: Vec3{x: n mm, y: n mm, z: n mm}) }
 `
 	prog := parseTestProg(t, src)
 	mesh, err := evalMerged(context.Background(), prog, nil)
@@ -28,7 +28,7 @@ fn Main() Solid { var n = Identity(x: 42); return Cube(size: Vec3{x: n mm, y: n 
 func TestEvalVarParamAcceptsLength(t *testing.T) {
 	src := `
 fn Identity(x var) var { return x }
-fn Main() Solid { var n = Identity(x: 10 mm); return Cube(size: Vec3{x: n, y: n, z: n}) }
+fn Main() Solid { var n = Identity(x: 10 mm); return Cube(s: Vec3{x: n, y: n, z: n}) }
 `
 	prog := parseTestProg(t, src)
 	mesh, err := evalMerged(context.Background(), prog, nil)
@@ -43,7 +43,7 @@ fn Main() Solid { var n = Identity(x: 10 mm); return Cube(size: Vec3{x: n, y: n,
 func TestEvalVarParamAcceptsSolid(t *testing.T) {
 	src := `
 fn Identity(x var) var { return x }
-fn Main() Solid { return Identity(x: Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})) }
+fn Main() Solid { return Identity(x: Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})) }
 `
 	prog := parseTestProg(t, src)
 	mesh, err := evalMerged(context.Background(), prog, nil)
@@ -61,7 +61,7 @@ fn Identity(x var) var { return x }
 fn Main() Solid {
 	var s = Identity(x: "hello")
 	assert s == "hello"
-	return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})
+	return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})
 }
 `
 	prog := parseTestProg(t, src)
@@ -76,7 +76,7 @@ fn Identity(x var) var { return x }
 fn Main() Solid {
 	var b = Identity(x: true)
 	assert b
-	return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})
+	return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})
 }
 `
 	prog := parseTestProg(t, src)
@@ -90,7 +90,7 @@ func TestEvalVarParamAcceptsAngle(t *testing.T) {
 fn Identity(x var) var { return x }
 fn Main() Solid {
 	var a = Identity(x: 90 deg)
-	return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(rx: 0 deg, ry: 0 deg, rz: a, pivot: WorldOrigin)
+	return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(x: 0 deg, y: 0 deg, z: a, around: Vec3{})
 }
 `
 	prog := parseTestProg(t, src)
@@ -104,7 +104,7 @@ func TestEvalVarArrayParam(t *testing.T) {
 fn First(arr []var) var { return arr[0] }
 fn Main() Solid {
 	var n = First(arr: [10, 20, 30])
-	return Cube(size: Vec3{x: n mm, y: n mm, z: n mm})
+	return Cube(s: Vec3{x: n mm, y: n mm, z: n mm})
 }
 `
 	prog := parseTestProg(t, src)
@@ -121,7 +121,7 @@ func TestEvalVarReturnInferredFromParam(t *testing.T) {
 fn Double(x var) var { return x + x }
 fn Main() Solid {
 	var n = Double(x: 5)
-	return Cube(size: Vec3{x: n mm, y: n mm, z: n mm})
+	return Cube(s: Vec3{x: n mm, y: n mm, z: n mm})
 }
 `
 	prog := parseTestProg(t, src)
@@ -138,7 +138,7 @@ func TestEvalVarParamMultipleArgs(t *testing.T) {
 fn Pair(a var, b var) var { return a }
 fn Main() Solid {
 	var n = Pair(a: 10, b: "hello")
-	return Cube(size: Vec3{x: n mm, y: n mm, z: n mm})
+	return Cube(s: Vec3{x: n mm, y: n mm, z: n mm})
 }
 `
 	prog := parseTestProg(t, src)
@@ -152,7 +152,7 @@ fn Main() Solid {
 func TestEvalVarParamPassedToConcreteFunction(t *testing.T) {
 	// var param value passed to a function expecting a concrete type
 	src := `
-fn Wrap(x var) Solid { return Cube(size: Vec3{x: x, y: x, z: x}) }
+fn Wrap(x var) Solid { return Cube(s: Vec3{x: x, y: x, z: x}) }
 fn Main() Solid { return Wrap(x: 10 mm) }
 `
 	prog := parseTestProg(t, src)
@@ -171,7 +171,7 @@ fn Repeat(n var, count Number) []var {
 }
 fn Main() Solid {
 	var arr = Repeat(n: 5 mm, count: 3)
-	return Cube(size: Vec3{x: arr[0], y: arr[1], z: arr[2]})
+	return Cube(s: Vec3{x: arr[0], y: arr[1], z: arr[2]})
 }
 `
 	prog := parseTestProg(t, src)
@@ -189,7 +189,7 @@ fn GetFirst(p var) var { return p.a }
 fn Main() Solid {
 	var p = Pair { a: 10 mm, b: 20 mm }
 	var v = GetFirst(p: p)
-	return Cube(size: Vec3{x: v, y: p.b, z: v})
+	return Cube(s: Vec3{x: v, y: p.b, z: v})
 }
 `
 	prog := parseTestProg(t, src)
@@ -207,7 +207,7 @@ fn Main() Solid {
 func TestEvalVarParamTypeMismatchAtUse(t *testing.T) {
 	// Passing a string where a Length is needed at the use site
 	src := `
-fn Wrap(x var) Solid { return Cube(size: Vec3{x: x, y: x, z: x}) }
+fn Wrap(x var) Solid { return Cube(s: Vec3{x: x, y: x, z: x}) }
 fn Main() Solid { return Wrap(x: "hello") }
 `
 	prog := parseTestProg(t, src)
@@ -223,7 +223,7 @@ func TestEvalVarReturnUsedAsWrongType(t *testing.T) {
 fn GetVal() var { return "not a length" }
 fn Main() Solid {
 	var v = GetVal()
-	return Cube(size: Vec3{x: v, y: v, z: v})
+	return Cube(s: Vec3{x: v, y: v, z: v})
 }
 `
 	prog := parseTestProg(t, src)
@@ -239,7 +239,7 @@ func TestEvalVarParamBadArithmetic(t *testing.T) {
 fn Double(x var) var { return x + x }
 fn Main() Solid {
 	var n = Double(x: true)
-	return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})
+	return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})
 }
 `
 	prog := parseTestProg(t, src)
@@ -258,7 +258,7 @@ func TestEvalVarArrayParamNonArray(t *testing.T) {
 fn First(arr []var) var { return arr[0] }
 fn Main() Solid {
 	var n = First(arr: 42)
-	return Cube(size: Vec3{x: n mm, y: n mm, z: n mm})
+	return Cube(s: Vec3{x: n mm, y: n mm, z: n mm})
 }
 `
 	prog := parseTestProg(t, src)
@@ -274,7 +274,7 @@ func TestEvalVarArrayParamEmptyArray(t *testing.T) {
 fn First(arr []var) var { return arr[0] }
 fn Main() Solid {
 	var n = First(arr: [])
-	return Cube(size: Vec3{x: n mm, y: n mm, z: n mm})
+	return Cube(s: Vec3{x: n mm, y: n mm, z: n mm})
 }
 `
 	prog := parseTestProg(t, src)
@@ -294,14 +294,14 @@ fn Main() Solid {
 func TestCheckVarParamNoError(t *testing.T) {
 	expectNoErrors(t, `
 fn Identity(x var) var { return x }
-fn Main() Solid { return Identity(x: Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})) }
+fn Main() Solid { return Identity(x: Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})) }
 `)
 }
 
 func TestCheckVarArrayParamNoError(t *testing.T) {
 	expectNoErrors(t, `
 fn First(arr []var) var { return arr[0] }
-fn Main() Solid { var n = First(arr: []Number[10,]); return Cube(size: Vec3{x: n mm, y: n mm, z: n mm}) }
+fn Main() Solid { var n = First(arr: []Number[10,]); return Cube(s: Vec3{x: n mm, y: n mm, z: n mm}) }
 `)
 }
 
@@ -313,7 +313,7 @@ fn Main() Solid {
 	var a = Identity(x: 42)
 	var b = Identity(x: "hello")
 	var c = Identity(x: 10 mm)
-	return Cube(size: Vec3{x: c, y: c, z: c})
+	return Cube(s: Vec3{x: c, y: c, z: c})
 }
 `)
 }
@@ -321,7 +321,7 @@ fn Main() Solid {
 func TestCheckVarReturnUsedAsSolid(t *testing.T) {
 	// var return type used directly as Solid — checker should allow
 	expectNoErrors(t, `
-fn MakeBox(s var) Solid { return Cube(size: Vec3{x: s, y: s, z: s}) }
+fn MakeBox(s var) Solid { return Cube(s: Vec3{x: s, y: s, z: s}) }
 fn Main() Solid { return MakeBox(s: 10 mm) }
 `)
 }
@@ -332,7 +332,7 @@ func TestCheckVarGroupConsistency(t *testing.T) {
 fn Add(a var, b var) var { return a + b }
 fn Main() Solid {
 	var n = Add(a: 10, b: "hello")
-	return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})
+	return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})
 }
 `
 	errs := checkSource(t, src)
@@ -353,7 +353,7 @@ func TestCheckVarArrayReturnType(t *testing.T) {
 fn Wrap(x var) []var { return []Length[x, x, x] }
 fn Main() Solid {
 	var arr = Wrap(x: 5 mm)
-	return Cube(size: Vec3{x: arr[0], y: arr[1], z: arr[2]})
+	return Cube(s: Vec3{x: arr[0], y: arr[1], z: arr[2]})
 }
 `)
 }

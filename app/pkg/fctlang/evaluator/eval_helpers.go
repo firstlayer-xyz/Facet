@@ -19,17 +19,14 @@ func requireLength(funcName string, argNum int, v value) (float64, error) {
 }
 
 // requireNumber extracts a plain numeric value from an argument.
-// Accepts both float64 and length (uses the mm value).
+// Only accepts float64 — Length is a distinct type under strict units, and
+// must be converted explicitly with Number(from: x) at the call site.
 func requireNumber(funcName string, argNum int, v value) (float64, error) {
 	v = unwrap(v)
-	switch n := v.(type) {
-	case float64:
+	if n, ok := v.(float64); ok {
 		return n, nil
-	case length:
-		return n.mm, nil
-	default:
-		return 0, fmt.Errorf("%s() argument %d must be a Number, got %s", funcName, argNum, typeName(v))
 	}
+	return 0, fmt.Errorf("%s() argument %d must be a Number, got %s (use Number(from: x) to convert Length explicitly)", funcName, argNum, typeName(v))
 }
 
 // requireAngle extracts the degree value from an angle argument.

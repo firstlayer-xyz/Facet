@@ -76,99 +76,33 @@ func (e *evaluator) catchReturn(err error, retType string, locals map[string]val
 // and callFunctionVal. It catches returnSignal errors from nested blocks/ifs and treats
 // them as function-level returns.
 func (e *evaluator) execBody(stmts []parser.Stmt, retType string, locals map[string]value) (value, error) {
+	policy := &stmtPolicy{
+		context:           "body",
+		catchReturnSignal: true,
+		retType:           retType,
+		// YieldStmt intentionally has no handler: yield at the top level of
+		// a function body is unexpected and dispatchStmt's default branch
+		// produces "unexpected yield statement in body" — same message the
+		// pre-unification switch emitted.
+		onReturn: func(s *parser.ReturnStmt, locals map[string]value) (bool, value, error) {
+			v, err := e.evalExpr(s.Value, locals)
+			if err != nil {
+				if rv, ok, err2 := e.catchReturn(err, retType, locals); ok {
+					return true, rv, err2
+				}
+				return true, nil, err
+			}
+			rv, rerr := e.funcReturn(retType, v, locals)
+			return true, rv, rerr
+		},
+	}
 	for _, stmt := range stmts {
-		if err := e.ctx.Err(); err != nil {
+		done, rv, err := e.dispatchStmt(stmt, locals, policy)
+		if err != nil {
 			return nil, err
 		}
-		switch s := stmt.(type) {
-		case *parser.ReturnStmt:
-			v, err := e.evalExpr(s.Value, locals)
-			if err != nil {
-				if v, ok, err2 := e.catchReturn(err, retType, locals); ok {
-					return v, err2
-				}
-				return nil, err
-			}
-			return e.funcReturn(retType, v, locals)
-		case *parser.VarStmt:
-			v, err := e.evalExpr(s.Value, locals)
-			if err != nil {
-				if v, ok, err2 := e.catchReturn(err, retType, locals); ok {
-					return v, err2
-				}
-				return nil, err
-			}
-			if s.Constraint != nil {
-				if cerr := e.validateConstraint(s.Name, s.Constraint, v, locals); cerr != nil {
-					return nil, e.wrapErr(s.Pos, cerr)
-				}
-			}
-			cv := copyValue(v)
-			if s.Constraint != nil {
-				cv = &constrainedVal{inner: cv, constraint: s.Constraint, name: s.Name}
-			}
-			if s.IsConst {
-				locals[s.Name] = &constVal{inner: cv}
-			} else {
-				locals[s.Name] = cv
-			}
-			e.trackIfSolid(s.Pos, cv)
-		case *parser.AssignStmt:
-			existing, ok := locals[s.Name]
-			if !ok {
-				return nil, e.errAt(s.Pos, "cannot assign to undefined variable %q", s.Name)
-			}
-			if isConst(existing) {
-				return nil, e.errAt(s.Pos, "cannot reassign const %q", s.Name)
-			}
-			v, err := e.evalExpr(s.Value, locals)
-			if err != nil {
-				if v, ok, err2 := e.catchReturn(err, retType, locals); ok {
-					return v, err2
-				}
-				return nil, err
-			}
-			// Re-validate constraint if the binding is constrained.
-			if cv, isCon := getConstraint(existing); isCon {
-				newVal := copyValue(v)
-				if cerr := e.validateConstraint(cv.name, cv.constraint, newVal, locals); cerr != nil {
-					return nil, e.wrapErr(s.Pos, cerr)
-				}
-				locals[s.Name] = &constrainedVal{inner: newVal, constraint: cv.constraint, name: cv.name}
-			} else {
-				locals[s.Name] = copyValue(v)
-			}
-			e.trackIfSolid(s.Pos, locals[s.Name])
-		case *parser.FieldAssignStmt:
-			if err := e.evalFieldAssign(s, locals); err != nil {
-				if v, ok, err2 := e.catchReturn(err, retType, locals); ok {
-					return v, err2
-				}
-				return nil, err
-			}
-		case *parser.AssertStmt:
-			if err := e.evalAssert(s, locals); err != nil {
-				if v, ok, err2 := e.catchReturn(err, retType, locals); ok {
-					return v, err2
-				}
-				return nil, err
-			}
-		case *parser.IfStmt:
-			if err := e.evalIfStmt(s, locals); err != nil {
-				if v, ok, err2 := e.catchReturn(err, retType, locals); ok {
-					return v, err2
-				}
-				return nil, err
-			}
-		case *parser.ExprStmt:
-			if _, err := e.evalExpr(s.Expr, locals); err != nil {
-				if v, ok, err2 := e.catchReturn(err, retType, locals); ok {
-					return v, err2
-				}
-				return nil, err
-			}
-		default:
-			return nil, fmt.Errorf("unexpected %s statement in body", stmtKind(stmt))
+		if done {
+			return rv, nil
 		}
 	}
 	return nil, nil

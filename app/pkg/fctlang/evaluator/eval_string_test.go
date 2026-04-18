@@ -28,7 +28,7 @@ func TestEvalStringComparison(t *testing.T) {
 			if !tt.want {
 				branch, other = other, branch
 			}
-			src := `fn Main() { if ` + tt.op + ` { return Cube(size: Vec3{x: ` + branch + `, y: ` + branch + `, z: ` + branch + `}); } else { return Cube(size: Vec3{x: ` + other + `, y: ` + other + `, z: ` + other + `}); } }`
+			src := `fn Main() { if ` + tt.op + ` { return Cube(s: Vec3{x: ` + branch + `, y: ` + branch + `, z: ` + branch + `}); } else { return Cube(s: Vec3{x: ` + other + `, y: ` + other + `, z: ` + other + `}); } }`
 			prog := parseTestProg(t, src)
 			mesh, err := evalMerged(context.Background(), prog, nil)
 			if err != nil {
@@ -48,9 +48,9 @@ fn Main() {
     var b = " world";
     var c = a + b;
     if c == "hello world" {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -69,9 +69,9 @@ func TestEvalStringLength(t *testing.T) {
 fn Main() {
     var s = "hello";
     if Size(of: s) == 5 {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -90,9 +90,9 @@ func TestEvalStringSubStr(t *testing.T) {
 fn Main() {
     var s = "hello world";
     if s.SubStr(start: 0, length: 5) == "hello" {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -111,9 +111,9 @@ func TestEvalStringHasPrefixSuffix(t *testing.T) {
 fn Main() {
     var s = "hello world";
     if s.HasPrefix(prefix: "hello") && s.HasSuffix(suffix: "world") {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -133,9 +133,9 @@ func TestEvalStringMatch(t *testing.T) {
 		"    var s = \"m30x2\";\n" +
 		"    var m = s.Match(pattern: `m(\\d+)x([\\d.]+)`);\n" +
 		"    if Size(of: m) == 3 && m[0] == \"m30x2\" && m[1] == \"30\" && m[2] == \"2\" {\n" +
-		"        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});\n" +
+		"        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});\n" +
 		"    } else {\n" +
-		"        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});\n" +
+		"        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});\n" +
 		"    }\n" +
 		"}\n"
 	prog := parseTestProg(t, src)
@@ -155,9 +155,9 @@ fn Main() {
     var s = "hello";
     var m = s.Match(pattern: "xyz");
     if Size(of: m) == 0 {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -178,9 +178,9 @@ func TestEvalStringMatchTruthiness(t *testing.T) {
 		"    var matched = s.Match(pattern: `m\\d+`);\n" +
 		"    var noMatch = s.Match(pattern: \"xyz\");\n" +
 		"    if matched == true && noMatch == false {\n" +
-		"        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});\n" +
+		"        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});\n" +
 		"    } else {\n" +
-		"        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});\n" +
+		"        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});\n" +
 		"    }\n" +
 		"}\n"
 	prog := parseTestProg(t, src)
@@ -198,7 +198,7 @@ func TestEvalStringMatchInvalidRegex(t *testing.T) {
 fn Main() {
     var s = "hello";
     var m = s.Match(pattern: "[invalid");
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)

@@ -1,21 +1,16 @@
-import type { SettingsPageContext, PageResult } from './settings_appearance';
 import {
   ClearLibCache, ForkLibrary, GetLibraryDir, InstallLibrary, ListLibraries, ListLocalLibraries,
   ListLibraryFolders, PullAllLibraries, RevealInFileManager, UpdateLibrary,
 } from '../wailsjs/go/main/App';
-
-async function asyncButton(btn: HTMLButtonElement, loadingText: string, action: () => Promise<void>) {
-  const original = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = loadingText;
-  try {
-    await action();
-    btn.textContent = 'Done';
-  } catch {
-    btn.textContent = 'Error';
-  }
-  setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2000);
-}
+import {
+  settingsCheckboxRow,
+  settingsSectionHeader,
+  settingsMessage,
+  asyncButton,
+  type SettingsPageContext,
+  type PageResult,
+} from './settings_ui';
+import { reportError } from './toast';
 
 interface LibraryInfo {
   id: string;
@@ -29,31 +24,15 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
   const page = document.createElement('div');
   page.className = 'settings-page';
 
-  // Auto-pull on launch checkbox
-  const autoPullRow = document.createElement('div');
-  autoPullRow.className = 'settings-checkbox-row';
-
-  const autoPullCheckbox = document.createElement('input');
-  autoPullCheckbox.type = 'checkbox';
-  autoPullCheckbox.id = 'settings-auto-pull';
-  autoPullCheckbox.checked = draft.librarySettings.autoPull;
-  autoPullCheckbox.addEventListener('change', () => {
-    draft.librarySettings.autoPull = autoPullCheckbox.checked;
-  });
-
-  const autoPullLabel = document.createElement('label');
-  autoPullLabel.htmlFor = 'settings-auto-pull';
-  autoPullLabel.textContent = 'Auto-pull on launch';
-
-  autoPullRow.appendChild(autoPullCheckbox);
-  autoPullRow.appendChild(autoPullLabel);
-  page.appendChild(autoPullRow);
+  page.appendChild(settingsCheckboxRow(
+    'settings-auto-pull',
+    'Auto-pull on launch',
+    draft.librarySettings.autoPull,
+    v => { draft.librarySettings.autoPull = v; },
+  ));
 
   // --- Local Libraries section ---
-  const localHeader = document.createElement('h3');
-  localHeader.textContent = 'Local';
-  localHeader.style.margin = '12px 0 6px';
-  page.appendChild(localHeader);
+  page.appendChild(settingsSectionHeader('Local'));
 
   const localList = document.createElement('div');
   localList.id = 'settings-local-lib-list';
@@ -74,7 +53,7 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
   const pullAllBtn = document.createElement('button');
   pullAllBtn.className = 'settings-module-remove';
   pullAllBtn.textContent = 'Pull All';
-  pullAllBtn.addEventListener('click', () => asyncButton(pullAllBtn, 'Pulling...', async () => {
+  pullAllBtn.addEventListener('click', () => asyncButton(pullAllBtn, 'Pulling...', 'PullAllLibraries', async () => {
     await PullAllLibraries();
     loadAndRender();
   }));
@@ -83,7 +62,7 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
   const clearCacheBtn = document.createElement('button');
   clearCacheBtn.className = 'settings-module-remove';
   clearCacheBtn.textContent = 'Clear Cache';
-  clearCacheBtn.addEventListener('click', () => asyncButton(clearCacheBtn, 'Clearing...', async () => {
+  clearCacheBtn.addEventListener('click', () => asyncButton(clearCacheBtn, 'Clearing...', 'ClearLibCache', async () => {
     await ClearLibCache();
     loadAndRender();
   }));
@@ -103,7 +82,7 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
   }
   async function loadAndRenderInner() {
     // Render local libraries grouped by folder
-    localList.innerHTML = '<div style="color:#888">Loading...</div>';
+    localList.replaceChildren(settingsMessage('Loading...'));
     try {
       const [folders, locals]: [string[], LibraryInfo[]] = await Promise.all([
         ListLibraryFolders(),
@@ -121,7 +100,7 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
       }
 
       if (byFolder.size === 0) {
-        localList.innerHTML = '<div style="color:#888">No local libraries</div>';
+        localList.replaceChildren(settingsMessage('No local libraries'));
       } else {
         for (const [folder, libs] of byFolder) {
           const folderEl = document.createElement('div');
@@ -174,17 +153,18 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
           localList.appendChild(folderEl);
         }
       }
-    } catch {
-      localList.innerHTML = '<div style="color:#888">Failed to load local libraries</div>';
+    } catch (err) {
+      localList.replaceChildren(settingsMessage('Failed to load local libraries'));
+      reportError('ListLocalLibraries', err);
     }
 
     // Render cached libraries
-    cachedList.innerHTML = '<div style="color:#888">Loading...</div>';
+    cachedList.replaceChildren(settingsMessage('Loading...'));
     try {
       const libs: LibraryInfo[] = await ListLibraries();
       cachedList.innerHTML = '';
       if (!libs || libs.length === 0) {
-        cachedList.innerHTML = '<div style="color:#888">No cached libraries</div>';
+        cachedList.replaceChildren(settingsMessage('No cached libraries'));
       } else {
         for (const lib of libs) {
           const row = document.createElement('div');
@@ -207,7 +187,7 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
           const updateBtn = document.createElement('button');
           updateBtn.className = 'settings-module-remove';
           updateBtn.textContent = 'Update';
-          updateBtn.addEventListener('click', () => asyncButton(updateBtn, '...', async () => {
+          updateBtn.addEventListener('click', () => asyncButton(updateBtn, '...', 'UpdateLibrary', async () => {
             await UpdateLibrary(lib.id, lib.ref);
           }));
 
@@ -215,7 +195,7 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
           forkBtn.className = 'settings-module-remove';
           forkBtn.textContent = 'Fork';
           forkBtn.title = 'Copy to local libraries for editing';
-          forkBtn.addEventListener('click', () => asyncButton(forkBtn, '...', async () => {
+          forkBtn.addEventListener('click', () => asyncButton(forkBtn, '...', 'ForkLibrary', async () => {
             await ForkLibrary(lib.id, lib.ref);
             loadAndRender();
           }));
@@ -228,8 +208,9 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
           cachedList.appendChild(row);
         }
       }
-    } catch {
-      cachedList.innerHTML = '<div style="color:#888">Failed to load cached libraries</div>';
+    } catch (err) {
+      cachedList.replaceChildren(settingsMessage('Failed to load cached libraries'));
+      reportError('ListLibraries', err);
     }
   }
 
@@ -264,8 +245,8 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
       addBtn.textContent = 'Clone';
       addBtn.disabled = false;
       loadAndRender();
-    } catch (e: any) {
-      console.error('CloneLibrary:', e);
+    } catch (err) {
+      reportError('InstallLibrary', err);
       addBtn.textContent = 'Error';
       addBtn.disabled = false;
     }

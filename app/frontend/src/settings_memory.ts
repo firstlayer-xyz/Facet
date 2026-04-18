@@ -1,6 +1,12 @@
-import type { SettingsPageContext, PageResult } from './settings_appearance';
 import { GetMemoryLimit, MemStats, RunGC, SetMemoryLimit } from '../wailsjs/go/main/App';
-import { styleButton, styleInput } from './settings_ui';
+import {
+  styleButton,
+  styleInput,
+  settingsHelp,
+  type SettingsPageContext,
+  type PageResult,
+} from './settings_ui';
+import { reportError } from './toast';
 
 export function buildMemoryPage(ctx: SettingsPageContext): PageResult {
   const page = document.createElement('div');
@@ -38,8 +44,9 @@ export function buildMemoryPage(ctx: SettingsPageContext): PageResult {
       lines.push(`  Total from OS: ${fmtMB(go.sys)}`);
       lines.push(`  External (C):  ${fmtMB(go.externalMemory)}`);
       lines.push(`  GC cycles:     ${go.numGC}`);
-    } catch {
+    } catch (err) {
       lines.push('Go stats: unavailable');
+      reportError('MemStats', err);
     }
 
     const perf = (performance as any).memory;
@@ -118,18 +125,17 @@ export function buildMemoryPage(ctx: SettingsPageContext): PageResult {
   limitRow.appendChild(defaultBtn);
   page.appendChild(limitRow);
 
-  const limitHint = document.createElement('div');
-  limitHint.style.color = 'var(--ui-text-dim)';
-  limitHint.style.fontSize = '11px';
-  limitHint.style.marginTop = '4px';
-  limitHint.textContent = 'Go runtime soft memory limit. 0 = default (8 GB). Persisted across restarts.';
-  page.appendChild(limitHint);
+  page.appendChild(settingsHelp(
+    'Go runtime soft memory limit. 0 = default (8 GB). Persisted across restarts.',
+    'hint',
+  ));
 
   // Load current value from backend
   GetMemoryLimit().then((gb: number) => {
     memInput.value = String(gb);
-  }).catch(() => {
+  }).catch((err) => {
     memInput.value = '0';
+    reportError('GetMemoryLimit', err);
   });
 
   setBtn.addEventListener('click', () => {

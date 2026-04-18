@@ -92,6 +92,110 @@ fn Main() Number {
 	}
 }
 
+// parseTwoLibProg parses mainSrc plus two library sources seeded at distinct
+// paths — simulating the same repo imported twice at different commit hashes.
+// Both libraries can define overlapping type and function names; the checker
+// should treat them as independent namespaces.
+func parseTwoLibProg(t *testing.T, mainSrc, libSrcA, libSrcB, libPathA, libPathB string) *fctchecker.Result {
+	t.Helper()
+	prog := parseTestProg(t, mainSrc)
+
+	libA, err := parser.Parse(libSrcA, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse library A: %v", err)
+	}
+	libA.Path = libPathA
+	libA.Text = libSrcA
+	prog.Sources[libPathA] = libA
+
+	libB, err := parser.Parse(libSrcB, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse library B: %v", err)
+	}
+	libB.Path = libPathB
+	libB.Text = libSrcB
+	prog.Sources[libPathB] = libB
+
+	return fctchecker.Check(prog)
+}
+
+// TestSameLibraryTwoHashesCoexist verifies that importing the same library
+// repo under two different refs (e.g. commit hashes) yields two independent
+// namespaces. Same-named types from each import are distinct identities and
+// may appear side-by-side in the same program.
+func TestSameLibraryTwoHashesCoexist(t *testing.T) {
+	// Shared *source*, simulating two copies of the same lib at different commits.
+	const libSrc = `
+type Widget {
+	size Number
+}
+
+fn NewWidget(size Number) Widget { return Widget{size: size} }
+
+fn Widget.Double() Number { return self.size * 2 }
+`
+	const mainSrc = `
+var A = lib "github.com/x/libA@hash1"
+var B = lib "github.com/x/libA@hash2"
+
+fn Main() Number {
+	var a = A.NewWidget(size: 3)
+	var b = B.NewWidget(size: 7)
+	return a.Double() + b.Double()
+}
+`
+	result := parseTwoLibProg(t, mainSrc, libSrc, libSrc,
+		"github.com/x/libA@hash1", "github.com/x/libA@hash2")
+
+	for _, e := range result.Errors {
+		t.Errorf("unexpected checker error at %d:%d: %s", e.Line, e.Col, e.Message)
+	}
+}
+
+// TestSameLibraryTwoHashesTypesAreDistinct verifies that a Widget from the
+// hash1 import is NOT assignable to a parameter typed against the hash2
+// import's Widget — the checker must reject the mix-up.
+func TestSameLibraryTwoHashesTypesAreDistinct(t *testing.T) {
+	const libSrc = `
+type Widget {
+	size Number
+}
+
+fn NewWidget(size Number) Widget { return Widget{size: size} }
+`
+	// accept() is declared in alias B's namespace but receives an A.Widget.
+	// The checker should reject this because A.Widget and B.Widget are
+	// different types despite sharing a source.
+	const mainSrc = `
+var A = lib "github.com/x/libA@hash1"
+var B = lib "github.com/x/libA@hash2"
+
+fn accept(w B.Widget) Number { return w.size }
+
+fn Main() Number {
+	var a = A.NewWidget(size: 3)
+	return accept(w: a)
+}
+`
+	result := parseTwoLibProg(t, mainSrc, libSrc, libSrc,
+		"github.com/x/libA@hash1", "github.com/x/libA@hash2")
+
+	if len(result.Errors) == 0 {
+		t.Fatal("expected checker error when passing A.Widget where B.Widget is required, got none")
+	}
+	// Sanity: the error should be about the argument type, not something unrelated.
+	var typeMismatch bool
+	for _, e := range result.Errors {
+		msg := strings.ToLower(e.Message)
+		if strings.Contains(msg, "widget") || strings.Contains(msg, "type") || strings.Contains(msg, "argument") {
+			typeMismatch = true
+		}
+	}
+	if !typeMismatch {
+		t.Errorf("expected a type-mismatch error mentioning Widget/type/argument; got %v", result.Errors)
+	}
+}
+
 func TestCannotAddQualifiedMethodToLibraryType(t *testing.T) {
 	// fn mylib.Widget.Double() — two dots — should be rejected at parse time.
 	// The parser only supports fn Type.Method (one dot), so this is a syntax error.

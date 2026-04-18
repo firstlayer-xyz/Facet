@@ -29,117 +29,66 @@ func (e *evaluator) evalBlock(body []parser.Stmt, enclosing map[string]value) (v
 	// Track which vars are declared inside this block (don't propagate).
 	blockLocal := make(map[string]bool)
 
+	policy := &stmtPolicy{
+		context: "block",
+		onReturn: func(s *parser.ReturnStmt, locals map[string]value) (bool, value, error) {
+			v, err := e.evalExpr(s.Value, locals)
+			if err != nil {
+				return true, nil, err
+			}
+			return true, nil, &returnSignal{val: v}
+		},
+		onYield: func(s *parser.YieldStmt, locals map[string]value) error {
+			return e.blockYield(s, locals)
+		},
+		onVar: func(name string) {
+			blockLocal[name] = true
+		},
+		onAssign: func(name string, newVal value) {
+			if !blockLocal[name] {
+				enclosing[name] = newVal
+			}
+		},
+	}
+
 	for _, stmt := range body {
-		if err := e.ctx.Err(); err != nil {
+		done, _, err := e.dispatchStmt(stmt, locals, policy)
+		if err != nil || done {
 			return nil, err
-		}
-		switch s := stmt.(type) {
-		case *parser.ReturnStmt:
-			v, err := e.evalExpr(s.Value, locals)
-			if err != nil {
-				return nil, err
-			}
-			return nil, &returnSignal{val: v}
-		case *parser.YieldStmt:
-			if e.foldAcc != nil {
-				// Inside fold: yield sets the accumulator
-				if s.Value == nil {
-					continue
-				}
-				v, err := e.evalExpr(s.Value, locals)
-				if err != nil {
-					return nil, err
-				}
-				*e.foldAcc = v
-			} else if e.yieldTarget != nil {
-				// Inside for-yield: yield appends to results
-				if s.Value == nil {
-					continue
-				}
-				v, err := e.evalExpr(s.Value, locals)
-				if err != nil {
-					return nil, err
-				}
-				*e.yieldTarget = append(*e.yieldTarget, v)
-			} else {
-				return nil, e.errAt(s.Pos, "yield outside of for-yield or fold")
-			}
-		case *parser.VarStmt:
-			v, err := e.evalExpr(s.Value, locals)
-			if err != nil {
-				return nil, err
-			}
-			if s.Constraint != nil {
-				if cerr := e.validateConstraint(s.Name, s.Constraint, v, locals); cerr != nil {
-					return nil, e.wrapErr(s.Pos, cerr)
-				}
-			}
-			cv := copyValue(v)
-			if s.Constraint != nil {
-				cv = &constrainedVal{inner: cv, constraint: s.Constraint, name: s.Name}
-			}
-			if s.IsConst {
-				locals[s.Name] = &constVal{inner: cv}
-			} else {
-				locals[s.Name] = cv
-			}
-			e.trackIfSolid(s.Pos, cv)
-			blockLocal[s.Name] = true
-		case *parser.AssignStmt:
-			existing, ok := locals[s.Name]
-			if !ok {
-				return nil, e.errAt(s.Pos, "cannot assign to undefined variable %q", s.Name)
-			}
-			if isConst(existing) {
-				return nil, e.errAt(s.Pos, "cannot reassign const %q", s.Name)
-			}
-			v, err := e.evalExpr(s.Value, locals)
-			if err != nil {
-				return nil, err
-			}
-			// Re-validate constraint if the binding is constrained.
-			var newVal value
-			if con, isCon := getConstraint(existing); isCon {
-				newVal = copyValue(v)
-				if cerr := e.validateConstraint(con.name, con.constraint, newVal, locals); cerr != nil {
-					return nil, e.wrapErr(s.Pos, cerr)
-				}
-				newVal = &constrainedVal{inner: newVal, constraint: con.constraint, name: con.name}
-			} else {
-				newVal = copyValue(v)
-			}
-			locals[s.Name] = newVal
-			e.trackIfSolid(s.Pos, newVal)
-			// Propagate to enclosing scope if not a block-local var.
-			if !blockLocal[s.Name] {
-				enclosing[s.Name] = newVal
-			}
-		case *parser.FieldAssignStmt:
-			if ident, ok := s.Receiver.(*parser.IdentExpr); ok {
-				if _, ok := locals[ident.Name].(*constVal); ok {
-					return nil, e.errAt(s.Pos, "cannot mutate field on const %q", ident.Name)
-				}
-			}
-			if err := e.evalFieldAssign(s, locals); err != nil {
-				return nil, err
-			}
-		case *parser.IfStmt:
-			if err := e.evalIfStmt(s, locals); err != nil {
-				return nil, err
-			}
-		case *parser.AssertStmt:
-			if err := e.evalAssert(s, locals); err != nil {
-				return nil, err
-			}
-		case *parser.ExprStmt:
-			if _, err := e.evalExpr(s.Expr, locals); err != nil {
-				return nil, err
-			}
-		default:
-			return nil, fmt.Errorf("unexpected %s statement in block", stmtKind(stmt))
 		}
 	}
 	return nil, nil
+}
+
+// blockYield implements yield within an if/else block. A yield inside a
+// block can only make sense if it is dynamically nested in either a fold
+// (foldAcc is live) or a for-yield loop (yieldTarget is live); otherwise
+// it is a static error at the yield's position.
+func (e *evaluator) blockYield(s *parser.YieldStmt, locals map[string]value) error {
+	switch {
+	case e.foldAcc != nil:
+		if s.Value == nil {
+			return nil
+		}
+		v, err := e.evalExpr(s.Value, locals)
+		if err != nil {
+			return err
+		}
+		*e.foldAcc = v
+		return nil
+	case e.yieldTarget != nil:
+		if s.Value == nil {
+			return nil
+		}
+		v, err := e.evalExpr(s.Value, locals)
+		if err != nil {
+			return err
+		}
+		*e.yieldTarget = append(*e.yieldTarget, v)
+		return nil
+	default:
+		return e.errAt(s.Pos, "yield outside of for-yield or fold")
+	}
 }
 
 func (e *evaluator) evalForYield(ex *parser.ForYieldExpr, locals map[string]value) (value, error) {
@@ -194,92 +143,36 @@ func (e *evaluator) evalForClauses(clauses []*parser.ForClause, idx int, body []
 
 // evalForBody executes the body of a for-yield loop, collecting yielded values.
 func (e *evaluator) evalForBody(body []parser.Stmt, locals map[string]value, results *[]value) error {
-	for _, stmt := range body {
-		if err := e.ctx.Err(); err != nil {
-			return err
-		}
-		switch s := stmt.(type) {
-		case *parser.YieldStmt:
-			// Bare yield; — skip this iteration
+	policy := &stmtPolicy{
+		context: "for-yield body",
+		onReturn: func(s *parser.ReturnStmt, locals map[string]value) (bool, value, error) {
+			// `return` inside for-yield is a static error — a for-yield
+			// produces an array, there is no function to return from at
+			// this level.
+			return false, nil, fmt.Errorf("use 'yield' instead of 'return' inside for-yield loops")
+		},
+		onYield: func(s *parser.YieldStmt, locals map[string]value) error {
+			// Bare yield (no value) skips this iteration.
 			if s.Value == nil {
-				continue
+				return nil
 			}
 			v, err := e.evalExpr(s.Value, locals)
 			if err != nil {
 				return err
 			}
-			// nil means the expression had no value (e.g. if-without-else where
-			// the branch contained explicit yields). Skip it.
+			// nil means the expression had no value (e.g. if-without-else
+			// where the branch contained explicit yields). Skip it.
 			if v != nil {
 				*results = append(*results, v)
 			}
-		case *parser.VarStmt:
-			v, err := e.evalExpr(s.Value, locals)
-			if err != nil {
-				return err
-			}
-			if s.Constraint != nil {
-				if cerr := e.validateConstraint(s.Name, s.Constraint, v, locals); cerr != nil {
-					return e.wrapErr(s.Pos, cerr)
-				}
-			}
-			cv := copyValue(v)
-			if s.Constraint != nil {
-				cv = &constrainedVal{inner: cv, constraint: s.Constraint, name: s.Name}
-			}
-			if s.IsConst {
-				locals[s.Name] = &constVal{inner: cv}
-			} else {
-				locals[s.Name] = cv
-			}
-			e.trackIfSolid(s.Pos, cv)
-		case *parser.AssignStmt:
-			existing, ok := locals[s.Name]
-			if !ok {
-				return e.errAt(s.Pos, "cannot assign to undefined variable %q", s.Name)
-			}
-			if isConst(existing) {
-				return e.errAt(s.Pos, "cannot reassign const %q", s.Name)
-			}
-			v, err := e.evalExpr(s.Value, locals)
-			if err != nil {
-				return err
-			}
-			if con, isCon := getConstraint(existing); isCon {
-				newVal := copyValue(v)
-				if cerr := e.validateConstraint(con.name, con.constraint, newVal, locals); cerr != nil {
-					return e.wrapErr(s.Pos, cerr)
-				}
-				locals[s.Name] = &constrainedVal{inner: newVal, constraint: con.constraint, name: con.name}
-			} else {
-				locals[s.Name] = copyValue(v)
-			}
-			e.trackIfSolid(s.Pos, locals[s.Name])
-		case *parser.FieldAssignStmt:
-			if ident, ok := s.Receiver.(*parser.IdentExpr); ok {
-				if _, ok := locals[ident.Name].(*constVal); ok {
-					return e.errAt(s.Pos, "cannot mutate field on const %q", ident.Name)
-				}
-			}
-			if err := e.evalFieldAssign(s, locals); err != nil {
-				return err
-			}
-		case *parser.IfStmt:
-			if err := e.evalIfStmt(s, locals); err != nil {
-				return err
-			}
-		case *parser.AssertStmt:
-			if err := e.evalAssert(s, locals); err != nil {
-				return err
-			}
-		case *parser.ExprStmt:
-			if _, err := e.evalExpr(s.Expr, locals); err != nil {
-				return err
-			}
-		case *parser.ReturnStmt:
-			return fmt.Errorf("use 'yield' instead of 'return' inside for-yield loops")
-		default:
-			return fmt.Errorf("unexpected %s statement in for-yield body", stmtKind(stmt))
+			return nil
+		},
+	}
+
+	for _, stmt := range body {
+		_, _, err := e.dispatchStmt(stmt, locals, policy)
+		if err != nil {
+			return err
 		}
 	}
 	return nil

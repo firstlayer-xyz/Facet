@@ -304,7 +304,7 @@ func (p *parser) parseBodyStmts(isForYield bool, context string) ([]Stmt, error)
 				if isCompound {
 					val = &BinaryExpr{Op: op, Left: ident, Right: val, Pos: Pos{opLine, opCol}}
 				}
-				if _, err := p.expect(TokenSemicolon); err != nil {
+				if err := p.consumeOptionalSemi(); err != nil {
 					return nil, err
 				}
 				as := &AssignStmt{Name: ident.Name, Value: val, Pos: Pos{ident.Pos.Line, ident.Pos.Col}, Comments: comments}
@@ -333,7 +333,7 @@ func (p *parser) parseBodyStmts(isForYield bool, context string) ([]Stmt, error)
 				if isCompound {
 					val = &BinaryExpr{Op: op, Left: fa, Right: val, Pos: Pos{opLine, opCol}}
 				}
-				if _, err := p.expect(TokenSemicolon); err != nil {
+				if err := p.consumeOptionalSemi(); err != nil {
 					return nil, err
 				}
 				fas := &FieldAssignStmt{Receiver: fa.Receiver, Field: fa.Field, Value: val, Pos: fa.Pos, Comments: comments}

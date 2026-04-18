@@ -143,14 +143,15 @@ ZIGEOF
 fi
 
 # --- cmake toolchain file ---
-# When building natively (host == target), skip zig wrappers and use system compiler
+# When building natively (host == target), always use the system compiler.
+# Zig is only needed for cross-compilation — and routing native builds through
+# `zig ar` breaks on recent zig versions (e.g. 0.16 on macOS where `zig ar`
+# fails with "unable to open ...: No such file or directory"). The system
+# compiler also produces artifacts indistinguishable from non-zig builds,
+# which keeps native dev paths stable.
 HOST_TARGET="$(detect_host_target)"
 USE_TOOLCHAIN=true
-if [[ "$HOST_TARGET" == "$TARGET" ]] && ! command -v zig >/dev/null 2>&1; then
-  # No zig available but building for host — use system compiler
-  USE_TOOLCHAIN=false
-elif [[ "$HOST_TARGET" == "$TARGET" ]] && [[ "$TARGET" == windows-* ]]; then
-  # Native Windows build — use system compiler (MSVC/MinGW), zig wrappers don't work
+if [[ "$HOST_TARGET" == "$TARGET" ]]; then
   USE_TOOLCHAIN=false
 fi
 

@@ -103,9 +103,11 @@ func (e *evaluator) run() (*EvalResult, error) {
 		return nil, &parser.SourceError{Line: 1, Col: 1, Message: fmt.Sprintf("no %s() function found", e.entryPoint)}
 	}
 
-	if entryFn.ReturnType != "" && entryFn.ReturnType != "Solid" && entryFn.ReturnType != "[]Solid" && entryFn.ReturnType != "PolyMesh" {
-		return nil, e.errAt(entryFn.Pos, "%s() must have return type Solid, []Solid, or PolyMesh, got %s", e.entryPoint, entryFn.ReturnType)
-	}
+	// Return-type validation is a static constraint enforced in the checker
+	// (see checker.Result.ValidateEntryPoint). The runtime switch on the
+	// actual returned value below is the remaining defense: it rejects
+	// values that the checker could not pin down (e.g. unannotated entry
+	// points whose inferred type was typeUnknown).
 
 	// Build argument map for entry point: use overrides for params with constraints, else defaults.
 	args := make(map[string]value)
@@ -218,53 +220,77 @@ func extractSolids(entryPoint string, arr array) ([]*manifold.Solid, error) {
 	return solids, nil
 }
 
-// arrangeGrid places solids in a grid layout.
-// cols <= 0 means auto (ceil(sqrt(n))). gap < 0 means auto (10% of largest cell dimension).
-// All solids are translated so their Z minimum is 0 and they are arranged in a cols-wide grid along X/Y.
-func arrangeGrid(solids []*manifold.Solid, cols int, gap float64) []*manifold.Solid {
+// arrangeLayout packs solids on the X/Y plane using a shelf bin-packing
+// algorithm. Items are sorted by footprint area (descending) and greedily
+// placed left-to-right onto shelves; a new shelf starts when the next item
+// would exceed the target row width. The target width is chosen so the
+// overall layout is roughly square. All solids are translated so Z=0 rests
+// on the build plate. The returned slice preserves the input order.
+// gap < 0 means auto (10% of the largest footprint dimension).
+func arrangeLayout(solids []*manifold.Solid, gap float64) []*manifold.Solid {
 	n := len(solids)
 	if n == 0 {
 		return solids
 	}
 
-	type bbox struct{ minX, minY, minZ, maxX, maxY, maxZ float64 }
-	boxes := make([]bbox, n)
-	var maxWidth, maxDepth float64
+	type item struct {
+		idx                                int
+		s                                  *manifold.Solid
+		minX, minY, minZ, maxX, maxY, maxZ float64
+		w, d                               float64
+	}
+
+	items := make([]item, n)
+	var totalArea, maxSide float64
 	for i, s := range solids {
 		minX, minY, minZ, maxX, maxY, maxZ := s.BoundingBox()
-		boxes[i] = bbox{minX, minY, minZ, maxX, maxY, maxZ}
-		if w := maxX - minX; w > maxWidth {
-			maxWidth = w
+		w := maxX - minX
+		d := maxY - minY
+		items[i] = item{i, s, minX, minY, minZ, maxX, maxY, maxZ, w, d}
+		totalArea += w * d
+		if w > maxSide {
+			maxSide = w
 		}
-		if d := maxY - minY; d > maxDepth {
-			maxDepth = d
+		if d > maxSide {
+			maxSide = d
 		}
 	}
 
-	if cols <= 0 {
-		cols = int(math.Ceil(math.Sqrt(float64(n))))
-	}
-	if cols > n {
-		cols = n
-	}
 	if gap < 0 {
-		gap = math.Max(maxWidth, maxDepth) * 0.1
+		gap = maxSide * 0.1
 	}
-	cellW := maxWidth + gap
-	cellD := maxDepth + gap
+
+	// Sort by footprint area descending (largest first).
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].w*items[i].d > items[j].w*items[j].d
+	})
+
+	// Target shelf width: roughly square overall layout, but never narrower
+	// than the widest item.
+	targetWidth := math.Sqrt(totalArea)
+	for _, it := range items {
+		if it.w > targetWidth {
+			targetWidth = it.w
+		}
+	}
 
 	result := make([]*manifold.Solid, n)
-	for i, s := range solids {
-		col := i % cols
-		row := i / cols
-		cx := float64(col) * cellW
-		cy := float64(row) * cellD
-		curCX := (boxes[i].minX + boxes[i].maxX) / 2
-		curCY := (boxes[i].minY + boxes[i].maxY) / 2
-		dx := cx - curCX
-		dy := cy - curCY
-		dz := -boxes[i].minZ
-		result[i] = s.Translate(dx, dy, dz)
+	var shelfX, shelfY, shelfH float64
+	for _, it := range items {
+		if shelfX > 0 && shelfX+it.w > targetWidth {
+			// Start a new shelf.
+			shelfY += shelfH + gap
+			shelfX = 0
+			shelfH = 0
+		}
+		dx := shelfX - it.minX
+		dy := shelfY - it.minY
+		dz := -it.minZ
+		result[it.idx] = it.s.Translate(dx, dy, dz)
+		shelfX += it.w + gap
+		if it.d > shelfH {
+			shelfH = it.d
+		}
 	}
 	return result
 }

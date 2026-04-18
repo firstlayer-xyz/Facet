@@ -1,25 +1,21 @@
-import type { SettingsPageContext, PageResult } from './settings_appearance';
 import { DetectSlicers } from '../wailsjs/go/main/App';
+import {
+  settingsRow,
+  settingsHelp,
+  type SettingsPageContext,
+  type PageResult,
+} from './settings_ui';
 
 export function buildSlicerPage(ctx: SettingsPageContext): PageResult {
   const { draft } = ctx;
   const page = document.createElement('div');
   page.className = 'settings-page';
 
-  const desc = document.createElement('div');
-  desc.style.color = '#888';
-  desc.style.fontSize = '13px';
-  desc.style.marginBottom = '16px';
-  desc.textContent = 'Choose which slicer to use when sending models. Detected slicers are listed below.';
-  page.appendChild(desc);
+  page.appendChild(settingsHelp(
+    'Choose which slicer to use when sending models. Detected slicers are listed below.',
+  ));
 
   // Default slicer dropdown
-  const row = document.createElement('div');
-  row.className = 'settings-color-row';
-
-  const label = document.createElement('label');
-  label.textContent = 'Default Slicer';
-
   const select = document.createElement('select');
   select.style.minWidth = '200px';
 
@@ -51,16 +47,12 @@ export function buildSlicerPage(ctx: SettingsPageContext): PageResult {
     draft.slicer.defaultSlicer = select.value;
   });
 
-  row.appendChild(label);
-  row.appendChild(select);
-  page.appendChild(row);
+  page.appendChild(settingsRow('Default Slicer', select));
 
-  const hint = document.createElement('div');
-  hint.style.color = '#666';
-  hint.style.fontSize = '11px';
-  hint.style.marginTop = '4px';
-  hint.textContent = 'Supported: BambuStudio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, AnycubicSlicer, Anycubic Photon Workshop. Install to /Applications on macOS.';
-  page.appendChild(hint);
+  page.appendChild(settingsHelp(
+    'Supported: BambuStudio, OrcaSlicer, PrusaSlicer, UltiMaker Cura, AnycubicSlicer, Anycubic Photon Workshop. Install to /Applications on macOS.',
+    'hint',
+  ));
 
   return { el: page };
 }

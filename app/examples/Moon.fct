@@ -62,9 +62,7 @@ fn MoonPhase(date String) Number {
     var synodic = 29.53059 # synodic period in days
     var days = jd - epoch
     var phase = days / synodic - Floor(n: days / synodic)
-    if phase < 0 {
-        return phase + 1
-    }
+    if phase < 0 { return phase + 1 }
     return phase
 }
 
@@ -74,23 +72,19 @@ fn MoonPhase(date String) Number {
 fn MoonShadow(r, h Length, phase Number) Solid {
     var k = Cos(a: (phase * 360) deg)
     var abs_k = Abs(a: k)
-    var box = Cube(size: Vec3{x: r * 2, y: r * 2, z: h * 4})
-        .Translate(v: Vec3{x: -r, y: -r, z: -h * 2})
-    var ellipse = Cylinder(bottom: r, top: r, height: h * 4)
-        .Scale(x: Max(a: abs_k, b: 0.02), y: 1, z: 1, pivot: WorldOrigin)
+    var box = Cube(s: Vec3{x: r * 2, y: r * 2, z: h * 4})
+        .Move(x: -r, y: -r, z: -h * 2)
+    var ellipse = Cylinder(r: r, h: h * 4)
+        .AlignCenter(pos: Vec3{}).Scale(x: Max(a: abs_k, b: 0.02), y: 1, z: 1)
     if phase <= 0.5 {
         # Waxing: shadow on left
-        var left = box.Translate(v: Vec3{x: -r, y: 0 mm, z: 0 mm})
-        if k >= 0 {
-            return left + ellipse
-        }
+        var left = box.Move(x: -r)
+        if k >= 0 { return left + ellipse }
         return left - ellipse
     }
     # Waning: shadow on right
-    var right = box.Translate(v: Vec3{x: r, y: 0 mm, z: 0 mm})
-    if k >= 0 {
-        return right + ellipse
-    }
+    var right = box.Move(x: r)
+    if k >= 0 { return right + ellipse }
     return right - ellipse
 }
 
@@ -109,9 +103,9 @@ fn Main(
     # Dome: cylinder intersected with a large sphere
     var R = radius * 3
     var dome_off = -R + thickness / 2 + 2 mm
-    var disc = Cylinder(bottom: radius, top: radius, height: thickness) & Sphere(
-        radius: R
-    ).Translate(v: Vec3{x: 0 mm, y: 0 mm, z: dome_off})
+    var disc = Cylinder(r: radius, h: thickness)
+        .AlignCenter(pos: Vec3{}) & Sphere(r: R)
+        .AlignCenter(pos: Vec3{z: dome_off})
     # Place craters on the curved dome surface using spherical coordinates.
     # Each crater is built at the pole, then rotated into position so it
     # follows the curvature.
@@ -121,12 +115,9 @@ fn Main(
         var dist = Hash(a: i, b: 1) * Number(from: radius) * 0.75
         var cr = (Hash(a: i, b: 2) * Hash(a: i, b: 3) * 8 + 1.5) mm
         var theta = Asin(n: dist / Number(from: R))
-        yield Sphere(radius: cr * 1.4)
-            .Scale(x: 1, y: 1, z: 0.25, pivot: WorldOrigin)
-            .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: R - cr * 0.3})
-            .Rotate(rx: 0 deg, ry: theta, rz: 0 deg, pivot: WorldOrigin)
-            .Rotate(rx: 0 deg, ry: 0 deg, rz: ang deg, pivot: WorldOrigin)
-            .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: dome_off})
+        yield Sphere(r: cr * 1.4).AlignCenter(pos: Vec3{})
+            .Scale(x: 1, y: 1, z: 0.25, around: Vec3{}).Move(z: R - cr * 0.3)
+            .Rotate(y: theta).Rotate(z: ang deg).Move(z: dome_off)
     }
     # Crater bowls
     var bowls = for i [0:<num_craters] {
@@ -135,18 +126,12 @@ fn Main(
         var cr = (Hash(a: i, b: 2) * Hash(a: i, b: 3) * 8 + 1.5) mm
         var depth = cr * 0.3
         var theta = Asin(n: dist / Number(from: R))
-        yield Sphere(radius: cr).Scale(x: 1, y: 1, z: 0.4, pivot: WorldOrigin)
-            .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: R + depth})
-            .Rotate(rx: 0 deg, ry: theta, rz: 0 deg, pivot: WorldOrigin)
-            .Rotate(rx: 0 deg, ry: 0 deg, rz: ang deg, pivot: WorldOrigin)
-            .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: dome_off})
+        yield Sphere(r: cr).AlignCenter(pos: Vec3{})
+            .Scale(x: 1, y: 1, z: 0.4, around: Vec3{}).Move(z: R + depth)
+            .Rotate(y: theta).Rotate(z: ang deg).Move(z: dome_off)
     }
-    var all_bumps = fold a, b bumps {
-        yield a + b
-    }
-    var all_bowls = fold a, b bowls {
-        yield a + b
-    }
+    var all_bumps = fold a, b bumps { yield a + b }
+    var all_bowls = fold a, b bowls { yield a + b }
     var moon = disc
     moon = moon + all_bumps
     moon = moon - all_bowls

@@ -1,5 +1,5 @@
 # Thumbscrew + Hex Nut
-var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@main"
+var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@f277ee7"
 
 fn Main(
     size String = "m8" where ["m3", "m4", "m5", "m6", "m8", "m10", "m12"],
@@ -12,15 +12,16 @@ fn Main(
 ) {
     var knurl = F
         .Knurl(count: knurl_count, depth: knurl_depth, angle: knurl_angle)
-    return [
-        F
-            .Thumbscrew(
-            size: size,
-            length: length,
-            head_h: head_h,
-            head_r: head_r,
-            knurl: knurl
-        ).Solid(),
-        F.HexNut(size: size).Solid()
-    ]
+    return Layout(
+        solids: [
+            F.Thumbscrew(
+                size: size,
+                length: length,
+                head_h: head_h,
+                head_r: head_r,
+                knurl: knurl
+            ).Solid(),
+            F.HexNut(size: size).Solid()
+        ]
+    )
 }

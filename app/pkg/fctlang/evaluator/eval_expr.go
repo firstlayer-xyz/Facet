@@ -225,43 +225,27 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 		length := len(arr.elems)
 		start := 0
 		end := length
+		startGiven, endGiven := 0, length
 		if ex.Start != nil {
-			sv, err := e.evalExpr(ex.Start, locals)
+			start, startGiven, err = e.evalSliceIndex(ex.Start, "start", ex.Pos, length, locals)
 			if err != nil {
 				return nil, err
-			}
-			sn, ok := unwrap(sv).(float64)
-			if !ok {
-				return nil, e.errAt(ex.Pos, "slice start must be a Number, got %s", typeName(sv))
-			}
-			start = int(sn)
-			if start < 0 {
-				start += length
 			}
 		}
 		if ex.End != nil {
-			ev, err := e.evalExpr(ex.End, locals)
+			end, endGiven, err = e.evalSliceIndex(ex.End, "end", ex.Pos, length, locals)
 			if err != nil {
 				return nil, err
 			}
-			en, ok := unwrap(ev).(float64)
-			if !ok {
-				return nil, e.errAt(ex.Pos, "slice end must be a Number, got %s", typeName(ev))
-			}
-			end = int(en)
-			if end < 0 {
-				end += length
-			}
 		}
-		// Clamp to bounds
-		if start < 0 {
-			start = 0
+		if start < 0 || start > length {
+			return nil, e.errAt(ex.Pos, "slice start %d out of range (length %d)", startGiven, length)
 		}
-		if end > length {
-			end = length
+		if end < 0 || end > length {
+			return nil, e.errAt(ex.Pos, "slice end %d out of range (length %d)", endGiven, length)
 		}
-		if start >= end {
-			return array{elems: nil, elemType: arr.elemType}, nil
+		if start > end {
+			return nil, e.errAt(ex.Pos, "invalid slice: start %d > end %d", start, end)
 		}
 		sliced := make([]value, end-start)
 		copy(sliced, arr.elems[start:end])
@@ -299,4 +283,31 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 	default:
 		return nil, fmt.Errorf("unsupported expression type %T", expr)
 	}
+}
+
+// evalSliceIndex evaluates a slice bound expression, validates it is a finite
+// integer, and applies negative-index normalization (i += length).
+// Returns the normalized index, the original (pre-normalization) integer for
+// error reporting, and any error.
+func (e *evaluator) evalSliceIndex(expr parser.Expr, which string, pos parser.Pos, length int, locals map[string]value) (idx, given int, err error) {
+	v, err := e.evalExpr(expr, locals)
+	if err != nil {
+		return 0, 0, err
+	}
+	n, ok := unwrap(v).(float64)
+	if !ok {
+		return 0, 0, e.errAt(pos, "slice %s must be a Number, got %s", which, typeName(v))
+	}
+	if math.IsNaN(n) || math.IsInf(n, 0) {
+		return 0, 0, e.errAt(pos, "slice %s must be a finite number", which)
+	}
+	if n != math.Floor(n) {
+		return 0, 0, e.errAt(pos, "slice %s must be an integer, got %v", which, n)
+	}
+	given = int(n)
+	idx = given
+	if idx < 0 {
+		idx += length
+	}
+	return idx, given, nil
 }

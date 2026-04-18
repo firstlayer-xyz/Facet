@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -82,16 +83,15 @@ type evalResponseHeader struct {
 	DebugSteps []debugStepMeta `json:"debugSteps,omitempty"`
 }
 
-// GetHTTPPort returns the port of the localhost HTTP server (eval, MCP, etc.).
-// Exposed to the frontend via Wails binding.
-func (a *App) GetHTTPPort() int {
-	return a.mcpPort
-}
-
-// loaderOpts returns the library directory and loader options from the current config.
+// loaderOpts returns the library directory and loader options from the current
+// config. A corrupt settings file is logged and treated as empty — the user
+// should still be able to evaluate code with the built-in stdlib.
 func loaderOpts() (string, *loader.Options) {
 	libDir, _ := libraryDir()
-	cfg := loadConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Printf("[settings] loaderOpts: %v — no installed libraries for this eval", err)
+	}
 	opts := &loader.Options{}
 	if len(cfg.InstalledLibs) > 0 {
 		opts.InstalledLibs = cfg.InstalledLibs
@@ -144,6 +144,16 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 
 	// If errors or no entry, return check-only response
 	if len(checked.Errors) > 0 || req.Entry == "" {
+		header.Time = time.Since(start).Seconds()
+		writeBinaryResponse(w, header, nil)
+		return
+	}
+
+	// Entry-point return type is a static constraint: validate before evaluating.
+	// A mistyped entry is a code error like any other — surface it in header.Errors
+	// instead of running the evaluator just to reject the result.
+	if entryErr := checked.ValidateEntryPoint(req.Key, req.Entry); entryErr != nil {
+		header.Errors = append(header.Errors, *entryErr)
 		header.Time = time.Since(start).Seconds()
 		writeBinaryResponse(w, header, nil)
 		return
@@ -221,47 +231,6 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 	header.Time = time.Since(start).Seconds()
 	header.PosMap = evalResult.PosMap
 	writeBinaryResponse(w, header, binaryData)
-}
-
-// setCORS sets standard CORS headers on the response.
-func setCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-}
-
-// evalHTTPHandler returns an http.HandlerFunc that cancels the previous eval
-// and dispatches to handleEval with a fresh context.
-func (a *App) evalHTTPHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		setCORS(w)
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		var req evalRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		// Cancel previous eval, derive context from request
-		a.evalMu.Lock()
-		if a.cancelEval != nil {
-			a.cancelEval()
-		}
-		ctx, cancel := context.WithCancel(r.Context())
-		a.cancelEval = cancel
-		a.evalMu.Unlock()
-		defer cancel()
-
-		handleEval(ctx, w, req)
-	}
 }
 
 // appendMeshBinary appends a DisplayMesh's raw data to buf and returns the metadata.
@@ -395,41 +364,41 @@ type checkRequest struct {
 	Key    string `json:"key"`
 }
 
+// checkResult is the JSON response from /check and the check_syntax MCP tool.
+type checkResult struct {
+	Valid  bool                  `json:"valid"`
+	Errors []parser.SourceError  `json:"errors"`
+}
+
+// checkSource parses and type-checks source code without evaluating it.
+// Shared between the /check HTTP endpoint and the check_syntax MCP tool
+// so both produce identical output and we do not self-loop over HTTP.
+func checkSource(ctx context.Context, source, key string) checkResult {
+	if key == "" {
+		key = "check.fct"
+	}
+	libDir, opts := loaderOpts()
+	prog, err := loader.Load(ctx, source, key, parser.SourceUser, libDir, opts)
+	if err != nil {
+		return checkResult{Valid: false, Errors: []parser.SourceError{sourceErrorFromErr(err)}}
+	}
+	checked := checker.Check(prog)
+	if len(checked.Errors) > 0 {
+		return checkResult{Valid: false, Errors: checked.Errors}
+	}
+	return checkResult{Valid: true, Errors: []parser.SourceError{}}
+}
+
 // handleCheck parses and type-checks source code without evaluating it.
 func handleCheck(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
 	var req checkRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if req.Key == "" {
-		req.Key = "check.fct"
-	}
-
-	libDir, opts := loaderOpts()
-
-	prog, err := loader.Load(r.Context(), req.Source, req.Key, parser.SourceUser, libDir, opts)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"valid": false, "errors": []parser.SourceError{sourceErrorFromErr(err)}})
-		return
-	}
-
-	checked := checker.Check(prog)
-	if len(checked.Errors) > 0 {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"valid": false, "errors": checked.Errors})
-		return
-	}
-
+	result := checkSource(r.Context(), req.Source, req.Key)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"valid":true,"errors":[]}`))
+	json.NewEncoder(w).Encode(result)
 }
 
 // evalSolids runs a fresh Load → Check → Eval and returns the resulting solids.
@@ -446,6 +415,9 @@ func evalSolids(ctx context.Context, req evalRequest) ([]*manifold.Solid, error)
 	}
 	if req.Entry == "" {
 		return nil, fmt.Errorf("no entry point")
+	}
+	if entryErr := checked.ValidateEntryPoint(req.Key, req.Entry); entryErr != nil {
+		return nil, fmt.Errorf("%s", entryErr.Message)
 	}
 	result, err := evaluator.Eval(ctx, prog, req.Key, req.Overrides, req.Entry)
 	if err != nil {

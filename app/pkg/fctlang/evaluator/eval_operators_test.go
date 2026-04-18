@@ -12,7 +12,7 @@ fn Main() {
     var w = 5 mm + 5 mm;
     var h = 20 mm - 10 mm;
     var d = 2 mm * 5;
-    return Cube(size: Vec3{x: w, y: h, z: d});
+    return Cube(s: Vec3{x: w, y: h, z: d});
 }
 `
 	prog := parseTestProg(t, src)
@@ -26,12 +26,53 @@ fn Main() {
 	assertMeshSize(t, mesh, 10, 10, 10, 0.1)
 }
 
+// TestEvalLengthPlusNumberLiteral: a bare numeric literal on the Number side of
+// a Length ± Number (or % Number) expression is "untyped" and coerces to a
+// Length.  `5 mm + 3` → 8 mm.  The error counterpart is
+// TestErrorLengthPlusNumberVariable in eval_errors_test.go.
+func TestEvalLengthPlusNumberLiteral(t *testing.T) {
+	src := `
+fn Main() {
+    var w = 5 mm + 3;
+    var h = 10 mm - 2;
+    var d = 3 + 5 mm;
+    return Cube(s: Vec3{x: w, y: h, z: d});
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil {
+		t.Fatal("expected non-nil mesh")
+	}
+	assertMeshSize(t, mesh, 8, 8, 8, 0.1)
+}
+
+// TestEvalLengthPlusNegativeLiteral: a negated literal still counts as a
+// literal for coercion purposes (see parser.IsNumericLiteral).
+func TestEvalLengthPlusNegativeLiteral(t *testing.T) {
+	src := `
+fn Main() {
+    var w = 5 mm + -2;
+    return Cube(s: Vec3{x: w, y: w, z: w});
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	assertMeshSize(t, mesh, 3, 3, 3, 0.1)
+}
+
 func TestEvalArithmeticPrecedence(t *testing.T) {
 	// 2 + 3 * 4 = 14, not 20
 	src := `
 fn Main() {
     var s = 2 mm + 3 mm * 4;
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -46,12 +87,15 @@ fn Main() {
 }
 
 func TestEvalDivisionAndMod(t *testing.T) {
-	// s = 20/2 = 10mm, m = 13%5 = 3mm
+	// s = 20mm / 2 = 10mm (Length / Number = Length).
+	// m = 13 % 5 = 3 (Number % Number; boundary-coerces to 3mm at Vec3.z).
+	// Under strict units Length % Number is a dimension error — use
+	// Number() if you want to strip units inside an expression.
 	src := `
 fn Main() {
     var s = 20 mm / 2;
-    var m = 13 mm % 5;
-    return Cube(size: Vec3{x: s, y: s, z: m});
+    var m = 13 % 5;
+    return Cube(s: Vec3{x: s, y: s, z: m});
 }
 `
 	prog := parseTestProg(t, src)
@@ -70,7 +114,7 @@ func TestEvalParenExpr(t *testing.T) {
 	src := `
 fn Main() {
     var s = (2 mm + 3 mm) * 4;
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -87,7 +131,7 @@ fn Main() {
 func TestEvalBooleanUnion(t *testing.T) {
 	src := `
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) + Sphere(radius: 8 mm);
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) + Sphere(r: 8 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -106,7 +150,7 @@ fn Main() {
 func TestEvalBooleanDifference(t *testing.T) {
 	src := `
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) - Sphere(radius: 8 mm);
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) - Sphere(r: 8 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -125,7 +169,7 @@ fn Main() {
 func TestEvalBooleanIntersection(t *testing.T) {
 	src := `
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) & Sphere(radius: 8 mm);
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) & Sphere(r: 8 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -145,11 +189,11 @@ func TestEvalSketchBooleanOps(t *testing.T) {
 	src := `
 fn Main() {
     var a = Square(x: 10 mm, y: 10 mm);
-    var b = Circle(radius: 5 mm);
+    var b = Circle(r: 5 mm);
     var combined = a + b;
     var diff = a - b;
     var inter = a & b;
-    return combined.Extrude(height: 5 mm);
+    return combined.Extrude(z: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -169,8 +213,8 @@ func TestEvalAngleRad(t *testing.T) {
 	// pi/2 rad = 90 degrees
 	src := `
 fn Main() {
-    var box = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    return box.Rotate(rx: 1.5707963267948966 rad, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin);
+    var box = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return box.Rotate(x: 1.5707963267948966 rad, y: 0 deg, z: 0 deg, around: Vec3{});
 }
 `
 	prog := parseTestProg(t, src)
@@ -193,7 +237,7 @@ fn Main() {
     var pts = for i[0:<4] {
         yield Vec2{x: Cos(a: i * 90 deg) * 10 mm, y: Sin(a: i * 90 deg) * 10 mm};
     };
-    return Polygon(points: pts).Extrude(height: 5 mm);
+    return Polygon(points: pts).Extrude(z: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -214,7 +258,7 @@ func TestEvalAngleAccumulateAdd(t *testing.T) {
 	src := `
 fn Main() {
     if 359 deg + 2 deg == 361 deg {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -230,7 +274,7 @@ func TestEvalAngleAccumulateSub(t *testing.T) {
 	src := `
 fn Main() {
     if 1 deg - 2 deg == -1 deg {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -246,7 +290,7 @@ func TestEvalAngleAccumulateMul(t *testing.T) {
 	src := `
 fn Main() {
     if 90 deg * 5 == 450 deg {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -262,7 +306,7 @@ func TestEvalAngleLiteral360(t *testing.T) {
 	src := `
 fn Main() {
     if 360 deg == 360 deg {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -278,7 +322,7 @@ func TestEvalAngleAccumulateRadAdd(t *testing.T) {
 	src := `
 fn Main() {
     if 3.14159265358979 rad + 3.14159265358979 rad == 360 deg {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -295,7 +339,7 @@ func TestEvalAngleAccumulateRadSub(t *testing.T) {
 fn Main() {
     var a = 0.1 rad - 0.2 rad;
     if a > -6 deg && a < -5 deg {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -311,7 +355,7 @@ func TestEvalAngleRadLiteral2Pi(t *testing.T) {
 	src := `
 fn Main() {
     if 6.28318530717959 rad == 360 deg {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -328,7 +372,7 @@ func TestEvalAngleAccumulateRadMul(t *testing.T) {
 fn Main() {
     var a = 1 rad * 7;
     if a > 401 deg && a < 402 deg {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -344,9 +388,9 @@ func TestEvalComparisonLength(t *testing.T) {
 	src := `
 fn Main() {
     if 10 mm < 20 mm {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -366,9 +410,9 @@ func TestEvalComparisonNumber(t *testing.T) {
 	src := `
 fn Main() {
     if 5 > 3 {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -388,9 +432,9 @@ func TestEvalComparisonEquality(t *testing.T) {
 	src := `
 fn Main() {
     if 10 mm == 10 mm {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -409,9 +453,9 @@ func TestEvalBoolComparison(t *testing.T) {
 	src := `
 fn Main() {
     if true == true {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -429,9 +473,9 @@ func TestEvalLogicalAndOr(t *testing.T) {
 	src := `
 fn Main() {
     if true && true {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     }
 }
 `
@@ -450,9 +494,9 @@ func TestEvalShortCircuit(t *testing.T) {
 	src := `
 fn Main() {
     if false && true {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     } else {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -473,7 +517,7 @@ func TestEvalTrigFunctions(t *testing.T) {
 fn Main() {
     var s = Sin(a: 30 deg) * 10 mm;
     var c = Cos(a: 60 deg) * 10 mm;
-    return Cube(size: Vec3{x: s, y: c, z: 10 mm});
+    return Cube(s: Vec3{x: s, y: c, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -492,7 +536,7 @@ func TestEvalMathMin(t *testing.T) {
 	src := `
 fn Main() {
     var s = Min(a: 10 mm, b: 20 mm);
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -511,7 +555,7 @@ func TestEvalMathMax(t *testing.T) {
 	src := `
 fn Main() {
     var s = Max(a: 5 mm, b: 15 mm);
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -530,7 +574,7 @@ func TestEvalMathAbs(t *testing.T) {
 	src := `
 fn Main() {
     var s = Abs(a: -10 mm);
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -549,7 +593,7 @@ func TestEvalMathSqrt(t *testing.T) {
 	src := `
 fn Main() {
     var s = Sqrt(n: 4) * 5 mm;
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -568,7 +612,7 @@ func TestEvalMathLerp(t *testing.T) {
 	src := `
 fn Main() {
     var s = Lerp(from: 0 mm, to: 20 mm, t: 0.5);
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -580,4 +624,63 @@ fn Main() {
 		t.Fatal("expected non-nil mesh")
 	}
 	assertMeshSize(t, mesh, 10, 10, 10, 0.1)
+}
+
+// TestEvalLengthTimesNumber verifies Length*Number = Length (scale).
+// If the product becomes a dimensionless Number, Cube's size field (Vec3 of
+// Length) will reject it and the evaluation will fail.
+func TestEvalLengthTimesNumber(t *testing.T) {
+	src := `
+fn Main() Solid {
+    var w = 5 mm * 2;
+    return Cube(s: Vec3{x: w, y: w, z: w});
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil {
+		t.Fatal("expected non-nil mesh")
+	}
+	assertMeshSize(t, mesh, 10, 10, 10, 0.1)
+}
+
+// TestEvalNumberTimesLength verifies Number*Length = Length (commutative).
+func TestEvalNumberTimesLength(t *testing.T) {
+	src := `
+fn Main() Solid {
+    var w = 2 * 5 mm;
+    return Cube(s: Vec3{x: w, y: w, z: w});
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil {
+		t.Fatal("expected non-nil mesh")
+	}
+	assertMeshSize(t, mesh, 10, 10, 10, 0.1)
+}
+
+// TestEvalLengthDivNumber verifies Length/Number = Length.
+func TestEvalLengthDivNumber(t *testing.T) {
+	src := `
+fn Main() Solid {
+    var w = 10 mm / 2;
+    return Cube(s: Vec3{x: w, y: w, z: w});
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil {
+		t.Fatal("expected non-nil mesh")
+	}
+	assertMeshSize(t, mesh, 5, 5, 5, 0.1)
 }

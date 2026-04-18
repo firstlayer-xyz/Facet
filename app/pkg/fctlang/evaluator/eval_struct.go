@@ -202,9 +202,8 @@ func (e *evaluator) zeroStruct(typeName string) (value, error) {
 }
 
 // coerceAnonymousStruct coerces an anonymous struct to a named struct type.
-// If the declaration is available, it validates fields and fills defaults.
-// Otherwise it duck-types: just stamps the typeName and lets field access
-// errors surface naturally at use time.
+// The target type's declaration must be reachable from the evaluator; otherwise
+// coercion fails with a hard error (no silent duck-typing).
 func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, locals map[string]value) error {
 	decl, ok := e.structDecls[targetType]
 	if !ok {
@@ -238,13 +237,7 @@ func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, loca
 			}
 		}
 		if decl == nil {
-			// No declaration found anywhere — just stamp the bare type name.
-			if dotIdx := strings.IndexByte(targetType, '.'); dotIdx >= 0 {
-				sv.typeName = targetType[dotIdx+1:]
-			} else {
-				sv.typeName = targetType
-			}
-			return nil
+			return fmt.Errorf("cannot coerce anonymous struct to %s: no such struct type in scope", targetType)
 		}
 	}
 	// Check for unknown fields

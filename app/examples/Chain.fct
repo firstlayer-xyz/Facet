@@ -6,16 +6,16 @@ fn Main(
     var inner = majorR - 2 * minorR
     var step = (majorR + inner) / 1.25
     return for i [0:<numLinks] {
-        var lnk = Circle(radius: minorR).Move(x: majorR, y: 0 mm).Revolve()
+        # Primitives have their bounding-box corner at the origin; the -minorR
+        # offsets recenter the circle before moving it out to the torus radius.
+        var lnk = Circle(r: minorR).Move(x: majorR - minorR, y: -minorR)
+            .Revolve()
         if i % 2 != 0 {
-            lnk = lnk.Rotate(rx: 40, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin)
-                .Color(hex: "#C0C0C0")
+            lnk = lnk.Rotate(x: 40 deg).Color(hex: "#C0C0C0")
         } else {
-            lnk = lnk
-                .Rotate(rx: -40 deg, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin)
-                .Color(hex: "#B8860B")
+            lnk = lnk.Rotate(x: -40 deg).Color(hex: "#B8860B")
         }
-        lnk = lnk.Move(x: i * step, y: 0 mm, z: 0)
+        lnk = lnk.Move(x: i * step)
         yield lnk
     }
 }

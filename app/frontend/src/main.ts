@@ -3,7 +3,7 @@ import { createEditor, EditorHandle } from './editor';
 import { Viewer } from './viewer';
 import { GetDefaultSource, GetExample, DetectSlicers, SetAssistantConfig, CreateLocalLibrary, CreateLibraryFolder, ListLibraryFolders, OpenRecentFile, OpenLibraryDir } from '../wailsjs/go/main/App';
 import { EventsOn, ClipboardSetText, ClipboardGetText, WindowToggleMaximise } from '../wailsjs/runtime/runtime';
-import { loadSettings, saveSettings, createSettingsPanel } from './settings';
+import { loadSettings, saveSettings, createSettingsPanel, SettingsCorruptError } from './settings';
 
 // WKWebView doesn't support browser clipboard API — override with Wails native clipboard.
 Object.defineProperty(navigator, 'clipboard', {
@@ -132,7 +132,7 @@ async function init() {
   };
 
   // Push assistant config to backend
-  SetAssistantConfig(settings.assistant as any);
+  SetAssistantConfig(settings.assistant);
 
   // Initialize 3D viewer with theme-derived viewport colors
   const _initUiId = resolveUiTheme(settings.appearance.uiTheme, settings.appearance.darkMode);
@@ -162,8 +162,8 @@ async function init() {
   });
 
   // Restore saved tab state or load default tutorial
-  const savedTabs = (settings as any).savedTabs as { path: string; label: string; cursor: { lineNumber: number; column: number } | null }[] | undefined;
-  const savedActiveTab = (settings as any).activeTab as string | undefined;
+  const savedTabs = settings.savedTabs;
+  const savedActiveTab = settings.activeTab;
 
   // Load a saved tab's source — handles both example: and filesystem paths.
   async function loadSavedTab(path: string): Promise<{ source: string; path: string; readOnly: boolean } | null> {
@@ -467,7 +467,28 @@ async function init() {
     applyCurrentTheme();
   });
 }
-init();
+init().catch((err) => {
+  if (err instanceof SettingsCorruptError) {
+    // Settings file exists but could not be read or parsed. Show a blocking
+    // notice so the user can repair or move the file — do NOT let the app
+    // continue with defaults, because any subsequent save would overwrite the
+    // real file (PatchSettings already refuses, but this reaches the user
+    // before they see silent failures across the UI).
+    document.body.innerHTML = '';
+    const panel = document.createElement('div');
+    panel.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e1e;color:#eee;font-family:system-ui,sans-serif;padding:24px;';
+    panel.innerHTML = `
+      <div style="max-width:640px;">
+        <h2 style="margin-top:0;color:#ff6b6b;">Settings file could not be read</h2>
+        <p>Facet could not load your settings. To avoid overwriting your real configuration, the app has refused to start.</p>
+        <pre style="background:#2a2a2a;padding:12px;border-radius:4px;white-space:pre-wrap;">${err.message.replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]!))}</pre>
+        <p>Move or delete the settings file, then restart Facet. A fresh file will be created on next save.</p>
+      </div>`;
+    document.body.appendChild(panel);
+    return;
+  }
+  throw err;
+});
 
 // --- Event listeners ---
 
@@ -486,7 +507,7 @@ settingsBtn.addEventListener('click', () => {
     setEditorWordWrap(settings.editor.wordWrap);
     setFormatOnSave(settings.editor.formatOnSave);
     setHighlightMode(settings.editor.highlight);
-    SetAssistantConfig(settings.assistant as any);
+    SetAssistantConfig(settings.assistant);
   });
   app.appendChild(panel);
 });

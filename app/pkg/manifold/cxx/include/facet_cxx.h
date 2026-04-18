@@ -178,10 +178,21 @@ void facet_extract_display_mesh(ManifoldPtr* m,
 // Import / Export
 // ---------------------------------------------------------------------------
 
-// Returns NULL if the file has no vertices.
-ManifoldPtr* facet_import_mesh(const char* path);
+// Imports a mesh file via Assimp. Returns a new Manifold (caller owns via
+// facet_delete_solid) on success; returns NULL on failure with *out_err set
+// to a malloc'd, null-terminated error string (caller frees via
+// facet_free_string). On success *out_err is set to NULL. out_err must be
+// non-NULL.
+ManifoldPtr* facet_import_mesh(const char* path, char** out_err);
 
-void facet_export_mesh(ManifoldPtr* m, const char* path);
+// Exports a Manifold to a mesh file via Assimp. Returns NULL on success, or
+// a malloc'd, null-terminated error string on failure (caller frees via
+// facet_free_string).
+char* facet_export_mesh(ManifoldPtr* m, const char* path);
+
+// Frees a string returned via out-pointer or return value by the import/export
+// API. Safe to call with NULL.
+void facet_free_string(char* s);
 
 // Create a Manifold from raw mesh data (vertices as flat float xyz, indices as uint32).
 ManifoldPtr* facet_solid_from_mesh(float* verts, size_t n_verts,

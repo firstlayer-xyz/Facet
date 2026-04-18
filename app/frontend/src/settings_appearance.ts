@@ -1,17 +1,12 @@
-import type { AppSettings } from './settings';
 import type { CustomTheme } from './themes';
 import { PALETTE_FIELDS, UI_THEMES, resolveThemePalette, resolveUiTheme, getBaseThemeId } from './themes';
-import { styleButton, styleInput } from './settings_ui';
-
-export interface SettingsPageContext {
-  draft: AppSettings;
-  onSave: (s: AppSettings) => void;
-}
-
-export interface PageResult {
-  el: HTMLElement;
-  cleanup?: () => void;
-}
+import {
+  styleButton,
+  styleInput,
+  settingsRow,
+  type SettingsPageContext,
+  type PageResult,
+} from './settings_ui';
 
 export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
   const { draft, onSave } = ctx;
@@ -19,12 +14,6 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
   page.className = 'settings-page';
 
   // Dark mode 3-way toggle
-  const dmRow = document.createElement('div');
-  dmRow.className = 'settings-color-row';
-
-  const dmLabel = document.createElement('label');
-  dmLabel.textContent = 'Appearance';
-
   const dmGroup = document.createElement('div');
   dmGroup.className = 'segmented-control';
 
@@ -50,9 +39,7 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
     dmGroup.appendChild(btn);
   }
 
-  dmRow.appendChild(dmLabel);
-  dmRow.appendChild(dmGroup);
-  page.appendChild(dmRow);
+  page.appendChild(settingsRow('Appearance', dmGroup));
 
   /** Resolve the UI theme ID accounting for darkMode switch. */
   function currentTheme(): string {
@@ -60,12 +47,6 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
   }
 
   // Theme selector (Facet + custom themes only)
-  const themeRow = document.createElement('div');
-  themeRow.className = 'settings-color-row';
-
-  const themeLabel = document.createElement('label');
-  themeLabel.textContent = 'Theme';
-
   const themeSelect = document.createElement('select');
   themeSelect.id = 'settings-theme';
 
@@ -121,9 +102,7 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
     updateDeleteBtn();
   });
 
-  themeRow.appendChild(themeLabel);
-  themeRow.appendChild(themeSelect);
-  page.appendChild(themeRow);
+  page.appendChild(settingsRow('Theme', themeSelect));
 
   // Palette editors container
   const paletteContainer = document.createElement('div');

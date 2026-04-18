@@ -79,7 +79,7 @@ func init() {
 				}
 				solids[i] = sf
 			}
-			return manifold.ComposeSolids(solids), nil
+			return manifold.ComposeSolids(solids)
 		},
 		// Trig
 		"_sin":   builtinSin,
@@ -131,10 +131,10 @@ func init() {
 			}, nil
 		},
 		// Layout
-		"_grid": func(_ *evaluator, args []value) (value, error) {
-			const name = "_grid"
-			if len(args) != 3 {
-				return nil, fmt.Errorf("%s() expects 3 arguments (solids, cols, gap), got %d", name, len(args))
+		"_layout": func(_ *evaluator, args []value) (value, error) {
+			const name = "_layout"
+			if len(args) != 2 {
+				return nil, fmt.Errorf("%s() expects 2 arguments (solids, gap), got %d", name, len(args))
 			}
 			arr, ok := args[0].(array)
 			if !ok {
@@ -148,15 +148,11 @@ func init() {
 				}
 				solids[i] = s
 			}
-			cols, err := requireNumber(name, 2, args[1])
+			gap, err := requireLength(name, 2, args[1])
 			if err != nil {
 				return nil, err
 			}
-			gap, err := requireLength(name, 3, args[2])
-			if err != nil {
-				return nil, err
-			}
-			result := arrangeGrid(solids, int(cols), gap)
+			result := arrangeLayout(solids, gap)
 			elems := make([]value, len(result))
 			for i, s := range result {
 				elems[i] = s

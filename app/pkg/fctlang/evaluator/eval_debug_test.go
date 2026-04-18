@@ -8,8 +8,8 @@ import (
 func TestEvalDebugSteps(t *testing.T) {
 	src := `
 fn Main() {
-    var box = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    return box.Translate(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm});
+    var box = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return box.Move(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -21,7 +21,7 @@ fn Main() {
 		t.Fatal("expected non-empty solids")
 	}
 	if len(result.Steps) != 2 {
-		t.Fatalf("expected 2 steps (Cube + Translate), got %d", len(result.Steps))
+		t.Fatalf("expected 2 steps (Cube + Move), got %d", len(result.Steps))
 	}
 
 	// Step 0: Cube constructor
@@ -36,9 +36,9 @@ fn Main() {
 		t.Errorf("step 0: expected role result, got %s", meshes0[0].Role)
 	}
 
-	// Step 1: Translate transform
-	if result.Steps[1].Op != "Translate" {
-		t.Errorf("step 1: expected op Translate, got %s", result.Steps[1].Op)
+	// Step 1: Move transform
+	if result.Steps[1].Op != "Move" {
+		t.Errorf("step 1: expected op Move, got %s", result.Steps[1].Op)
 	}
 	meshes1 := result.ResolveMeshes(1)
 	if len(meshes1) != 2 {
@@ -59,7 +59,7 @@ fn Main() {
 func TestEvalDebugBooleanOps(t *testing.T) {
 	src := `
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) - Sphere(radius: 8 mm);
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) - Sphere(r: 8 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -98,9 +98,9 @@ func TestEvalDebugSketchSteps(t *testing.T) {
 	src := `
 fn Main() {
     var sq = Square(x: 10 mm, y: 10 mm);
-    var circ = Circle(radius: 3 mm);
+    var circ = Circle(r: 3 mm);
     var profile = sq - circ;
-    return profile.Extrude(height: 5 mm);
+    return profile.Extrude(z: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)

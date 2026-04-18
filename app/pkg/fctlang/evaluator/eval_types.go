@@ -85,7 +85,7 @@ func typeName(v value) string {
 		}
 		return v.typeName
 	case *functionVal:
-		return "ast.Function"
+		return "Function"
 	default:
 		return fmt.Sprintf("%T", v)
 	}
@@ -300,18 +300,25 @@ func (e *evaluator) isAccessibleType(typeName string) bool {
 }
 
 // valueEqual safely compares two values for identity/equality.
-// Unlike ==, this does not panic on uncomparable types (array, struct).
+// Unlike ==, this does not panic on uncomparable types (array, struct):
+// arrays are compared element-wise (structurally), structs are compared
+// by pointer identity.
 func valueEqual(a, b value) bool {
-	// Fast path: same interface pointer
-	switch a.(type) {
-	case array, *structVal:
-		// Uncomparable types — use pointer identity for structs,
-		// assume different for arrays (coercion creates new arrays).
-		if sa, ok := a.(*structVal); ok {
-			sb, ok2 := b.(*structVal)
-			return ok2 && sa == sb
+	switch av := a.(type) {
+	case array:
+		bv, ok := b.(array)
+		if !ok || len(av.elems) != len(bv.elems) {
+			return false
 		}
-		return false
+		for i := range av.elems {
+			if !valueEqual(av.elems[i], bv.elems[i]) {
+				return false
+			}
+		}
+		return true
+	case *structVal:
+		bv, ok := b.(*structVal)
+		return ok && av == bv
 	default:
 		return a == b
 	}

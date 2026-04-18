@@ -8,16 +8,12 @@ import type { DecodedMesh, DebugStepData } from './viewer';
 import type { EditorHandle } from './editor';
 import { DocsPanel } from './docs';
 import { patchSettings } from './settings';
+import type { SavedTab } from './settings';
+import { reportError } from './toast';
 import { evalRequest, cancelEval } from './eval-client';
-import type { EvalResponse } from './eval-client';
+import type { EvalResponse, EvalResult, SourceEntry, SourceError } from './eval-client';
 import { decodeBinaryMesh } from './mesh-decode';
 import type { BinaryMeshMeta } from './mesh-decode';
-
-interface SourceEntry {
-  text: string;
-  kind: number;
-  importPath?: string;
-}
 
 // Source kind constants (mirrors parser.SourceKind in Go)
 const SOURCE_USER = 0;
@@ -99,7 +95,7 @@ function isDirty(): boolean {
 }
 
 // Cached result from last run:result event
-let lastResult: any = null;
+let lastResult: EvalResult | null = null;
 
 // Preview lock — when true, switching editor tabs does not auto-run the new tab's source
 let previewLocked = false;
@@ -153,12 +149,6 @@ function markClean() {
     SetDirtyState(anyDirty());
   }
 }
-interface SavedTab {
-  path: string;
-  label: string;
-  cursor: { lineNumber: number; column: number } | null;
-}
-
 function persistOpenTabs() {
   const sources = lastResult?.sources ?? {};
   // Save cursor for active tab before persisting
@@ -331,7 +321,7 @@ function setDebugBarVisible(visible: boolean) {
 }
 
 
-function syncTabsWithSources(data: any) {
+function syncTabsWithSources(data: EvalResult) {
   if (!data.sources) return;
   let tabsClosed = false;
   for (const path of Object.keys(tabs)) {
@@ -345,13 +335,13 @@ function syncTabsWithSources(data: any) {
   if (tabsClosed) renderTabs();
 }
 
-function pushEditorData(data: any) {
+function pushEditorData(data: EvalResult) {
   if (data.docIndex) editor.updateDocIndex(data.docIndex);
   if (data.varTypes && Object.keys(data.varTypes).length > 0) editor.updateVarTypes(data.varTypes);
   if (data.declarations?.decls) editor.updateDeclarations(data.declarations.decls);
   if (data.sources) {
     const textSources: Record<string, string> = {};
-    for (const [k, v] of Object.entries(data.sources as Record<string, SourceEntry>)) {
+    for (const [k, v] of Object.entries(data.sources)) {
       textSources[k] = v.text;
     }
     editor.updateFileSources(textSources);
@@ -359,7 +349,7 @@ function pushEditorData(data: any) {
   }
 }
 
-function handleCheckOnly(_data: any, errors: any[], fns: EntryPoint[]) {
+function handleCheckOnly(_data: EvalResult, errors: SourceError[], fns: EntryPoint[]) {
   viewer.setPosMap([]);
   if (errors.length > 0) {
     const e = errors[0];
@@ -534,7 +524,10 @@ async function closeTab(file: string) {
     const ok = await ConfirmDiscard();
     if (!ok) return;
   }
-  if (activeTab === file) {
+  // Capture this BEFORE switchToTab reassigns activeTab — otherwise the
+  // cancelEval check below is unreachable and the in-flight eval leaks.
+  const wasActive = activeTab === file;
+  if (wasActive) {
     // Switch to another open tab
     const remaining = tabOrder.filter(k => k !== file);
     if (remaining.length > 0) {
@@ -544,7 +537,7 @@ async function closeTab(file: string) {
     }
   }
   // Cancel any in-flight eval if the active tab is being closed
-  if (file === activeTab) cancelEval();
+  if (wasActive) cancelEval();
 
   editor.disposeModel(file);
   removeTab(file);
@@ -740,7 +733,7 @@ function handleHTTPResult(resp: EvalResponse) {
   pushEditorData(data);
   renderTabs(); // refresh tab icons (star, book, lock) from updated source kinds
 
-  const fns = (data.entryPoints ?? []) as EntryPoint[];
+  const fns = data.entryPoints ?? [];
 
   // Check-only response (no mesh, no debug)
   if (!data.mesh && !data.debugFinal) {
@@ -758,30 +751,30 @@ function handleHTTPResult(resp: EvalResponse) {
   }
 }
 
-function handleEvalHTTPResult(data: any, binary: ArrayBuffer) {
+function handleEvalHTTPResult(data: EvalResult, binary: ArrayBuffer) {
   setDebugBarVisible(false);
   viewer.clearMeshes();
   if (data.mesh) {
-    const decoded = decodeBinaryMesh(binary, data.mesh as BinaryMeshMeta);
+    const decoded = decodeBinaryMesh(binary, data.mesh);
     viewer.loadDecodedMesh(decoded);
   }
   const excludeFiles = new Set<string>();
   if (data.sources) {
-    for (const [path, entry] of Object.entries(data.sources as Record<string, SourceEntry>)) {
+    for (const [path, entry] of Object.entries(data.sources)) {
       if (entry.kind === SOURCE_STDLIB) excludeFiles.add(path);
     }
   }
   viewer.setPosMap(data.posMap ?? [], excludeFiles);
   viewer.centerOnBed();
   viewer.fitToView();
-  showStats(data.stats, data.time);
+  if (data.stats && data.time !== undefined) showStats(data.stats, data.time);
 }
 
-function handleDebugHTTPResult(data: any, binary: ArrayBuffer) {
+function handleDebugHTTPResult(data: EvalResult, binary: ArrayBuffer) {
   setDebugBarVisible(false);
   debugBinary = binary;
-  const steps = (data.debugSteps ?? []) as unknown as DebugStepData[];
-  const finalMetas = (data.debugFinal ?? []) as BinaryMeshMeta[];
+  const steps = data.debugSteps ?? [];
+  const finalMetas = data.debugFinal ?? [];
 
   // Decode final meshes from binary
   if (finalMetas.length > 0) {
@@ -834,7 +827,7 @@ export async function openFile() {
   const result = await OpenFile();
   if (!result) return;
   openTab(result.path, result.source);
-  AddRecentFile(result.path).catch(() => {});
+  AddRecentFile(result.path).catch(err => reportError('AddRecentFile', err));
 }
 
 export async function openRecentFile(path: string) {
@@ -846,7 +839,7 @@ export async function openRecentFile(path: string) {
     return; // file may no longer exist
   }
   openTab(result.path, result.source);
-  AddRecentFile(result.path).catch(() => {});
+  AddRecentFile(result.path).catch(err => reportError('AddRecentFile', err));
 }
 
 async function formatSource(source: string): Promise<string> {
@@ -883,7 +876,7 @@ async function doSave(forceDialog: boolean) {
   markClean();
   updateWindowTitle();
   renderTabs();
-  AddRecentFile(path).catch(() => {});
+  AddRecentFile(path).catch(err => reportError('AddRecentFile', err));
 }
 
 export function saveFile() { return doSave(false); }
@@ -965,7 +958,10 @@ export function toggleDebug() {
 
 async function openDocs(): Promise<void> {
   if (docsPanel.isVisible()) return;
-  const guides = await GetDocGuides().catch(() => [] as any[]);
+  const guides = await GetDocGuides().catch((err) => {
+    reportError('GetDocGuides', err);
+    return [];
+  });
   docsPanel.show(lastResult?.docIndex ?? [], guides);
   viewer.setVisible(false);
   setDebugBarVisible(false);
@@ -1020,7 +1016,7 @@ export function openLibraryTab(file: string, source: string) {
   // If file is an import path (e.g. "facet/gears"), resolve to disk path
   if (!sources[file]) {
     for (const [diskPath, entry] of Object.entries(sources)) {
-      if ((entry as SourceEntry).importPath === file) {
+      if (entry.importPath === file) {
         file = diskPath;
         break;
       }

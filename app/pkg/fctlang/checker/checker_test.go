@@ -93,17 +93,17 @@ func expectError(t *testing.T, src string, substr string) {
 // ---------------------------------------------------------------------------
 
 func TestCheckBasicCube(t *testing.T) {
-	expectNoErrors(t, `fn Main() Solid { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }`)
+	expectNoErrors(t, `fn Main() Solid { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }`)
 }
 
 func TestCheckInferredReturnType(t *testing.T) {
-	expectNoErrors(t, `fn Main() { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }`)
+	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }`)
 }
 
 func TestCheckFunctionWithTypedParams(t *testing.T) {
 	expectNoErrors(t, `
 fn Box(size Length) Solid {
-    return Cube(size: Vec3{x: size, y: size, z: size});
+    return Cube(s: Vec3{x: size, y: size, z: size});
 }
 
 fn Main() Solid {
@@ -117,12 +117,12 @@ func TestCheckBinaryOps(t *testing.T) {
 fn Main() {
     var a = 10 mm + 5 mm;
     var b = 10 mm - 5 mm;
-    var c = 10 mm * 5 mm;
+    var c = 10 mm * 5;
     var d = 10 mm / 5 mm;
     var e = 10 + 5;
     var f = 45 deg + 90 deg;
     var g = true && false;
-    return Cube(size: Vec3{x: a, y: b, z: c});
+    return Cube(s: Vec3{x: a, y: b, z: c});
 }
 `)
 }
@@ -130,9 +130,9 @@ fn Main() {
 func TestCheckMethodChains(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})
-        .Translate(v: Vec3 { x: 5 mm, y: 0 mm, z: 0 mm })
-        .Rotate(rx: 0 deg, ry: 45 deg, rz: 0 deg, pivot: WorldOrigin);
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})
+        .Move(v: Vec3 { x: 5 mm, y: 0 mm, z: 0 mm })
+        .Rotate(x: 0 deg, y: 45 deg, z: 0 deg, around: Vec3{});
 }
 `)
 }
@@ -140,9 +140,9 @@ fn Main() {
 func TestCheckSolidBooleanOps(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    var a = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    var b = Sphere(radius: 5 mm);
-    return a + b - Cylinder(bottom: 3 mm, top: 3 mm, height: 10 mm);
+    var a = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var b = Sphere(r: 5 mm);
+    return a + b - Cylinder(r1: 3 mm, r2: 3 mm, h: 10 mm);
 }
 `)
 }
@@ -150,14 +150,14 @@ fn Main() {
 func TestCheckSketchOps(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    var s = Square(x: 10 mm, y: 10 mm) + Circle(radius: 5 mm);
-    return s.Extrude(height: 5 mm);
+    var s = Square(x: 10 mm, y: 10 mm) + Circle(r: 5 mm);
+    return s.Extrude(z: 5 mm);
 }
 `)
 }
 
 func TestCheckNumberToLengthCoercion(t *testing.T) {
-	expectNoErrors(t, `fn Main() Solid { return Cube(size: Vec3{x: 10, y: 20, z: 30}); }`)
+	expectNoErrors(t, `fn Main() Solid { return Cube(s: Vec3{x: 10, y: 20, z: 30}); }`)
 }
 
 func TestCheckComparisons(t *testing.T) {
@@ -167,7 +167,7 @@ fn Main() {
     var b = 10 < 20;
     var c = 45 deg == 45 deg;
     var d = true != false;
-    if a { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
+    if a { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
 }
 `)
 }
@@ -178,7 +178,7 @@ fn Main() {
     var pts = for i [0:<6] {
         yield Vec2{x: Cos(a: i * 60 deg) * 5 mm, y: Sin(a: i * 60 deg) * 5 mm};
     };
-    return Polygon(points: pts).Extrude(height: 5 mm);
+    return Polygon(points: pts).Extrude(z: 5 mm);
 }
 `)
 }
@@ -186,7 +186,7 @@ fn Main() {
 func TestCheckFold(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    var cubes = []Solid[Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}), Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Translate(v: Vec3 { x: 10 mm, y: 0 mm, z: 0 mm })];
+    var cubes = []Solid[Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}), Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Move(v: Vec3 { x: 10 mm, y: 0 mm, z: 0 mm })];
     return fold a, b cubes {
         yield a + b;
     };
@@ -199,7 +199,7 @@ func TestCheckGlobalVars(t *testing.T) {
 var size = 10 mm;
 
 fn Main() {
-    return Cube(size: Vec3{x: size, y: size, z: size});
+    return Cube(s: Vec3{x: size, y: size, z: size});
 }
 `)
 }
@@ -207,7 +207,7 @@ fn Main() {
 func TestCheckOptionalParams(t *testing.T) {
 	expectNoErrors(t, `
 fn Box(size Length, height Length = 5 mm) Solid {
-    return Cube(size: Vec3{x: size, y: size, z: height});
+    return Cube(s: Vec3{x: size, y: size, z: height});
 }
 
 fn Main() {
@@ -218,12 +218,12 @@ fn Main() {
 
 func TestCheckOptionalParamOverride(t *testing.T) {
 	expectNoErrors(t, `
-fn Box(size Length, height Length = 5 mm) Solid {
-    return Cube(size: Vec3{x: size, y: size, z: height});
+fn Box(size Length, h Length = 5 mm) Solid {
+    return Cube(s: Vec3{x: size, y: size, z: h});
 }
 
 fn Main() {
-    return Box(size: 10 mm, height: 20 mm);
+    return Box(size: 10 mm, h: 20 mm);
 }
 `)
 }
@@ -234,9 +234,9 @@ func TestCheckIfElse(t *testing.T) {
 fn Main() {
     var x = 10;
     if x > 5 {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Sphere(radius: 5 mm);
+        return Sphere(r: 5 mm);
     }
 }
 `)
@@ -252,7 +252,7 @@ type Dims {
 
 fn Main() {
     var box = Dims { w: 10 mm, h: 20 mm, d: 5 mm };
-    return Cube(size: Vec3{x: box.w, y: box.h, z: box.d});
+    return Cube(s: Vec3{x: box.w, y: box.h, z: box.d});
 }
 `)
 }
@@ -266,7 +266,7 @@ type Dims {
 }
 
 fn Dims.ToCube() Solid {
-    return Cube(size: Vec3{x: self.w, y: self.h, z: self.d});
+    return Cube(s: Vec3{x: self.w, y: self.h, z: self.d});
 }
 
 fn Main() {
@@ -284,7 +284,7 @@ type Dims {
 }
 
 fn MakeBox(dims Dims) Solid {
-    return Cube(size: Vec3{x: dims.w, y: dims.h, z: 10 mm});
+    return Cube(s: Vec3{x: dims.w, y: dims.h, z: 10 mm});
 }
 
 fn Main() {
@@ -303,7 +303,7 @@ fn Main() {
     var a = Asin(n: 1);
     var b = Acos(n: 0);
     var d = Atan2(y: 1, x: 0);
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -312,7 +312,7 @@ func TestCheckMathFunctions(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var s = Sqrt(n: 4);
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -325,7 +325,7 @@ fn Main() {
     var sub = s.SubStr(start: 0, length: 3);
     var hp = s.HasPrefix(prefix: "he");
     var hs = s.HasSuffix(suffix: "lo");
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -339,7 +339,7 @@ fn Main() {
     var d = 45 deg * 2;
     var e = 2 * 45 deg;
     var f = 90 deg / 2;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -348,7 +348,7 @@ func TestCheckLengthDivLength(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var ratio = 20 mm / 10 mm;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -359,7 +359,7 @@ fn Main() {
     var a = PI;
     var b = TAU;
     var c = E;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -375,7 +375,7 @@ func TestCheckLibExprMissing(t *testing.T) {
 var T = lib "facet/gears";
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "not resolved")
 }
@@ -383,8 +383,8 @@ fn Main() {
 func TestCheckSolidSlice(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    var s = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    return s.Slice(height: 5 mm).Extrude(height: 3 mm);
+    var s = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return s.Slice(z: 5 mm).Extrude(z: 3 mm);
 }
 `)
 }
@@ -392,8 +392,8 @@ fn Main() {
 func TestCheckSolidProject(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    var s = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    return s.Project().Extrude(height: 3 mm);
+    var s = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return s.Project().Extrude(z: 3 mm);
 }
 `)
 }
@@ -401,7 +401,7 @@ fn Main() {
 func TestCheckSolidVolume(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    var s = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var s = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     var v = s.Volume();
     return s;
 }
@@ -411,7 +411,7 @@ fn Main() {
 func TestCheckSolidSurfaceArea(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    var s = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var s = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     var a = s.SurfaceArea();
     return s;
 }
@@ -423,27 +423,27 @@ func TestCheckSketchArea(t *testing.T) {
 fn Main() {
     var s = Square(x: 10 mm, y: 10 mm);
     var a = s.Area();
-    return s.Extrude(height: 5 mm);
+    return s.Extrude(z: 5 mm);
 }
 `)
 }
 
 func TestCheckSphereDefaultSegments(t *testing.T) {
-	expectNoErrors(t, `fn Main() { return Sphere(radius: 10 mm); }`)
+	expectNoErrors(t, `fn Main() { return Sphere(r: 10 mm); }`)
 }
 
 func TestCheckCylinderDefaultSegments(t *testing.T) {
-	expectNoErrors(t, `fn Main() { return Cylinder(bottom: 5 mm, top: 5 mm, height: 10 mm); }`)
+	expectNoErrors(t, `fn Main() { return Cylinder(r1: 5 mm, r2: 5 mm, h: 10 mm); }`)
 }
 
 func TestCheckCircleDefaultSegments(t *testing.T) {
-	expectNoErrors(t, `fn Main() { return Circle(radius: 5 mm).Extrude(height: 10 mm); }`)
+	expectNoErrors(t, `fn Main() { return Circle(r: 5 mm).Extrude(z: 10 mm); }`)
 }
 
 func TestCheckSketchFillet(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Square(x: 20 mm, y: 20 mm).Fillet(radius: 2 mm).Extrude(height: 5 mm);
+    return Square(x: 20 mm, y: 20 mm).Fillet(r: 2 mm).Extrude(z: 5 mm);
 }
 `)
 }
@@ -451,7 +451,7 @@ fn Main() {
 func TestCheckSketchChamfer(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Square(x: 20 mm, y: 20 mm).Chamfer(distance: 2 mm).Extrude(height: 5 mm);
+    return Square(x: 20 mm, y: 20 mm).Chamfer(distance: 2 mm).Extrude(z: 5 mm);
 }
 `)
 }
@@ -459,7 +459,7 @@ fn Main() {
 func TestCheckLinearPattern(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).LinearPattern(count: 3, spacingX: 10 mm, spacingY: 0 mm, spacingZ: 0 mm);
+    return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).LinearPattern(count: 3, spacing: Vec3{x: 10 mm});
 }
 `)
 }
@@ -467,7 +467,7 @@ fn Main() {
 func TestCheckCircularPattern(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Translate(v: Vec3 { x: 10 mm, y: 0 mm, z: 0 mm }).CircularPattern(count: 6);
+    return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Move(v: Vec3 { x: 10 mm, y: 0 mm, z: 0 mm }).CircularPattern(count: 6);
 }
 `)
 }
@@ -475,7 +475,7 @@ fn Main() {
 func TestCheckSketchLinearPattern(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Square(x: 5 mm, y: 5 mm).LinearPattern(count: 3, spacingX: 10 mm, spacingY: 0 mm).Extrude(height: 5 mm);
+    return Square(x: 5 mm, y: 5 mm).LinearPattern(count: 3, spacing: Vec2{x: 10 mm}).Extrude(z: 5 mm);
 }
 `)
 }
@@ -483,7 +483,7 @@ fn Main() {
 func TestCheckSketchCircularPattern(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Square(x: 5 mm, y: 5 mm).Translate(v: Vec2 { x: 10 mm, y: 0 mm }).CircularPattern(count: 4).Extrude(height: 5 mm);
+    return Square(x: 5 mm, y: 5 mm).Move(v: Vec2 { x: 10 mm, y: 0 mm }).CircularPattern(count: 4).Extrude(z: 5 mm);
 }
 `)
 }
@@ -491,7 +491,7 @@ fn Main() {
 func TestCheckRevolve(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Circle(radius: 3 mm).Translate(v: Vec2 { x: 10 mm, y: 0 mm }).Revolve();
+    return Circle(r: 3 mm).Move(v: Vec2 { x: 10 mm, y: 0 mm }).Revolve();
 }
 `)
 }
@@ -499,7 +499,7 @@ fn Main() {
 func TestCheckRevolvePartial(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Circle(radius: 3 mm).Translate(v: Vec2 { x: 10 mm, y: 0 mm }).Revolve(degrees: 180 deg);
+    return Circle(r: 3 mm).Move(v: Vec2 { x: 10 mm, y: 0 mm }).Revolve(a: 180 deg);
 }
 `)
 }
@@ -511,7 +511,7 @@ fn Main() {
 func TestCheckArgTypeMismatch(t *testing.T) {
 	expectError(t, `
 fn Main() {
-    return Cylinder(bottom: 45 deg, top: 10 mm, height: 5 mm);
+    return Cylinder(r1: 45 deg, r2: 10 mm, h: 5 mm);
 }
 `, "no matching overload for Cylinder")
 }
@@ -520,7 +520,7 @@ func TestCheckOperatorTypeMismatch(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = 10 mm + 45 deg;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "incompatible types")
 }
@@ -528,7 +528,7 @@ fn Main() {
 func TestCheckUndefinedVariable(t *testing.T) {
 	expectError(t, `
 fn Main() {
-    return Cube(size: Vec3{x: x, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x, y: 10 mm, z: 10 mm});
 }
 `, "undefined variable")
 }
@@ -536,7 +536,7 @@ fn Main() {
 func TestCheckWrongArgCount(t *testing.T) {
 	expectError(t, `
 fn Main() {
-    return Cube(size: 10 mm, extra: 20 mm);
+    return Cube(s: 10 mm, extra: 20 mm);
 }
 `, `has no parameter named "extra"`)
 }
@@ -545,7 +545,7 @@ func TestCheckMethodOnWrongReceiver(t *testing.T) {
 	// Area() is a Sketch method, not a Solid method
 	expectError(t, `
 fn Main() {
-    var s = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var s = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     var a = s.Area();
     return s;
 }
@@ -556,14 +556,14 @@ func TestCheckMethodOnBuiltInTypeRejected(t *testing.T) {
 	// Cannot define methods on built-in types like Solid, String, Length
 	expectError(t, `
 fn Solid.MyMethod() Number { return 1 }
-fn Main() Solid { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) }
+fn Main() Solid { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) }
 `, "cannot define method on type")
 }
 
 func TestCheckMethodOnStringRejected(t *testing.T) {
 	expectError(t, `
 fn String.Reverse() String { return self }
-fn Main() Solid { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) }
+fn Main() Solid { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) }
 `, "cannot define method on type")
 }
 
@@ -572,7 +572,7 @@ func TestCheckMethodOnUserStructAllowed(t *testing.T) {
 	expectNoErrors(t, `
 type Box { w Length; h Length; d Length }
 fn Box.Volume() Number { return 1 }
-fn Main() Solid { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) }
+fn Main() Solid { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}) }
 `)
 }
 
@@ -585,7 +585,7 @@ type Dims {
 
 fn Main() {
     var d = Dims { w: 45 deg, h: 10 mm };
-    return Cube(size: Vec3{x: d.w, y: d.h, z: 10 mm});
+    return Cube(s: Vec3{x: d.w, y: d.h, z: 10 mm});
 }
 `, "must be Length, got Angle")
 }
@@ -600,7 +600,7 @@ type Dims {
 
 fn Main() {
     var d = Dims { w: 10 mm };
-    return Cube(size: Vec3{x: d.w, y: d.w, z: 10 mm});
+    return Cube(s: Vec3{x: d.w, y: d.w, z: 10 mm});
 }
 `)
 }
@@ -614,7 +614,7 @@ type Dims {
 
 fn Main() {
     var d = Dims { w: 10 mm, h: 10 mm, z: 10 mm };
-    return Cube(size: Vec3{x: d.w, y: d.h, z: 10 mm});
+    return Cube(s: Vec3{x: d.w, y: d.h, z: 10 mm});
 }
 `, "unknown field")
 }
@@ -628,7 +628,7 @@ type Dims {
 
 fn Main() {
     var d = Dims { w: 10 mm, h: 10 mm };
-    return Cube(size: Vec3{x: d.z, y: d.h, z: 10 mm});
+    return Cube(s: Vec3{x: d.z, y: d.h, z: 10 mm});
 }
 `, "has no field")
 }
@@ -637,7 +637,7 @@ func TestCheckUnknownStruct(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var d = Foo { x: 10 mm };
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "unknown struct type")
 }
@@ -645,7 +645,7 @@ fn Main() {
 func TestCheckIfCondNotBool(t *testing.T) {
 	expectError(t, `
 fn Main() {
-    if 10 mm { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
+    if 10 mm { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
 }
 `, "if condition must be a Bool")
 }
@@ -656,7 +656,7 @@ fn Main() {
     var pts = for i 10 {
         yield i;
     };
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "expected Array to iterate over")
 }
@@ -667,7 +667,7 @@ fn Main() {
     var result = fold a, b 10 {
         yield a + b;
     };
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "expected Array to iterate over")
 }
@@ -684,7 +684,7 @@ func TestCheckLogicalOpTypeMismatch(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = 10 mm && true;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "left operand must be Bool")
 }
@@ -692,8 +692,8 @@ fn Main() {
 func TestCheckSolidOperatorMismatch(t *testing.T) {
 	expectError(t, `
 fn Main() {
-    var a = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    var b = Sphere(radius: 5 mm);
+    var a = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var b = Sphere(r: 5 mm);
     var c = a * b;
     return a;
 }
@@ -704,9 +704,9 @@ func TestCheckSketchOperatorMismatch(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var a = Square(x: 10 mm, y: 10 mm);
-    var b = Circle(radius: 5 mm);
+    var b = Circle(r: 5 mm);
     var c = a * b;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "incompatible types Sketch and Sketch")
 }
@@ -715,7 +715,7 @@ func TestCheckAngleOperatorMismatch(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = 45 deg * 90 deg;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "not supported on Angle")
 }
@@ -724,7 +724,7 @@ func TestCheckComparisonMismatch(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = 10 mm > 45 deg;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "incompatible types")
 }
@@ -734,7 +734,7 @@ func TestCheckFieldAccessOnNonStruct(t *testing.T) {
 fn Main() {
     var x = 10 mm;
     var y = x.foo;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "cannot access field")
 }
@@ -742,7 +742,7 @@ fn Main() {
 func TestCheckTooManyArgs(t *testing.T) {
 	expectError(t, `
 fn Main() {
-    return Sphere(radius: 10 mm, segments: 32, extra: 99);
+    return Sphere(r: 10 mm, segments: 32, extra: 99);
 }
 `, `has no parameter named "extra"`)
 }
@@ -750,7 +750,7 @@ fn Main() {
 func TestCheckUserFuncArgTypeMismatch(t *testing.T) {
 	expectError(t, `
 fn Box(size Length) Solid {
-    return Cube(size: Vec3{x: size, y: size, z: size});
+    return Cube(s: Vec3{x: size, y: size, z: size});
 }
 
 fn Main() {
@@ -762,7 +762,7 @@ fn Main() {
 func TestCheckTooFewArgsOptional(t *testing.T) {
 	expectError(t, `
 fn Box(w, h Length, d Length = 5 mm) Solid {
-    return Cube(size: Vec3{x: w, y: h, z: d});
+    return Cube(s: Vec3{x: w, y: h, z: d});
 }
 
 fn Main() {
@@ -783,7 +783,7 @@ var T = lib "facet/gears";
 
 fn Main() {
     var result = T.SomeFunction(x: 10 mm);
-    return Cube(size: Vec3{x: result, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: result, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -808,7 +808,7 @@ func TestCheckStringConcat(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var s = "hello" + " world";
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -817,7 +817,7 @@ func TestCheckStringUnsupportedOp(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var s = "hello" - "world";
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "not supported on String")
 }
@@ -826,7 +826,7 @@ func TestCheckBoolComparisonNotLT(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = true < false;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "incompatible types")
 }
@@ -835,9 +835,9 @@ func TestCheckElseIfCondNotBool(t *testing.T) {
 	expectError(t, `
 fn Main() {
     if true {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else if 42 {
-        return Sphere(radius: 5 mm);
+        return Sphere(r: 5 mm);
     }
 }
 `, "else-if condition must be a Bool")
@@ -847,13 +847,13 @@ func TestCheckNumberAngleIncompatible(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = 10 + 45 deg;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "incompatible types")
 }
 
 func TestCheckImplicitReturn(t *testing.T) {
-	expectNoErrors(t, `fn Main() { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }`)
+	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }`)
 }
 
 
@@ -861,9 +861,9 @@ func TestCheckImplicitReturnIfElse(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     if true {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Sphere(radius: 5 mm);
+        return Sphere(r: 5 mm);
     }
 }
 `)
@@ -875,7 +875,7 @@ fn Main() {
     var pts = for i [0:<6] {
         yield Vec2{x: Cos(a: i * 60 deg) * 5 mm, y: Sin(a: i * 60 deg) * 5 mm};
     };
-    return Polygon(points: pts).Extrude(height: 5 mm);
+    return Polygon(points: pts).Extrude(z: 5 mm);
 }
 `)
 }
@@ -883,7 +883,7 @@ fn Main() {
 func TestCheckImplicitReturnFold(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    var cubes = []Solid[Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}), Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Translate(v: Vec3 { x: 10 mm, y: 0 mm, z: 0 mm })];
+    var cubes = []Solid[Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}), Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Move(v: Vec3 { x: 10 mm, y: 0 mm, z: 0 mm })];
     return fold a, b cubes {
         yield a + b;
     };
@@ -900,7 +900,7 @@ type Dims {
 
 fn Main() {
     var d = Dims { w: 10 mm, w: 20 mm, h: 10 mm };
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "duplicate field")
 }
@@ -910,7 +910,7 @@ func TestCheckAssertBoolCondition(t *testing.T) {
 fn Main() {
     assert true;
     assert 1 < 2;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -919,7 +919,7 @@ func TestCheckAssertNonBool(t *testing.T) {
 	expectError(t, `
 fn Main() {
     assert 42;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "assert condition must be a Bool")
 }
@@ -928,7 +928,7 @@ func TestCheckUnaryMinusNumber(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var x = -10;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -937,7 +937,7 @@ func TestCheckUnaryMinusLength(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var x = -10 mm;
-    return Cube(size: Vec3{x: x, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -946,7 +946,7 @@ func TestCheckUnaryMinusAngle(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var x = -45 deg;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -955,7 +955,7 @@ func TestCheckUnaryMinusOnBool(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = -true;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "unary minus not supported on Bool")
 }
@@ -965,7 +965,7 @@ func TestCheckBooleanNot(t *testing.T) {
 fn Main() {
     var x = !true;
     var y = !false;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -974,7 +974,7 @@ func TestCheckBooleanNotOnNumber(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = !42;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "operator ! requires Bool")
 }
@@ -983,7 +983,7 @@ func TestCheckPow(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var x = Pow(base: 2, exp: 10);
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -994,7 +994,7 @@ fn Main() {
     var a = Floor(n: 3.7);
     var b = Ceil(n: 3.2);
     var c = Round(n: 3.5);
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1007,7 +1007,7 @@ func TestCheckConstraintLengthRangeValid(t *testing.T) {
 	expectNoErrors(t, `
 var w = 10 mm where [1:100] mm;
 fn Main() {
-    return Cube(size: Vec3{x: w, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: w, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1016,7 +1016,7 @@ func TestCheckConstraintNumberRangeValid(t *testing.T) {
 	expectNoErrors(t, `
 var x = 50 where [0:100];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1025,7 +1025,7 @@ func TestCheckConstraintAngleRangeValid(t *testing.T) {
 	expectNoErrors(t, `
 var a = 45 deg where [0:360] deg;
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1035,7 +1035,7 @@ func TestCheckConstraintUnitMismatchLength(t *testing.T) {
 	expectError(t, `
 var x = 50 where [0:100] mm;
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `, "length unit, but variable is Number")
 }
@@ -1045,7 +1045,7 @@ func TestCheckConstraintUnitMismatchAngle(t *testing.T) {
 	expectError(t, `
 var w = 10 mm where [0:100] deg;
 fn Main() {
-    return Cube(size: Vec3{x: w, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: w, y: 10 mm, z: 10 mm});
 }
 `, "angle unit, but variable is Length")
 }
@@ -1054,7 +1054,7 @@ func TestCheckConstraintEnumValid(t *testing.T) {
 	expectNoErrors(t, `
 var s = "m3" where ["m3", "m4", "m5"];
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1063,7 +1063,7 @@ func TestCheckConstraintEnumTypeMismatch(t *testing.T) {
 	expectError(t, `
 var s = "m3" where [1, 2, 3];
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "constraint enum element")
 }
@@ -1072,7 +1072,7 @@ func TestCheckConstraintFreeForm(t *testing.T) {
 	expectNoErrors(t, `
 var x = 42 where [];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1081,7 +1081,7 @@ func TestCheckConstraintSteppedRange(t *testing.T) {
 	expectNoErrors(t, `
 var x = 10 where [0:100:5];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1095,7 +1095,7 @@ func TestCheckArrayIndex(t *testing.T) {
 fn Main() {
     var arr = []Length[5 mm, 10 mm, 15 mm];
     var x = arr[0];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1105,7 +1105,7 @@ func TestCheckArrayIndexNotArray(t *testing.T) {
 fn Main() {
     var x = 10 mm;
     var y = x[0];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "cannot index Length")
 }
@@ -1115,7 +1115,7 @@ func TestCheckArrayIndexNotNumber(t *testing.T) {
 fn Main() {
     var arr = []Number[1, 2, 3];
     var y = arr[5 mm];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "index must be a Number")
 }
@@ -1127,70 +1127,70 @@ fn Main() {
 func TestCheckConstraintValueOutOfRangeNumber(t *testing.T) {
 	expectError(t, `
 var x = 150 where [0:100];
-fn Main() { return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm}); }
 `, "out of range")
 }
 
 func TestCheckConstraintValueInRangeNumber(t *testing.T) {
 	expectNoErrors(t, `
 var x = 50 where [0:100];
-fn Main() { return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm}); }
 `)
 }
 
 func TestCheckConstraintValueOutOfRangeLength(t *testing.T) {
 	expectError(t, `
 var w = 200 mm where [1:100] mm;
-fn Main() { return Cube(size: Vec3{x: w, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: w, y: 10 mm, z: 10 mm}); }
 `, "out of range")
 }
 
 func TestCheckConstraintValueInRangeLength(t *testing.T) {
 	expectNoErrors(t, `
 var w = 50 mm where [1:100] mm;
-fn Main() { return Cube(size: Vec3{x: w, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: w, y: 10 mm, z: 10 mm}); }
 `)
 }
 
 func TestCheckConstraintValueOutOfRangeAngle(t *testing.T) {
 	expectError(t, `
 var a = 400 deg where [0:360] deg;
-fn Main() { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(rx: a, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin); }
+fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(x: a, y: 0 deg, z: 0 deg, around: Vec3{}); }
 `, "out of range")
 }
 
 func TestCheckConstraintValueInRangeAngle(t *testing.T) {
 	expectNoErrors(t, `
 var a = 45 deg where [0:360] deg;
-fn Main() { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(rx: a, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin); }
+fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Rotate(x: a, y: 0 deg, z: 0 deg, around: Vec3{}); }
 `)
 }
 
 func TestCheckConstraintEnumStringNotInSet(t *testing.T) {
 	expectError(t, `
 var s = "m20" where ["m3", "m4", "m5"];
-fn Main() { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
 `, "not in the allowed set")
 }
 
 func TestCheckConstraintEnumStringInSet(t *testing.T) {
 	expectNoErrors(t, `
 var s = "m4" where ["m3", "m4", "m5"];
-fn Main() { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
 `)
 }
 
 func TestCheckConstraintExclusiveRange(t *testing.T) {
 	expectError(t, `
 var x = 100 where [0:<100];
-fn Main() { return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm}); }
 `, "out of range")
 }
 
 func TestCheckConstraintExclusiveRangeInRange(t *testing.T) {
 	expectNoErrors(t, `
 var x = 99 where [0:<100];
-fn Main() { return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm}); }
 `)
 }
 
@@ -1202,7 +1202,7 @@ func TestCheckUndefinedVariableHasLineNumber(t *testing.T) {
 	errs := checkSource(t, `
 fn Main() {
     var x = foo;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 	if len(errs) == 0 {
@@ -1218,8 +1218,8 @@ fn Main() {
 func TestCheckIfConditionErrorHasLineNumber(t *testing.T) {
 	errs := checkSource(t, `
 fn Main() {
-    var x = Cube(size: Vec3{x: 2 mm, y: 2 mm, z: 2 mm});
-    if 42 { x = Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+    var x = Cube(s: Vec3{x: 2 mm, y: 2 mm, z: 2 mm});
+    if 42 { x = Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
     return x;
 }
 `)
@@ -1238,7 +1238,7 @@ func TestCheckAssignmentValid(t *testing.T) {
 fn Main() {
     var x = 10 mm;
     x = 20 mm;
-    return Cube(size: Vec3{x: x, y: x, z: x});
+    return Cube(s: Vec3{x: x, y: x, z: x});
 }
 `)
 }
@@ -1248,7 +1248,7 @@ func TestCheckAssignmentTypeMismatch(t *testing.T) {
 fn Main() {
     var x = 10 mm;
     x = true;
-    return Cube(size: Vec3{x: x, y: x, z: x});
+    return Cube(s: Vec3{x: x, y: x, z: x});
 }
 `, "cannot assign")
 }
@@ -1257,7 +1257,7 @@ func TestCheckAssignmentUndefined(t *testing.T) {
 	expectError(t, `
 fn Main() {
     y = 10 mm;
-    return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
 }
 `, "undefined")
 }
@@ -1273,7 +1273,7 @@ fn Foo() Number {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "does not return on all code paths")
 }
@@ -1287,7 +1287,7 @@ fn Bar() Number {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "does not return on all code paths")
 }
@@ -1303,7 +1303,7 @@ fn Baz() Number {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1321,7 +1321,7 @@ fn Choose(x Number) Number {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1337,7 +1337,7 @@ fn Choose(x Number) Number {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "does not return on all code paths")
 }
@@ -1349,7 +1349,7 @@ fn Main() {
     var pts = for i [0:<6] {
         yield Vec2{x: Cos(a: i * 60 deg) * 5 mm, y: Sin(a: i * 60 deg) * 5 mm};
     };
-    return Polygon(points: pts).Extrude(height: 5 mm);
+    return Polygon(points: pts).Extrude(z: 5 mm);
 }
 `)
 }
@@ -1363,10 +1363,10 @@ func TestCheckVarsInsideIfBranches(t *testing.T) {
 fn MakePart(x Number) Solid {
     if x > 0 {
         var size = x * 10;
-        return Cube(size: Vec3{x: size mm, y: size mm, z: size mm});
+        return Cube(s: Vec3{x: size mm, y: size mm, z: size mm});
     } else {
         var half = x / 2;
-        return Sphere(radius: half mm);
+        return Sphere(r: half mm);
     }
 }
 
@@ -1387,7 +1387,7 @@ fn Pick(x Number) Length {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1404,7 +1404,7 @@ fn Pick(x Number) {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1421,7 +1421,7 @@ fn Foo(flag Bool) Number {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1439,7 +1439,7 @@ fn Foo(flag Bool) Number {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1448,15 +1448,15 @@ func TestCheckIfSideEffectThenReturn(t *testing.T) {
 	// If with assignment side-effect, followed by returning the variable.
 	expectNoErrors(t, `
 fn Foo(flag Bool) Solid {
-    var s = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var s = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     if flag {
-        s = s.Translate(v: Vec3 { x: 5 mm, y: 0 mm, z: 0 mm });
+        s = s.Move(v: Vec3 { x: 5 mm, y: 0 mm, z: 0 mm });
     }
     return s;
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1469,7 +1469,7 @@ fn Foo() {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1486,7 +1486,7 @@ fn Foo(flag Bool) {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1504,7 +1504,7 @@ fn MakePt(n Number) Pt {
 }
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `)
 }
@@ -1516,7 +1516,7 @@ fn Main() {
 func TestInferVarTypesUnannotatedReturnSolid(t *testing.T) {
 	src := `
 fn MyFunc() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 
 fn Main() {
@@ -1541,7 +1541,7 @@ fn MySketch() {
 
 fn Main() {
     var s = MySketch();
-    return s.Extrude(height: 5 mm);
+    return s.Extrude(z: 5 mm);
 }
 `
 	vt := inferVarTypesFromSource(t, src)
@@ -1566,7 +1566,7 @@ fn MakeDims() {
 
 fn Main() {
     var d = MakeDims();
-    return Cube(size: Vec3{x: d.w, y: d.h, z: 10 mm});
+    return Cube(s: Vec3{x: d.w, y: d.h, z: 10 mm});
 }
 `
 	vt := inferVarTypesFromSource(t, src)
@@ -1585,8 +1585,8 @@ fn Main() {
 func TestInferVarTypesReassignment(t *testing.T) {
 	src := `
 fn Main() {
-    var s = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    s = Sphere(radius: 5 mm);
+    var s = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    s = Sphere(r: 5 mm);
     return s;
 }
 `
@@ -1603,7 +1603,7 @@ func TestInferVarTypesAnnotatedReturnUnchanged(t *testing.T) {
 	// Annotated functions should still work as before
 	src := `
 fn MyFunc() Solid {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 
 fn Main() {
@@ -1633,7 +1633,7 @@ fn MakeDims() Dims {
 }
 
 fn Dims.ToCube() Solid {
-    return Cube(size: Vec3{x: self.w, y: self.h, z: 10 mm});
+    return Cube(s: Vec3{x: self.w, y: self.h, z: 10 mm});
 }
 
 fn Main() {
@@ -1668,7 +1668,7 @@ fn MakeDims() Dims {
 }
 
 fn Dims.ToCube() Solid {
-    return Cube(size: Vec3{x: self.w, y: self.h, z: 10 mm});
+    return Cube(s: Vec3{x: self.w, y: self.h, z: 10 mm});
 }
 
 fn Main() {
@@ -1693,7 +1693,7 @@ type Dims {
 var d = Dims { w: 10 mm, h: 20 mm };
 
 fn Main() {
-    return Cube(size: Vec3{x: d.w, y: d.h, z: 10 mm});
+    return Cube(s: Vec3{x: d.w, y: d.h, z: 10 mm});
 }
 `)
 }
@@ -1708,7 +1708,7 @@ type Dims {
 var d = Dims { w: 10 mm, h: 20 mm };
 
 fn Main() {
-    return Cube(size: Vec3{x: d.z, y: d.h, z: 10 mm});
+    return Cube(s: Vec3{x: d.z, y: d.h, z: 10 mm});
 }
 `, "has no field")
 }
@@ -1723,7 +1723,7 @@ type Dims {
 var d = Dims { w: 10 mm, h: 20 mm };
 
 fn Main() {
-    return Cube(size: Vec3{x: d.w, y: d.h, z: 10 mm});
+    return Cube(s: Vec3{x: d.w, y: d.h, z: 10 mm});
 }
 `
 	vt := inferVarTypesFromSource(t, src)
@@ -1746,7 +1746,7 @@ func setupCollisionChecker() (*checker, *typeEnv) {
 	s, _ := parse(`
 var A = lib "fake/libA";
 var B = lib "fake/libB";
-fn Main() { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
 `)
 	prog := testStdlibLibs()
 	prog.Sources[testMainKey] = s
@@ -1769,7 +1769,7 @@ type Config {
     height Length;
 }
 fn MakeConfig(h Length) Config {
-    return Config { height: h };
+    return Config { h: h };
 }
 fn Config.GetHeight() Length {
     return self.height;
@@ -1939,7 +1939,7 @@ func TestCollisionAutocompleteUsesBareNames(t *testing.T) {
 func setupNonCollidingChecker() (*checker, *typeEnv) {
 	s, _ := parse(`
 var T = lib "fake/lib";
-fn Main() { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
+fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
 `)
 	libProg, _ := parse(`
 type Widget {
@@ -2054,32 +2054,32 @@ func TestArrayTypeInference(t *testing.T) {
 	}{
 		{
 			name: "homogeneous Number[]",
-			src:  `var x = []Number[1, 2, 3]; fn Main() Solid { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
+			src:  `var x = []Number[1, 2, 3]; fn Main() Solid { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
 			want: "[]Number",
 		},
 		{
 			name: "homogeneous Length[]",
-			src:  `var x = []Length[1 mm, 2 mm]; fn Main() Solid { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
+			src:  `var x = []Length[1 mm, 2 mm]; fn Main() Solid { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
 			want: "[]Length",
 		},
 		{
 			name: "Number+Length coercion to Length[]",
-			src:  `var x = []Length[1, 2 mm, 3]; fn Main() Solid { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
+			src:  `var x = []Length[1, 2 mm, 3]; fn Main() Solid { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
 			want: "[]Length",
 		},
 		{
 			name: "homogeneous 2D Number[][]",
-			src:  `var x = []Number[[1, 2], [3, 4]]; fn Main() Solid { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
+			src:  `var x = []Number[[1, 2], [3, 4]]; fn Main() Solid { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
 			want: "[][]Number",
 		},
 		{
 			name: "empty array",
-			src:  `var x = []Number[]; fn Main() Solid { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
+			src:  `var x = []Number[]; fn Main() Solid { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
 			want: "[]Number",
 		},
 		{
 			name: "homogeneous Bool[]",
-			src:  `var x = []Bool[true, false, true]; fn Main() Solid { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
+			src:  `var x = []Bool[true, false, true]; fn Main() Solid { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`,
 			want: "[]Bool",
 		},
 	}
@@ -2108,7 +2108,7 @@ func TestCheckInferredArrayNumber(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var x = [1, 2, 3];
-    return Cube(size: Vec3{x: x[0] * 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: x[0] * 1 mm, y: 1 mm, z: 1 mm});
 }
 `)
 }
@@ -2116,7 +2116,7 @@ fn Main() {
 func TestCheckInferredArraySolid(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() []Solid {
-    return [Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}), Cube(size: Vec3{x: 2 mm, y: 2 mm, z: 2 mm})];
+    return [Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}), Cube(s: Vec3{x: 2 mm, y: 2 mm, z: 2 mm})];
 }
 `)
 }
@@ -2125,7 +2125,7 @@ func TestCheckInferredArrayNested(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var x = [[1, 2], [3, 4]];
-    return Cube(size: Vec3{x: x[0][0] * 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: x[0][0] * 1 mm, y: 1 mm, z: 1 mm});
 }
 `)
 }
@@ -2134,7 +2134,7 @@ func TestCheckInferredArrayMixedError(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = [1, "hello"];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "array has mixed types")
 }
@@ -2143,7 +2143,7 @@ func TestCheckHeterogeneousArrayError(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = [1, "a"];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "array has mixed types")
 }
@@ -2151,8 +2151,8 @@ fn Main() {
 func TestCheckInferredArrayMixedNumberSolid(t *testing.T) {
 	expectError(t, `
 fn Main() {
-    var x = [1, Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var x = [1, Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})];
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "array has mixed types")
 }
@@ -2161,7 +2161,7 @@ func TestCheckInferredArrayNestedInconsistent(t *testing.T) {
 	expectError(t, `
 fn Main() {
     var x = [[1, 2], [3, "a"]];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `, "array has mixed types")
 }
@@ -2182,7 +2182,7 @@ func TestCheckInferredArrayNumberLengthPromotion(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
     var x = [1 mm, 2];
-    return Cube(size: Vec3{x: x[0], y: x[1] * 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: x[0], y: x[1], z: 1 mm});
 }
 `)
 }
@@ -2191,20 +2191,10 @@ func TestCheckNumberToLengthCoercionParam(t *testing.T) {
 	// Bare number coerced to Length when function param expects Length
 	expectNoErrors(t, `
 fn Box(w Length) {
-    return Cube(size: Vec3{x: w, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: w, y: 1 mm, z: 1 mm});
 }
 fn Main() {
     return Box(w: 10);
-}
-`)
-}
-
-func TestCheckNumberToLengthCoercionOperator(t *testing.T) {
-	// Bare number coerced to Length in mixed arithmetic
-	expectNoErrors(t, `
-fn Main() {
-    var x = 5 mm + 2;
-    return Cube(size: Vec3{x: x, y: 1 mm, z: 1 mm});
 }
 `)
 }
@@ -2213,7 +2203,7 @@ func TestCheckNumberToAngleCoercionParam(t *testing.T) {
 	// Bare number coerced to Angle when function param expects Angle
 	expectNoErrors(t, `
 fn Twist(a Angle) {
-    return Cube(size: 10 mm).Rotate(rx: a, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin);
+    return Cube(s: 10 mm).Rotate(x: a, y: 0 deg, z: 0 deg, around: Vec3{});
 }
 fn Main() {
     return Twist(a: 45);
@@ -2228,7 +2218,7 @@ fn Main() {
     if true {
         var x = 20;
     }
-    return Cube(size: x * 1 mm);
+    return Cube(s: x * 1 mm);
 }
 `, "shadows outer variable")
 }
@@ -2239,7 +2229,7 @@ fn Main(size Length = 10 mm where [1:50] mm) {
     if true {
         var size = 20 mm;
     }
-    return Cube(size: size);
+    return Cube(s: size);
 }
 `, "shadows outer variable")
 }
@@ -2251,7 +2241,7 @@ type Dims {
 }
 fn Main() {
     var Dims = 10;
-    return Cube(size: Dims * 1 mm);
+    return Cube(s: Dims * 1 mm);
 }
 `, "shadows type")
 }
@@ -2260,11 +2250,11 @@ func TestCheckNoShadowFunctionName(t *testing.T) {
 	// Shadowing a function name with a variable is allowed
 	expectNoErrors(t, `
 fn Helper() {
-    return Cube(size: 10 mm);
+    return Cube(s: 10 mm);
 }
 fn Main() {
     var Helper = 5;
-    return Cube(size: Helper * 1 mm);
+    return Cube(s: Helper * 1 mm);
 }
 `)
 }
@@ -2274,7 +2264,7 @@ func TestCheckSameScope(t *testing.T) {
 fn Main() {
     var x = 10;
     var x = 20;
-    return Cube(size: x * 1 mm);
+    return Cube(s: x * 1 mm);
 }
 `, "already defined in this scope")
 }
@@ -2289,7 +2279,7 @@ fn Main() {
     if true {
         var x = 20;
     }
-    return Cube(size: 10 mm);
+    return Cube(s: 10 mm);
 }
 `)
 }
@@ -2302,7 +2292,7 @@ type Foo {
 }
 fn Main() {
     var f = Foo { a: 1, b: 2 mm };
-    return Cube(size: Vec3{x: f.b, y: f.b, z: f.b});
+    return Cube(s: Vec3{x: f.b, y: f.b, z: f.b});
 }
 `)
 }
@@ -2315,7 +2305,7 @@ type Foo {
 }
 fn Main() {
     var f = Foo { a: 1, b: 2 mm, c: 3 };
-    return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
 }
 `, "unknown field")
 }
@@ -2330,7 +2320,7 @@ type Foo {
 }
 fn Main() {
     var f = Foo { a: 1, b: 2 mm };
-    return Cube(size: Vec3{x: f.a * 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: f.a * 1 mm, y: 1 mm, z: 1 mm});
 }
 `)
 }
@@ -2344,7 +2334,7 @@ type Foo {
 }
 fn Main() {
     var f = Foo { a: 1, b: 2 mm };
-    return Cube(size: Vec3{x: f.b, y: f.b, z: f.b});
+    return Cube(s: Vec3{x: f.b, y: f.b, z: f.b});
 }
 `)
 }
@@ -2357,7 +2347,7 @@ type Pt {
 }
 fn Main() {
     var pts = []Pt[{ x: 1, y: 2 }, { x: 3, y: 4 }];
-    return Cube(size: Vec3{x: pts[0].x * 1 mm, y: pts[0].y * 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: pts[0].x * 1 mm, y: pts[0].y * 1 mm, z: 1 mm});
 }
 `)
 }
@@ -2370,7 +2360,7 @@ type Pt {
 }
 fn Main() {
     var pts = []Pt[{ x: 1, y: 2 }, { x: 3, y: 4 }];
-    return Cube(size: Vec3{x: pts[0].x * 1 mm, y: pts[0].y * 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: pts[0].x * 1 mm, y: pts[0].y * 1 mm, z: 1 mm});
 }
 `)
 }
@@ -2380,50 +2370,50 @@ fn Main() {
 // ---------------------------------------------------------------------------
 
 func TestCheckOverloadMinNumber(t *testing.T) {
-	expectNoErrors(t, `fn Main() { return Cube(size: Vec3{x: Min(a: 5, b: 3) * 1 mm, y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: Min(a: 5, b: 3) * 1 mm, y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadMinLength(t *testing.T) {
-	expectNoErrors(t, `fn Main() { return Cube(size: Vec3{x: Min(a: 5 mm, b: 3 mm), y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: Min(a: 5 mm, b: 3 mm), y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadMinMixed(t *testing.T) {
-	expectNoErrors(t, `fn Main() { return Cube(size: Vec3{x: Min(a: 5, b: 3 mm), y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: Min(a: 5, b: 3 mm), y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadAbsAngle(t *testing.T) {
-	expectNoErrors(t, `fn Main() { var a = Abs(a: -45 deg); return Cube(size: Vec3{x: Sin(a: a) * 10 mm, y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { var a = Abs(a: -45 deg); return Cube(s: Vec3{x: Sin(a: a) * 10 mm, y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadLerpLength(t *testing.T) {
-	expectNoErrors(t, `fn Main() { return Cube(size: Vec3{x: Lerp(from: 0 mm, to: 20 mm, t: 0.5), y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: Lerp(from: 0 mm, to: 20 mm, t: 0.5), y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadNumberFromLength(t *testing.T) {
-	expectNoErrors(t, `fn Main() { var n = Number(from: 10 mm); return Cube(size: Vec3{x: n mm, y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { var n = Number(from: 10 mm); return Cube(s: Vec3{x: n mm, y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadNumberFromString(t *testing.T) {
-	expectNoErrors(t, `fn Main() { var n = Number(from: "10"); return Cube(size: Vec3{x: n mm, y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { var n = Number(from: "10"); return Cube(s: Vec3{x: n mm, y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadStringFromBool(t *testing.T) {
-	expectNoErrors(t, `fn Main() { var s = String(a: true); assert s == "true"; return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { var s = String(a: true); assert s == "true"; return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadSizeString(t *testing.T) {
-	expectNoErrors(t, `fn Main() { var n = Size(of: "hello"); return Cube(size: Vec3{x: n mm, y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { var n = Size(of: "hello"); return Cube(s: Vec3{x: n mm, y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadSizeArray(t *testing.T) {
-	expectNoErrors(t, `fn Main() { var n = Size(of: []Number[1, 2, 3]); return Cube(size: Vec3{x: n mm, y: 1 mm, z: 1 mm}); }`)
+	expectNoErrors(t, `fn Main() { var n = Size(of: []Number[1, 2, 3]); return Cube(s: Vec3{x: n mm, y: 1 mm, z: 1 mm}); }`)
 }
 
 func TestCheckOverloadNoMatchError(t *testing.T) {
 	expectError(t, `
 fn Foo(a Number) Number { return a; }
 fn Foo(a Length) Length { return a; }
-fn Main() { Foo(a: true); return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+fn Main() { Foo(a: true); return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `, "no matching overload")
 }
 
@@ -2431,7 +2421,7 @@ func TestCheckOverloadUserDefined(t *testing.T) {
 	expectNoErrors(t, `
 fn Double(a Number) Number { return a * 2; }
 fn Double(a Length) Length { return a * 2; }
-fn Main() { return Cube(size: Vec3{x: Double(a: 5 mm), y: 1 mm, z: 1 mm}); }
+fn Main() { return Cube(s: Vec3{x: Double(a: 5 mm), y: 1 mm, z: 1 mm}); }
 `)
 }
 
@@ -2439,7 +2429,7 @@ func TestCheckOverloadNumberToAngleCoercion(t *testing.T) {
 	// Bare number should be accepted where Angle is expected (Number→Angle coercion)
 	expectNoErrors(t, `
 fn Foo(a Angle) Angle { return a; }
-fn Main() { var a = Foo(a: 45); return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+fn Main() { var a = Foo(a: 45); return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `)
 }
 
@@ -2451,7 +2441,7 @@ func TestCheckDuplicateFunctions(t *testing.T) {
 	expectError(t, `
 fn A() { }
 fn A() { }
-fn Main() { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+fn Main() { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `, "function A() has ambiguous signature")
 }
 
@@ -2459,7 +2449,7 @@ func TestCheckDuplicateFunctionsWithParams(t *testing.T) {
 	expectError(t, `
 fn A(x Length = 1 mm) { }
 fn A(x Length = 1 mm) { }
-fn Main() { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+fn Main() { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `, "function A() has ambiguous signature")
 }
 
@@ -2468,7 +2458,7 @@ func TestCheckLegitimateOverload(t *testing.T) {
 	expectNoErrors(t, `
 fn A(x Length) Length { return x; }
 fn A(x Length, y Length) Length { return x + y; }
-fn Main() { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+fn Main() { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `)
 }
 
@@ -2477,7 +2467,7 @@ func TestCheckDefaultParamAmbiguity(t *testing.T) {
 	expectError(t, `
 fn A() Length { return 1 mm; }
 fn A(x Length = 1 mm) Length { return x; }
-fn Main() { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+fn Main() { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `, "function A() has ambiguous signature")
 }
 
@@ -2486,7 +2476,7 @@ func TestCheckDuplicateMethods(t *testing.T) {
 type Foo { x Length; }
 fn Foo.Bar() Length { return self.x; }
 fn Foo.Bar() Length { return self.x; }
-fn Main() { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+fn Main() { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `, "method Foo.Bar() has ambiguous signature")
 }
 
@@ -2503,7 +2493,7 @@ fn A(x Whatever = 1) { }
 
 	s, _ := parse(`
 var mylib = lib "fake/mylib";
-fn Main() { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+fn Main() { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `)
 	libs.Sources[testMainKey] = s
 	prog := libs
@@ -2529,7 +2519,7 @@ fn A(x Length = 1 mm) { }
 
 	s, _ := parse(`
 var mylib = lib "fake/mylib";
-fn Main() { return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
+fn Main() { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `)
 	libs.Sources[testMainKey] = s
 	prog := libs
@@ -2548,7 +2538,7 @@ type Point {
     y Length
 }
 fn UsePoints(points []Point) {
-    return Cube(size: Vec3{x: points[0].x, y: points[0].y, z: 1 mm});
+    return Cube(s: Vec3{x: points[0].x, y: points[0].y, z: 1 mm});
 }
 fn Main() {
     return UsePoints(points: [Point{x: 1 mm, y: 2 mm}, Point{x: 3 mm, y: 4 mm}]);
@@ -2563,7 +2553,7 @@ type Point {
     y Length
 }
 fn UsePoints(points []Point) {
-    return Cube(size: Vec3{x: points[0].x, y: points[0].y, z: 1 mm});
+    return Cube(s: Vec3{x: points[0].x, y: points[0].y, z: 1 mm});
 }
 fn Main() {
     return UsePoints(points: []Point[{}, {x: 1 mm}]);
@@ -2582,7 +2572,7 @@ fn MakePoints() []Point {
 }
 fn Main() {
     var pts = MakePoints();
-    return Cube(size: Vec3{x: pts[0].x, y: pts[0].y, z: 1 mm});
+    return Cube(s: Vec3{x: pts[0].x, y: pts[0].y, z: 1 mm});
 }
 `)
 }
@@ -2594,7 +2584,7 @@ fn Transform(s Solid, f fn(Solid) Solid) Solid {
     return s;
 }
 fn Main() {
-    return Transform(s: Cube(size: 10 mm), f: fn(s Solid) Solid { return s });
+    return Transform(s: Cube(s: 10 mm), f: fn(s Solid) Solid { return s });
 }
 `)
 }
@@ -2606,7 +2596,7 @@ fn Transform(s Solid, f fn(Solid) Solid) Solid {
     return s;
 }
 fn Main() {
-    return Transform(s: Cube(size: 10 mm), f: fn(n Number) Number { return n });
+    return Transform(s: Cube(s: 10 mm), f: fn(n Number) Number { return n });
 }
 `, "must be fn(Solid) Solid")
 }
@@ -2618,7 +2608,7 @@ fn Transform(s Solid, f fn(var) var) Solid {
     return s;
 }
 fn Main() {
-    return Transform(s: Cube(size: 10 mm), f: fn(s Solid) Solid { return s });
+    return Transform(s: Cube(s: 10 mm), f: fn(s Solid) Solid { return s });
 }
 `)
 }
@@ -2631,7 +2621,7 @@ fn Apply(f fn(Number) Number, x Number) Number {
 }
 fn Main() {
     var result = Apply(f: fn(n Number) Number { return n * 2 }, x: 5);
-    return Cube(size: result * 1 mm);
+    return Cube(s: result * 1 mm);
 }
 `)
 }
@@ -2643,7 +2633,7 @@ fn DoIt(f fn(Length) Solid, x Length) Solid {
     return f(x: x);
 }
 fn Main() {
-    return DoIt(f: fn(x Length) Solid { return Cube(size: x) }, x: 10 mm);
+    return DoIt(f: fn(x Length) Solid { return Cube(s: x) }, x: 10 mm);
 }
 `)
 }

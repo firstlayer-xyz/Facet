@@ -235,19 +235,91 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		}
 	}
 
-	// Length / Length → Number (dimensionless ratio)
-	if _, lIsScalar := lv.(length); lIsScalar {
-		if _, rIsScalar := rv.(length); rIsScalar && ex.Op == "/" {
-			lmm := lv.(length).mm
-			rmm := rv.(length).mm
-			if rmm == 0 {
+	// Length arithmetic — strict units, no silent promotion between Length and
+	// Number. To cross the dimensionless/Length boundary, use Number(from: x) to
+	// convert Length→Number explicitly; Number→Length still auto-coerces at
+	// value-category boundaries (var decls, arguments, struct fields, returns).
+	lLen, lIsLen := lv.(length)
+	rLen, rIsLen := rv.(length)
+	lNum, lIsNum := lv.(float64)
+	rNum, rIsNum := rv.(float64)
+
+	// Length op Length
+	if lIsLen && rIsLen {
+		switch ex.Op {
+		case "+":
+			return length{mm: lLen.mm + rLen.mm}, nil
+		case "-":
+			return length{mm: lLen.mm - rLen.mm}, nil
+		case "/":
+			if rLen.mm == 0 {
 				return nil, e.errAt(ex.Pos, "division by zero")
 			}
-			return lmm / rmm, nil
+			return lLen.mm / rLen.mm, nil // dimensionless Number (ratio)
+		case "*":
+			return nil, e.errAt(ex.Pos, "operator *: Length * Length is not supported (no Area type)")
+		case "%":
+			return nil, e.errAt(ex.Pos, "operator %%: Length %% Length is not supported")
 		}
 	}
 
-	// Operator function dispatch — fallback before Length arithmetic
+	// Length op Number — scalar */÷ always work; +/-/% require the Number
+	// side to be a bare numeric literal (which is "untyped" and coerces to
+	// Length), so `5 mm + 3` is Length = 8 mm but `5 mm + n` for a Number
+	// variable `n` is a dimension error.
+	if lIsLen && rIsNum {
+		switch ex.Op {
+		case "*":
+			return length{mm: lLen.mm * rNum}, nil
+		case "/":
+			if rNum == 0 {
+				return nil, e.errAt(ex.Pos, "division by zero")
+			}
+			return length{mm: lLen.mm / rNum}, nil
+		case "+", "-", "%":
+			if parser.IsNumericLiteral(ex.Right) {
+				rLenPromoted := length{mm: rNum}
+				switch ex.Op {
+				case "+":
+					return length{mm: lLen.mm + rLenPromoted.mm}, nil
+				case "-":
+					return length{mm: lLen.mm - rLenPromoted.mm}, nil
+				case "%":
+					if rLenPromoted.mm == 0 {
+						return nil, e.errAt(ex.Pos, "modulo by zero")
+					}
+					return length{mm: math.Mod(lLen.mm, rLenPromoted.mm)}, nil
+				}
+			}
+			return nil, e.errAt(ex.Pos, "operator %s: incompatible types Length and Number (use Number(from: x) to convert explicitly)", ex.Op)
+		default:
+			return nil, e.errAt(ex.Pos, "operator %s: incompatible types Length and Number (use Number(from: x) to convert explicitly)", ex.Op)
+		}
+	}
+
+	// Number op Length — * is commutative; + and - accept a bare numeric
+	// literal on the left (`3 + 5 mm` → 8 mm).
+	if lIsNum && rIsLen {
+		switch ex.Op {
+		case "*":
+			return length{mm: lNum * rLen.mm}, nil
+		case "+", "-":
+			if parser.IsNumericLiteral(ex.Left) {
+				switch ex.Op {
+				case "+":
+					return length{mm: lNum + rLen.mm}, nil
+				case "-":
+					return length{mm: lNum - rLen.mm}, nil
+				}
+			}
+			return nil, e.errAt(ex.Pos, "operator %s: incompatible types Number and Length (use Number(from: x) to convert explicitly)", ex.Op)
+		default:
+			return nil, e.errAt(ex.Pos, "operator %s: incompatible types Number and Length (use Number(from: x) to convert explicitly)", ex.Op)
+		}
+	}
+
+	// Operator function dispatch — user-defined binary operators on other types
+	// (e.g. custom Vec/Matrix arithmetic, or user-added Length*Length → Area).
 	if fn, ok := e.opFuncs[opFuncKey{op: ex.Op, leftType: typeName(lv), rightType: typeName(rv)}]; ok && len(fn.Params) >= 2 {
 		result, err := e.evalFunction(fn, map[string]value{fn.Params[0].Name: lv, fn.Params[1].Name: rv})
 		if err != nil {
@@ -256,33 +328,7 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		return result, nil
 	}
 
-	// Length arithmetic (promotes Number to Length when mixed)
-	lmm, lok := asNumber(lv)
-	rmm, rok := asNumber(rv)
-	if !lok || !rok {
-		return nil, e.errAt(ex.Pos, "operator %s: incompatible types %s and %s", ex.Op, typeName(lv), typeName(rv))
-	}
-
-	switch ex.Op {
-	case "+":
-		return length{mm: lmm + rmm}, nil
-	case "-":
-		return length{mm: lmm - rmm}, nil
-	case "*":
-		return float64(lmm * rmm), nil
-	case "/":
-		if rmm == 0 {
-			return nil, e.errAt(ex.Pos, "division by zero")
-		}
-		return lmm / rmm, nil
-	case "%":
-		if rmm == 0 {
-			return nil, e.errAt(ex.Pos, "modulo by zero")
-		}
-		return length{mm: math.Mod(lmm, rmm)}, nil
-	default:
-		return nil, e.errAt(ex.Pos, "unknown operator %q", ex.Op)
-	}
+	return nil, e.errAt(ex.Pos, "operator %s: incompatible types %s and %s", ex.Op, typeName(lv), typeName(rv))
 }
 
 // buildOpFuncs creates the operator function dispatch table from stdlib

@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"os"
@@ -16,9 +14,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
-	"time"
 
 	"facet/app/pkg/fctlang/formatter"
 	"facet/app/pkg/fctlang/parser"
@@ -85,170 +81,51 @@ func (a *App) GetExample(name string) (string, error) {
 	return string(data), nil
 }
 
-// ringBuffer is a simple capped byte buffer for capturing stderr output.
-type ringBuffer struct {
-	mu   sync.Mutex
-	data []byte
-	max  int
-}
-
-func (rb *ringBuffer) Write(p []byte) (int, error) {
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-	rb.data = append(rb.data, p...)
-	if len(rb.data) > rb.max {
-		rb.data = rb.data[len(rb.data)-rb.max:]
-	}
-	return len(p), nil
-}
-
-func (rb *ringBuffer) String() string {
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-	return string(rb.data)
-}
-
 // App struct holds the application state and is bound to the frontend via Wails.
 type App struct {
 	ctx context.Context
 
-	configMu sync.Mutex
-
-	assistantMu sync.Mutex
-	cancelAssistant    context.CancelFunc
-	sessionID          string
-	assistantConfig    AssistantConfig
-	cachedSystemPrompt string
-
-	mcpState *mcpState // MCP server state (tools read/write this)
-	mcpPort  int       // port the MCP/eval HTTP server is listening on
-
-	evalMu     sync.Mutex
-	cancelEval context.CancelFunc
-
-	stderrBuf *ringBuffer
-	logFile   *os.File
+	config    *ConfigStore
+	logs      *LogCapture
+	assistant *AssistantService
+	libraries *LibraryManager
+	eval      *EvalService
+	mcp       *MCPService
 }
 
 // NewApp creates a new App application struct.
 func NewApp() *App {
-	return &App{}
-}
-
-// appConfig holds all application settings persisted to disk.
-// Frontend-owned sections use json.RawMessage so Go round-trips them without
-// needing to duplicate the full type definitions — the frontend owns the schema.
-type appConfig struct {
-	MemoryLimitGB   int64              `json:"memoryLimitGB"`              // 0 = default (8 GB)
-	InstalledLibs   map[string]string  `json:"installedLibs,omitempty"`    // libID → local dir overrides
-	RecentFiles     []string           `json:"recentFiles,omitempty"`      // most-recently-opened file paths
-	SavedTabs       json.RawMessage    `json:"savedTabs,omitempty"`        // frontend-owned tab state
-	ActiveTab       string             `json:"activeTab,omitempty"`        // frontend-owned active tab path
-	Appearance      json.RawMessage    `json:"appearance,omitempty"`       // frontend-owned
-	Editor          json.RawMessage    `json:"editor,omitempty"`           // frontend-owned
-	Assistant       json.RawMessage    `json:"assistant,omitempty"`        // frontend-owned
-	Camera          json.RawMessage    `json:"camera,omitempty"`           // frontend-owned
-	Slicer          json.RawMessage    `json:"slicer,omitempty"`           // frontend-owned
-	LibrarySettings json.RawMessage    `json:"librarySettings,omitempty"`  // frontend-owned (autoPull, etc.)
-}
-
-const defaultMemoryLimitGB = 8
-
-// configDir returns the OS-specific Facet config directory.
-func configDir() string {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		base = os.TempDir()
-	}
-	return filepath.Join(base, "Facet")
-}
-
-// configPath returns the path to the backend settings file.
-func configPath() string {
-	return filepath.Join(configDir(), "settings.json")
-}
-
-func loadConfig() appConfig {
-	data, err := os.ReadFile(configPath())
-	if err != nil {
-		return appConfig{}
-	}
-	var cfg appConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		log.Printf("loadConfig: unmarshal error: %v", err)
-		return appConfig{}
-	}
-	return cfg
-}
-
-func saveConfig(cfg appConfig) {
-	dir := configDir()
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		log.Printf("saveConfig: mkdir error: %v", err)
-		return
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		log.Printf("saveConfig: marshal error: %v", err)
-		return
-	}
-	if err := os.WriteFile(configPath(), data, 0644); err != nil {
-		log.Printf("saveConfig: write error: %v", err)
+	assistant := NewAssistantService()
+	eval := NewEvalService()
+	return &App{
+		config:    NewConfigStore(),
+		logs:      NewLogCapture(),
+		assistant: assistant,
+		libraries: NewLibraryManager(assistant),
+		eval:      eval,
+		mcp:       NewMCPService(eval),
 	}
 }
 
-// GetSettings returns the full settings JSON for the frontend.
-func (a *App) GetSettings() string {
-	cfg := loadConfig()
-	data, err := json.Marshal(cfg)
-	if err != nil {
-		return "{}"
-	}
-	return string(data)
+// GetHTTPAuth returns the port + bearer token for the localhost HTTP server.
+// The frontend must include `Authorization: Bearer <token>` on every request
+// to /eval, /check, or /mcp.  Exposed via Wails binding.
+func (a *App) GetHTTPAuth() HTTPAuth {
+	return a.mcp.Auth()
+}
+
+// GetSettings returns the full settings JSON for the frontend. If the on-disk
+// settings file exists but cannot be read or parsed, the error is surfaced so
+// the frontend can warn the user rather than silently overwriting it with
+// defaults on the next save.
+func (a *App) GetSettings() (string, error) {
+	return a.config.GetJSON()
 }
 
 // PatchSettings merges the provided partial JSON into the existing config.
-// Only keys present in the patch are updated; missing keys are preserved.
-// This is the primary way both frontend and Go code should update settings.
-func (a *App) PatchSettings(jsonStr string) {
-	a.configMu.Lock()
-	defer a.configMu.Unlock()
-
-	// Read existing config as raw JSON
-	existing, _ := os.ReadFile(configPath())
-	if existing == nil {
-		existing = []byte("{}")
-	}
-
-	// Parse both into generic maps
-	var base map[string]json.RawMessage
-	if err := json.Unmarshal(existing, &base); err != nil {
-		base = make(map[string]json.RawMessage)
-	}
-
-	var patch map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(jsonStr), &patch); err != nil {
-		fmt.Fprintf(os.Stderr, "PatchSettings: bad JSON: %v\n", err)
-		return
-	}
-
-	// Merge: patch keys override base keys
-	for k, v := range patch {
-		base[k] = v
-	}
-
-	// Write merged result back through appConfig for validation
-	merged, err := json.Marshal(base)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "PatchSettings: marshal error: %v\n", err)
-		return
-	}
-	var cfg appConfig
-	if err := json.Unmarshal(merged, &cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "PatchSettings: unmarshal error: %v\n", err)
-		return
-	}
-	saveConfig(cfg)
+// See ConfigStore.Patch for semantics.
+func (a *App) PatchSettings(jsonStr string) error {
+	return a.config.Patch(jsonStr)
 }
 
 func applyMemoryLimit(gb int64) {
@@ -263,18 +140,25 @@ func applyMemoryLimit(gb int64) {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	cfg := loadConfig()
+	// A corrupt or unreadable settings file must not prevent startup — the
+	// user still needs to launch the app to fix it. Log loudly so the
+	// failure is discoverable; run with defaults for this launch. Subsequent
+	// writes (PatchSettings, AddRecentFile, etc.) re-read and refuse to save
+	// if the file is still corrupt, so the user's data is not clobbered.
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Printf("[settings] %v — continuing with defaults; writes will refuse until this is resolved", err)
+	}
 	applyMemoryLimit(cfg.MemoryLimitGB)
 
-	a.rebuildSystemPrompt()
-	a.initStderrCapture()
+	a.libraries.SetContext(ctx)
+	a.assistant.SetEventContext(ctx)
+	a.assistant.RebuildSystemPrompt()
+	a.logs.Start(ctx)
 
 	// Start in-process HTTP server (MCP + eval endpoints)
-	port, err := a.startHTTPServer()
-	if err != nil {
+	if _, _, err := a.mcp.Start(ctx); err != nil {
 		log.Printf("[http] failed to start: %v", err)
-	} else {
-		a.mcpPort = port
 	}
 
 	// Auto-pull libraries on startup if enabled
@@ -336,16 +220,18 @@ func (a *App) beforeClose(ctx context.Context) bool {
 }
 
 // shutdown is called when the app is closing. Persists current memory limit.
+// If the settings file is corrupt, the update is skipped rather than wiping
+// the user's settings.
 func (a *App) shutdown(ctx context.Context) {
-	a.configMu.Lock()
-	defer a.configMu.Unlock()
-	cfg := loadConfig()
-	cfg.MemoryLimitGB = a.GetMemoryLimit()
-	saveConfig(cfg)
-	cleanupScratchFiles()
-	if a.logFile != nil {
-		a.logFile.Close()
+	err := a.config.Mutate(func(cfg *appConfig) error {
+		cfg.MemoryLimitGB = a.GetMemoryLimit()
+		return nil
+	})
+	if err != nil {
+		log.Printf("[settings] shutdown: %v", err)
 	}
+	cleanupScratchFiles()
+	a.logs.Close()
 }
 
 // cleanupScratchFiles deletes empty (0-byte) scratch files on shutdown.
@@ -372,108 +258,14 @@ func cleanupScratchFiles() {
 	}
 }
 
-// rebuildSystemPrompt rebuilds the cached AI system prompt from the language
-// spec, curated examples, and library catalog. Safe to call from any goroutine.
-func (a *App) rebuildSystemPrompt() {
-	catalog := collectLibDocEntries()
-	prompt := buildFullSystemPrompt(catalog)
-	a.assistantMu.Lock()
-	a.cachedSystemPrompt = prompt
-	a.assistantMu.Unlock()
-	log.Printf("[assistant] system prompt rebuilt (%d bytes)", len(prompt))
-}
-
-// logDir returns the path to the Facet logs directory.
-func logDir() string {
-	return filepath.Join(configDir(), "logs")
-}
-
-// rotateOldLogs deletes log files older than 7 days from the logs directory.
-func rotateOldLogs() {
-	dir := logDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	cutoff := time.Now().Add(-7 * 24 * time.Hour)
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".log") {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		if info.ModTime().Before(cutoff) {
-			os.Remove(filepath.Join(dir, e.Name()))
-		}
-	}
-}
-
 // GetLogDir returns the path to the logs directory.
 func (a *App) GetLogDir() string {
 	return logDir()
 }
 
-// initStderrCapture redirects stderr to a pipe, tees to the original stderr,
-// a ring buffer, and a log file. Emits "log:stderr" events for each line.
-func (a *App) initStderrCapture() {
-	a.stderrBuf = &ringBuffer{max: 256 * 1024} // 256 KB ring buffer
-
-	// Create log directory and rotate old logs
-	dir := logDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		log.Printf("initStderrCapture: mkdir error: %v", err)
-	}
-	rotateOldLogs()
-
-	// Open today's log file (append mode)
-	logName := time.Now().Format("2006-01-02") + ".log"
-	logFile, fileErr := os.OpenFile(filepath.Join(dir, logName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if fileErr == nil {
-		a.logFile = logFile
-	}
-
-	origStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		return
-	}
-	os.Stderr = w
-
-	// Tee pipe output to original stderr + ring buffer + log file
-	writers := []io.Writer{origStderr, a.stderrBuf}
-	if fileErr == nil {
-		writers = append(writers, logFile)
-	}
-	tee := io.MultiWriter(writers...)
-
-	go func() {
-		scanner := bufio.NewScanner(r)
-		scanner.Buffer(make([]byte, 64*1024), 64*1024)
-		for scanner.Scan() {
-			line := scanner.Text() + "\n"
-			tee.Write([]byte(line))
-			if a.ctx != nil {
-				wailsRuntime.EventsEmit(a.ctx, "log:stderr", line)
-			}
-		}
-	}()
-
-	// Close the write end of the pipe when the app context is cancelled,
-	// which causes the scanner goroutine above to exit.
-	go func() {
-		<-a.ctx.Done()
-		w.Close()
-	}()
-}
-
 // GetStderrLog returns the current stderr buffer contents.
 func (a *App) GetStderrLog() string {
-	if a.stderrBuf == nil {
-		return ""
-	}
-	return a.stderrBuf.String()
+	return a.logs.Stderr()
 }
 
 // MemStats returns a summary of Go runtime memory usage.
@@ -497,14 +289,15 @@ func (a *App) RunGC() {
 }
 
 // SetMemoryLimit sets the Go runtime soft memory limit in GB and persists it.
-// 0 means use the default (8 GB).
-func (a *App) SetMemoryLimit(gb int64) {
+// 0 means use the default (8 GB). The in-memory limit is applied even if we
+// cannot persist it to disk — so this run behaves as the user asked; only the
+// next launch will forget.
+func (a *App) SetMemoryLimit(gb int64) error {
 	applyMemoryLimit(gb)
-	a.configMu.Lock()
-	defer a.configMu.Unlock()
-	cfg := loadConfig()
-	cfg.MemoryLimitGB = gb
-	saveConfig(cfg)
+	return a.config.Mutate(func(cfg *appConfig) error {
+		cfg.MemoryLimitGB = gb
+		return nil
+	})
 }
 
 // GetMemoryLimit returns the current soft memory limit in GB (0 = default).
@@ -518,26 +311,29 @@ func (a *App) GetMemoryLimit() int64 {
 
 const maxRecentFiles = 10
 
-// AddRecentFile records path as the most recently opened file.
+// AddRecentFile records path as the most recently opened file. If the
+// settings file is corrupt, the update is skipped rather than clobbering it.
 func (a *App) AddRecentFile(path string) {
 	if path == "" {
 		return
 	}
-	a.configMu.Lock()
-	defer a.configMu.Unlock()
-	cfg := loadConfig()
-	// Remove existing occurrence, then prepend.
-	filtered := make([]string, 0, len(cfg.RecentFiles))
-	for _, p := range cfg.RecentFiles {
-		if p != path {
-			filtered = append(filtered, p)
+	err := a.config.Mutate(func(cfg *appConfig) error {
+		// Remove existing occurrence, then prepend.
+		filtered := make([]string, 0, len(cfg.RecentFiles))
+		for _, p := range cfg.RecentFiles {
+			if p != path {
+				filtered = append(filtered, p)
+			}
 		}
+		cfg.RecentFiles = append([]string{path}, filtered...)
+		if len(cfg.RecentFiles) > maxRecentFiles {
+			cfg.RecentFiles = cfg.RecentFiles[:maxRecentFiles]
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("[settings] AddRecentFile: %v", err)
 	}
-	cfg.RecentFiles = append([]string{path}, filtered...)
-	if len(cfg.RecentFiles) > maxRecentFiles {
-		cfg.RecentFiles = cfg.RecentFiles[:maxRecentFiles]
-	}
-	saveConfig(cfg)
 }
 
 // CreateScratchFile creates a new empty .fct file in the scratch directory
@@ -558,9 +354,15 @@ func (a *App) CreateScratchFile(name string) (string, error) {
 }
 
 // IsScratchFile returns true if the path is inside the scratch directory.
+// If the config dir can't be resolved (e.g. no $HOME), we conservatively say
+// "no" — this is only a UI hint (scratch vs saved file) and returning false
+// just means the file is treated as saved, which is the safe default.
 func (a *App) IsScratchFile(path string) bool {
-	dir, _ := scratchDir()
-	return dir != "" && strings.HasPrefix(path, dir)
+	dir, err := scratchDir()
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(path, dir)
 }
 
 func (a *App) OpenRecentFile(path string) (map[string]string, error) {

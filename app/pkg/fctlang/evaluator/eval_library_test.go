@@ -17,7 +17,7 @@ func TestEvalLibraryCall(t *testing.T) {
 	}
 	libSrc := `
 fn MakeBox(size Length) {
-    return Cube(size: Vec3{x: size, y: size, z: size});
+    return Cube(s: Vec3{x: size, y: size, z: size});
 }
 `
 	if err := os.WriteFile(libPath+"/mylib.fct", []byte(libSrc), 0644); err != nil {
@@ -58,7 +58,7 @@ func TestEvalLibraryInvalidPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			src := `var L = lib "` + tt.path + `";
-fn Main() { return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }`
+fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }`
 			prog := parseTestProg(t, src)
 			err := loader.ResolveLibraries(context.Background(), prog, testMainKey, t.TempDir(), nil)
 			if err == nil {
@@ -76,7 +76,7 @@ func TestEvalLibraryNotFound(t *testing.T) {
 var MyLib = lib "nonexistent/lib";
 
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)

@@ -115,31 +115,60 @@ func (c *checker) inferBinaryOp(ex *parser.BinaryExpr, env *typeEnv) typeInfo {
 		}
 	}
 
-	// Length / Length → Number
-	if left.ft == typeLength && right.ft == typeLength && op == "/" {
-		return simple(typeNumber)
-	}
-
-	// Length op Length → Length (for +, -, %) or Number (for *)
+	// Length op Length — strict: only +/-/÷ are allowed. Multiplication
+	// (would produce Area) and modulo are compile-time errors.
 	if left.ft == typeLength && right.ft == typeLength {
 		switch op {
-		case "+", "-", "%":
+		case "+", "-":
 			return simple(typeLength)
+		case "/":
+			return simple(typeNumber) // dimensionless ratio
 		case "*":
-			return simple(typeNumber)
+			c.addError(ex.Pos, "operator *: Length * Length is not supported (no Area type)")
+			return unknown()
+		case "%":
+			c.addError(ex.Pos, "operator %: Length % Length is not supported")
+			return unknown()
 		default:
 			c.addError(ex.Pos, fmt.Sprintf("unknown operator %q", op))
 			return unknown()
 		}
 	}
 
-	// Length op Number or Number op Length → Length (mixed arithmetic with coercion)
-	if (left.ft == typeLength && right.ft == typeNumber) || (left.ft == typeNumber && right.ft == typeLength) {
+	// Length op Number — scalar */÷ always produce a Length.  +/-/% would
+	// silently drop units for a committed Number variable (error), but a
+	// bare numeric literal is "untyped" and coerces to a Length on demand,
+	// so `5 mm + 3` is Length (= 8 mm).
+	if left.ft == typeLength && right.ft == typeNumber {
 		switch op {
-		case "+", "-", "*", "/", "%":
+		case "*", "/":
 			return simple(typeLength)
+		case "+", "-", "%":
+			if parser.IsNumericLiteral(ex.Right) {
+				return simple(typeLength)
+			}
+			c.addError(ex.Pos, fmt.Sprintf("operator %s: incompatible types Length and Number (use Number(from: x) to convert explicitly)", op))
+			return unknown()
 		default:
-			c.addError(ex.Pos, fmt.Sprintf("unknown operator %q", op))
+			c.addError(ex.Pos, fmt.Sprintf("operator %s: incompatible types Length and Number (use Number(from: x) to convert explicitly)", op))
+			return unknown()
+		}
+	}
+
+	// Number op Length — scalar * is commutative.  A bare numeric literal
+	// on the left coerces to Length for + and - (so `3 + 5 mm` is 8 mm).
+	if left.ft == typeNumber && right.ft == typeLength {
+		switch op {
+		case "*":
+			return simple(typeLength)
+		case "+", "-":
+			if parser.IsNumericLiteral(ex.Left) {
+				return simple(typeLength)
+			}
+			c.addError(ex.Pos, fmt.Sprintf("operator %s: incompatible types Number and Length (use Number(from: x) to convert explicitly)", op))
+			return unknown()
+		default:
+			c.addError(ex.Pos, fmt.Sprintf("operator %s: incompatible types Number and Length (use Number(from: x) to convert explicitly)", op))
 			return unknown()
 		}
 	}

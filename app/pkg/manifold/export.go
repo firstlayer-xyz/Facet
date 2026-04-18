@@ -7,7 +7,6 @@ package manifold
 import "C"
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"unsafe"
 
@@ -30,15 +29,12 @@ func ExportMesh(s *Solid, path string) error {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
-	C.facet_export_mesh(s.ptr, cPath)
+	cErr := C.facet_export_mesh(s.ptr, cPath)
 	runtime.KeepAlive(s)
-	info, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("export failed: output file was not created")
-	}
-	if info.Size() == 0 {
-		os.Remove(path)
-		return fmt.Errorf("export failed: output file is empty")
+	if cErr != nil {
+		msg := C.GoString(cErr)
+		C.facet_free_string(cErr)
+		return fmt.Errorf("ExportMesh %s: %s", path, msg)
 	}
 	return nil
 }

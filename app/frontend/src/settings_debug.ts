@@ -1,7 +1,6 @@
-import type { SettingsPageContext, PageResult } from './settings_appearance';
 import { GetLogDir, GetStderrLog, RevealInFileManager } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
-import { styleButton } from './settings_ui';
+import { styleButton, type SettingsPageContext, type PageResult } from './settings_ui';
 
 export function buildDebugPage(_ctx: SettingsPageContext): PageResult {
   const page = document.createElement('div');

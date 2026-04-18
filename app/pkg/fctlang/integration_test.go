@@ -66,6 +66,19 @@ func evalMerged(ctx context.Context, prog loader.Program, overrides map[string]i
 	return manifold.MergeMeshes(meshes), nil
 }
 
+// exampleOverrides pins parameters for examples whose Main defaults depend on
+// real-world state (clock, locale, etc.).  Without these, the integration test
+// becomes non-deterministic and fires on an unrelated assertion inside the
+// example's own logic.  Keyed by example file name.
+//
+// Moon.fct: UtcDate() defaults to today; the example then asserts that the
+// moon phase is strictly between (0.03, 0.97) — so the test fires on real-world
+// new/full moon days.  1/14/2000 sits ~8 days after the epoch new moon, phase
+// ≈ 0.27 (waxing gibbous), comfortably inside the valid range.
+var exampleOverrides = map[string]map[string]interface{}{
+	"Moon.fct": {"date": "1/14/2000"},
+}
+
 func TestAllExamples(t *testing.T) {
 	// Use a temp dir — the loader falls back to embedded stdlib automatically
 	libDir := t.TempDir()
@@ -112,7 +125,7 @@ func TestAllExamples(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 
-			result, err := evaluator.Eval(ctx, prog, testMainKey, nil, "Main")
+			result, err := evaluator.Eval(ctx, prog, testMainKey, exampleOverrides[name], "Main")
 			if err != nil {
 				t.Fatalf("eval %s: %v", name, err)
 			}
@@ -131,7 +144,7 @@ func TestConstraintViolationOnReassign(t *testing.T) {
 fn Main() {
     var x = 10 mm where [0:100] mm
     x = 200 mm
-    return Cube(size: Vec3{x: x, y: x, z: x})
+    return Cube(s: Vec3{x: x, y: x, z: x})
 }
 `
 	prog := parseTestProg(t, src)
@@ -155,7 +168,7 @@ func TestDisc(t *testing.T) {
 fn Disc(
     str String = "hello" where [],
 ) {
-    var text = Text(text: str, size: 12 mm).Extrude(height: 1)
+    var text = Text(text: str, s: 12 mm).Extrude(z: 1)
         .Color(c: Color(r: 1, g: 1, b: 0))
     var d = Cube(x: text.Width(), y: text.Depth(), z: text.Height())
     return text + d.AlignCenter(with: text)
@@ -192,7 +205,7 @@ func TestMultiFileNoFalseShadow(t *testing.T) {
 
 	srcB, err := parser.Parse(`
 fn Main() {
-    var d = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})
+    var d = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})
     return d
 }
 `, "", parser.SourceUser)
@@ -220,7 +233,7 @@ func TestInferredArrayTypes(t *testing.T) {
 			src: `
 fn Main() {
     var a = [1, 2, 3];
-    return Cube(size: Vec3{x: a[0] * 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: a[0] * 1 mm, y: 1 mm, z: 1 mm});
 }`,
 		},
 		{
@@ -228,7 +241,7 @@ fn Main() {
 			src: `
 fn Main() {
     var a = [[1, 2], [3, 4]];
-    return Cube(size: Vec3{x: a[0][0] * 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: a[0][0] * 1 mm, y: 1 mm, z: 1 mm});
 }`,
 		},
 		{
@@ -236,7 +249,7 @@ fn Main() {
 			src: `
 fn Main() {
     var cubes = for i [0:<2] {
-        yield Cube(size: Vec3{x: (i + 1) mm, y: 1 mm, z: 1 mm});
+        yield Cube(s: Vec3{x: (i + 1) mm, y: 1 mm, z: 1 mm});
     };
     return fold a, b cubes { yield a + b; };
 }`,
@@ -246,7 +259,7 @@ fn Main() {
 			src: `
 fn Main() {
     var a = [1 mm, 2];
-    return Cube(size: Vec3{x: a[0], y: a[1] * 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: a[0], y: a[1] * 1 mm, z: 1 mm});
 }`,
 		},
 		{
@@ -254,7 +267,7 @@ fn Main() {
 			src: `
 fn Main() {
     var a = []Number[1, 2, 3];
-    return Cube(size: Vec3{x: a[0] * 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: a[0] * 1 mm, y: 1 mm, z: 1 mm});
 }`,
 		},
 	}

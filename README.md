@@ -88,7 +88,7 @@ solid.Scale(factor: 2.0)
 ### Patterns
 
 ```
-solid.LinearPattern(count: 5, spacing: Vec3{x: 12 mm, y: 0 mm, z: 0 mm})
+solid.LinearPattern(count: 5, spacing: Vec3{x: 12 mm})
 solid.CircularPattern(count: 8)
 ```
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -29,9 +30,14 @@ func (a *App) buildMenu() *menu.Menu {
 		wailsRuntime.EventsEmit(a.ctx, "menu:open")
 	})
 
-	// Open Recent submenu
+	// Open Recent submenu. If the settings file is corrupt, show an empty
+	// list — the user will see the warning from startup() and can repair.
 	recentMenu := fileMenu.AddSubmenu("Open Recent")
-	recentFiles := loadConfig().RecentFiles
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Printf("[settings] menu recent files: %v", err)
+	}
+	recentFiles := cfg.RecentFiles
 	if len(recentFiles) == 0 {
 		recentMenu.AddText("No Recent Files", nil, nil)
 	} else {

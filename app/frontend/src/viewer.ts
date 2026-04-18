@@ -24,7 +24,7 @@ interface ViewerAppearance {
 }
 
 /** PosEntry maps a source position to the face IDs produced there. */
-interface PosEntry {
+export interface PosEntry {
   file: string;  // "" = main, "folder/name" = library path
   line: number;
   col: number;
@@ -62,7 +62,7 @@ const STEP_STYLES: Record<string, Record<string, StyleDef>> = {
   },
 };
 
-const TRANSFORM_OPS = new Set(['Translate', 'Rotate', 'Scale', 'Mirror']);
+const TRANSFORM_OPS = new Set(['Move', 'Rotate', 'Scale', 'Mirror']);
 
 export class Viewer {
   private renderer: THREE.WebGLRenderer;

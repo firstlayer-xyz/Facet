@@ -28,9 +28,12 @@ func (lp *LibPath) CloneURL() string {
 	return fmt.Sprintf("https://%s/%s/%s.git", lp.Host, lp.User, lp.Repo)
 }
 
-// ParseLibPath parses a raw library path into its components.
-// Remote paths have a hostname (first segment contains '.') and require @ref.
-// Local paths (e.g. "facet/gears") are returned with IsLocal=true.
+// ParseLibPath parses a raw library path into its components. Remote paths
+// have a hostname (first segment contains '.') and require an @ref pinning
+// them to a specific branch, tag, or commit hash — this is the mechanism for
+// reproducible builds. Local/built-in paths are plain filesystem-relative
+// paths and may optionally carry an @ref (advisory — built-ins ship with the
+// binary at a single version).
 func ParseLibPath(raw string) (*LibPath, error) {
 	lp := &LibPath{Raw: raw}
 
@@ -50,11 +53,11 @@ func ParseLibPath(raw string) (*LibPath, error) {
 
 	// Remote detection: first segment contains '.'
 	if strings.Contains(segments[0], ".") {
+		if lp.Ref == "" {
+			return nil, fmt.Errorf("library path %q: remote imports require @ref — a branch, tag, or commit hash (e.g. @main, @v1.0, or @abc1234)", lp.Raw)
+		}
 		if len(segments) < 3 {
 			return nil, fmt.Errorf("library path %q: remote paths need at least host/user/repo", lp.Raw)
-		}
-		if lp.Ref == "" {
-			return nil, fmt.Errorf("library path %q: remote paths require @ref (e.g. @v1.0 or @main)", lp.Raw)
 		}
 		lp.Host = segments[0]
 		lp.User = segments[1]
@@ -65,7 +68,7 @@ func ParseLibPath(raw string) (*LibPath, error) {
 		return lp, nil
 	}
 
-	// Local path
+	// Local path — @ref optional
 	lp.IsLocal = true
 	return lp, nil
 }
@@ -96,12 +99,19 @@ func resolveLibPath(ctx context.Context, libDir, gitCacheDir string, installedLi
 		gitCacheDir = DefaultGitCacheDir()
 	}
 
-	// Local/built-in path → validate and resolve against libDir
+	// Local/built-in path → validate and resolve against libDir. When an @ref
+	// is present it is part of the identity (for cache keying) but does not
+	// participate in the on-disk lookup — built-in libraries ship at a single
+	// version tied to the Facet binary, so the ref is advisory here.
 	if lp.IsLocal {
-		if err := validateLibPath(rawPath); err != nil {
+		localPath := rawPath
+		if lp.Ref != "" {
+			localPath = strings.TrimSuffix(rawPath, "@"+lp.Ref)
+		}
+		if err := validateLibPath(localPath); err != nil {
 			return "", err
 		}
-		return filepath.Join(libDir, rawPath), nil
+		return filepath.Join(libDir, localPath), nil
 	}
 
 	// Check settings-installed working copies first (library authors)
@@ -148,10 +158,21 @@ func ensureCloned(ctx context.Context, gitCacheDir string, lp *LibPath) (string,
 // PullRepo opens an existing git repo at dir and pulls the current branch.
 // If the pull fails (e.g. shallow clone issues with go-git), the cache dir
 // is deleted and re-cloned from scratch.
+//
+// If HEAD is detached (the cache was cloned at a specific commit SHA), the
+// content is immutable and this is a no-op.
 func PullRepo(ctx context.Context, dir string) error {
 	repo, err := git.PlainOpen(dir)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", dir, err)
+	}
+	head, err := repo.Head()
+	if err != nil {
+		return fmt.Errorf("head %s: %w", dir, err)
+	}
+	if head.Name() == plumbing.HEAD || !head.Name().IsBranch() {
+		// Detached HEAD — pinned to a commit SHA, nothing to pull.
+		return nil
 	}
 	w, err := repo.Worktree()
 	if err != nil {
@@ -206,7 +227,14 @@ func recloneCache(ctx context.Context, dir string) error {
 	return CloneRepo(ctx, url, ref, dir)
 }
 
-// CloneRepo performs a shallow git clone into dest using an atomic temp+rename.
+// CloneRepo performs a full git clone into dest using an atomic temp+rename,
+// then resolves ref via git's standard DWIM rules (commit object → tag →
+// branch → remote-tracking branch) and checks out the resulting commit in a
+// detached HEAD. The ref may be a full or partial commit SHA, a tag, a branch
+// name, or anything else `git rev-parse` would accept.
+//
+// A full clone is used (rather than shallow + SingleBranch) so any ref the
+// server advertises can be resolved, including historical commits.
 func CloneRepo(ctx context.Context, url, ref, dest string) error {
 	parent := filepath.Dir(dest)
 	if err := os.MkdirAll(parent, 0755); err != nil {
@@ -222,29 +250,28 @@ func CloneRepo(ctx context.Context, url, ref, dest string) error {
 	}
 	defer os.RemoveAll(tmpDir) // clean up on failure
 
-	_, err = git.PlainClone(tmpDir, false, &git.CloneOptions{
-		URL:           url,
-		ReferenceName: plumbing.NewBranchReferenceName(ref),
-		Depth:         1,
-		SingleBranch:  true,
+	repo, err := git.PlainCloneContext(ctx, tmpDir, false, &git.CloneOptions{
+		URL:        url,
+		NoCheckout: true,
 	})
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		// Branch ref failed — try as a tag
-		_, err = git.PlainClone(tmpDir, false, &git.CloneOptions{
-			URL:           url,
-			ReferenceName: plumbing.NewTagReferenceName(ref),
-			Depth:         1,
-			SingleBranch:  true,
-		})
+		return fmt.Errorf("git clone %s: %w", url, err)
 	}
+
+	hash, err := resolveRef(repo, ref)
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return fmt.Errorf("git clone %s@%s: %w", url, ref, err)
+		return fmt.Errorf("git resolve %s@%s: %w", url, ref, err)
+	}
+
+	w, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("git worktree %s: %w", url, err)
+	}
+	if err := w.Checkout(&git.CheckoutOptions{Hash: *hash}); err != nil {
+		return fmt.Errorf("git checkout %s@%s: %w", url, ref, err)
 	}
 
 	// Atomic rename
@@ -257,4 +284,27 @@ func CloneRepo(ctx context.Context, url, ref, dest string) error {
 	}
 
 	return nil
+}
+
+// resolveRef applies git's DWIM rules for rev-parsing a simple ref. Order
+// matches gitrevisions(7): exact object (full or abbreviated SHA), tag,
+// local branch, remote-tracking branch. A freshly cloned repo has only the
+// default branch as a local head, so most branch names resolve via the
+// remote-tracking fallback.
+func resolveRef(repo *git.Repository, ref string) (*plumbing.Hash, error) {
+	candidates := []plumbing.Revision{
+		plumbing.Revision(ref),
+		plumbing.Revision("refs/tags/" + ref),
+		plumbing.Revision("refs/heads/" + ref),
+		plumbing.Revision("refs/remotes/origin/" + ref),
+	}
+	var lastErr error
+	for _, c := range candidates {
+		h, err := repo.ResolveRevision(c)
+		if err == nil {
+			return h, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
 }

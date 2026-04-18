@@ -9,7 +9,7 @@ func TestEvalSquareExtrude(t *testing.T) {
 	src := `
 fn Main() {
     var p = Square(x: 10 mm, y: 10 mm);
-    return p.Extrude(height: 5 mm);
+    return p.Extrude(z: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -28,8 +28,8 @@ fn Main() {
 func TestEvalCircleRevolve(t *testing.T) {
 	src := `
 fn Main() {
-    var c = Circle(radius: 5 mm);
-    var moved = c.Translate(v: Vec2 { x: 10 mm, y: 0 mm });
+    var c = Circle(r: 5 mm);
+    var moved = c.Move(v: Vec2 { x: 10 mm, y: 0 mm });
     return moved.Revolve();
 }
 `
@@ -46,11 +46,11 @@ fn Main() {
 	}
 }
 
-func TestEvalTranslateSolid(t *testing.T) {
+func TestEvalMoveSolid(t *testing.T) {
 	src := `
 fn Main() {
-    var box = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    return box.Translate(v: Vec3 { x: 5 mm, y: 5 mm, z: 5 mm });
+    var box = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return box.Move(v: Vec3 { x: 5 mm, y: 5 mm, z: 5 mm });
 }
 `
 	prog := parseTestProg(t, src)
@@ -69,8 +69,8 @@ fn Main() {
 func TestEvalRotateSolid(t *testing.T) {
 	src := `
 fn Main() {
-    var box = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    return box.Rotate(rx: 45 deg, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin);
+    var box = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return box.Rotate(x: 45 deg, y: 0 deg, z: 0 deg, around: Vec3{});
 }
 `
 	prog := parseTestProg(t, src)
@@ -86,12 +86,12 @@ fn Main() {
 	}
 }
 
-func TestEvalSketchTranslateExtrude(t *testing.T) {
+func TestEvalSketchMoveExtrude(t *testing.T) {
 	src := `
 fn Main() {
     var p = Square(x: 10 mm, y: 10 mm);
-    var moved = p.Translate(v: Vec2 { x: 5 mm, y: 5 mm });
-    return moved.Extrude(height: 10 mm);
+    var moved = p.Move(v: Vec2 { x: 5 mm, y: 5 mm });
+    return moved.Extrude(z: 10 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -110,8 +110,8 @@ fn Main() {
 func TestEvalHullSolid(t *testing.T) {
 	src := `
 fn Main() {
-    var a = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    var b = Sphere(radius: 5 mm).Translate(v: Vec3 { x: 20 mm, y: 0 mm, z: 0 mm });
+    var a = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var b = Sphere(r: 5 mm).Move(v: Vec3 { x: 20 mm, y: 0 mm, z: 0 mm });
     return Hull(arr: [a, b]);
 }
 `
@@ -131,8 +131,8 @@ fn Main() {
 func TestEvalBatchHullSolid(t *testing.T) {
 	src := `
 fn Main() {
-    var a = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    var b = Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Translate(v: Vec3 { x: 20 mm, y: 0 mm, z: 0 mm });
+    var a = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var b = Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Move(v: Vec3 { x: 20 mm, y: 0 mm, z: 0 mm });
     return Hull(arr: [a, b]);
 }
 `
@@ -153,8 +153,8 @@ func TestEvalBatchHullSketch(t *testing.T) {
 	src := `
 fn Main() {
     var a = Square(x: 10 mm, y: 10 mm);
-    var b = Square(x: 5 mm, y: 5 mm).Translate(v: Vec2 { x: 20 mm, y: 0 mm });
-    return Hull(arr: [a, b]).Extrude(height: 5 mm);
+    var b = Square(x: 5 mm, y: 5 mm).Move(v: Vec2 { x: 20 mm, y: 0 mm });
+    return Hull(arr: [a, b]).Extrude(z: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -173,9 +173,9 @@ fn Main() {
 func TestEvalScaleMirror(t *testing.T) {
 	src := `
 fn Main() {
-    var box = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    var scaled = box.Scale(x: 2, y: 1, z: 1, pivot: WorldOrigin);
-    var mirrored = scaled.Mirror(nx: 1, ny: 0, nz: 0, offset: 0 mm);
+    var box = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var scaled = box.Scale(x: 2, y: 1, z: 1, around: Vec3{});
+    var mirrored = scaled.Mirror(x: 1);
     return scaled + mirrored;
 }
 `
@@ -196,7 +196,7 @@ func TestEvalExtrudeWithTwist(t *testing.T) {
 	src := `
 fn Main() {
     var p = Square(x: 10 mm, y: 10 mm);
-    return p.Extrude(height: 20 mm, slices: 20, twist: 90 deg, taperX: 1, taperY: 1);
+    return p.Extrude(z: 20 mm, slices: 20, twist: 90 deg, taperX: 1, taperY: 1);
 }
 `
 	prog := parseTestProg(t, src)
@@ -215,9 +215,9 @@ fn Main() {
 func TestEvalRevolvePartial(t *testing.T) {
 	src := `
 fn Main() {
-    var c = Circle(radius: 3 mm);
-    var moved = c.Translate(v: Vec2 { x: 10 mm, y: 0 mm });
-    return moved.Revolve(degrees: 180 deg);
+    var c = Circle(r: 3 mm);
+    var moved = c.Move(v: Vec2 { x: 10 mm, y: 0 mm });
+    return moved.Revolve(a: 180 deg);
 }
 `
 	prog := parseTestProg(t, src)
@@ -236,7 +236,7 @@ fn Main() {
 func TestEvalRefine(t *testing.T) {
 	src := `
 fn Main() {
-    var box = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var box = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     return box.Refine(n: 2);
 }
 `
@@ -256,7 +256,7 @@ fn Main() {
 func TestEvalMethodChaining(t *testing.T) {
 	src := `
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Translate(v: Vec3 { x: 5 mm, y: 0 mm, z: 0 mm }).Rotate(rx: 0 deg, ry: 0 deg, rz: 45 deg, pivot: WorldOrigin);
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Move(v: Vec3 { x: 5 mm, y: 0 mm, z: 0 mm }).Rotate(x: 0 deg, y: 0 deg, z: 45 deg, around: Vec3{});
 }
 `
 	prog := parseTestProg(t, src)
@@ -276,8 +276,8 @@ fn Main() {
 func TestEvalMethodOnParenBoolean(t *testing.T) {
 	src := `
 fn Main() {
-    var a = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    var b = Sphere(radius: 8 mm);
+    var a = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    var b = Sphere(r: 8 mm);
     return Hull(arr: [a + b]);
 }
 `
@@ -297,7 +297,7 @@ fn Main() {
 func TestEvalSketchChain(t *testing.T) {
 	src := `
 fn Main() {
-    return Circle(radius: 5 mm).Translate(v: Vec2 { x: 10 mm, y: 0 mm }).Revolve();
+    return Circle(r: 5 mm).Move(v: Vec2 { x: 10 mm, y: 0 mm }).Revolve();
 }
 `
 	prog := parseTestProg(t, src)
@@ -331,7 +331,7 @@ fn Main() {
     var c = c.Inc();
     # If mutation persists, c.n == 11 → cube is 11mm wide.
     # If not, c.n == 10 → cube is 10mm wide.
-    return Cube(size: Vec3{x: c.n * 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: c.n * 1 mm, y: 1 mm, z: 1 mm});
 }
 `
 	prog := parseTestProg(t, src)

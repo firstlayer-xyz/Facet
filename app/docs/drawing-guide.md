@@ -138,7 +138,7 @@ fn Main() {
 
 ```
 fn Main() {
-    return Text(text: "FACET", size: 12 mm).Extrude(height: 2 mm)
+    return Text(text: "FACET", s: 12 mm).Extrude(height: 2 mm)
 }
 ```
 
@@ -146,7 +146,7 @@ Use a custom `.ttf` or `.otf` font file:
 
 ```
 fn Main() {
-    return Text(text: "Hello", size: 10 mm, font: "/path/to/font.ttf").Extrude(height: 2 mm)
+    return Text(text: "Hello", s: 10 mm, font: "/path/to/font.ttf").Extrude(height: 2 mm)
 }
 ```
 
@@ -155,7 +155,7 @@ Text sketches can be combined with other sketches using boolean operations — f
 ```
 fn Main() {
     var plate = Square(x: 60 mm, y: 20 mm).Extrude(height: 3 mm)
-    var label = Text(text: "TAG", size: 8 mm)
+    var label = Text(text: "TAG", s: 8 mm)
         .Move(x: 5 mm, y: 6 mm)
         .Extrude(height: 3 mm)
     return plate - label
@@ -166,7 +166,7 @@ fn Main() {
 
 Sketches support the same transformation methods as solids, but in 2D.
 
-**Translate / Move** — move in X and Y:
+**Move** — move in X and Y:
 
 ```
 Circle(radius: 5 mm).Move(x: 10 mm, y: 5 mm)
@@ -175,13 +175,13 @@ Circle(radius: 5 mm).Move(x: 10 mm, y: 5 mm)
 **Rotate** — rotate around a pivot point:
 
 ```
-Square(x: 10 mm, y: 5 mm).Rotate(a: 45 deg, pivot: Vec2{x: 0 mm, y: 0 mm})
+Square(x: 10 mm, y: 5 mm).Rotate(a: 45 deg, around: Vec2{x: 0 mm, y: 0 mm})
 ```
 
 **Scale** — non-uniform 2D scaling around a pivot:
 
 ```
-Circle(radius: 10 mm).Scale(x: 2, y: 1, pivot: Vec2{x: 0 mm, y: 0 mm})    # ellipse
+Circle(radius: 10 mm).Scale(x: 2, y: 1, around: Vec2{x: 0 mm, y: 0 mm})    # ellipse
 ```
 
 **Mirror** — mirror across an axis with an offset:
@@ -196,8 +196,8 @@ Square(x: 10 mm, y: 10 mm).Move(x: 5 mm, y: 0 mm).MirrorX(offset: 0 mm)
 ```
 Square(x: 10 mm, y: 5 mm)
     .Move(x: 5 mm, y: 0 mm)
-    .Rotate(a: 30 deg, pivot: Vec2{x: 0 mm, y: 0 mm})
-    .Scale(x: 1.5, y: 1, pivot: Vec2{x: 0 mm, y: 0 mm})
+    .Rotate(a: 30 deg, around: Vec2{x: 0 mm, y: 0 mm})
+    .Scale(x: 1.5, y: 1, around: Vec2{x: 0 mm, y: 0 mm})
 ```
 
 ## Combining Sketches
@@ -277,7 +277,7 @@ Repeat a sketch in a line or around a center point.
 ```
 fn Main() {
     var hole = Circle(radius: 3 mm)
-    var row = hole.LinearPattern(count: 5, spacingX: 10 mm, spacingY: 0 mm)
+    var row = hole.LinearPattern(count: 5, spacing: Vec2{x: 10 mm})
     return (Square(x: 55 mm, y: 10 mm) - row.Move(x: 5 mm, y: 5 mm)).Extrude(height: 3 mm)
 }
 ```

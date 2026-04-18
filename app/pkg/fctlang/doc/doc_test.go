@@ -17,7 +17,7 @@ func TestLibraryAutocompleteNamespaceMatch(t *testing.T) {
 	libSource := `
 type Knurl { count Number; depth Length; angle Angle; }
 fn Knurl(count Number, depth Length, angle Angle) Knurl {
-    return Knurl { count: count, depth: depth, angle: angle };
+    return Knurl { count: count, depth: depth, a: angle };
 }
 fn Knurl.Apply(s Solid) Solid { return s; }
 `

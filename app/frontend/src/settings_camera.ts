@@ -1,22 +1,16 @@
-import type { SettingsPageContext, PageResult } from './settings_appearance';
+import {
+  settingsRow,
+  settingsHelp,
+  type SettingsPageContext,
+  type PageResult,
+} from './settings_ui';
 
 export function buildCameraPage(ctx: SettingsPageContext): PageResult {
   const { draft } = ctx;
   const page = document.createElement('div');
   page.className = 'settings-page';
 
-  const desc = document.createElement('div');
-  desc.style.color = '#888';
-  desc.style.fontSize = '13px';
-  desc.style.marginBottom = '16px';
-  desc.textContent = 'Select the camera used for head-tracking parallax.';
-  page.appendChild(desc);
-
-  const row = document.createElement('div');
-  row.className = 'settings-color-row';
-
-  const label = document.createElement('label');
-  label.textContent = 'Device';
+  page.appendChild(settingsHelp('Select the camera used for head-tracking parallax.'));
 
   const select = document.createElement('select');
   select.id = 'settings-camera-device';
@@ -53,17 +47,9 @@ export function buildCameraPage(ctx: SettingsPageContext): PageResult {
     draft.camera.deviceId = select.value;
   });
 
-  row.appendChild(label);
-  row.appendChild(select);
-  page.appendChild(row);
+  page.appendChild(settingsRow('Device', select));
 
   // Y-offset slider
-  const offsetRow = document.createElement('div');
-  offsetRow.className = 'settings-color-row';
-
-  const offsetLabel = document.createElement('label');
-  offsetLabel.textContent = 'Vertical Offset';
-
   const offsetWrap = document.createElement('div');
   offsetWrap.style.display = 'flex';
   offsetWrap.style.alignItems = 'center';
@@ -91,16 +77,12 @@ export function buildCameraPage(ctx: SettingsPageContext): PageResult {
 
   offsetWrap.appendChild(offsetSlider);
   offsetWrap.appendChild(offsetValue);
-  offsetRow.appendChild(offsetLabel);
-  offsetRow.appendChild(offsetWrap);
-  page.appendChild(offsetRow);
+  page.appendChild(settingsRow('Vertical Offset', offsetWrap));
 
-  const offsetHint = document.createElement('div');
-  offsetHint.style.color = '#666';
-  offsetHint.style.fontSize = '11px';
-  offsetHint.style.marginTop = '4px';
-  offsetHint.textContent = 'Shifts the neutral point down to compensate for webcam position above the screen.';
-  page.appendChild(offsetHint);
+  page.appendChild(settingsHelp(
+    'Shifts the neutral point down to compensate for webcam position above the screen.',
+    'hint',
+  ));
 
   return { el: page };
 }

@@ -31,10 +31,10 @@ fn FuzzySkin(s Solid, amount Length) Solid {
 # ---------------------------------------------------------------------------
 # Fuzzy sphere helper
 # ---------------------------------------------------------------------------
-fn FuzzySphere(radius, amount Length, detail Number) Solid {
-    var segments = Max(a: Floor(n: detail * Number(from: radius)), b: 8)
+fn FuzzySphere(r, amount Length, detail Number) Solid {
+    var segments = Max(a: Floor(n: detail * Number(from: r)), b: 8)
     return FuzzySkin(
-        s: Sphere(radius: radius, segments: segments),
+        s: Sphere(r: r, segments: segments),
         amount: amount
     )
 }
@@ -44,32 +44,33 @@ fn Main(
     detail Number = 10 where [1:100],
 ) {
     # Body
-    var bear = FuzzySphere(radius: 30 mm, amount: fuzz, detail: detail)
+    var bear = FuzzySphere(r: 30 mm, amount: fuzz, detail: detail)
+        .AlignCenter(pos: Vec3{})
     # Head
-    bear = bear + FuzzySphere(radius: 22 mm, amount: fuzz, detail: detail)
-        .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: 40 mm})
+    bear = bear + FuzzySphere(r: 22 mm, amount: fuzz, detail: detail)
+        .AlignCenter(pos: Vec3{z: 40 mm})
     # Ears
-    bear = bear + FuzzySphere(radius: 10 mm, amount: fuzz, detail: detail)
-        .Translate(v: Vec3{x: -15 mm, y: 0 mm, z: 57 mm})
-    bear = bear + FuzzySphere(radius: 10 mm, amount: fuzz, detail: detail)
-        .Translate(v: Vec3{x: 15 mm, y: 0 mm, z: 57 mm})
+    bear = bear + FuzzySphere(r: 10 mm, amount: fuzz, detail: detail)
+        .AlignCenter(pos: Vec3{x: -15 mm, z: 57 mm})
+    bear = bear + FuzzySphere(r: 10 mm, amount: fuzz, detail: detail)
+        .AlignCenter(pos: Vec3{x: 15 mm, z: 57 mm})
     # Arms
-    bear = bear + FuzzySphere(radius: 12 mm, amount: fuzz, detail: detail)
-        .Translate(v: Vec3{x: -35 mm, y: 0 mm, z: 5 mm})
-    bear = bear + FuzzySphere(radius: 12 mm, amount: fuzz, detail: detail)
-        .Translate(v: Vec3{x: 35 mm, y: 0 mm, z: 5 mm})
+    bear = bear + FuzzySphere(r: 12 mm, amount: fuzz, detail: detail)
+        .AlignCenter(pos: Vec3{x: -35 mm, z: 5 mm})
+    bear = bear + FuzzySphere(r: 12 mm, amount: fuzz, detail: detail)
+        .AlignCenter(pos: Vec3{x: 35 mm, z: 5 mm})
     # Legs (sitting, stretched forward)
-    bear = bear + FuzzySphere(radius: 13 mm, amount: fuzz, detail: detail)
-        .Translate(v: Vec3{x: -15 mm, y: 20 mm, z: -17 mm})
-    bear = bear + FuzzySphere(radius: 13 mm, amount: fuzz, detail: detail)
-        .Translate(v: Vec3{x: 15 mm, y: 20 mm, z: -17 mm})
+    bear = bear + FuzzySphere(r: 13 mm, amount: fuzz, detail: detail)
+        .AlignCenter(pos: Vec3{x: -15 mm, y: 20 mm, z: -17 mm})
+    bear = bear + FuzzySphere(r: 13 mm, amount: fuzz, detail: detail)
+        .AlignCenter(pos: Vec3{x: 15 mm, y: 20 mm, z: -17 mm})
     # Snout (smooth, no fuzz)
-    bear = bear + Sphere(radius: 7 mm)
-        .Translate(v: Vec3{x: 0 mm, y: 20 mm, z: 42 mm})
+    bear = bear + Sphere(r: 7 mm)
+        .AlignCenter(pos: Vec3{y: 20 mm, z: 42 mm})
     # Eyes (smooth, no fuzz)
-    bear = bear + Sphere(radius: 4 mm)
-        .Translate(v: Vec3{x: -8 mm, y: 18 mm, z: 48 mm})
-    bear = bear + Sphere(radius: 4 mm)
-        .Translate(v: Vec3{x: 8 mm, y: 18 mm, z: 48 mm})
+    bear = bear + Sphere(r: 4 mm)
+        .AlignCenter(pos: Vec3{x: -8 mm, y: 18 mm, z: 48 mm})
+    bear = bear + Sphere(r: 4 mm)
+        .AlignCenter(pos: Vec3{x: 8 mm, y: 18 mm, z: 48 mm})
     return bear
 }

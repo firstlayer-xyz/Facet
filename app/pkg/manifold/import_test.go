@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -175,5 +176,34 @@ func TestImportMeshSTLRoundTrip(t *testing.T) {
 	vol := solid.Volume()
 	if math.Abs(vol-1.0) > 0.01 {
 		t.Errorf("expected volume ~1.0, got %f", vol)
+	}
+}
+
+// TestImportMeshMissingFile verifies that a missing file is surfaced as an
+// error that names the offending path. Previously the Go side pre-checked
+// with os.Stat; now we rely on Assimp's "Unable to open file" message.
+func TestImportMeshMissingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "does-not-exist.stl")
+	_, err := ImportMesh(path)
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+	if !strings.Contains(err.Error(), "does-not-exist.stl") {
+		t.Errorf("error should name the missing file: %v", err)
+	}
+}
+
+// TestImportMeshCorruptFile verifies that a file whose contents cannot be
+// parsed yields a non-nil error rather than silently producing an empty
+// Solid.
+func TestImportMeshCorruptFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "garbage.stl")
+	if err := os.WriteFile(path, []byte("this is not an STL file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ImportMesh(path)
+	if err == nil {
+		t.Fatal("expected error for corrupt STL")
 	}
 }

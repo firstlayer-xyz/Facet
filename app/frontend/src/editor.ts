@@ -193,8 +193,6 @@ export interface EditorHandle {
   onMouseMove(cb: (line: number, col: number) => void): void;
   onMouseLeave(cb: () => void): void;
   revealLine(line: number, col?: number): void;
-  undo(): void;
-  redo(): void;
 }
 
 function mapKindToCompletionItemKind(kind: string): monaco.languages.CompletionItemKind {
@@ -296,7 +294,7 @@ export function createEditor(
 
   // resolveChainType returns the type of the expression represented by the
   // given text fragment. Handles arbitrary chain depth by recursing.
-  // e.g. "Cube(1,1,1).Translate(1,0,0)" → "Solid"
+  // e.g. "Cube(1,1,1).Move(1,0,0)" → "Solid"
   function resolveChainType(text: string): string | null {
     text = text.trimEnd();
 
@@ -875,14 +873,6 @@ export function createEditor(
       ed.setPosition({ lineNumber: line, column: col ?? 1 });
       ed.revealLineInCenter(line);
       ed.focus();
-    },
-
-    undo() {
-      ed.trigger('toolbar', 'undo', null);
-    },
-
-    redo() {
-      ed.trigger('toolbar', 'redo', null);
     },
   };
 }

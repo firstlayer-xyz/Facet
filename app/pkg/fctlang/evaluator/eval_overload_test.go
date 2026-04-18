@@ -11,7 +11,7 @@ func TestOverloadMinNumber(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Min(a: 15, b: 10);   # Number result = 10
-    return Cube(size: Vec3{x: s mm, y: s mm, z: s mm});
+    return Cube(s: Vec3{x: s mm, y: s mm, z: s mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -27,7 +27,7 @@ func TestOverloadMinLength(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Min(a: 15 mm, b: 10 mm);   # Length result = 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -43,7 +43,7 @@ func TestOverloadMinMixed(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Min(a: 15, b: 10 mm);   # coerce 15 → 15 mm, result = 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -59,7 +59,7 @@ func TestOverloadMinLengthMixed(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Min(a: 15 mm, b: 10);   # coerce 10 → 10 mm, result = 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -76,7 +76,7 @@ func TestOverloadMaxAngle(t *testing.T) {
 fn Main() Solid {
     var a = Max(a: 30 deg, b: 60 deg);   # 60 deg
     var s = Sin(a: a) * 10 mm;           # Sin(60°) ≈ 0.866, s ≈ 8.66 mm
-    return Cube(size: Vec3{x: s, y: s, z: 10 mm});
+    return Cube(s: Vec3{x: s, y: s, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -92,7 +92,7 @@ func TestOverloadAbsNumber(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Abs(a: -10);   # Number result = 10
-    return Cube(size: Vec3{x: s mm, y: s mm, z: s mm});
+    return Cube(s: Vec3{x: s mm, y: s mm, z: s mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -108,7 +108,7 @@ func TestOverloadAbsLength(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Abs(a: -10 mm);   # Length result = 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -124,7 +124,7 @@ func TestOverloadLerpNumber(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Lerp(from: 0, to: 20, t: 0.5);   # Number result = 10
-    return Cube(size: Vec3{x: s mm, y: s mm, z: s mm});
+    return Cube(s: Vec3{x: s mm, y: s mm, z: s mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -140,7 +140,7 @@ func TestOverloadLerpLength(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Lerp(from: 0 mm, to: 20 mm, t: 0.5);   # Length result = 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -157,7 +157,7 @@ func TestOverloadLerpAngle(t *testing.T) {
 fn Main() Solid {
     var a = Lerp(from: 0 deg, to: 60 deg, t: 0.5);   # Angle result = 30 deg
     var s = Sin(a: a) * 20 mm;                     # Sin(30°) = 0.5, s = 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -173,7 +173,7 @@ func TestOverloadNumberFromNumber(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Number(from: 10);   # Number result = 10
-    return Cube(size: Vec3{x: s mm, y: s mm, z: s mm});
+    return Cube(s: Vec3{x: s mm, y: s mm, z: s mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -189,7 +189,7 @@ func TestOverloadNumberFromLength(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Number(from: 10 mm);   # Number result = 10
-    return Cube(size: Vec3{x: s mm, y: s mm, z: s mm});
+    return Cube(s: Vec3{x: s mm, y: s mm, z: s mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -205,7 +205,7 @@ func TestOverloadNumberFromString(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Number(from: "10");   # Number result = 10
-    return Cube(size: Vec3{x: s mm, y: s mm, z: s mm});
+    return Cube(s: Vec3{x: s mm, y: s mm, z: s mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -222,7 +222,7 @@ func TestOverloadStringFromLength(t *testing.T) {
 fn Main() Solid {
     var s = String(a: 10 mm);   # "10"
     var n = Number(from: s);       # back to 10
-    return Cube(size: Vec3{x: n mm, y: n mm, z: n mm});
+    return Cube(s: Vec3{x: n mm, y: n mm, z: n mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -239,7 +239,7 @@ func TestOverloadStringFromBool(t *testing.T) {
 fn Main() Solid {
     var s = String(a: true);   # "true"
     assert s == "true"
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -256,7 +256,7 @@ func TestOverloadSizeArray(t *testing.T) {
 fn Main() Solid {
     var arr = []Number[1, 2, 3, 4, 5]
     var s = Size(of: arr);   # 5
-    return Cube(size: Vec3{x: s mm, y: s mm, z: s mm});
+    return Cube(s: Vec3{x: s mm, y: s mm, z: s mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -272,7 +272,7 @@ func TestOverloadSizeString(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Size(of: "hello");   # 5
-    return Cube(size: Vec3{x: s mm, y: s mm, z: s mm});
+    return Cube(s: Vec3{x: s mm, y: s mm, z: s mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -291,7 +291,7 @@ fn Double(a Length) Length { return a * 2; }
 
 fn Main() Solid {
     var s = Double(a: 5 mm);   # Length overload → 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -308,7 +308,7 @@ func TestOverloadMinAngleMixed(t *testing.T) {
 fn Main() Solid {
     var a = Min(a: 60 deg, b: 30);   # coerce 30 → 30 deg, result = 30 deg
     var s = Sin(a: a) * 20 mm;       # Sin(30°) = 0.5, s = 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -325,7 +325,7 @@ func TestOverloadAbsAngle(t *testing.T) {
 fn Main() Solid {
     var a = Abs(a: -30 deg);      # Angle result = 30 deg
     var s = Sin(a: a) * 20 mm;    # Sin(30°) = 0.5, s = 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -341,7 +341,7 @@ func TestOverloadLerpMixed(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Lerp(from: 0 mm, to: 20, t: 0.5);   # coerce 20 → 20 mm, result = 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -357,7 +357,7 @@ func TestOverloadAbsZero(t *testing.T) {
 	src := `
 fn Main() Solid {
     var s = Abs(a: 0);   # Number result = 0, not Length
-    return Cube(size: Vec3{x: (s + 10) mm, y: (s + 10) mm, z: (s + 10) mm});
+    return Cube(s: Vec3{x: (s + 10) mm, y: (s + 10) mm, z: (s + 10) mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -376,7 +376,7 @@ fn Scale(a Length) Length { return a * 2; }
 
 fn Main() Solid {
     var s = Scale(a: 5 mm);   # Length overload → 10 mm
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -395,7 +395,7 @@ fn Foo(a Length) Length { return a; }
 
 fn Main() Solid {
     Foo(a: true);
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -417,7 +417,7 @@ fn Clamp(val, lo, hi Number) Number {
 
 fn Main() Solid {
     var s = Clamp(val: 15, lo: 0, hi: 10);    # user Clamp = 10, uses stdlib Min/Max
-    return Cube(size: Vec3{x: s mm, y: s mm, z: s mm});
+    return Cube(s: Vec3{x: s mm, y: s mm, z: s mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -447,7 +447,7 @@ fn Vec.Scale(offset Length) Vec {
 fn Main() Solid {
     var v = Vec { x: 5 mm, y: 5 mm };
     var v2 = v.Scale(factor: 2);         # Number overload: 10 mm, 10 mm
-    return Cube(size: Vec3{x: v2.x, y: v2.y, z: 10 mm});
+    return Cube(s: Vec3{x: v2.x, y: v2.y, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)

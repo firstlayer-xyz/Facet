@@ -56,7 +56,7 @@ Break into parts (body, head, limbs, details). Build each as a function or varia
 
 ### Build organic shapes with Hull and non-uniform Scale
 
-- **Ellipsoids**: `Sphere(radius: r).Scale(x: sx, y: sy, z: sz, pivot: WorldOrigin)`
+- **Ellipsoids**: `Sphere(radius: r).Scale(x: sx, y: sy, z: sz, around: Vec3{})`
 - **Hull blending**: `Hull(arr: [sphere1, sphere2, sphere3])` — smooth convex skin for bodies, fins, wings.
 - **Loft**: `Loft(profiles: [...], heights: [...])` — blend cross-sections for fuselages, vases.
 - **Sweep**: `sketch.Sweep(path: path)` — extrude along a 3D path.
@@ -75,7 +75,7 @@ Orient geometry so features build upward. Don't compromise shape, just be mindfu
 Position parts relative to each other instead of computing coordinates manually:
 
 - **StackOn**: Place on top of another solid: `cap.StackOn(with: base)`. Optional `nudge` for gap/overlap.
-- **AlignCenterXY / X / Y / Z**: Center one solid over another: `boss.AlignCenterXY(with: base)`. Optional `nudgeX`/`nudgeY` (XY variant) or `nudge` (single-axis).
+- **AlignCenter**: Center one solid over another on any combination of axes: `boss.AlignCenter(with: base, z: false)`. `x`/`y`/`z` default true — set any to false to skip that axis. Optional `nudgeX`/`nudgeY`/`nudgeZ` offsets applied after alignment. Also accepts `pos: Vec3` for absolute positioning.
 - **AlignLeft / Right / Front / Back / Bottom / Top**: Flush-align a face: `flange.AlignLeft(with: body)`. Optional `nudge` offsets outward.
 
 Chain them to build assemblies:
@@ -84,11 +84,11 @@ var column = Cylinder(radius: 8 mm, height: 30 mm).StackOn(with: base)
 var flange = Cube(x: 10 mm, y: 60 mm, z: 30 mm)
     .AlignLeft(with: body)
     .AlignBottom(with: body)
-    .AlignCenterY(with: body)
+    .AlignCenter(with: body, x: false, z: false)
 ```
 
 Each also has an absolute-position overload: `.AlignBottom(pos: 0 mm)` places the bottom face at Z=0.
 
 ### Prefer struct literals for positions
 
-Use `Vec3{x: v, y: v, z: v}`. All function and method calls require named arguments (e.g. `Cube(size: 10 mm)`).
+Use `Vec3{x: v, y: v, z: v}`. All function and method calls require named arguments (e.g. `Cube(s: 10 mm)`).

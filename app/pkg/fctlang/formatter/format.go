@@ -94,6 +94,70 @@ func (f *formatter) measureMethodTail(e *parser.MethodCallExpr) int {
 	return m.buf.Len()
 }
 
+// stmtComments returns the comment list attached to a statement, or nil.
+func stmtComments(s parser.Stmt) []parser.Comment {
+	switch v := s.(type) {
+	case *parser.ReturnStmt:
+		return v.Comments
+	case *parser.VarStmt:
+		return v.Comments
+	case *parser.YieldStmt:
+		return v.Comments
+	case *parser.AssignStmt:
+		return v.Comments
+	case *parser.FieldAssignStmt:
+		return v.Comments
+	case *parser.ExprStmt:
+		return v.Comments
+	case *parser.IfStmt:
+		return v.Comments
+	case *parser.AssertStmt:
+		return v.Comments
+	}
+	return nil
+}
+
+// formatForYieldHead writes "for CLAUSE[, CLAUSE]*" with no surrounding
+// whitespace — used by both the inline and multi-line renderers.
+func (f *formatter) formatForYieldHead(e *parser.ForYieldExpr) {
+	f.write("for ")
+	for i, c := range e.Clauses {
+		if i > 0 {
+			f.write(", ")
+		}
+		if c.Index != "" {
+			f.write(c.Index + ", ")
+		}
+		f.write(c.Var + " ")
+		f.formatExpr(c.Iter)
+	}
+}
+
+// measureForYieldHead returns the single-line width of the for-yield head
+// ("for CLAUSE[, CLAUSE]*").
+func (f *formatter) measureForYieldHead(e *parser.ForYieldExpr) int {
+	m := &formatter{indent: f.indent, depth: f.depth, opts: Options{MaxLineLength: 1 << 30}}
+	m.formatForYieldHead(e)
+	return m.buf.Len()
+}
+
+// tryFormatStmtInline renders s as a single-line string (no leading indent,
+// no trailing newline). Returns (rendered, true) only if the statement has
+// no comments and produces no inner newlines. This is used to collapse
+// single-statement if/for/fold bodies onto one line when they fit.
+func (f *formatter) tryFormatStmtInline(s parser.Stmt) (string, bool) {
+	if len(stmtComments(s)) > 0 {
+		return "", false
+	}
+	scratch := &formatter{indent: f.indent, depth: 0, opts: Options{MaxLineLength: 1 << 30}}
+	scratch.formatStmt(s)
+	out := strings.TrimRight(scratch.buf.String(), "\n")
+	if strings.Contains(out, "\n") {
+		return "", false
+	}
+	return out, true
+}
+
 func (f *formatter) formatSource(src *parser.Source) {
 	// Declarations are already in source order — iterate directly.
 	prevEndLine := 0
@@ -408,6 +472,22 @@ func (f *formatter) formatStmt(s parser.Stmt) {
 	case *parser.IfStmt:
 		f.writeComments(s.Comments)
 		f.writeIndent()
+		// Collapse to `if cond { stmt }` when there are no else branches,
+		// the body is a single statement, and it all fits on one line.
+		if len(s.ElseIfs) == 0 && len(s.Else) == 0 && len(s.Then) == 1 {
+			if inner, ok := f.tryFormatStmtInline(s.Then[0]); ok {
+				// "if " + cond + " { " + inner + " }"
+				extra := 3 + f.measureExpr(s.Cond) + 3 + len(inner) + 2
+				if !f.wouldExceed(extra) {
+					f.write("if ")
+					f.formatExpr(s.Cond)
+					f.write(" { ")
+					f.write(inner)
+					f.writeln(" }")
+					return
+				}
+			}
+		}
 		f.write("if ")
 		f.formatExpr(s.Cond)
 		f.writeln(" {")
@@ -529,13 +609,24 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 		f.formatExpr(e.Value)
 	case *parser.MethodCallExpr:
 		f.formatExprPrec(e.Receiver, 10) // method call binds tightest
-		// Measure remaining .Method(args) — if it would exceed the line, break before '.'
 		tail := f.measureMethodTail(e)
 		if f.wouldExceed(tail) {
-			f.writeln("")
-			f.depth++
-			f.writeIndent()
-			f.depth--
+			// Full single-line tail won't fit on the current line. Two choices:
+			//   1. Break before '.' → emit ".Method(args)" on its own indented
+			//      line. This is the classic fluent-chain style and only looks
+			//      clean when the tail fits as a single line at the new indent.
+			//   2. Keep '.Method(' inline and let formatArgs wrap args.
+			// Prefer (1) when it produces a clean one-liner. Otherwise prefer
+			// (2) so the args indent cleanly under '.Method(' — breaking before
+			// '.' *and* wrapping args yields ugly double-wrapping with args
+			// aligned at the same column as '.Method('.
+			nextIndent := (f.depth + 1) * len(f.indent)
+			if nextIndent+tail <= f.opts.MaxLineLength {
+				f.writeln("")
+				f.depth++
+				f.writeIndent()
+				f.depth--
+			}
 		}
 		f.write("." + e.Method + "(")
 		f.formatArgs(e.Args)
@@ -636,17 +727,20 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 	case *parser.LibExpr:
 		f.write(`lib "` + e.Path + `"`)
 	case *parser.ForYieldExpr:
-		f.write("for ")
-		for i, c := range e.Clauses {
-			if i > 0 {
-				f.write(", ")
+		if len(e.Body) == 1 {
+			if inner, ok := f.tryFormatStmtInline(e.Body[0]); ok {
+				head := f.measureForYieldHead(e) // "for " + clauses
+				extra := head + 3 + len(inner) + 2
+				if !f.wouldExceed(extra) {
+					f.formatForYieldHead(e)
+					f.write(" { ")
+					f.write(inner)
+					f.write(" }")
+					return
+				}
 			}
-			if c.Index != "" {
-				f.write(c.Index + ", ")
-			}
-			f.write(c.Var + " ")
-			f.formatExpr(c.Iter)
 		}
+		f.formatForYieldHead(e)
 		f.writeln(" {")
 		f.depth++
 		f.formatStmts(e.Body)
@@ -654,6 +748,21 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 		f.writeIndent()
 		f.write("}")
 	case *parser.FoldExpr:
+		if len(e.Body) == 1 {
+			if inner, ok := f.tryFormatStmtInline(e.Body[0]); ok {
+				iterLen := f.measureExpr(e.Iter)
+				// "fold " + AccVar + ", " + ElemVar + " " + iter + " { " + inner + " }"
+				extra := 5 + len(e.AccVar) + 2 + len(e.ElemVar) + 1 + iterLen + 3 + len(inner) + 2
+				if !f.wouldExceed(extra) {
+					f.write("fold " + e.AccVar + ", " + e.ElemVar + " ")
+					f.formatExpr(e.Iter)
+					f.write(" { ")
+					f.write(inner)
+					f.write(" }")
+					return
+				}
+			}
+		}
 		f.write("fold " + e.AccVar + ", " + e.ElemVar + " ")
 		f.formatExpr(e.Iter)
 		f.writeln(" {")

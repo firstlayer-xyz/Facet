@@ -128,7 +128,7 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
-			return r.Scale(x, y, z, ox, oy, oz), nil
+			return r.Scale(x, y, z, ox, oy, oz)
 		case *manifold.Sketch:
 			if len(args) != 5 {
 				return nil, fmt.Errorf("%s() expects 4 arguments (x, y, px, py), got %d", name, len(args)-1)
@@ -149,7 +149,7 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
-			return r.Scale(x, y, px, py), nil
+			return r.Scale(x, y, px, py)
 		default:
 			return nil, fmt.Errorf("%s: expected Solid or Sketch, got %s", name, typeName(args[0]))
 		}
@@ -178,7 +178,7 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
-			return r.Mirror(nx, ny, nz, offset), nil
+			return r.Mirror(nx, ny, nz, offset)
 		case *manifold.Sketch:
 			if len(args) != 4 {
 				return nil, fmt.Errorf("%s() expects 3 arguments (ax, ay, offset), got %d", name, len(args)-1)
@@ -195,7 +195,7 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
-			return r.Mirror(ax, ay, offset), nil
+			return r.Mirror(ax, ay, offset)
 		default:
 			return nil, fmt.Errorf("%s: expected Solid or Sketch, got %s", name, typeName(args[0]))
 		}

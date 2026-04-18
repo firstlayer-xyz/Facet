@@ -290,7 +290,7 @@ func TestASILexer_SuppressBeforeStar(t *testing.T) {
 func TestASIParse_ReturnNoSemi(t *testing.T) {
 	prog := mustParse(t, "return no semi", `
 fn Main() {
-    return Cube(size: Vec3{x: 10, y: 10, z: 10})
+    return Cube(s: Vec3{x: 10, y: 10, z: 10})
 }
 `)
 	fn := prog.Functions()[0]
@@ -306,7 +306,7 @@ func TestASIParse_VarNoSemi(t *testing.T) {
 	prog := mustParse(t, "var no semi", `
 fn Main() {
     var x = 10
-    return Cube(size: Vec3{x: x, y: x, z: x})
+    return Cube(s: Vec3{x: x, y: x, z: x})
 }
 `)
 	fn := prog.Functions()[0]
@@ -322,7 +322,7 @@ func TestASIParse_ImplicitReturn(t *testing.T) {
 	// Bare expression at end of body is now ExprStmt (no auto-return).
 	prog := mustParse(t, "bare expr no semi", `
 fn Main() {
-    Cube(size: Vec3{x: 10, y: 10, z: 10})
+    Cube(s: Vec3{x: 10, y: 10, z: 10})
 }
 `)
 	fn := prog.Functions()[0]
@@ -338,7 +338,7 @@ func TestASIParse_ImplicitReturnWithExplicitSemi(t *testing.T) {
 	// 'expr;' at the end of a body is ExprStmt (no auto-return).
 	prog := mustParse(t, "bare expr explicit semi", `
 fn Main() {
-    Cube(size: Vec3{x: 10, y: 10, z: 10});
+    Cube(s: Vec3{x: 10, y: 10, z: 10});
 }
 `)
 	fn := prog.Functions()[0]
@@ -353,7 +353,7 @@ fn Main() {
     var a = 10
     var b = 20
     var c = 30
-    Cube(size: Vec3{x: a, y: b, z: c})
+    Cube(s: Vec3{x: a, y: b, z: c})
 }
 `)
 	fn := prog.Functions()[0]
@@ -367,7 +367,7 @@ func TestASIParse_GlobalVarNoSemi(t *testing.T) {
 var size = 10
 
 fn Main() {
-    Cube(size: Vec3{x: size, y: size, z: size})
+    Cube(s: Vec3{x: size, y: size, z: size})
 }
 `)
 	if len(prog.Globals()) != 1 {
@@ -383,7 +383,7 @@ func TestASIParse_AssertNoSemi(t *testing.T) {
 fn Main() {
     var x = 5
     assert x > 0
-    Cube(size: Vec3{x: x, y: x, z: x})
+    Cube(s: Vec3{x: x, y: x, z: x})
 }
 `)
 }
@@ -393,7 +393,7 @@ func TestASIParse_AssignmentNoSemi(t *testing.T) {
 fn Main() {
     var x = 5
     x = 10
-    Cube(size: Vec3{x: x, y: x, z: x})
+    Cube(s: Vec3{x: x, y: x, z: x})
 }
 `)
 }
@@ -403,9 +403,9 @@ func TestASIParse_IfElseNoSemi(t *testing.T) {
 	prog := mustParse(t, "if-else on separate lines", `
 fn Main() {
     if true {
-        return Cube(size: Vec3{x: 10, y: 10, z: 10});
+        return Cube(s: Vec3{x: 10, y: 10, z: 10});
     } else {
-        return Sphere(radius: 5);
+        return Sphere(r: 5);
     }
 }
 `)
@@ -422,11 +422,11 @@ func TestASIParse_IfElseIfNoSemi(t *testing.T) {
 	mustParse(t, "if-elseif-else on separate lines", `
 fn Main() {
     if false {
-        return Cube(size: Vec3{x: 1, y: 1, z: 1})
+        return Cube(s: Vec3{x: 1, y: 1, z: 1})
     } else if true {
-        return Sphere(radius: 5)
+        return Sphere(r: 5)
     } else {
-        return Cube(size: Vec3{x: 2, y: 2, z: 2})
+        return Cube(s: Vec3{x: 2, y: 2, z: 2})
     }
 }
 `)
@@ -438,7 +438,7 @@ fn Main() {
     var arr = for i [0:3] {
         yield i
     }
-    Cube(size: Vec3{x: 10, y: 10, z: 10})
+    Cube(s: Vec3{x: 10, y: 10, z: 10})
 }
 `)
 }
@@ -453,7 +453,7 @@ fn Main() {
         }
         yield i
     }
-    Cube(size: Vec3{x: 10, y: 10, z: 10})
+    Cube(s: Vec3{x: 10, y: 10, z: 10})
 }
 `)
 }
@@ -463,7 +463,7 @@ func TestASIParse_FoldNoSemi(t *testing.T) {
 fn Main() {
     var arr = []Number[1, 2, 3]
     var sum = fold a, b arr { yield a + b }
-    Cube(size: Vec3{x: sum, y: sum, z: sum})
+    Cube(s: Vec3{x: sum, y: sum, z: sum})
 }
 `)
 }
@@ -476,7 +476,7 @@ type Pair {
 }
 
 fn Main() {
-    Cube(size: Vec3{x: 1, y: 1, z: 1})
+    Cube(s: Vec3{x: 1, y: 1, z: 1})
 }
 `)
 	if len(prog.StructDecls()) != 1 {
@@ -496,8 +496,8 @@ func TestASIParse_MethodChainNewLine(t *testing.T) {
 	// Method chain with '.' on the next line must not be split.
 	prog := mustParse(t, "method chain new line", `
 fn Main() {
-    Cube(size: Vec3{x: 10, y: 10, z: 10})
-        .Translate(v: Vec3{x: 0, y: 0, z: 5})
+    Cube(s: Vec3{x: 10, y: 10, z: 10})
+        .Move(v: Vec3{x: 0, y: 0, z: 5})
 }
 `)
 	fn := prog.Functions()[0]
@@ -524,7 +524,7 @@ func TestASIParse_MultiLineAndChain(t *testing.T) {
 fn Main() {
     var ok = true
         && false
-    Cube(size: Vec3{x: 1, y: 1, z: 1})
+    Cube(s: Vec3{x: 1, y: 1, z: 1})
 }
 `)
 }
@@ -534,7 +534,7 @@ func TestASIParse_MultiLineOrChain(t *testing.T) {
 fn Main() {
     var ok = false
         || true
-    Cube(size: Vec3{x: 1, y: 1, z: 1})
+    Cube(s: Vec3{x: 1, y: 1, z: 1})
 }
 `)
 }
@@ -544,7 +544,7 @@ func TestASIParse_MultiLineAddition(t *testing.T) {
 fn Main() {
     var x = 5
         + 5
-    Cube(size: Vec3{x: x, y: x, z: x})
+    Cube(s: Vec3{x: x, y: x, z: x})
 }
 `)
 }
@@ -554,7 +554,7 @@ func TestASIParse_MultiLineSubtraction(t *testing.T) {
 fn Main() {
     var x = 20
         - 5
-    Cube(size: Vec3{x: x, y: x, z: x})
+    Cube(s: Vec3{x: x, y: x, z: x})
 }
 `)
 }
@@ -575,7 +575,7 @@ fn MakePoint(a, b Number) Point {
 }
 
 fn Main() {
-    Cube(size: Vec3{x: 1, y: 1, z: 1})
+    Cube(s: Vec3{x: 1, y: 1, z: 1})
 }
 `)
 }
@@ -589,7 +589,7 @@ func TestASIParse_BackwardCompatExplicitSemis(t *testing.T) {
 fn Main() {
     var x = 10;
     var y = 20;
-    return Cube(size: Vec3{x: x, y: y, z: x});
+    return Cube(s: Vec3{x: x, y: y, z: x});
 }
 `)
 }
@@ -600,14 +600,14 @@ func TestASIParse_BackwardCompatMixed(t *testing.T) {
 fn Main() {
     var x = 10;
     var y = 20
-    Cube(size: Vec3{x: x, y: y, z: x})
+    Cube(s: Vec3{x: x, y: y, z: x})
 }
 `)
 }
 
 func TestASIParse_BackwardCompatOneLiner(t *testing.T) {
 	mustParse(t, "one-liner with semis", `
-fn Main() { var x = 5; return Cube(size: Vec3{x: x, y: x, z: x}); }
+fn Main() { var x = 5; return Cube(s: Vec3{x: x, y: x, z: x}); }
 `)
 }
 
@@ -620,7 +620,7 @@ func TestASIParse_CommentAtLineEnd(t *testing.T) {
 	mustParse(t, "trailing comment preserves ASI", `
 fn Main() {
     var x = 10 # this is x
-    return Cube(size: Vec3{x: x, y: x, z: x})
+    return Cube(s: Vec3{x: x, y: x, z: x})
 }
 `)
 }
@@ -632,7 +632,7 @@ fn Main() {
     # first
     var x = 10
     # second
-    return Cube(size: Vec3{x: x, y: x, z: x})
+    return Cube(s: Vec3{x: x, y: x, z: x})
 }
 `)
 }
@@ -645,8 +645,8 @@ func TestASIParse_BareExpressionMidBody(t *testing.T) {
 	// Bare expressions mid-body are valid (ExprStmt).
 	prog := mustParse(t, "bare expression mid-body", `
 fn Main() {
-    Cube(size: Vec3{x: 10, y: 10, z: 10})
-    return Cube(size: Vec3{x: 1, y: 1, z: 1})
+    Cube(s: Vec3{x: 10, y: 10, z: 10})
+    return Cube(s: Vec3{x: 1, y: 1, z: 1})
 }
 `)
 	fn := prog.Functions()[0]

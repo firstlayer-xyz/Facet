@@ -1,5 +1,10 @@
-import type { SettingsPageContext, PageResult } from './settings_appearance';
 import { DetectAssistantCLIs, GetDefaultSystemPrompt } from '../wailsjs/go/main/App';
+import {
+  settingsRow,
+  type SettingsPageContext,
+  type PageResult,
+} from './settings_ui';
+import { reportError } from './toast';
 
 interface CLIInfoFE {
   id: string;
@@ -36,12 +41,6 @@ export function buildAssistantPage(ctx: SettingsPageContext): PageResult {
     }
 
     // CLI dropdown
-    const cliRow = document.createElement('div');
-    cliRow.className = 'settings-color-row';
-
-    const cliLabel = document.createElement('label');
-    cliLabel.textContent = 'CLI';
-
     const cliSelect = document.createElement('select');
     cliSelect.id = 'settings-assistant-cli';
     for (const cli of clis) {
@@ -56,10 +55,7 @@ export function buildAssistantPage(ctx: SettingsPageContext): PageResult {
       cliSelect.value = clis[0].id;
       draft.assistant.cli = clis[0].id;
     }
-
-    cliRow.appendChild(cliLabel);
-    cliRow.appendChild(cliSelect);
-    page.appendChild(cliRow);
+    page.appendChild(settingsRow('CLI', cliSelect));
 
     // Model dropdown
     const modelRow = document.createElement('div');
@@ -148,13 +144,6 @@ export function buildAssistantPage(ctx: SettingsPageContext): PageResult {
     });
 
     // Max turns setting
-    const turnsRow = document.createElement('div');
-    turnsRow.className = 'settings-color-row';
-
-    const turnsLabel = document.createElement('label');
-    turnsLabel.textContent = 'Max Turns';
-    turnsLabel.title = 'Maximum tool-use iterations per message (Claude only)';
-
     const turnsInput = document.createElement('input');
     turnsInput.type = 'number';
     turnsInput.min = '1';
@@ -165,9 +154,9 @@ export function buildAssistantPage(ctx: SettingsPageContext): PageResult {
     turnsInput.addEventListener('input', () => {
       draft.assistant.maxTurns = parseInt(turnsInput.value, 10) || 10;
     });
-
-    turnsRow.appendChild(turnsLabel);
-    turnsRow.appendChild(turnsInput);
+    const turnsRow = settingsRow('Max Turns', turnsInput);
+    const turnsLabel = turnsRow.querySelector('label')!;
+    turnsLabel.title = 'Maximum tool-use iterations per message (Claude only)';
     page.appendChild(turnsRow);
 
     // System prompt textarea
@@ -205,8 +194,9 @@ export function buildAssistantPage(ctx: SettingsPageContext): PageResult {
       draft.assistant.systemPrompt = '';
     });
     page.appendChild(resetBtn);
-  }).catch(() => {
+  }).catch((err) => {
     loading.textContent = 'Failed to detect CLIs';
+    reportError('DetectAssistantCLIs', err);
   });
 
   return { el: page };

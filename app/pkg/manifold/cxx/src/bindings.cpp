@@ -2,7 +2,12 @@
 #include "manifold/manifold.h"
 #include "manifold/cross_section.h"
 #include "manifold/polygon.h"
-#include "manifold/meshIO.h"
+
+#include "assimp/Exporter.hpp"
+#include "assimp/Importer.hpp"
+#include "assimp/postprocess.h"
+#include "assimp/scene.h"
+#include "assimp/cimport.h"
 
 #include <cmath>
 #ifndef M_PI
@@ -10,6 +15,7 @@
 #endif
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 using namespace manifold;
@@ -58,11 +64,17 @@ ManifoldPtr* facet_cube(double x, double y, double z) {
 }
 
 ManifoldPtr* facet_sphere(double radius, int segments) {
-  return as_c(new Manifold(Manifold::Sphere(radius, segments).AsOriginal()));
+  // Manifold::Sphere is centered at origin; translate so bbox starts at (0,0,0).
+  auto s = Manifold::Sphere(radius, segments).Translate({radius, radius, radius});
+  return as_c(new Manifold(s.AsOriginal()));
 }
 
 ManifoldPtr* facet_cylinder(double height, double radius_low, double radius_high, int segments) {
-  return as_c(new Manifold(Manifold::Cylinder(height, radius_low, radius_high, segments).AsOriginal()));
+  // Manifold::Cylinder is XY-centered with base at z=0; translate XY so bbox
+  // starts at (0,0,0) on all axes, matching cube/sphere/square/circle.
+  double r = std::fmax(radius_low, radius_high);
+  auto s = Manifold::Cylinder(height, radius_low, radius_high, segments).Translate({r, r, 0});
+  return as_c(new Manifold(s.AsOriginal()));
 }
 
 // ---------------------------------------------------------------------------
@@ -858,19 +870,195 @@ void facet_extract_display_mesh(ManifoldPtr* m,
 // ---------------------------------------------------------------------------
 // Import / Export
 // ---------------------------------------------------------------------------
+//
+// We drive Assimp directly rather than going through Manifold's meshIO
+// wrapper. Manifold's wrapper relies on DEBUG_ASSERT to surface parse /
+// export errors; DEBUG_ASSERT is compiled out in release builds, so the
+// wrapper silently yields an empty mesh on bad input and silently no-ops
+// on a failed export. Our bindings return the Assimp error string to Go
+// so the user sees a real diagnostic instead of a stat-based guess.
 
-ManifoldPtr* facet_import_mesh(const char* path) {
-  MeshGL mesh = ImportMesh(std::string(path), true);
-  if (mesh.NumVert() == 0) return nullptr;
-  return as_c(new Manifold(Manifold(mesh).AsOriginal()));
+// Close the file-wide extern "C" block for our helpers: std::string return
+// types are user-defined and trip -Wreturn-type-c-linkage if they inherit
+// the surrounding extern "C". We reopen extern "C" before the exported
+// facet_* functions below.
+}  // extern "C"
+
+namespace {
+
+// Duplicates a std::string into a heap-allocated C string via std::malloc so
+// Go can free it with the ordinary C allocator (cgo's C.free).
+char* cstr_dup(const std::string& s) {
+  char* out = static_cast<char*>(std::malloc(s.size() + 1));
+  if (!out) return nullptr;
+  std::memcpy(out, s.data(), s.size());
+  out[s.size()] = '\0';
+  return out;
 }
 
-void facet_export_mesh(ManifoldPtr* m, const char* path) {
+std::string path_ext_lower(const std::string& path) {
+  auto dot = path.find_last_of('.');
+  if (dot == std::string::npos) return {};
+  std::string ext = path.substr(dot + 1);
+  for (auto& c : ext) c = static_cast<char>(std::tolower(c));
+  return ext;
+}
+
+// aiScene constructor mirroring Manifold's meshIO but produced inline so we
+// can own the lifetime and capture exporter errors.
+aiScene* build_scene_from_mesh(const MeshGL& mesh) {
+  aiScene* scene = new aiScene();
+
+  scene->mNumMaterials = 1;
+  scene->mMaterials = new aiMaterial*[1];
+  scene->mMaterials[0] = new aiMaterial();
+
+  scene->mNumMeshes = 1;
+  scene->mMeshes = new aiMesh*[1];
+  scene->mMeshes[0] = new aiMesh();
+  scene->mMeshes[0]->mMaterialIndex = 0;
+  scene->mMeshes[0]->mPrimitiveTypes = aiPrimitiveType_TRIANGLE;
+
+  scene->mRootNode = new aiNode();
+  scene->mRootNode->mNumMeshes = 1;
+  scene->mRootNode->mMeshes = new uint32_t[1];
+  scene->mRootNode->mMeshes[0] = 0;
+
+  aiMesh* out = scene->mMeshes[0];
+  const uint32_t nv = static_cast<uint32_t>(mesh.NumVert());
+  const uint32_t nt = static_cast<uint32_t>(mesh.NumTri());
+
+  out->mNumVertices = nv;
+  out->mVertices = new aiVector3D[nv];
+  for (uint32_t i = 0; i < nv; ++i) {
+    float x = mesh.vertProperties[i * mesh.numProp + 0];
+    float y = mesh.vertProperties[i * mesh.numProp + 1];
+    float z = mesh.vertProperties[i * mesh.numProp + 2];
+    out->mVertices[i] = aiVector3D(x, y, z);
+  }
+
+  out->mNumFaces = nt;
+  out->mFaces = new aiFace[nt];
+  for (uint32_t i = 0; i < nt; ++i) {
+    aiFace& face = out->mFaces[i];
+    face.mNumIndices = 3;
+    face.mIndices = new uint32_t[3];
+    face.mIndices[0] = mesh.triVerts[3 * i + 0];
+    face.mIndices[1] = mesh.triVerts[3 * i + 1];
+    face.mIndices[2] = mesh.triVerts[3 * i + 2];
+  }
+  return scene;
+}
+
+std::string assimp_export_type(const std::string& path) {
+  std::string ext = path_ext_lower(path);
+  if (ext == "glb") return "glb2";
+  if (ext == "gltf") return "gltf2";
+  return ext;
+}
+
+}  // namespace
+
+extern "C" {
+
+ManifoldPtr* facet_import_mesh(const char* path, char** out_err) {
+  *out_err = nullptr;
+  std::string ext = path_ext_lower(path);
+
+  Assimp::Importer importer;
+  importer.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS,
+                              aiComponent_NORMALS |
+                                  aiComponent_TANGENTS_AND_BITANGENTS |
+                                  aiComponent_COLORS |
+                                  aiComponent_TEXCOORDS |
+                                  aiComponent_BONEWEIGHTS |
+                                  aiComponent_ANIMATIONS |
+                                  aiComponent_TEXTURES |
+                                  aiComponent_LIGHTS |
+                                  aiComponent_CAMERAS |
+                                  aiComponent_MATERIALS);
+  importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE,
+                              aiPrimitiveType_POINT | aiPrimitiveType_LINE);
+
+  // STLs need vertex merge to be manifold; do it unconditionally — matches
+  // the previous forceCleanup=true behaviour.
+  unsigned int flags = aiProcess_Triangulate |
+                       aiProcess_RemoveComponent |
+                       aiProcess_PreTransformVertices |
+                       aiProcess_SortByPType |
+                       aiProcess_JoinIdenticalVertices |
+                       aiProcess_OptimizeMeshes;
+
+  const aiScene* scene = importer.ReadFile(path, flags);
+  if (!scene) {
+    const char* msg = importer.GetErrorString();
+    *out_err = cstr_dup(msg && *msg ? std::string(msg)
+                                    : std::string("unknown Assimp import error"));
+    return nullptr;
+  }
+
+  MeshGL mesh_out;
+  mesh_out.numProp = 3;
+  for (size_t i = 0; i < scene->mNumMeshes; ++i) {
+    const aiMesh* mesh_i = scene->mMeshes[i];
+    for (size_t j = 0; j < mesh_i->mNumVertices; ++j) {
+      const aiVector3D& v = mesh_i->mVertices[j];
+      mesh_out.vertProperties.push_back(v.x);
+      mesh_out.vertProperties.push_back(v.y);
+      mesh_out.vertProperties.push_back(v.z);
+    }
+    for (size_t j = 0; j < mesh_i->mNumFaces; ++j) {
+      const aiFace& face = mesh_i->mFaces[j];
+      if (face.mNumIndices != 3) {
+        *out_err = cstr_dup(std::string("non-triangular face in ") + path);
+        return nullptr;
+      }
+      mesh_out.triVerts.push_back(face.mIndices[0]);
+      mesh_out.triVerts.push_back(face.mIndices[1]);
+      mesh_out.triVerts.push_back(face.mIndices[2]);
+    }
+  }
+
+  if (mesh_out.NumVert() == 0) {
+    *out_err = cstr_dup(std::string("no vertices found in ") + path);
+    return nullptr;
+  }
+
+  return as_c(new Manifold(Manifold(mesh_out).AsOriginal()));
+}
+
+char* facet_export_mesh(ManifoldPtr* m, const char* path) {
   MeshGL mesh = as_cpp(m)->GetMeshGL();
-  ExportOptions opts;
-  opts.faceted = true;
-  ExportMesh(std::string(path), mesh, opts);
+  if (mesh.triVerts.empty()) {
+    return cstr_dup(std::string("export failed: mesh is empty"));
+  }
+
+  aiScene* scene = build_scene_from_mesh(mesh);
+
+  // 3MF workaround from Manifold's meshIO: Assimp #3816 requires an extra
+  // root wrap for 3MF.
+  std::string pathStr(path);
+  if (path_ext_lower(pathStr) == "3mf") {
+    aiNode* oldRoot = scene->mRootNode;
+    scene->mRootNode = new aiNode();
+    scene->mRootNode->addChildren(1, &oldRoot);
+  }
+
+  Assimp::Exporter exporter;
+  aiReturn result = exporter.Export(scene, assimp_export_type(pathStr), pathStr);
+  // Exporter owns a copy of the scene internally after Export; we still own
+  // the aiScene we allocated and must free it.
+  delete scene;
+
+  if (result != AI_SUCCESS) {
+    const char* msg = exporter.GetErrorString();
+    return cstr_dup(msg && *msg ? std::string(msg)
+                                : std::string("unknown Assimp export error"));
+  }
+  return nullptr;
 }
+
+void facet_free_string(char* s) { std::free(s); }
 
 ManifoldPtr* facet_solid_from_mesh(float* verts, size_t n_verts,
                                         uint32_t* indices, size_t n_tris) {

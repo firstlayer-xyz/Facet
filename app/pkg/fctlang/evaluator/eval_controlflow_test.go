@@ -13,11 +13,11 @@ func TestEvalIfElseIf(t *testing.T) {
 fn Main() {
     var x = 2;
     if x == 1 {
-        return Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     } else if x == 2 {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
-        return Cube(size: Vec3{x: 20 mm, y: 20 mm, z: 20 mm});
+        return Cube(s: Vec3{x: 20 mm, y: 20 mm, z: 20 mm});
     }
 }
 `
@@ -37,9 +37,9 @@ func TestEvalIfInForLoop(t *testing.T) {
 	src := `
 fn Main() {
     var cubes = for i[0:<4] {
-        var c = Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        var c = Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
         if i >= 2 {
-            c = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+            c = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
         }
         yield c;
     };
@@ -67,7 +67,7 @@ func TestEvalForYieldRange(t *testing.T) {
 	src := `
 fn Main() {
     var cubes = for i[0:<3] {
-        yield Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Translate(v: Vec3 { x: i * 10 mm, y: 0 mm, z: 0 mm });
+        yield Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).Move(v: Vec3 { x: i * 10 mm, y: 0 mm, z: 0 mm });
     };
     var result = fold a, b cubes {
         yield a + b;
@@ -94,7 +94,7 @@ func TestEvalForYieldArray(t *testing.T) {
 fn Main() {
     var sizes = []Length[5 mm, 10 mm, 15 mm];
     var cubes = for s sizes {
-        yield Cube(size: Vec3{x: s, y: s, z: s});
+        yield Cube(s: Vec3{x: s, y: s, z: s});
     };
     var result = fold a, b cubes {
         yield a + b;
@@ -142,7 +142,7 @@ fn Main() {
     var r = 10 mm;
     return Polygon(points: for i[0:<6] {
         yield Vec2{x: Cos(a: i * 60 deg) * r, y: Sin(a: i * 60 deg) * r};
-    }).Extrude(height: 5 mm);
+    }).Extrude(z: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -165,7 +165,7 @@ fn Main() {
     var r = 5 mm;
     return Polygon(points: for i[0:<6] {
         yield Vec2{x: Cos(a: i * 60 deg) * r, y: Sin(a: i * 60 deg) * r};
-    }).Extrude(height: 10 mm);
+    }).Extrude(z: 10 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -188,7 +188,7 @@ fn Main() {
     var pts = for i[0:<6] {
         yield Vec2{x: Cos(a: i * 60 deg) * r, y: Sin(a: i * 60 deg) * r};
     };
-    return Polygon(points: pts).Extrude(height: 5 mm);
+    return Polygon(points: pts).Extrude(z: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -209,7 +209,7 @@ func TestEvalAssertPass(t *testing.T) {
 fn Main() {
     assert true;
     assert 1 < 2;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -226,7 +226,7 @@ func TestEvalAssertFail(t *testing.T) {
 	src := `
 fn Main() {
     assert false;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -243,7 +243,7 @@ func TestEvalAssertFailWithMessage(t *testing.T) {
 	src := `
 fn Main() {
     assert 1 > 2, "math is broken";
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -261,7 +261,7 @@ func TestEvalAssertInForYield(t *testing.T) {
 fn Main() {
     var cubes = for i [0:<3] {
         assert i >= 0;
-        yield Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+        yield Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
     };
     return fold a, b cubes { yield a + b; };
 }
@@ -280,7 +280,7 @@ func TestEvalDivisionByZero(t *testing.T) {
 	src := `
 fn Main() {
     var x = 10 / 0;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -297,7 +297,7 @@ func TestEvalDivisionByZeroLength(t *testing.T) {
 	src := `
 fn Main() {
     var x = 10 mm / 0 mm;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -316,7 +316,7 @@ fn Main() {
     var x = 10;
     var y = -x;
     assert y == -10;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -335,7 +335,7 @@ fn Main() {
     var x = 10 mm;
     var y = -x;
     assert y == -10 mm;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -354,7 +354,7 @@ fn Main() {
     var x = 45 deg;
     var y = -x;
     assert y == -45 deg;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -372,7 +372,7 @@ func TestEvalUnaryMinusExpression(t *testing.T) {
 fn Main() {
     var x = -(3 + 7);
     assert x == -10;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -390,7 +390,7 @@ func TestEvalUnaryMinusDoubleNegation(t *testing.T) {
 fn Main() {
     var x = --10;
     assert x == 10;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -408,7 +408,7 @@ func TestEvalUnaryMinusFunctionCall(t *testing.T) {
 fn Main() {
     var x = -Sin(a: 90 deg);
     assert x == -1;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -428,7 +428,7 @@ fn Main() {
     assert x == 2;
     var y = 10 mm + -3 mm;
     assert y == 7 mm;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -448,7 +448,7 @@ fn Main() {
     assert !(!true);
     var x = 5;
     assert !(x > 10);
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -465,7 +465,7 @@ func TestEvalBooleanNotFalse(t *testing.T) {
 	src := `
 fn Main() {
     assert !true;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -484,7 +484,7 @@ fn Main() {
     assert Pow(base: 2, exp: 10) == 1024;
     assert Pow(base: 3, exp: 0) == 1;
     assert Pow(base: 5, exp: 1) == 5;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -503,7 +503,7 @@ fn Main() {
     assert Floor(n: 3.7) == 3;
     assert Floor(n: -2.3) == -3;
     assert Floor(n: 5) == 5;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -522,7 +522,7 @@ fn Main() {
     assert Ceil(n: 3.2) == 4;
     assert Ceil(n: -2.7) == -2;
     assert Ceil(n: 5) == 5;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -541,7 +541,7 @@ fn Main() {
     assert Round(n: 3.4) == 3;
     assert Round(n: 3.5) == 4;
     assert Round(n: -2.5) == -3;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -564,7 +564,7 @@ fn Main() {
         var x = (i % 2) * size;
         var y = (Floor(n: i / 2) % 2) * size;
         var z = (Floor(n: i / 4)) * size;
-        yield Sphere(radius: r).Translate(v: Vec3 { x: x, y: y, z: z });
+        yield Sphere(r: r).Move(v: Vec3 { x: x, y: y, z: z });
     };
     return Hull(arr: spheres);
 }
@@ -587,7 +587,7 @@ func TestEvalMultiVarForYield(t *testing.T) {
 	src := `
 fn Main() {
     var spheres = for i [0:<3], j [0:<3] {
-        yield Sphere(radius: 2 mm).Translate(v: Vec3 { x: i * 10 mm, y: j * 10 mm, z: 0 mm });
+        yield Sphere(r: 2 mm).Move(v: Vec3 { x: i * 10 mm, y: j * 10 mm, z: 0 mm });
     };
     return fold a, b spheres { yield a + b; };
 }
@@ -610,7 +610,7 @@ func TestEvalMultiVarForYieldThreeClauses(t *testing.T) {
 	src := `
 fn Main() {
     var cubes = for i [0:<2], j [0:<2], k [0:<2] {
-        yield Cube(size: Vec3{x: 3 mm, y: 3 mm, z: 3 mm}).Translate(v: Vec3 { x: i * 10 mm, y: j * 10 mm, z: k * 10 mm });
+        yield Cube(s: Vec3{x: 3 mm, y: 3 mm, z: 3 mm}).Move(v: Vec3 { x: i * 10 mm, y: j * 10 mm, z: k * 10 mm });
     };
     return fold a, b cubes { yield a + b; };
 }
@@ -631,7 +631,7 @@ func TestEvalMultiVarForYieldDirect(t *testing.T) {
 fn Main() {
     var r = 2 mm;
     return Hull(arr: for i [0:<2], j [0:<2], k [0:<2] {
-        yield Sphere(radius: r).Translate(v: Vec3 { x: i * 20 mm, y: j * 20 mm, z: k * 20 mm });
+        yield Sphere(r: r).Move(v: Vec3 { x: i * 20 mm, y: j * 20 mm, z: k * 20 mm });
     });
 }
 `
@@ -651,7 +651,7 @@ func TestEvalYieldInsideIf(t *testing.T) {
 fn Main() {
     var cubes = for i [0:<6] {
         if i >= 3 {
-            yield Cube(size: Vec3{x: i * 1 mm, y: i * 1 mm, z: i * 1 mm});
+            yield Cube(s: Vec3{x: i * 1 mm, y: i * 1 mm, z: i * 1 mm});
         }
     };
     return fold a, b cubes { yield a + b; };
@@ -673,9 +673,9 @@ func TestEvalYieldInsideIfElse(t *testing.T) {
 fn Main() {
     var cubes = for i [0:<4] {
         if i % 2 == 0 {
-            yield Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+            yield Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
         } else {
-            yield Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+            yield Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
         }
     };
     return fold a, b cubes { yield a + b; };
@@ -697,8 +697,8 @@ func TestEvalYieldInsideIfMultiple(t *testing.T) {
 fn Main() {
     var cubes = for i [0:<3] {
         if i > 0 {
-            yield Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
-            yield Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+            yield Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+            yield Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
         }
     };
     return fold a, b cubes { yield a + b; };
@@ -720,7 +720,7 @@ func TestEvalYieldFilterEmpty(t *testing.T) {
 fn Main() {
     var arr = for i [0:<5] {
         if i > 100 {
-            yield Cube(size: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+            yield Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
         }
     };
     return fold a, b arr { yield a + b; };
@@ -747,7 +747,7 @@ fn Main() {
     assert Fact(n: 5) == 120;
     assert Fact(n: 1) == 1;
     assert Fact(n: 0) == 1;
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -765,11 +765,11 @@ func TestEvalRecursionGeometry(t *testing.T) {
 	src := `
 fn Stack(n Number, size Length) Solid {
     if n <= 0 {
-        return Cube(size: Vec3{x: size, y: size, z: size});
+        return Cube(s: Vec3{x: size, y: size, z: size});
     } else {
         var half = size / 2;
         var sub = Stack(n: n - 1, size: half);
-        return sub + sub.Translate(v: Vec3 { x: half, y: 0 mm, z: 0 mm });
+        return sub + sub.Move(v: Vec3 { x: half, y: 0 mm, z: 0 mm });
     }
 }
 
@@ -799,7 +799,7 @@ fn Main() {
         if i % 2 != 0 {
             yield;
         }
-        yield Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
+        yield Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
     };
     return fold acc, s solids {
         yield acc + s;
@@ -825,7 +825,7 @@ fn Main() {
         if i <= 2 {
             yield;
         }
-        yield Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}).Translate(v: Vec3 { x: i * 1 mm, y: 0 mm, z: 0 mm });
+        yield Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}).Move(v: Vec3 { x: i * 1 mm, y: 0 mm, z: 0 mm });
     };
     return fold acc, s cubes {
         yield acc + s;
@@ -851,7 +851,7 @@ fn Main() {
         if i % 2 == 0 {
             yield;
         }
-        yield Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}).Translate(v: Vec3 { x: i * 1 mm, y: 0 mm, z: 0 mm });
+        yield Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}).Move(v: Vec3 { x: i * 1 mm, y: 0 mm, z: 0 mm });
     };
     return fold acc, s cubes {
         yield acc + s;
@@ -872,9 +872,9 @@ func TestEvalCancelledContextInForLoop(t *testing.T) {
 	src := `
 fn Main() {
     var result = for i[0:<1000] {
-        yield Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
+        yield Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
     };
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -894,7 +894,7 @@ func TestEvalConstrainedVarValidDefault(t *testing.T) {
 	src := `
 var x = 50 where [0:100];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -908,7 +908,7 @@ func TestEvalConstraintOverride(t *testing.T) {
 	src := `
 var x = 50 where [0:100];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -923,7 +923,7 @@ func TestEvalConstraintOutOfRange(t *testing.T) {
 	src := `
 var x = 50 where [0:100];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -941,7 +941,7 @@ func TestEvalConstraintInclusiveUpperBound(t *testing.T) {
 	src := `
 var x = 100 where [0:100];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -955,7 +955,7 @@ func TestEvalConstraintExclusiveUpperBound(t *testing.T) {
 	src := `
 var x = 99 where [0:<100];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -970,7 +970,7 @@ func TestEvalConstraintExclusiveRejectsUpperBound(t *testing.T) {
 	src := `
 var x = 100 where [0:<100];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -984,7 +984,7 @@ func TestEvalConstraintSteppedRange(t *testing.T) {
 	src := `
 var x = 10 where [0:100:5];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -999,7 +999,7 @@ func TestEvalConstraintUnitRange(t *testing.T) {
 	src := `
 var w = 10 mm where [1:100] mm;
 fn Main() {
-    return Cube(size: Vec3{x: w, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: w, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1013,7 +1013,7 @@ func TestEvalConstraintEnumValid(t *testing.T) {
 	src := `
 var s = "m3" where ["m3", "m4", "m5"];
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1027,7 +1027,7 @@ func TestEvalConstraintEnumRejectsNonMember(t *testing.T) {
 	src := `
 var s = "m6" where ["m3", "m4", "m5"];
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1044,7 +1044,7 @@ func TestEvalConstraintFreeForm(t *testing.T) {
 	src := `
 var x = 42 where [];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1058,7 +1058,7 @@ func TestEvalConstraintFreeFormOverride(t *testing.T) {
 	src := `
 var x = 42 where [];
 fn Main() {
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1079,7 +1079,7 @@ func TestEvalForYieldEnumerate(t *testing.T) {
 fn Main() {
     var sizes = []Length[5 mm, 10 mm, 15 mm];
     var cubes = for i, s sizes {
-        yield Cube(size: Vec3{x: s, y: s, z: s}).Translate(v: Vec3 { x: i * 20 mm, y: 0 mm, z: 0 mm });
+        yield Cube(s: Vec3{x: s, y: s, z: s}).Move(v: Vec3 { x: i * 20 mm, y: 0 mm, z: 0 mm });
     };
     return fold a, b cubes { yield a + b; };
 }
@@ -1105,7 +1105,7 @@ fn Main() {
     var indices = for i, v arr {
         assert i >= 0;
         assert i < 3;
-        yield Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}).Translate(v: Vec3 { x: i * 5 mm, y: 0 mm, z: 0 mm });
+        yield Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}).Move(v: Vec3 { x: i * 5 mm, y: 0 mm, z: 0 mm });
     };
     return fold a, b indices { yield a + b; };
 }
@@ -1126,7 +1126,7 @@ func TestEvalForYieldEnumerateWithCartesian(t *testing.T) {
 fn Main() {
     var sizes = []Length[5 mm, 10 mm];
     var cubes = for i, s sizes, j [0:<2] {
-        yield Cube(size: Vec3{x: s, y: s, z: s}).Translate(v: Vec3 { x: i * 20 mm, y: j * 20 mm, z: 0 mm });
+        yield Cube(s: Vec3{x: s, y: s, z: s}).Move(v: Vec3 { x: i * 20 mm, y: j * 20 mm, z: 0 mm });
     };
     return fold a, b cubes { yield a + b; };
 }
@@ -1150,7 +1150,7 @@ func TestEvalForYieldEnumerateNoIndex(t *testing.T) {
 fn Main() {
     var sizes = []Length[5 mm, 10 mm, 15 mm];
     var cubes = for s sizes {
-        yield Cube(size: Vec3{x: s, y: s, z: s});
+        yield Cube(s: Vec3{x: s, y: s, z: s});
     };
     return fold a, b cubes { yield a + b; };
 }
@@ -1175,7 +1175,7 @@ fn Main() {
     var sizes = []Length[5 mm, 10 mm, 15 mm];
     var s = sizes[1];
     assert s == 10 mm;
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1194,7 +1194,7 @@ fn Main() {
     var arr = []Length[5 mm, 10 mm, 15 mm];
     var last = arr[Size(of: arr) - 1];
     assert last == 15 mm;
-    return Cube(size: Vec3{x: last, y: last, z: last});
+    return Cube(s: Vec3{x: last, y: last, z: last});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1212,7 +1212,7 @@ func TestEvalArrayIndexOutOfRange(t *testing.T) {
 fn Main() {
     var arr = []Number[1, 2, 3];
     var x = arr[5];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1231,7 +1231,7 @@ func TestEvalArrayIndexNegative(t *testing.T) {
 fn Main() {
     var arr = []Number[1, 2, 3];
     var x = arr[-1];
-    return Cube(size: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1246,7 +1246,7 @@ func TestEvalArrayIndexNegativeOutOfRange(t *testing.T) {
 fn Main() {
     var arr = []Number[1, 2, 3];
     var x = arr[-4];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1264,7 +1264,7 @@ func TestEvalArrayIndexNotArray(t *testing.T) {
 fn Main() {
     var x = 10;
     var y = x[0];
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1283,7 +1283,7 @@ fn Main() {
     var nested = []Length[[5 mm, 10 mm], [15 mm, 20 mm]];
     var s = nested[1][0];
     assert s == 15 mm;
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1300,7 +1300,7 @@ func TestEvalParallelForYield50Cubes(t *testing.T) {
 	src := `
 fn Main() {
     var parts = for i [0:<50] {
-        yield Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Translate(v: Vec3 { x: i * 15 mm, y: 0 mm, z: 0 mm });
+        yield Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).Move(v: Vec3 { x: i * 15 mm, y: 0 mm, z: 0 mm });
     };
     return fold a, b parts { yield a + b; };
 }
@@ -1327,7 +1327,7 @@ fn Main() {
     var sizes = []Length[5 mm, 10 mm, 15 mm];
     var cubes = for i [0:<Size(of: sizes)] {
         var s = sizes[i];
-        yield Cube(size: Vec3{x: s, y: s, z: s}).Translate(v: Vec3 { x: i * 20 mm, y: 0 mm, z: 0 mm });
+        yield Cube(s: Vec3{x: s, y: s, z: s}).Move(v: Vec3 { x: i * 20 mm, y: 0 mm, z: 0 mm });
     };
     return fold a, b cubes { yield a + b; };
 }
@@ -1347,7 +1347,7 @@ func TestEvalAssignment(t *testing.T) {
 fn Main() {
     var x = 10 mm;
     x = 20 mm;
-    return Cube(size: Vec3{x: x, y: x, z: x});
+    return Cube(s: Vec3{x: x, y: x, z: x});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1364,7 +1364,7 @@ func TestEvalAssignmentUndefined(t *testing.T) {
 	src := `
 fn Main() {
     y = 10 mm;
-    return Cube(size: Vec3{x: y, y: y, z: y});
+    return Cube(s: Vec3{x: y, y: y, z: y});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1383,7 +1383,7 @@ fn Main() {
     var cubes = for i [0:<3] {
         var s = 5 mm;
         s = s + i mm;
-        yield Cube(size: Vec3{x: s, y: s, z: s});
+        yield Cube(s: Vec3{x: s, y: s, z: s});
     };
     var result = fold a, b cubes {
         yield a + b;
@@ -1406,7 +1406,7 @@ func TestEvalCompoundAssignment(t *testing.T) {
 fn Main() {
     var x = 5 mm;
     x += 5 mm;
-    return Cube(size: Vec3{x: x, y: x, z: x});
+    return Cube(s: Vec3{x: x, y: x, z: x});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1427,7 +1427,7 @@ fn Main() {
     x -= 5 mm;
     x *= 2;
     x /= 3;
-    return Cube(size: Vec3{x: x, y: x, z: x});
+    return Cube(s: Vec3{x: x, y: x, z: x});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1445,7 +1445,7 @@ func TestEvalConstReassignError(t *testing.T) {
 fn Main() {
     const x = 10 mm;
     x = 20 mm;
-    return Cube(size: Vec3{x: x, y: x, z: x});
+    return Cube(s: Vec3{x: x, y: x, z: x});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1464,7 +1464,7 @@ type Point { x Number; y Number }
 fn Main() {
     const p = Point{x: 1, y: 2};
     p.x = 3;
-    return Cube(size: Vec3{x: p.x * 1 mm, y: p.y * 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: p.x * 1 mm, y: p.y * 1 mm, z: 1 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1481,7 +1481,7 @@ func TestEvalConstReadOk(t *testing.T) {
 	src := `
 fn Main() {
     const s = 10 mm;
-    return Cube(size: Vec3{x: s, y: s, z: s});
+    return Cube(s: Vec3{x: s, y: s, z: s});
 }
 `
 	prog := parseTestProg(t, src)
@@ -1499,7 +1499,7 @@ func TestEvalConstCompoundAssignError(t *testing.T) {
 fn Main() {
     const x = 10 mm;
     x += 5 mm;
-    return Cube(size: Vec3{x: x, y: x, z: x});
+    return Cube(s: Vec3{x: x, y: x, z: x});
 }
 `
 	prog := parseTestProg(t, src)

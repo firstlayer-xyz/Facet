@@ -7,7 +7,7 @@ import (
 )
 
 func TestEvalErrorNoMain(t *testing.T) {
-	src := `fn Foo() Solid { return Cube(size: Vec3{x: 1 mm, y: 2 mm, z: 3 mm}); }`
+	src := `fn Foo() Solid { return Cube(s: Vec3{x: 1 mm, y: 2 mm, z: 3 mm}); }`
 	prog := parseTestProg(t, src)
 	_, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
 	if err == nil {
@@ -34,12 +34,12 @@ func TestEvalErrorReturnTypeMismatch(t *testing.T) {
 	// Function declares Length return but returns a Solid
 	src := `
 fn Bad() Length {
-    return Cube(size: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
+    return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
 }
 
 fn Main() Solid {
     var x = Bad();
-    return Cube(size: Vec3{x: x, y: x, z: x});
+    return Cube(s: Vec3{x: x, y: x, z: x});
 }
 `
 	prog := parseTestProg(t, src)
@@ -77,7 +77,7 @@ func TestEvalErrorMethodOnLength(t *testing.T) {
 	src := `
 fn Main() {
     var s = 10 mm;
-    return s.Translate(v: Vec3 { x: 1 mm, y: 2 mm, z: 3 mm });
+    return s.Move(v: Vec3 { x: 1 mm, y: 2 mm, z: 3 mm });
 }
 `
 	prog := parseTestProg(t, src)
@@ -93,7 +93,7 @@ fn Main() {
 func TestEvalErrorUnknownMethod(t *testing.T) {
 	src := `
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).DoSomething();
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).DoSomething();
 }
 `
 	prog := parseTestProg(t, src)
@@ -109,8 +109,8 @@ fn Main() {
 func TestEvalErrorAngleExpectedGotLength(t *testing.T) {
 	src := `
 fn Main() {
-    var box = Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
-    return box.Rotate(rx: 10 mm, ry: 0 deg, rz: 0 deg, pivot: WorldOrigin);
+    var box = Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return box.Rotate(x: 10 mm, y: 0 deg, z: 0 deg, around: Vec3{});
 }
 `
 	prog := parseTestProg(t, src)
@@ -129,7 +129,7 @@ fn Main() {
     var x = for i 10 mm {
         yield i;
     };
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -146,7 +146,7 @@ func TestEvalErrorPolygonTooFewPoints(t *testing.T) {
 	src := `
 fn Main() {
     var pts = []Vec2[{x: 0 mm, y: 0 mm}, {x: 1 mm, y: 0 mm}];
-    return Polygon(points: pts).Extrude(height: 5 mm);
+    return Polygon(points: pts).Extrude(z: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -163,7 +163,7 @@ func TestEvalIfNoElseError(t *testing.T) {
 	src := `
 fn Main() {
     if false {
-        return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     }
 }
 `
@@ -183,7 +183,7 @@ fn Main() {
     var pts = for i[10:0:1] {
         yield Vec2{x: i, y: 0 mm};
     };
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -202,7 +202,7 @@ fn Main() {
     var pts = for i[0:10:-1] {
         yield Vec2{x: i, y: 0 mm};
     };
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -221,7 +221,7 @@ fn Main() {
     var pts = for i[0:10:0] {
         yield Vec2{x: i, y: 0 mm};
     };
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
 `
 	prog := parseTestProg(t, src)
@@ -231,5 +231,56 @@ fn Main() {
 	}
 	if !strings.Contains(err.Error(), "zero") {
 		t.Errorf("error should mention zero: %v", err)
+	}
+}
+
+// TestErrorLengthPlusNumberVariable: a committed Number variable does not
+// coerce to Length, so mixing it with a Length is a dimension error.
+// (A bare numeric literal on the Number side is different — see
+// TestEvalLengthPlusNumberLiteral in eval_operators_test.go.)
+func TestErrorLengthPlusNumberVariable(t *testing.T) {
+	src := `
+fn Main() Solid {
+    var n = 3;
+    var w = 5 mm + n;
+    return Cube(s: Vec3{x: w, y: w, z: w});
+}
+`
+	prog := parseTestProg(t, src)
+	_, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
+	if err == nil {
+		t.Fatal("expected error for Length + Number variable")
+	}
+}
+
+// TestErrorLengthTimesLength: there is no Area type, so multiplying two
+// Lengths must be a type error rather than silently producing a Number.
+func TestErrorLengthTimesLength(t *testing.T) {
+	src := `
+fn Main() Solid {
+    var a = 5 mm * 3 mm;
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+}
+`
+	prog := parseTestProg(t, src)
+	_, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
+	if err == nil {
+		t.Fatal("expected error for Length * Length (no Area type)")
+	}
+}
+
+// TestErrorRequireNumberRejectsLength: builtins whose parameters are typed
+// Number must reject Length arguments. Lerp's `t` parameter is Number.
+func TestErrorRequireNumberRejectsLength(t *testing.T) {
+	src := `
+fn Main() Solid {
+    var x = Lerp(from: 0, to: 10, t: 5 mm);
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+}
+`
+	prog := parseTestProg(t, src)
+	_, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
+	if err == nil {
+		t.Fatal("expected error: Lerp(t:) requires Number, got Length")
 	}
 }

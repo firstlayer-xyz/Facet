@@ -55,7 +55,7 @@ func assertMeshSize(t *testing.T, m *manifold.Mesh, wantW, wantH, wantD float32,
 		t.Errorf("width: got %.2f, want %.2f (tol %.2f)", gotW, wantW, tol)
 	}
 	if abs32(gotH-wantH) > tol {
-		t.Errorf("height: got %.2f, want %.2f (tol %.2f)", gotH, wantH, tol)
+		t.Errorf("h: got %.2f, want %.2f (tol %.2f)", gotH, wantH, tol)
 	}
 	if abs32(gotD-wantD) > tol {
 		t.Errorf("depth: got %.2f, want %.2f (tol %.2f)", gotD, wantD, tol)

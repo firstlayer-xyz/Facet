@@ -7,7 +7,6 @@ package manifold
 import "C"
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"unsafe"
 )
@@ -15,16 +14,18 @@ import (
 // ImportMesh reads a mesh file and returns a Solid. The format is auto-detected
 // from the file extension by Assimp (STL, OBJ, and 100+ other formats).
 func ImportMesh(path string) (*Solid, error) {
-	if _, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("ImportMesh: %w", err)
-	}
-
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
-	ptr := C.facet_import_mesh(cPath)
+	var cErr *C.char
+	ptr := C.facet_import_mesh(cPath, &cErr)
 	if ptr == nil {
-		return nil, fmt.Errorf("ImportMesh: no vertices found in %s", path)
+		msg := "unknown error"
+		if cErr != nil {
+			msg = C.GoString(cErr)
+			C.facet_free_string(cErr)
+		}
+		return nil, fmt.Errorf("ImportMesh %s: %s", path, msg)
 	}
 	s := newSolid(ptr)
 	origID := uint32(C.facet_original_id(s.ptr))

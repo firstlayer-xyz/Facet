@@ -110,17 +110,27 @@ func getEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) 
 	}
 
 	sort.Slice(out, func(i, j int) bool {
-		a, b := out[i].Name, out[j].Name
-		if a == "Main" {
-			return true
-		}
-		if b == "Main" {
-			return false
-		}
-		return a < b
+		return entryPointLess(out[i].Name, out[j].Name)
 	})
 
 	return out
+}
+
+// entryPointLess orders entry points by name, with "Main" pinned to the
+// front.  Pulled out so strict weak ordering is unit-testable: when both
+// sides are equal (including two "Main"s from different sources) the result
+// must be false, which a naive `if a == "Main" { return true }` violates.
+func entryPointLess(a, b string) bool {
+	if a == b {
+		return false
+	}
+	if a == "Main" {
+		return true
+	}
+	if b == "Main" {
+		return false
+	}
+	return a < b
 }
 
 func extractParamConstraint(c parser.Expr) *ParamConstraint {
