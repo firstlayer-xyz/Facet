@@ -322,14 +322,14 @@ func buildSourcesMap(prog loader.Program) map[string]SourceEntry {
 	return sources
 }
 
-// collectLibDocEntries collects deduplicated doc entries from both built-in and git-cached libraries.
+// collectLibDocEntries collects deduplicated doc entries from both user-local
+// libraries (filesystem) and git-cached virtualized libraries (bare clones).
 func collectLibDocEntries() []doc.DocEntry {
 	libDir, _ := libraryDir()
-	dirs := []string{libDir, loader.DefaultGitCacheDir()}
 	var entries []doc.DocEntry
 	seen := map[string]bool{}
-	for _, dir := range dirs {
-		for _, e := range doc.BuildLibDocEntries(dir) {
+	collect := func(batch []doc.DocEntry) {
+		for _, e := range batch {
 			key := e.Name + "|" + e.Library
 			if seen[key] {
 				continue
@@ -338,6 +338,8 @@ func collectLibDocEntries() []doc.DocEntry {
 			entries = append(entries, e)
 		}
 	}
+	collect(doc.BuildLibDocEntries(libDir))
+	collect(doc.BuildCachedLibDocEntries(loader.DefaultGitCacheDir()))
 	return entries
 }
 

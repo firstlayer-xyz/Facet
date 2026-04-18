@@ -2462,6 +2462,33 @@ fn Main() { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }
 `)
 }
 
+// Overloads with identical type signatures but different param names dispatch
+// on the NamedArg names used at the call site (matches runtime behavior in
+// evaluator.resolveOverload).
+func TestCheckOverloadByParamName(t *testing.T) {
+	expectNoErrors(t, `
+fn A(r Length) Length { return r; }
+fn A(d Length) Length { return d / 2; }
+fn Main() {
+    var x = A(r: 5 mm);
+    var y = A(d: 10 mm);
+    return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
+}
+`)
+}
+
+// An unknown named-arg still errors when no overload has that param.
+func TestCheckOverloadByParamNameRejectsUnknown(t *testing.T) {
+	expectError(t, `
+fn A(r Length) Length { return r; }
+fn A(d Length) Length { return d / 2; }
+fn Main() {
+    var z = A(x: 5 mm);
+    return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
+}
+`, "no matching overload")
+}
+
 func TestCheckDefaultParamAmbiguity(t *testing.T) {
 	// fn A() and fn A(x Length = 1mm) overlap at arity 0
 	expectError(t, `

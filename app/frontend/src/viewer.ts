@@ -348,7 +348,8 @@ export class Viewer {
       mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry,
         this.createMeshMaterial({ color: this.meshColor }));
     } else {
-      // Fallback: indexed geometry (old path for debug step meshes, etc.)
+      // Indexed-geometry branch — used for debug step meshes and anything
+      // the backend hasn't pre-expanded.
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(decoded.vertices, 3));
       if (decoded.indices && decoded.indices.length > 0) {
@@ -602,7 +603,9 @@ export class Viewer {
   private findFaceIDsAtPos(file: string, line: number, col: number): Set<number> | null {
     if (this.posMap.length === 0) return null;
 
-    // Find entries on this line in the same file, pick the one with largest col <= col
+    // Pick the entry on this line closest to col. Prefer the largest col
+    // <= cursor; if nothing sits at or before the cursor, take the first
+    // entry after it (cursor is to the left of every entry on the line).
     let best: PosEntry | null = null;
     let firstAfter: PosEntry | null = null;
     for (const entry of this.posMap) {
@@ -613,14 +616,11 @@ export class Viewer {
           best = entry;
         }
       } else {
-        // Track the first entry after col as fallback
         if (!firstAfter || entry.col < firstAfter.col) {
           firstAfter = entry;
         }
       }
     }
-
-    // Fall back to first entry after cursor if none before
     if (!best) best = firstAfter;
     if (!best || best.faceIDs.length === 0) return null;
     return new Set(best.faceIDs);
@@ -908,7 +908,8 @@ export class Viewer {
           obj.add(lines); // parented so it follows mesh transform
           this.wireframeLineObjects.push(lines);
         } else {
-          // Fallback: all triangle edges
+          // No face-group data (e.g. debug step meshes) — draw every
+          // triangle edge.
           const geo = new THREE.WireframeGeometry(obj.geometry);
           const mat = new THREE.LineBasicMaterial({ color: this.meshColor });
           const lines = new THREE.LineSegments(geo, mat);
@@ -1370,9 +1371,10 @@ export class Viewer {
     this.controlsOverlay.classList.add('fade-out');
     const el = this.controlsOverlay;
     this.controlsOverlay = null;
-    el.addEventListener('transitionend', () => el.remove());
-    // Fallback removal in case transitionend doesn't fire
-    setTimeout(() => { if (el.parentNode) el.remove(); }, 500);
+    // Remove after the CSS fade completes. The .fade-out transition in
+    // style.css is 0.4s; add a small buffer so the frame after the fade
+    // is still visible before the DOM node goes away.
+    setTimeout(() => el.remove(), 450);
   }
 
   /** Force-render and return a base64 PNG data URL of the current viewport. */

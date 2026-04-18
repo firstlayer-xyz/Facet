@@ -1,6 +1,6 @@
 import {
   ClearLibCache, ForkLibrary, GetLibraryDir, InstallLibrary, ListLibraries, ListLocalLibraries,
-  ListLibraryFolders, PullAllLibraries, RevealInFileManager, UpdateLibrary,
+  ListLibraryFolders, PullAllLibraries, RemoveLibrary, RevealInFileManager, UpdateLibrary,
 } from '../wailsjs/go/main/App';
 import {
   settingsCheckboxRow,
@@ -15,7 +15,6 @@ import { reportError } from './toast';
 interface LibraryInfo {
   id: string;
   name: string;
-  ref: string;
   path: string;
 }
 
@@ -158,7 +157,9 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
       reportError('ListLocalLibraries', err);
     }
 
-    // Render cached libraries
+    // Render cached libraries: one flat row per repo. Refs aren't exposed —
+    // the bare clone holds every ref and `lib` statements pick the one they
+    // need at resolve time.
     cachedList.replaceChildren(settingsMessage('Loading...'));
     try {
       const libs: LibraryInfo[] = await ListLibraries();
@@ -172,37 +173,39 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
 
           const info = document.createElement('span');
           info.className = 'settings-module-url';
-          info.textContent = `${lib.name || lib.id} @ ${lib.ref}`;
+          info.textContent = lib.name || lib.id;
 
           const actions = document.createElement('span');
-
-          const revealBtn = document.createElement('button');
-          revealBtn.className = 'settings-module-remove';
-          revealBtn.textContent = 'Show';
-          revealBtn.title = 'Reveal in file manager';
-          revealBtn.addEventListener('click', () => {
-            RevealInFileManager(lib.path);
-          });
 
           const updateBtn = document.createElement('button');
           updateBtn.className = 'settings-module-remove';
           updateBtn.textContent = 'Update';
+          updateBtn.title = 'git fetch — pull latest refs from origin';
           updateBtn.addEventListener('click', () => asyncButton(updateBtn, '...', 'UpdateLibrary', async () => {
-            await UpdateLibrary(lib.id, lib.ref);
+            await UpdateLibrary(lib.id);
           }));
 
           const forkBtn = document.createElement('button');
           forkBtn.className = 'settings-module-remove';
           forkBtn.textContent = 'Fork';
-          forkBtn.title = 'Copy to local libraries for editing';
+          forkBtn.title = 'Copy latest revision to local libraries for editing';
           forkBtn.addEventListener('click', () => asyncButton(forkBtn, '...', 'ForkLibrary', async () => {
-            await ForkLibrary(lib.id, lib.ref);
+            await ForkLibrary(lib.id);
             loadAndRender();
           }));
 
-          actions.appendChild(revealBtn);
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'settings-module-remove';
+          removeBtn.textContent = 'Remove';
+          removeBtn.title = 'Delete this repo from the cache';
+          removeBtn.addEventListener('click', () => asyncButton(removeBtn, '...', 'RemoveLibrary', async () => {
+            await RemoveLibrary(lib.id);
+            loadAndRender();
+          }));
+
           actions.appendChild(updateBtn);
           actions.appendChild(forkBtn);
+          actions.appendChild(removeBtn);
           row.appendChild(info);
           row.appendChild(actions);
           cachedList.appendChild(row);
@@ -216,7 +219,8 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
 
   loadAndRender();
 
-  // Clone form
+  // Clone form — just a URL. The bare clone contains every ref; picking one
+  // happens later in `lib "..." "ref"` statements, not here.
   const addRow = document.createElement('div');
   addRow.className = 'settings-module-add';
 
@@ -225,22 +229,15 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
   urlInput.placeholder = 'github.com/user/repo';
   urlInput.style.flex = '1';
 
-  const refInput = document.createElement('input');
-  refInput.type = 'text';
-  refInput.placeholder = 'main';
-  refInput.style.width = '80px';
-  refInput.value = 'main';
-
   const addBtn = document.createElement('button');
   addBtn.textContent = 'Clone';
   addBtn.addEventListener('click', async () => {
     const url = urlInput.value.trim();
-    const ref = refInput.value.trim() || 'main';
     if (!url) return;
     addBtn.disabled = true;
     addBtn.textContent = 'Cloning...';
     try {
-      await InstallLibrary(url, ref);
+      await InstallLibrary(url);
       urlInput.value = '';
       addBtn.textContent = 'Clone';
       addBtn.disabled = false;
@@ -253,7 +250,6 @@ export function buildLibrariesPage(ctx: SettingsPageContext): PageResult {
   });
 
   addRow.appendChild(urlInput);
-  addRow.appendChild(refInput);
   addRow.appendChild(addBtn);
   page.appendChild(addRow);
 

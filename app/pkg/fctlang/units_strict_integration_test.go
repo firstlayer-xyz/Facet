@@ -14,9 +14,9 @@ type checkErrList = []parser.SourceError
 
 
 // End-to-end integration tests for the strict Length/Number type rules.
-// These exercise the full parser → checker → evaluator pipeline on .fct source.
+// Exercises the full parser → checker → evaluator pipeline on .fct source.
 //
-// The rule set (see plans/2026-04-16-units-strict.md):
+// Rule set:
 //   • Length + Length = Length          (compatible dimensions)
 //   • Length - Length = Length
 //   • Length * Number = Length          (scale)
@@ -31,10 +31,6 @@ type checkErrList = []parser.SourceError
 //   • Same rules for -, %.
 //   • Length → Number requires explicit Number(x) call
 //   • Number → Length auto-coerces at boundaries (arg passing, var decl, return)
-//
-// Until Tasks 2–6 land, the error tests should *fail* here (they document
-// desired behavior). The positive tests may or may not pass depending on the
-// current state — they lock in the passing semantics after the fix.
 
 // runCheckAndEval runs the checker and then the evaluator on a .fct source.
 // Returns any errors from either stage.
@@ -48,7 +44,7 @@ func runCheckAndEval(t *testing.T, src string) (checkErrs checkErrList, evalErr 
 	return checkErrs, evalErr
 }
 
-// --- Positive tests: these must pass once the refactor is complete ----------
+// --- Positive tests: valid Length/Number combinations ----------
 
 func TestIntegrationLengthTimesNumber(t *testing.T) {
 	src := `

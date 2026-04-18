@@ -112,8 +112,9 @@ fn Cube(s Length) Solid {
 }
 
 # UV sphere centered at the origin. Optional `segments` controls smoothness (default 32).
+# Accepts either `r:` (radius) or `d:` (diameter).
 # ```
-# fn Main() { Sphere(10 mm) }
+# fn Main() { Sphere(r: 10 mm) }
 # ```
 fn Sphere(
     r Length,
@@ -122,11 +123,19 @@ fn Sphere(
     return _sphere(r, segments)
 }
 
+fn Sphere(
+    d Length,
+    segments Number = 0,
+) Solid {
+    return _sphere(d / 2, segments)
+}
+
 # Cylinder or cone along Z from Z=0 to Z=`h`. `r1`/`r2` are bottom/top radii;
 # set one to 0 for a cone. Convenience overload `Cylinder(r, h)` uses equal radii.
+# Each form also accepts diameters: `d1`/`d2` or `d`.
 # Optional `segments` controls smoothness (default 32); use 6 for a hexagonal prism.
 # ```
-# fn Main() { Cylinder(5 mm, 5 mm, 20 mm) }
+# fn Main() { Cylinder(r1: 5 mm, r2: 5 mm, h: 20 mm) }
 # ```
 fn Cylinder(
     r1 Length,
@@ -138,11 +147,28 @@ fn Cylinder(
 }
 
 fn Cylinder(
+    d1 Length,
+    d2 Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, d1 / 2, d2 / 2, segments)
+}
+
+fn Cylinder(
     r Length,
     h Length,
     segments Number = 0,
 ) Solid {
     return _cylinder(h, r, r, segments)
+}
+
+fn Cylinder(
+    d Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, d / 2, d / 2, segments)
 }
 
 # Cone along Z from Z=0 to Z=`h` with base radius `r`.
@@ -162,14 +188,22 @@ fn Square(x, y Length) Sketch {
 }
 
 # 2D circle centered at the origin. Optional `segments` controls smoothness (default 32); use 6 for a hexagon.
+# Accepts either `r:` (radius) or `d:` (diameter).
 # ```
-# fn Main() { Circle(5 mm).Extrude(20 mm) }
+# fn Main() { Circle(r: 5 mm).Extrude(20 mm) }
 # ```
 fn Circle(
     r Length,
     segments Number = 0,
 ) Sketch {
     return _circle(r, segments)
+}
+
+fn Circle(
+    d Length,
+    segments Number = 0,
+) Sketch {
+    return _circle(d / 2, segments)
 }
 
 fn Square(s Length) Sketch {

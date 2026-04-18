@@ -419,12 +419,30 @@ type StringLit struct {
 func (*StringLit) exprNode() {}
 
 // LibExpr represents a library load expression: lib "facet/gears"
+//
+// Path is the raw import string exactly as written in the source (used by the
+// formatter and in error messages). Resolved is populated by the loader for
+// relative imports (./sibling, ../sibling) with a canonical disk-path key so
+// that two sources each importing "./knurling" don't collide in the program's
+// Imports map. For non-relative imports Resolved stays empty and Key() falls
+// back to Path.
 type LibExpr struct {
-	Path string
-	Pos  Pos
+	Path     string
+	Resolved string
+	Pos      Pos
 }
 
 func (*LibExpr) exprNode() {}
+
+// Key returns the canonical key used to look this library up in
+// Program.Imports / Program.Sources / loader caches. Prefer this over Path
+// anywhere you need a lookup key; use Path directly for user-facing display.
+func (l *LibExpr) Key() string {
+	if l.Resolved != "" {
+		return l.Resolved
+	}
+	return l.Path
+}
 
 // StructDecl represents a struct type declaration.
 type StructDecl struct {

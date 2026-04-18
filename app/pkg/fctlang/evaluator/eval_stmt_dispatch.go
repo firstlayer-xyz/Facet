@@ -9,16 +9,12 @@ import (
 // This file holds the unified statement dispatcher used by every place
 // that walks a slice of statements: the top-level function body
 // (execBody), interior blocks inside if/else (evalBlock), and the body
-// of a for-yield comprehension (evalForBody). Before unification each
-// site carried its own switch that handled VarStmt / AssignStmt /
-// FieldAssignStmt / AssertStmt / IfStmt / ExprStmt identically and
-// disagreed only on ReturnStmt, YieldStmt, and whether a VarStmt was
-// block-local or whether an AssignStmt should propagate outward. Every
-// fix for the shared cases had to land in three places; drift was the
-// default outcome.
+// of a for-yield comprehension (evalForBody).
 //
-// The design: dispatchStmt handles the shared cases, and a stmtPolicy
-// parameterises the divergent behaviour:
+// dispatchStmt handles the statement kinds that behave identically in
+// every context (VarStmt, AssignStmt, FieldAssignStmt, AssertStmt,
+// IfStmt, ExprStmt). A stmtPolicy parameterises the cases that diverge
+// between contexts:
 //
 //   - onReturn / onYield handle control-flow statements (nil means
 //     "this statement is unexpected in this context"), and
@@ -166,8 +162,8 @@ func (e *evaluator) maybeCatchReturn(err error, p *stmtPolicy, locals map[string
 
 // bindVar evaluates a VarStmt's RHS, runs its constraint (if any),
 // wraps the result with constrainedVal/constVal as appropriate, and
-// stores it in locals. This is the body of every VarStmt branch that
-// used to be duplicated across execBody, evalBlock, and evalForBody.
+// stores it in locals. Shared by every context that dispatches a
+// VarStmt (execBody, evalBlock, evalForBody).
 func (e *evaluator) bindVar(s *parser.VarStmt, locals map[string]value) error {
 	v, err := e.evalExpr(s.Value, locals)
 	if err != nil {

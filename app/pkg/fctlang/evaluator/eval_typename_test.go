@@ -2,10 +2,9 @@ package evaluator
 
 import "testing"
 
-// TestTypeNameFunction guards against the bug flagged in the 2026-04-16
-// main-branch review (fctlang Critical #4): *functionVal used to report as
-// "ast.Function" — a Go implementation detail leaking into user-facing
-// error messages.  Users should see the clean name "Function".
+// TestTypeNameFunction pins the user-facing type name for *functionVal to
+// "Function" — Go implementation details (e.g. "ast.Function") must not
+// leak into user-facing error messages.
 func TestTypeNameFunction(t *testing.T) {
 	fv := &functionVal{}
 	got := typeName(fv)

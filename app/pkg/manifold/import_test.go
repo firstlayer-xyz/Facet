@@ -179,9 +179,9 @@ func TestImportMeshSTLRoundTrip(t *testing.T) {
 	}
 }
 
-// TestImportMeshMissingFile verifies that a missing file is surfaced as an
-// error that names the offending path. Previously the Go side pre-checked
-// with os.Stat; now we rely on Assimp's "Unable to open file" message.
+// TestImportMeshMissingFile verifies that a missing file surfaces as an
+// error that names the offending path. The error comes from Assimp's
+// "Unable to open file" message — the Go side does not pre-stat.
 func TestImportMeshMissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.stl")
 	_, err := ImportMesh(path)

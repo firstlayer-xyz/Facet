@@ -1,10 +1,14 @@
 package doc
 
 import (
+	"context"
+	"facet/app/pkg/fctlang/loader"
 	"facet/app/pkg/fctlang/parser"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -137,23 +141,25 @@ func extractDocEntries(src *parser.Source, library string) []DocEntry {
 	return entries
 }
 
-// BuildLibDocEntries extracts doc entries from .fct files in a filesystem library directory.
-// It walks libDir looking for <name>/<name>.fct library files and parses their doc comments.
+// BuildLibDocEntries extracts doc entries from .fct files in a filesystem
+// library directory (user-local libs). It walks libDir looking for
+// <name>/<name>.fct files and parses their doc comments. For virtualized
+// remote libs inside the git cache, use BuildCachedLibDocEntries instead.
 func BuildLibDocEntries(libDir string) []DocEntry {
 	var entries []DocEntry
-	_ = filepath.WalkDir(libDir, func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(libDir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
-		base := strings.TrimSuffix(filepath.Base(path), ".fct")
-		if base == filepath.Base(path) || base != filepath.Base(filepath.Dir(path)) {
+		base := strings.TrimSuffix(filepath.Base(p), ".fct")
+		if base == filepath.Base(p) || base != filepath.Base(filepath.Dir(p)) {
 			return nil
 		}
 		// Skip std — handled separately
-		if strings.Contains(path, "facet/std/") || strings.Contains(path, "facet"+string(filepath.Separator)+"std"+string(filepath.Separator)) {
+		if strings.Contains(p, "facet/std/") || strings.Contains(p, "facet"+string(filepath.Separator)+"std"+string(filepath.Separator)) {
 			return nil
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(p)
 		if err != nil {
 			return nil
 		}
@@ -161,8 +167,77 @@ func BuildLibDocEntries(libDir string) []DocEntry {
 		if err != nil {
 			return nil
 		}
-		dir := filepath.Dir(path)
+		dir := filepath.Dir(p)
 		ns, _ := filepath.Rel(libDir, dir)
+		entries = append(entries, extractDocEntries(libProg, ns)...)
+		return nil
+	})
+	return entries
+}
+
+// BuildCachedLibDocEntries extracts doc entries from every cached repo's
+// default branch (origin/HEAD). One namespace per repo — the settings UI
+// doesn't expose refs, and indexing every ref would just flood the doc
+// prompt with near-duplicates. A .fct file that pins an older ref still
+// works; it just won't show completions for signatures that have diverged.
+func BuildCachedLibDocEntries(cacheDir string) []DocEntry {
+	var entries []DocEntry
+	ctx := context.Background()
+
+	hosts, _ := os.ReadDir(cacheDir)
+	for _, h := range hosts {
+		if !h.IsDir() || strings.HasPrefix(h.Name(), ".") {
+			continue
+		}
+		users, _ := os.ReadDir(filepath.Join(cacheDir, h.Name()))
+		for _, u := range users {
+			if !u.IsDir() {
+				continue
+			}
+			repos, _ := os.ReadDir(filepath.Join(cacheDir, h.Name(), u.Name()))
+			for _, r := range repos {
+				if !r.IsDir() {
+					continue
+				}
+				entries = append(entries, buildCachedRepoDocEntries(ctx, cacheDir, h.Name(), u.Name(), r.Name())...)
+			}
+		}
+	}
+	return entries
+}
+
+// buildCachedRepoDocEntries opens one repo's bare clone at origin/HEAD and
+// emits doc entries for every <name>/<name>.fct file, namespaced as
+// "<host>/<user>/<repo>[/<subpath>]".
+func buildCachedRepoDocEntries(ctx context.Context, cacheDir, host, user, repo string) []DocEntry {
+	var entries []DocEntry
+	lp := &loader.LibPath{Host: host, User: user, Repo: repo, Raw: fmt.Sprintf("%s/%s/%s", host, user, repo)}
+	tree, err := loader.OpenRepoHeadTree(ctx, cacheDir, lp)
+	if err != nil {
+		return nil
+	}
+	_ = tree.Walk(func(subPath string, r io.Reader) error {
+		base := strings.TrimSuffix(path.Base(subPath), ".fct")
+		if base == path.Base(subPath) {
+			return nil // not a .fct file
+		}
+		if base != path.Base(path.Dir(subPath)) {
+			return nil // not <name>/<name>.fct
+		}
+		// Skip embedded facet/std (handled separately).
+		if strings.HasPrefix(subPath, "facet/std/") {
+			return nil
+		}
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return nil
+		}
+		libProg, err := parser.Parse(string(data), "", parser.SourceUser)
+		if err != nil {
+			return nil
+		}
+		dir := path.Dir(subPath)
+		ns := path.Join(host, user, repo, dir)
 		entries = append(entries, extractDocEntries(libProg, ns)...)
 		return nil
 	})

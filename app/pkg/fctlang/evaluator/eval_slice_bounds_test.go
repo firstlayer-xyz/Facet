@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// Slice expressions must error on out-of-range bounds instead of silently
-// clamping. The old behavior (`arr[5:2] → empty`, `arr[-99:2] → arr[0:2]`)
-// hid programmer mistakes.
+// Slice expressions must error on out-of-range bounds. Silent clamping
+// (e.g. `arr[5:2] → empty`, `arr[-99:2] → arr[0:2]`) hides programmer
+// mistakes and is not allowed.
 
 func TestEvalArraySliceStartGreaterThanEnd(t *testing.T) {
 	src := `

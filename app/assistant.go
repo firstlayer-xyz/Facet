@@ -410,30 +410,6 @@ type streamResult struct {
 	sessionID string
 }
 
-// extractTextDelta tries to find a text delta in a stream-json event.
-// Handles both nested (.event.delta.text) and flat (.delta.text) structures.
-func extractTextDelta(event map[string]interface{}) string {
-	// Try .event.delta (nested stream_event wrapper)
-	if inner, ok := event["event"].(map[string]interface{}); ok {
-		if delta, ok := inner["delta"].(map[string]interface{}); ok {
-			if dt, _ := delta["type"].(string); dt == "text_delta" {
-				if text, ok := delta["text"].(string); ok {
-					return text
-				}
-			}
-		}
-	}
-	// Try .delta directly (flat structure)
-	if delta, ok := event["delta"].(map[string]interface{}); ok {
-		if dt, _ := delta["type"].(string); dt == "text_delta" {
-			if text, ok := delta["text"].(string); ok {
-				return text
-			}
-		}
-	}
-	return ""
-}
-
 // filterEnv returns a copy of env with any entries whose key matches one of
 // the given keys removed. Keys are matched case-sensitively against the
 // portion before the first '='.

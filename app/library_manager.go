@@ -27,10 +27,12 @@ func readDirSkipMissing(dir string) ([]os.DirEntry, error) {
 }
 
 // LibraryInfo describes an installed/cached library for the settings UI.
+// Cached (git) entries are one per repo — refs aren't exposed in the UI. Ref
+// is only populated for local-library listings where it names the folder
+// segment the library lives under.
 type LibraryInfo struct {
 	ID   string `json:"id"`   // "github.com/user/repo" (full path for operations)
 	Name string `json:"name"` // "user/repo" (display name)
-	Ref  string `json:"ref"`  // "v1.0" or "main"
 	Path string `json:"path"` // local filesystem path
 }
 
@@ -55,54 +57,52 @@ func (m *LibraryManager) SetContext(ctx context.Context) {
 	m.ctx = ctx
 }
 
-// InstallLibrary clones a remote library into the git cache.
-func (m *LibraryManager) InstallLibrary(url, ref string) error {
-	if ref == "" {
-		ref = "main"
-	}
-	// Parse the URL to determine cache path
-	// Expected format: github.com/user/repo or https://github.com/user/repo.git
-	rawPath := strings.TrimPrefix(url, "https://")
-	rawPath = strings.TrimPrefix(rawPath, "http://")
-	rawPath = strings.TrimSuffix(rawPath, ".git")
-	rawPath = strings.TrimSuffix(rawPath, "/")
-
-	segments := strings.Split(rawPath, "/")
-	if len(segments) < 3 {
-		return fmt.Errorf("invalid library URL: need host/user/repo")
-	}
-
-	cacheDir := loader.DefaultGitCacheDir()
-	dest := filepath.Join(cacheDir, segments[0], segments[1], segments[2], ref)
-
-	cloneURL := fmt.Sprintf("https://%s/%s/%s.git", segments[0], segments[1], segments[2])
-	if err := loader.CloneRepo(m.ctx, cloneURL, ref, dest); err != nil {
+// InstallLibrary clones a remote repo into the git cache. Takes just a URL —
+// the cache is a bare clone with every ref, so there's nothing to "pick" at
+// install time. Individual refs are selected later by `lib ... "ref"`
+// statements in .fct source.
+func (m *LibraryManager) InstallLibrary(url string) error {
+	lp, err := parseRepoURL(url)
+	if err != nil {
 		return err
 	}
-
+	if err := loader.EnsureRepoClone(m.ctx, loader.DefaultGitCacheDir(), lp); err != nil {
+		return err
+	}
 	m.assistant.RebuildSystemPrompt()
 	return nil
 }
 
-// UpdateLibrary runs git pull in a cached library directory to fetch updates.
-func (m *LibraryManager) UpdateLibrary(id, ref string) error {
-	cacheDir := loader.DefaultGitCacheDir()
-	dir := filepath.Join(cacheDir, id, ref)
-	if err := loader.PullRepo(m.ctx, dir); err != nil {
-		fmt.Fprintf(os.Stderr, "UpdateLibrary %s@%s: %v\n", id, ref, err)
+// UpdateLibrary fetches every ref from origin for the repo named by id
+// ("host/user/repo"). The bare clone is a single shared object store, so one
+// fetch updates every tag, branch, and SHA the clone knows about.
+func (m *LibraryManager) UpdateLibrary(id string) error {
+	lp, err := parseRepoID(id)
+	if err != nil {
 		return err
 	}
-
+	if err := loader.RefreshRepoClone(m.ctx, loader.DefaultGitCacheDir(), lp); err != nil {
+		fmt.Fprintf(os.Stderr, "UpdateLibrary %s: %v\n", id, err)
+		return err
+	}
 	return nil
 }
 
-// ForkLibrary copies a cached library to the local libraries directory,
-// skipping hidden files/directories (like .git).
-func (m *LibraryManager) ForkLibrary(id, ref string) error {
-	cacheDir := loader.DefaultGitCacheDir()
-	src := filepath.Join(cacheDir, id, ref)
-	// Strip host from id (github.com/user/repo -> user/repo) for local path.
-	// Only strip the first segment if it looks like a hostname (contains a dot).
+// ForkLibrary materializes the repo's default branch (origin/HEAD) into the
+// local libraries directory as an editable copy. Hidden files/dirs are
+// skipped by LibTree.ExtractTo.
+func (m *LibraryManager) ForkLibrary(id string) error {
+	lp, err := parseRepoID(id)
+	if err != nil {
+		return err
+	}
+	tree, err := loader.OpenRepoHeadTree(m.ctx, loader.DefaultGitCacheDir(), lp)
+	if err != nil {
+		return err
+	}
+
+	// Strip host from id (github.com/user/repo -> user/repo) for the local
+	// destination — only strip when the first segment looks like a hostname.
 	localID := id
 	if parts := strings.SplitN(id, "/", 2); len(parts) > 1 && strings.Contains(parts[0], ".") {
 		localID = parts[1]
@@ -113,43 +113,71 @@ func (m *LibraryManager) ForkLibrary(id, ref string) error {
 	}
 	dst := filepath.Join(libDirPath, localID)
 
-	if err := filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		// Skip hidden files/directories
-		if strings.HasPrefix(d.Name(), ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(src, p)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-		if d.IsDir() {
-			return os.MkdirAll(target, 0755)
-		}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, 0644)
-	}); err != nil {
+	if err := tree.ExtractTo(dst); err != nil {
 		return err
 	}
 	m.assistant.RebuildSystemPrompt()
 	return nil
 }
 
-// ListLibraries scans the git cache directory for cloned libraries.
+// RemoveLibrary deletes the cache for a single repo. Identifies the repo by
+// id ("host/user/repo"). The bare clone and any enclosing README are removed;
+// empty parent dirs (host/, host/user/) are pruned so a subsequent ListLibraries
+// doesn't surface ghost empty entries.
+func (m *LibraryManager) RemoveLibrary(id string) error {
+	lp, err := parseRepoID(id)
+	if err != nil {
+		return err
+	}
+	cacheDir := loader.DefaultGitCacheDir()
+	repoDir := filepath.Join(cacheDir, lp.Host, lp.User, lp.Repo)
+	if err := os.RemoveAll(repoDir); err != nil {
+		return fmt.Errorf("remove %s: %w", repoDir, err)
+	}
+	// Best-effort prune of empty parent dirs — harmless if they still hold
+	// sibling repos.
+	_ = os.Remove(filepath.Join(cacheDir, lp.Host, lp.User))
+	_ = os.Remove(filepath.Join(cacheDir, lp.Host))
+	m.assistant.RebuildSystemPrompt()
+	return nil
+}
+
+// parseRepoURL parses a user-supplied URL into a LibPath with only host/user/repo
+// populated (no ref). Accepts https://, http://, or bare host/user/repo, with
+// optional trailing .git or slash.
+func parseRepoURL(url string) (*loader.LibPath, error) {
+	raw := strings.TrimPrefix(url, "https://")
+	raw = strings.TrimPrefix(raw, "http://")
+	raw = strings.TrimSuffix(raw, ".git")
+	raw = strings.TrimSuffix(raw, "/")
+	return parseRepoID(raw)
+}
+
+// parseRepoID parses a bare "host/user/repo" identifier, rejecting local
+// paths and any trailing @ref.
+func parseRepoID(id string) (*loader.LibPath, error) {
+	if strings.Contains(id, "@") {
+		return nil, fmt.Errorf("library id must not carry @ref: %q", id)
+	}
+	segments := strings.Split(id, "/")
+	if len(segments) < 3 || !strings.Contains(segments[0], ".") {
+		return nil, fmt.Errorf("library id must be host/user/repo: %q", id)
+	}
+	return &loader.LibPath{
+		Host: segments[0],
+		User: segments[1],
+		Repo: segments[2],
+		Raw:  id,
+	}, nil
+}
+
+// ListLibraries returns one entry per cached repo. Refs aren't surfaced —
+// the bare clone holds every ref and .fct `lib` statements pick the one they
+// need at resolve time.
 func (m *LibraryManager) ListLibraries() ([]LibraryInfo, error) {
 	cacheDir := loader.DefaultGitCacheDir()
 	var libs []LibraryInfo
 
-	// Walk <cacheDir>/<host>/<user>/<repo>/<ref>/
 	hosts, err := readDirSkipMissing(cacheDir)
 	if err != nil {
 		return nil, err
@@ -176,22 +204,11 @@ func (m *LibraryManager) ListLibraries() ([]LibraryInfo, error) {
 				if !r.IsDir() {
 					continue
 				}
-				repoDir := filepath.Join(userDir, r.Name())
-				refs, err := readDirSkipMissing(repoDir)
-				if err != nil {
-					return nil, err
-				}
-				for _, ref := range refs {
-					if !ref.IsDir() {
-						continue
-					}
-					libs = append(libs, LibraryInfo{
-						ID:   fmt.Sprintf("%s/%s/%s", h.Name(), u.Name(), r.Name()),
-						Name: fmt.Sprintf("%s/%s", u.Name(), r.Name()),
-						Ref:  ref.Name(),
-						Path: filepath.Join(repoDir, ref.Name()),
-					})
-				}
+				libs = append(libs, LibraryInfo{
+					ID:   fmt.Sprintf("%s/%s/%s", h.Name(), u.Name(), r.Name()),
+					Name: fmt.Sprintf("%s/%s", u.Name(), r.Name()),
+					Path: filepath.Join(userDir, r.Name()),
+				})
 			}
 		}
 	}
@@ -313,16 +330,22 @@ func (m *LibraryManager) ListLibraryFolders() ([]string, error) {
 	return folders, nil
 }
 
-// PullAllLibraries pulls all cached libraries, fetching updates and tags.
+// PullAllLibraries fetches every cached repo's bare clone from origin.
 func (m *LibraryManager) PullAllLibraries() error {
 	libs, err := m.ListLibraries()
 	if err != nil {
 		return err
 	}
+	cacheDir := loader.DefaultGitCacheDir()
 	var errs []string
 	for _, lib := range libs {
-		if err := loader.PullRepo(m.ctx, lib.Path); err != nil {
-			msg := fmt.Sprintf("%s@%s: %v", lib.Name, lib.Ref, err)
+		lp, err := parseRepoID(lib.ID)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", lib.Name, err))
+			continue
+		}
+		if err := loader.RefreshRepoClone(m.ctx, cacheDir, lp); err != nil {
+			msg := fmt.Sprintf("%s: %v", lib.Name, err)
 			fmt.Fprintf(os.Stderr, "PullAllLibraries: %s\n", msg)
 			errs = append(errs, msg)
 		}

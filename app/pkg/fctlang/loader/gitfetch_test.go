@@ -1,9 +1,6 @@
 package loader
 
 import (
-	"context"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -36,18 +33,6 @@ func TestParseLibPathLocalNoRef(t *testing.T) {
 	}
 	if lp.Raw != "facet/gears" {
 		t.Errorf("expected Raw='facet/gears', got %q", lp.Raw)
-	}
-}
-
-func Test_resolveLibPathLocalNoRef(t *testing.T) {
-	libDir := t.TempDir()
-	dir, err := resolveLibPath(context.Background(), libDir, "", nil, "facet/gears")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := filepath.Join(libDir, "facet/gears")
-	if dir != want {
-		t.Errorf("expected %q, got %q", want, dir)
 	}
 }
 
@@ -104,6 +89,40 @@ func TestParseLibPathRemoteSubpath(t *testing.T) {
 	}
 }
 
+func TestParseLibPathRelative(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		subPath string
+	}{
+		{"sibling", "./knurling", "knurling"},
+		{"uncle", "../knurling", "../knurling"},
+		{"uncle with subdir", "../sub/knurling", "../sub/knurling"},
+		{"cousin", "../../familyB/cousin", "../../familyB/cousin"},
+		{"deeper sibling", "./sub/nested", "sub/nested"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lp, err := ParseLibPath(tt.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !lp.IsRelative {
+				t.Error("expected IsRelative=true")
+			}
+			if lp.IsLocal {
+				t.Error("expected IsLocal=false")
+			}
+			if lp.Host != "" || lp.User != "" || lp.Repo != "" || lp.Ref != "" {
+				t.Errorf("expected empty remote fields, got host=%q user=%q repo=%q ref=%q", lp.Host, lp.User, lp.Repo, lp.Ref)
+			}
+			if lp.SubPath != tt.subPath {
+				t.Errorf("expected SubPath=%q, got %q", tt.subPath, lp.SubPath)
+			}
+		})
+	}
+}
+
 func TestParseLibPathErrors(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -115,6 +134,10 @@ func TestParseLibPathErrors(t *testing.T) {
 		{"single segment no ref", "foo", "at least 2 segments"},
 		{"remote too few segments", "github.com/user@v1", "at least host/user/repo"},
 		{"empty ref", "github.com/user/repo@", "empty ref"},
+		{"relative with ref", "./knurling@v1", "relative imports cannot carry @ref"},
+		{"relative parent with ref", "../knurling@main", "relative imports cannot carry @ref"},
+		{"relative empty name", "./", "need a name after"},
+		{"relative parent empty", "../", "need a name after"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,70 +152,49 @@ func TestParseLibPathErrors(t *testing.T) {
 	}
 }
 
-func Test_resolveLibPathLocal(t *testing.T) {
-	libDir := t.TempDir()
-	dir, err := resolveLibPath(context.Background(), libDir, "", nil, "facet/gears@v1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestValidateLibPathTraversal(t *testing.T) {
+	if err := validateLibPath("foo/../bar"); err == nil {
+		t.Fatal("expected error for '..' traversal")
 	}
-	want := filepath.Join(libDir, "facet/gears")
-	if dir != want {
-		t.Errorf("expected %q, got %q", want, dir)
+	if err := validateLibPath("/abs/path"); err == nil {
+		t.Fatal("expected error for absolute path")
 	}
-}
-
-func Test_resolveLibPathLocalValidation(t *testing.T) {
-	// Ensure path traversal is rejected
-	_, err := resolveLibPath(context.Background(), "/tmp", "", nil, "foo/../bar@v1")
-	if err == nil {
-		t.Fatal("expected error for path traversal")
+	if err := validateLibPath("single"); err == nil {
+		t.Fatal("expected error for single-segment path")
+	}
+	if err := validateLibPath("vendor/name"); err != nil {
+		t.Fatalf("unexpected error for vendor/name: %v", err)
 	}
 }
 
-func Test_resolveLibPathInstalledOverride(t *testing.T) {
-	installed := map[string]string{
-		"github.com/user/repo": "/custom/path",
+func TestIsImmutableRef(t *testing.T) {
+	immutable := []string{
+		"abc1234",
+		"0123abcd",
+		"f277ee7",
+		"F277EE7A1BCD",
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // 40-char full SHA
 	}
-	dir, err := resolveLibPath(context.Background(), "/lib", "/cache", installed, "github.com/user/repo@v1.0")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	mutable := []string{
+		"",
+		"main",
+		"v1.0",
+		"v1",          // too short for SHA
+		"1234",        // too short
+		"release/1.0", // contains slash
+		"xyz1234",     // non-hex char
+		"abcdefghi",   // non-hex letters
+		"0123456789abcdef0123456789abcdef012345678", // 41 chars
 	}
-	if dir != "/custom/path" {
-		t.Errorf("expected /custom/path, got %q", dir)
+	for _, r := range immutable {
+		if !isImmutableRef(r) {
+			t.Errorf("expected %q to be immutable", r)
+		}
 	}
-}
-
-func Test_resolveLibPathInstalledOverrideSubpath(t *testing.T) {
-	installed := map[string]string{
-		"gitlab.com/user/monorepo": "/custom/mono",
-	}
-	dir, err := resolveLibPath(context.Background(), "/lib", "/cache", installed, "gitlab.com/user/monorepo/gears@main")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if dir != "/custom/mono/gears" {
-		t.Errorf("expected /custom/mono/gears, got %q", dir)
-	}
-}
-
-func Test_resolveLibPathCached(t *testing.T) {
-	cacheDir := t.TempDir()
-	// Pre-create a cached directory
-	cachedRepo := filepath.Join(cacheDir, "github.com", "user", "repo", "v1.0")
-	if err := os.MkdirAll(cachedRepo, 0755); err != nil {
-		t.Fatal(err)
-	}
-	// Write a dummy .fct file so it looks like a valid library
-	if err := os.WriteFile(filepath.Join(cachedRepo, "v1.0.fct"), []byte("Dummy() { return Cube({1 mm, 1 mm, 1 mm}); }"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	dir, err := resolveLibPath(context.Background(), "/lib", cacheDir, nil, "github.com/user/repo@v1.0")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if dir != cachedRepo {
-		t.Errorf("expected %q, got %q", cachedRepo, dir)
+	for _, r := range mutable {
+		if isImmutableRef(r) {
+			t.Errorf("expected %q to be mutable", r)
+		}
 	}
 }
 

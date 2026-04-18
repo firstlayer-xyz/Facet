@@ -63,7 +63,7 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 	if len(userCandidates) == 1 {
 		return c.checkFuncArgs(call.Name, call.Pos, userCandidates[0], call.Args, argTypes)
 	} else if len(userCandidates) > 1 {
-		if fn := c.findOverload(userCandidates, argTypes); fn != nil {
+		if fn := c.findOverload(userCandidates, call.Args, argTypes); fn != nil {
 			return c.checkFuncArgs(call.Name, call.Pos, fn, call.Args, argTypes)
 		} else {
 			c.addOverloadError(call.Name, call.Pos, userCandidates, argTypes)
@@ -76,7 +76,7 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 	if len(stdCandidates) == 1 {
 		return c.checkFuncArgs(call.Name, call.Pos, stdCandidates[0], call.Args, argTypes)
 	} else if len(stdCandidates) > 1 {
-		if fn := c.findOverload(stdCandidates, argTypes); fn != nil {
+		if fn := c.findOverload(stdCandidates, call.Args, argTypes); fn != nil {
 			return c.checkFuncArgs(call.Name, call.Pos, fn, call.Args, argTypes)
 		} else {
 			c.addOverloadError(call.Name, call.Pos, stdCandidates, argTypes)
@@ -487,7 +487,7 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 					ret := c.checkLibFuncArgs(mc.Method, mc.Pos, libCandidates[0], mc.Args, argTypes)
 					return c.qualifyLibReturn(ident.Name, ret)
 				} else if len(libCandidates) > 1 {
-					if fn := c.findOverload(libCandidates, argTypes); fn != nil {
+					if fn := c.findOverload(libCandidates, mc.Args, argTypes); fn != nil {
 						ret := c.checkLibFuncArgs(mc.Method, mc.Pos, fn, mc.Args, argTypes)
 						return c.qualifyLibReturn(ident.Name, ret)
 					}
@@ -553,7 +553,7 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 		if len(structMethodCandidates) == 1 {
 			return c.checkFuncArgs(mc.Method, mc.Pos, structMethodCandidates[0], mc.Args, argTypes)
 		} else if len(structMethodCandidates) > 1 {
-			if fn := c.findOverload(structMethodCandidates, argTypes); fn != nil {
+			if fn := c.findOverload(structMethodCandidates, mc.Args, argTypes); fn != nil {
 				return c.checkFuncArgs(mc.Method, mc.Pos, fn, mc.Args, argTypes)
 			} else {
 				c.addOverloadError(mc.Method, mc.Pos, structMethodCandidates, argTypes)
@@ -571,7 +571,7 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 			if len(stdMethodCandidates) == 1 {
 				return c.checkFuncArgs(mc.Method, mc.Pos, stdMethodCandidates[0], mc.Args, argTypes)
 			} else if len(stdMethodCandidates) > 1 {
-				if fn := c.findOverload(stdMethodCandidates, argTypes); fn != nil {
+				if fn := c.findOverload(stdMethodCandidates, mc.Args, argTypes); fn != nil {
 					return c.checkFuncArgs(mc.Method, mc.Pos, fn, mc.Args, argTypes)
 				}
 				c.addOverloadError(mc.Method, mc.Pos, stdMethodCandidates, argTypes)
@@ -598,7 +598,7 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 		if len(stdMethodCandidates) == 1 {
 			return c.checkFuncArgs(mc.Method, mc.Pos, stdMethodCandidates[0], mc.Args, argTypes)
 		} else if len(stdMethodCandidates) > 1 {
-			if fn := c.findOverload(stdMethodCandidates, argTypes); fn != nil {
+			if fn := c.findOverload(stdMethodCandidates, mc.Args, argTypes); fn != nil {
 				return c.checkFuncArgs(mc.Method, mc.Pos, fn, mc.Args, argTypes)
 			} else {
 				c.addOverloadError(mc.Method, mc.Pos, stdMethodCandidates, argTypes)
@@ -905,33 +905,77 @@ const (
 )
 
 // findOverload selects the best-matching function using score-based resolution.
-// Exact type match scores overloadScoreExact, coercion scores overloadScoreCoercion,
-// var match scores 0, mismatch disqualifies. Returns nil if no candidate matches
-// or if there is a tie (ambiguous).
-func (c *checker) findOverload(candidates []*parser.Function, argTypes []typeInfo) *parser.Function {
+// Named args are first mapped to parameter positions: a candidate whose params
+// don't include every given NamedArg name is disqualified (matches runtime
+// dispatch in resolveOverload). Remaining candidates are then type-scored —
+// exact type match scores overloadScoreExact, coercion scores overloadScoreCoercion,
+// var match scores 0, mismatch disqualifies. Returns nil if no candidate matches.
+func (c *checker) findOverload(candidates []*parser.Function, callArgs []parser.Expr, argTypes []typeInfo) *parser.Function {
 	bestScore := -1
 	var bestFn *parser.Function
 
 	for _, fn := range candidates {
+		// Map call args to parameter positions, disqualifying candidates
+		// whose params don't include a given NamedArg name.
+		paramIdx := make(map[string]int, len(fn.Params))
+		for i, p := range fn.Params {
+			paramIdx[p.Name] = i
+		}
+		reordered := make([]typeInfo, len(fn.Params))
+		filled := make([]bool, len(fn.Params))
+		invalid := false
+		for i, a := range callArgs {
+			if na, ok := a.(*parser.NamedArg); ok {
+				idx, exists := paramIdx[na.Name]
+				if !exists || filled[idx] {
+					invalid = true
+					break
+				}
+				reordered[idx] = argTypes[i]
+				filled[idx] = true
+				continue
+			}
+			// Positional: fill next unfilled slot.
+			slot := -1
+			for j := range filled {
+				if !filled[j] {
+					slot = j
+					break
+				}
+			}
+			if slot < 0 {
+				invalid = true
+				break
+			}
+			reordered[slot] = argTypes[i]
+			filled[slot] = true
+		}
+		if invalid {
+			continue
+		}
 		score := 0
 		valid := true
-		for i := 0; i < len(argTypes) && i < len(fn.Params); i++ {
-			expected := c.resolveParamType(fn, fn.Params[i].Type)
-			if expected.ft == typeUnknown || argTypes[i].ft == typeUnknown {
+		for i, p := range fn.Params {
+			if !filled[i] {
+				continue
+			}
+			expected := c.resolveParamType(fn, p.Type)
+			got := reordered[i]
+			if expected.ft == typeUnknown || got.ft == typeUnknown {
 				continue
 			}
 			// Untyped array (nil elem) vs typed array — we don't know the element
 			// type, so skip this arg like we skip unknowns.
-			if expected.ft == typeArray && argTypes[i].ft == typeArray && expected.elem != nil && argTypes[i].elem == nil {
+			if expected.ft == typeArray && got.ft == typeArray && expected.elem != nil && got.elem == nil {
 				continue
 			}
 			if expected.ft == typeVar || (expected.ft == typeArray && expected.elem != nil && expected.elem.ft == typeVar) {
 				// var or var[] match — score 0
-			} else if c.typeInfoEqual(expected, argTypes[i]) {
+			} else if c.typeInfoEqual(expected, got) {
 				score += overloadScoreExact
-			} else if (expected.ft == typeLength || expected.ft == typeAngle) && argTypes[i].ft == typeNumber {
+			} else if (expected.ft == typeLength || expected.ft == typeAngle) && got.ft == typeNumber {
 				score += overloadScoreCoercion
-			} else if c.typeCompatible(expected, argTypes[i]) {
+			} else if c.typeCompatible(expected, got) {
 				score += overloadScoreCoercion
 			} else {
 				valid = false

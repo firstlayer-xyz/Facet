@@ -983,12 +983,13 @@ func TestParseDefaultParamNonTrailing(t *testing.T) {
 	}
 }
 
-func TestParseDefaultParamOldSyntaxError(t *testing.T) {
-	// Old syntax: name = value Type → should now error (type must come before default).
+func TestParseDefaultParamTypeBeforeDefault(t *testing.T) {
+	// Param grammar is `name Type = default`. Placing the default before the
+	// type (`name = value Type`) is a parse error.
 	src := `fn Make(a = 1 Number) { return a; }`
 	_, err := parser.Parse(src, "", parser.SourceUser)
 	if err == nil {
-		t.Fatal("expected error for old default syntax (name = value Type)")
+		t.Fatal("expected parse error for `name = value Type`")
 	}
 }
 
@@ -1208,8 +1209,9 @@ func TestParseImplicitReturnFunction(t *testing.T) {
 	}
 }
 
-func TestParseBlockExprRemoved(t *testing.T) {
-	// Block expressions are no longer supported — { expr } as an expression should fail to parse
+func TestParseBlockExprRejected(t *testing.T) {
+	// Braces in expression position ({ expr }) are a parse error — braces
+	// only delimit statement blocks.
 	src := `fn Main() { return Cylinder(r1: 10 mm, r2: 10 mm, h: { 5 mm }); }`
 	_, err := parser.Parse(src, "", parser.SourceUser)
 	if err == nil {

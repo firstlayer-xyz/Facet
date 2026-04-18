@@ -1,4 +1,4 @@
-var P = lib "github.com/firstlayer-xyz/facetlibs/polyhedra@f277ee7"
+var P = lib "github.com/firstlayer-xyz/facetlibs/polyhedra@199517c"
 
 fn Main() {
     return P.ShowcaseCanonicalDuals(r: 30 mm)

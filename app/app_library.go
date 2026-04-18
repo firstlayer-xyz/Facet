@@ -4,19 +4,25 @@ package main
 // LibraryManager; this file exists only so the App struct (which Wails
 // introspects) keeps the same method surface.
 
-// InstallLibrary clones a remote library into the git cache.
-func (a *App) InstallLibrary(url, ref string) error {
-	return a.libraries.InstallLibrary(url, ref)
+// InstallLibrary clones a remote repo into the git cache.
+func (a *App) InstallLibrary(url string) error {
+	return a.libraries.InstallLibrary(url)
 }
 
-// UpdateLibrary runs git pull in a cached library directory to fetch updates.
-func (a *App) UpdateLibrary(id, ref string) error {
-	return a.libraries.UpdateLibrary(id, ref)
+// UpdateLibrary fetches the latest refs for a cached repo.
+func (a *App) UpdateLibrary(id string) error {
+	return a.libraries.UpdateLibrary(id)
 }
 
-// ForkLibrary copies a cached library to the local libraries directory.
-func (a *App) ForkLibrary(id, ref string) error {
-	return a.libraries.ForkLibrary(id, ref)
+// ForkLibrary materializes the repo's default branch into the local
+// libraries directory as an editable copy.
+func (a *App) ForkLibrary(id string) error {
+	return a.libraries.ForkLibrary(id)
+}
+
+// RemoveLibrary deletes a single repo from the cache.
+func (a *App) RemoveLibrary(id string) error {
+	return a.libraries.RemoveLibrary(id)
 }
 
 // ListLibraries scans the git cache directory for cloned libraries.

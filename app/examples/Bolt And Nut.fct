@@ -1,5 +1,5 @@
 # Thumbscrew + Hex Nut
-var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@f277ee7"
+var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@199517c"
 
 fn Main(
     size String = "m8" where ["m3", "m4", "m5", "m6", "m8", "m10", "m12"],

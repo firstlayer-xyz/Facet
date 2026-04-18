@@ -499,6 +499,56 @@ func TestEvalCylinderDefaultSegments(t *testing.T) {
 	}
 }
 
+// Diameter-named overloads dispatch to the d-taking variant and produce the
+// same shape as the equivalent radius form.
+func TestEvalSphereByDiameter(t *testing.T) {
+	src := `fn Main() { return Sphere(d: 20 mm); }`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil || len(mesh.Vertices) == 0 {
+		t.Fatal("expected non-empty mesh")
+	}
+}
+
+func TestEvalCircleByDiameter(t *testing.T) {
+	src := `fn Main() { return Circle(d: 10 mm).Extrude(z: 10 mm); }`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil || len(mesh.Vertices) == 0 {
+		t.Fatal("expected non-empty mesh")
+	}
+}
+
+func TestEvalCylinderByDiameter(t *testing.T) {
+	src := `fn Main() { return Cylinder(d: 10 mm, h: 10 mm); }`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil || len(mesh.Vertices) == 0 {
+		t.Fatal("expected non-empty mesh")
+	}
+}
+
+func TestEvalCylinderConeByDiameter(t *testing.T) {
+	src := `fn Main() { return Cylinder(d1: 10 mm, d2: 4 mm, h: 10 mm); }`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil || len(mesh.Vertices) == 0 {
+		t.Fatal("expected non-empty mesh")
+	}
+}
+
 func TestEvalRevolveDefaultSegments(t *testing.T) {
 	src := `fn Main() { return Circle(r: 3 mm).Move(v: Vec2 { x: 10 mm, y: 0 mm }).Revolve(); }`
 	prog := parseTestProg(t, src)

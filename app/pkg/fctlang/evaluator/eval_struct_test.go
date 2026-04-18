@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// Regression: coerceAnonymousStruct used to silently stamp the typeName and
-// return nil when no declaration was found. Per CLAUDE.md "no fallbacks", it
-// must now produce a hard error. In production this path is blocked upstream
-// by isAccessibleType, so this is a defense-in-depth guarantee.
+// coerceAnonymousStruct must return a hard error when the target type has
+// no declaration — no silent stamping of a made-up typeName. In production
+// this path is blocked upstream by isAccessibleType; this test is
+// defense-in-depth.
 
 func TestCoerceAnonymousStructUnknownTypeErrors(t *testing.T) {
 	e := &evaluator{

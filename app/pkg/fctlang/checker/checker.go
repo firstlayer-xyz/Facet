@@ -66,9 +66,9 @@ func (c *checker) registerLibraries(prog loader.Program) {
 	for _, src := range prog.Sources {
 		for _, g := range src.Globals() {
 			if le, ok := g.Value.(*parser.LibExpr); ok {
-				rl := prog.Sources[prog.Resolve(le.Path)]
+				rl := prog.Sources[prog.Resolve(le.Key())]
 				if rl != nil {
-					c.libVarToPath[g.Name] = le.Path
+					c.libVarToPath[g.Name] = le.Key()
 					for _, sd := range rl.StructDecls() {
 						c.structDecls[g.Name+"."+sd.Name] = sd
 					}
@@ -108,7 +108,7 @@ func (c *checker) checkGlobals(prog loader.Program) {
 			}
 			if t.ft == typeLibrary {
 				if le, ok := g.Value.(*parser.LibExpr); ok {
-					if ns := libPathToNamespace(le.Path); ns != "" {
+					if ns := libPathToNamespace(le.Key()); ns != "" {
 						c.srcVarTypes()[g.Name] = "Library:" + ns
 					}
 				}
@@ -424,7 +424,7 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 			if !ok {
 				continue
 			}
-			libSrc := prog.Sources[prog.Resolve(le.Path)]
+			libSrc := prog.Sources[prog.Resolve(le.Key())]
 			if libSrc == nil {
 				continue
 			}

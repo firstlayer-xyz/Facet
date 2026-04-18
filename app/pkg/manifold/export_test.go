@@ -21,9 +21,9 @@ func TestExportMeshRoundTrip(t *testing.T) {
 }
 
 // TestExportMeshUnsupportedExtension verifies that Assimp's exporter surface
-// rejects an unknown extension with an error rather than silently succeeding.
-// Previously the Go side stat-checked the output file; a failed export left
-// the user guessing why the file didn't appear.
+// rejects an unknown extension with an error. The error must come from the
+// exporter itself — not a post-hoc Go-side check on the output file — so the
+// user sees why the export failed instead of "file didn't appear."
 func TestExportMeshUnsupportedExtension(t *testing.T) {
 	cube, err := CreateCube(1, 1, 1)
 	if err != nil {

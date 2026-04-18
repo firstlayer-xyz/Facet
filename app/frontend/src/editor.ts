@@ -618,8 +618,9 @@ export function createEditor(
 
       const paths: string[] = [];
       for (const lib of remote) {
-        const fullPath = lib.id + (lib.ref ? '@' + lib.ref : '');
-        paths.push(fullPath);
+        // Cached repos no longer expose refs in the settings model; the user
+        // types @ref themselves in the lib statement.
+        paths.push(lib.id);
       }
       for (const lib of local) {
         paths.push(lib.id);

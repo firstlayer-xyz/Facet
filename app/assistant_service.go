@@ -340,24 +340,10 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 			continue
 		}
 
-		// --- Legacy streaming delta format (older Claude CLI versions) ---
-		if eventType == "content_block_start" {
-			if cb, ok := event["content_block"].(map[string]interface{}); ok {
-				if cb["type"] == "tool_use" {
-					toolCallCount++
-					if toolName, ok := cb["name"].(string); ok {
-						wailsRuntime.EventsEmit(s.eventCtx, "assistant:tool-use", toolName, toolCallCount)
-					}
-				}
-			}
-		}
-		if text := extractTextDelta(event); text != "" {
-			emittedAny = true
-			wailsRuntime.EventsEmit(s.eventCtx, "assistant:token", text)
-			continue
-		}
-
-		// --- Result event: session_id and fallback text ---
+		// Result event: session_id and, when the stream produced no
+		// intermediate tokens, the result text itself — otherwise the
+		// user would see an empty assistant turn for completions that
+		// only emit a final summary (e.g. tool-only runs).
 		if _, hasResult := event["result"]; hasResult {
 			if sid, ok := event["session_id"].(string); ok && sid != "" {
 				result.sessionID = sid
