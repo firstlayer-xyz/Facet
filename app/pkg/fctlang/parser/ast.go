@@ -58,6 +58,7 @@ type Param struct {
 	Name       string
 	Default    Expr // nil if required
 	Constraint Expr // nil if unconstrained
+	Pos        Pos  // position of the parameter name token
 }
 
 // Stmt is the interface implemented by all statement nodes.
@@ -116,6 +117,22 @@ func (s *Source) StructDecls() []*StructDecl {
 	return decls
 }
 
+// LibImports returns all globals whose value is a LibExpr — i.e. the source's
+// library import statements, in source order.
+func (s *Source) LibImports() []*VarStmt {
+	var libs []*VarStmt
+	for _, d := range s.Declarations {
+		v, ok := d.(*VarStmt)
+		if !ok {
+			continue
+		}
+		if _, ok := v.Value.(*LibExpr); ok {
+			libs = append(libs, v)
+		}
+	}
+	return libs
+}
+
 // Expr is the interface implemented by all expression nodes.
 type Expr interface {
 	exprNode()
@@ -139,6 +156,11 @@ type Comment struct {
 
 // DocComment returns the doc comment string derived from a slice of Comments,
 // joining only IsDoc (#) comments with newlines. Returns "" if none.
+//
+// Leading "section divider" blocks are stripped so source-file section headers
+// (e.g. "# ----\n# 3D Constructors\n# ----") don't bleed into the first
+// declaration after them. A divider is a line of three or more dashes; a
+// section header is a single line sandwiched between two dividers.
 func DocComment(comments []Comment) string {
 	var lines []string
 	for _, c := range comments {
@@ -146,10 +168,39 @@ func DocComment(comments []Comment) string {
 			lines = append(lines, c.Text)
 		}
 	}
+	// Strip leading dividers/section headers. Only at the top — interior
+	// "---" rules inside a doc block are preserved (they're valid markdown).
+	for len(lines) > 0 {
+		first := strings.TrimSpace(lines[0])
+		if isDocDivider(first) {
+			lines = lines[1:]
+			continue
+		}
+		// Title sandwiched between dividers: skip both.
+		if len(lines) >= 2 && isDocDivider(strings.TrimSpace(lines[1])) {
+			lines = lines[2:]
+			continue
+		}
+		break
+	}
 	if len(lines) == 0 {
 		return ""
 	}
 	return strings.Join(lines, "\n")
+}
+
+// isDocDivider reports whether s is a section-divider line: three or more
+// dashes, nothing else.
+func isDocDivider(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
+	for _, r := range s {
+		if r != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // ReturnStmt represents a return statement.
@@ -460,6 +511,7 @@ type StructField struct {
 	Default    Expr // nil = required (uses zero value when omitted in anonymous literals)
 	Constraint Expr // nil if unconstrained; *RangeExpr, *ConstrainedRange, or *ArrayLitExpr
 	Comments   []Comment
+	Pos        Pos // source position of the field name — used for go-to-definition
 }
 
 // StructLitExpr represents a struct literal: TypeName { field: value, ... }
@@ -475,6 +527,7 @@ func (*StructLitExpr) exprNode() {}
 type StructFieldInit struct {
 	Name  string
 	Value Expr
+	Pos   Pos // position of the field-name token
 }
 
 // FieldAccessExpr represents field access: receiver.field

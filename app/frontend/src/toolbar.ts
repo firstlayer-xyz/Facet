@@ -34,6 +34,27 @@ headTrackBtn.title = 'Head tracking parallax';
 headTrackBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 00-2 2v4"/><path d="M15 3h4a2 2 0 012 2v4"/><path d="M9 21H5a2 2 0 01-2-2v-4"/><path d="M15 21h4a2 2 0 002-2v-4"/><circle cx="12" cy="10" r="3"/><path d="M12 13c-2.5 0-4 1.5-4 3"/></svg>`;
 canvasContainer.appendChild(headTrackBtn);
 
+// Measure tool — toggle click-to-place dimension mode (M).
+export const measureBtn = document.createElement('button');
+measureBtn.id = 'measure-btn';
+measureBtn.title = 'Measure (M) — click two points to place a dimension';
+measureBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16l13-13 5 5-13 13z"/><path d="M7 12l2 2"/><path d="M10 9l2 2"/><path d="M13 6l2 2"/></svg>`;
+canvasContainer.appendChild(measureBtn);
+
+// Extents — place an overall bounding-box dimension.
+export const extentsBtn = document.createElement('button');
+extentsBtn.id = 'extents-btn';
+extentsBtn.title = 'Show extents — overall size of the model';
+extentsBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 8h18"/><path d="M3 16h18"/><path d="M8 3v18"/><path d="M16 3v18"/></svg>`;
+canvasContainer.appendChild(extentsBtn);
+
+// Clear dimensions — discard all placed measurements.
+export const clearDimsBtn = document.createElement('button');
+clearDimsBtn.id = 'clear-dims-btn';
+clearDimsBtn.title = 'Clear all dimensions';
+clearDimsBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>`;
+canvasContainer.appendChild(clearDimsBtn);
+
 app.appendChild(editorPanel);
 app.appendChild(divider);
 app.appendChild(viewportPanel);

@@ -195,7 +195,11 @@ func (c *checker) checkStmts(stmts []parser.Stmt, env *typeEnv) typeInfo {
 				c.addError(s.Pos, fmt.Sprintf("variable %q shadows type %q", s.Name, s.Name))
 			}
 			t := c.inferExpr(s.Value, env)
-			env.set(s.Name, t)
+			varKind := "var"
+			if s.IsConst {
+				varKind = "const"
+			}
+			env.bind(s.Name, t, s.Pos, varKind)
 			if s.IsConst {
 				env.setConst(s.Name)
 			}

@@ -2,16 +2,16 @@
 # ---------------------------------------------------------------------------
 # Constants — block system dimensions
 # ---------------------------------------------------------------------------
-var STUD_PITCH = 8.0 mm
-var BRICK_HEIGHT = 9.6 mm
-var PLATE_HEIGHT = 3.2 mm
-var STUD_DIAMETER = 4.8 mm
-var STUD_HEIGHT = 1.7 mm
-var WALL = 1.2 mm
-var CLEARANCE = 0.1 mm
-var TUBE_OD = 6.51 mm
-var TUBE_ID = 4.8 mm
-var POST_DIAMETER = 3.2 mm
+const STUD_PITCH = 8.0 mm
+const BRICK_HEIGHT = 9.6 mm
+const PLATE_HEIGHT = 3.2 mm
+const STUD_DIAMETER = 4.8 mm
+const STUD_HEIGHT = 1.7 mm
+const WALL = 1.2 mm
+const CLEARANCE = 0.1 mm
+const TUBE_OD = 6.51 mm
+const TUBE_ID = 4.8 mm
+const POST_DIAMETER = 3.2 mm
 
 # ---------------------------------------------------------------------------
 # Brick Struct
@@ -41,13 +41,12 @@ fn Brick.Build() Solid {
     var outer_x = w * STUD_PITCH - 2 * CLEARANCE
     var outer_y = d * STUD_PITCH - 2 * CLEARANCE
     var shell = Cube(s: Vec3{x: outer_x, y: outer_y, z: h})
-        .Move(x: -outer_x / 2, y: -outer_y / 2, z: -h / 2)
+        .Move(x: -outer_x / 2, y: -outer_y / 2)
     var inner_x = outer_x - 2 * WALL
     var inner_y = outer_y - 2 * WALL
     var inner_h = h - WALL
-    var hollow = Cube(s: Vec3{x: inner_x, y: inner_y, z: inner_h}).Move(
-        v: Vec3{x: -inner_x / 2, y: -inner_y / 2, z: -inner_h / 2 - WALL / 2}
-    )
+    var hollow = Cube(s: Vec3{x: inner_x, y: inner_y, z: inner_h})
+        .Move(x: -inner_x / 2, y: -inner_y / 2)
     var body = shell - hollow
     var stud_r = STUD_DIAMETER / 2
     var x_start = -(w - 1) / 2 * STUD_PITCH
@@ -59,7 +58,7 @@ fn Brick.Build() Solid {
         var sx = x_start + ix * STUD_PITCH
         var sy = y_start + iy * STUD_PITCH
         yield Cylinder(r: stud_r, h: STUD_HEIGHT)
-            .AlignCenter(pos: Vec3{x: sx, y: sy, z: h / 2})
+            .AlignCenter(pos: Vec3{x: sx, y: sy, z: h})
     }
     var all_studs = fold a, b studs { yield a + b }
     var with_studs = body + all_studs
@@ -82,7 +81,7 @@ fn Brick.Build() Solid {
             var inner_tube = Cylinder(r: tube_ir, h: tube_h + 0.1 mm
             ).AlignCenter(pos: Vec3{})
             yield (outer_tube - inner_tube)
-                .AlignCenter(pos: Vec3{x: px, y: py, z: -h / 2})
+                .AlignCenter(pos: Vec3{x: px, y: py, z: inner_h / 2})
         }
         var all_tubes = fold a, b tubes { yield a + b }
         return with_studs + all_tubes
@@ -100,7 +99,7 @@ fn Brick.Build() Solid {
             var py = pp
             if w > d { py = 0 mm }
             yield Cylinder(r: post_r, h: post_h)
-                .AlignCenter(pos: Vec3{x: px, y: py, z: -h / 2})
+                .AlignCenter(pos: Vec3{x: px, y: py, z: inner_h / 2})
         }
         var all_posts = fold a, b posts { yield a + b }
         return with_studs + all_posts

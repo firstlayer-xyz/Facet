@@ -95,7 +95,11 @@ fn Color.Hex() String {
 # ---------------------------------------------------------------------------
 # 3D Constructors
 # ---------------------------------------------------------------------------
-# Axis-aligned box from the origin to (x, y, z).
+# All primitive constructors (2D and 3D) place the shape's bounding-box min
+# corner at the origin — i.e. the shape sits in the positive octant/quadrant.
+# Use .Move() or .AlignCenter() to reposition.
+#
+# Axis-aligned box with bounding-box min corner at (0,0,0) and max at (x,y,z).
 # ```
 # fn Main() { Cube(s: Vec3{x: 20 mm, y: 10 mm, z: 5 mm}) }
 # ```
@@ -111,7 +115,8 @@ fn Cube(s Length) Solid {
     return _cube(s, s, s)
 }
 
-# UV sphere centered at the origin. Optional `segments` controls smoothness (default 32).
+# UV sphere with bounding-box min corner at (0,0,0) (diameter extends from
+# 0 to 2r on each axis). Optional `segments` controls smoothness (default 32).
 # Accepts either `r:` (radius) or `d:` (diameter).
 # ```
 # fn Main() { Sphere(r: 10 mm) }
@@ -130,10 +135,12 @@ fn Sphere(
     return _sphere(d / 2, segments)
 }
 
-# Cylinder or cone along Z from Z=0 to Z=`h`. `r1`/`r2` are bottom/top radii;
-# set one to 0 for a cone. Convenience overload `Cylinder(r, h)` uses equal radii.
-# Each form also accepts diameters: `d1`/`d2` or `d`.
-# Optional `segments` controls smoothness (default 32); use 6 for a hexagonal prism.
+# Cylinder or cone with bounding-box min corner at (0,0,0): axis runs along Z
+# from Z=0 to Z=`h`, and XY extent spans 0..2*max(r1,r2). `r1`/`r2` are
+# bottom/top radii; set one to 0 for a cone. Convenience overload
+# `Cylinder(r, h)` uses equal radii. Each form also accepts diameters:
+# `d1`/`d2` or `d`. Optional `segments` controls smoothness (default 32); use
+# 6 for a hexagonal prism.
 # ```
 # fn Main() { Cylinder(r1: 5 mm, r2: 5 mm, h: 20 mm) }
 # ```
@@ -179,7 +186,8 @@ fn Cone(r, h Length) Solid {
 # ---------------------------------------------------------------------------
 # 2D Constructors
 # ---------------------------------------------------------------------------
-# 2D rectangle centered at the origin. `x` = width, `y` = height.
+# 2D rectangle with bounding-box min corner at (0,0) and max at (x,y).
+# `x` = width, `y` = height.
 # ```
 # fn Main() { Square(20 mm, 20 mm).Extrude(10 mm) }
 # ```
@@ -187,8 +195,9 @@ fn Square(x, y Length) Sketch {
     return _square(x, y)
 }
 
-# 2D circle centered at the origin. Optional `segments` controls smoothness (default 32); use 6 for a hexagon.
-# Accepts either `r:` (radius) or `d:` (diameter).
+# 2D circle with bounding-box min corner at (0,0) (diameter extends from 0
+# to 2r on each axis). Optional `segments` controls smoothness (default 32);
+# use 6 for a hexagon. Accepts either `r:` (radius) or `d:` (diameter).
 # ```
 # fn Main() { Circle(r: 5 mm).Extrude(20 mm) }
 # ```

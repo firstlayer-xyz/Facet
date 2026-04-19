@@ -55,6 +55,19 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 			c.addErrorSpan(ex.Pos, ex.Pos.Col+len(ex.Name), fmt.Sprintf("undefined variable %q", ex.Name))
 			return unknown()
 		}
+		// Record the reference: the identifier occurrence at ex.Pos links to the
+		// binding site captured in env when the name was bound, or to a global
+		// declaration for stdlib/top-level symbols.
+		if declPos, ok := env.lookupPos(ex.Name); ok {
+			kind, _ := env.lookupKind(ex.Name)
+			c.addRef(ex.Pos, DeclLocation{
+				Line: declPos.Line,
+				Col:  declPos.Col,
+				Kind: kind,
+			})
+		} else if decl, ok := c.globalDecl(ex.Name); ok {
+			c.addRef(ex.Pos, decl)
+		}
 		return t
 
 	case *parser.ArrayLitExpr:
@@ -222,14 +235,17 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 			if iterType.ft != typeUnknown && iterType.ft != typeArray {
 				c.addError(ex.Pos, fmt.Sprintf("for-yield: expected Array to iterate over, got %s", iterType.displayName()))
 			}
+			// TODO: ForClause lacks per-variable positions; using the clause
+			// Pos conflates Var and Index. Add Var.Pos / Index.Pos to the AST
+			// when precise references for for-yield bindings are needed.
 			if clause.Index != "" {
-				childEnv.set(clause.Index, simple(typeNumber))
+				childEnv.bind(clause.Index, simple(typeNumber), clause.Pos, "var")
 			}
 			// Set loop variable to element type if known
 			if iterType.ft == typeArray && iterType.elem != nil {
-				childEnv.set(clause.Var, *iterType.elem)
+				childEnv.bind(clause.Var, *iterType.elem, clause.Pos, "var")
 			} else {
-				childEnv.set(clause.Var, unknown())
+				childEnv.bind(clause.Var, unknown(), clause.Pos, "var")
 			}
 		}
 		// Infer yield type from body
@@ -260,8 +276,11 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 		if iterType.ft == typeArray && iterType.elem != nil {
 			elemType = *iterType.elem
 		}
-		childEnv.set(ex.AccVar, elemType)
-		childEnv.set(ex.ElemVar, elemType)
+		// TODO: FoldExpr lacks per-variable positions; using the expression
+		// Pos conflates AccVar and ElemVar. Add per-var positions to the AST
+		// when precise references for fold bindings are needed.
+		childEnv.bind(ex.AccVar, elemType, ex.Pos, "var")
+		childEnv.bind(ex.ElemVar, elemType, ex.Pos, "var")
 		c.checkStmts(ex.Body, childEnv)
 		// Fold returns the accumulator, which has the same type as the elements
 		return elemType
@@ -279,11 +298,20 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 			c.addError(ex.Pos, fmt.Sprintf("unknown struct type %q", ex.TypeName))
 			return unknown()
 		}
+		// Record the reference for the type name at the struct literal's position.
+		// NOTE: for qualified struct lits like T.Thread{...}, ex.Pos points at the
+		// library variable position, not the type name itself. See parser_expr.go:300.
+		c.addRef(ex.Pos, DeclLocation{
+			Line: decl.Pos.Line,
+			Col:  decl.Pos.Col,
+			File: c.fileForStruct(decl),
+			Kind: "type",
+		})
 
 		// Named fields only
-		declFields := make(map[string]string, len(decl.Fields))
+		declFields := make(map[string]*parser.StructField, len(decl.Fields))
 		for _, f := range decl.Fields {
-			declFields[f.Name] = f.Type
+			declFields[f.Name] = f
 		}
 		provided := make(map[string]bool, len(ex.Fields))
 		for _, fi := range ex.Fields {
@@ -293,15 +321,23 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 			}
 			provided[fi.Name] = true
 			valType := c.inferExpr(fi.Value, env)
-			expectedTypeName, exists := declFields[fi.Name]
+			declField, exists := declFields[fi.Name]
 			if !exists {
 				c.addError(ex.Pos, fmt.Sprintf("unknown field %q in %s", fi.Name, ex.TypeName))
 				continue
 			}
-			expectedType := c.resolveTypeStr(ex.TypeName, expectedTypeName)
+			// Record reference for the field initializer name.
+			c.addRef(fi.Pos, DeclLocation{
+				Line:       declField.Pos.Line,
+				Col:        declField.Pos.Col,
+				File:       c.fileForStruct(decl),
+				Kind:       "field",
+				ReturnType: declField.Type,
+			})
+			expectedType := c.resolveTypeStr(ex.TypeName, declField.Type)
 			if valType.ft != typeUnknown && expectedType.ft != typeUnknown && !c.typeCompatible(expectedType, valType) {
 				c.addError(ex.Pos, fmt.Sprintf("field %q of %s must be %s, got %s",
-					fi.Name, ex.TypeName, expectedTypeName, valType.displayName()))
+					fi.Name, ex.TypeName, declField.Type, valType.displayName()))
 			}
 		}
 		// Check for missing fields — allowed if field has a default or a typed zero value
@@ -378,6 +414,13 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 		}
 		for _, f := range decl.Fields {
 			if f.Name == ex.Field {
+				c.addRef(ex.Pos, DeclLocation{
+					Line:       f.Pos.Line,
+					Col:        f.Pos.Col,
+					File:       c.fileForStruct(decl),
+					Kind:       "field",
+					ReturnType: f.Type,
+				})
 				return c.resolveTypeStr(structName, f.Type)
 			}
 		}

@@ -4,6 +4,23 @@ import { HeadTracker } from './headtrack';
 import { hexToInt } from './color';
 import { decodeBinaryMesh, buildFaceGroupWireframe } from './mesh-decode';
 import type { DecodedMesh, DebugStepData } from './mesh-decode';
+import {
+  resolveSnap,
+  buildMeasurement,
+  buildRadial,
+  buildCornerAngle,
+  DEFAULT_MEASUREMENT_FORMAT,
+  type Measurement,
+  type MeasurementFormat,
+  type Snap,
+  type MeasurementCache,
+} from './measurement';
+import {
+  buildMeasurementGroup,
+  buildPendingMarker,
+  disposeMeasurementGroup,
+  type MeasurementStyle,
+} from './measurement_render';
 
 export type { DecodedMesh, DebugStepData };
 /** Theme-derived colors + bed settings passed to the viewer. */
@@ -18,6 +35,12 @@ interface ViewerAppearance {
   ambientIntensity: number;
   gridMajorColor: string;
   gridMinorColor: string;
+  /** Line/glyph color for dimension visuals (hex like "#rrggbb"). */
+  measurementLineColor: string;
+  /** Label text color for dimension labels (hex like "#rrggbb"). */
+  measurementLabelColor: string;
+  /** Number formatting for dimension labels. */
+  measurementFormat: MeasurementFormat;
   bed: string;
   gridSize: number;
   gridSpacing: number;
@@ -132,9 +155,29 @@ export class Viewer {
   private lastPickedFaceGroup = -1;
   private lastPickCycleIndex = 0;
 
+  // Dimensioning / measurement state
+  private measureMode: 'off' | 'placing' = 'off';
+  private hoverReadout = false;
+  private pendingSnap: Snap | null = null;
+  private pendingMarker: THREE.Object3D | null = null;
+  // For chained dimensioning: the point *before* pendingSnap in the current
+  // chain, so the next click can build a corner-angle at pendingSnap.
+  private chainPrevSnap: Snap | null = null;
+  private measurements: Measurement[] = [];
+  private measurementGroup = new THREE.Group();
+  private hoverMeasurementGroup = new THREE.Group();
+  private measurementStyle: MeasurementStyle = {
+    lineColor: 0xffcc33,
+    labelColor: '#ffcc33',
+    glyphColor: '#ffcc33',
+    format: DEFAULT_MEASUREMENT_FORMAT,
+  };
+  private onMeasureModeChangeCb: ((mode: 'off' | 'placing', hoverOn: boolean) => void) | null = null;
+
   // Bound event handlers for cleanup in dispose()
   private onMouseDown: (e: MouseEvent) => void;
   private onMouseUp: (e: MouseEvent) => void;
+  private onMouseMove: (e: MouseEvent) => void;
   private onFocus: () => void;
   private onBlur: () => void;
   private onKeyDown: (e: KeyboardEvent) => void;
@@ -233,6 +276,10 @@ export class Viewer {
     this.axisLabels = this._createAxisLabels();
     for (const lbl of this.axisLabels) this.scene.add(lbl);
 
+    // Dimension overlays live in their own groups so we can clear them wholesale.
+    this.scene.add(this.measurementGroup);
+    this.scene.add(this.hoverMeasurementGroup);
+
     // Initial size
     this.onResize();
 
@@ -256,7 +303,16 @@ export class Viewer {
       const elapsed = Date.now() - this.pickMouseDown.time;
       this.pickMouseDown = null;
       if (dist < 5 && elapsed < 300) {
-        this.handleFacePick(e);
+        if (this.measureMode === 'placing' && e.button === 0) {
+          this.handleMeasurePick(e);
+        } else {
+          this.handleFacePick(e);
+        }
+      }
+    };
+    this.onMouseMove = (e: MouseEvent) => {
+      if (this.measureMode === 'placing' || this.hoverReadout) {
+        this.updateMeasurementHover(e);
       }
     };
     this.onFocus = () => {
@@ -274,6 +330,21 @@ export class Viewer {
         e.preventDefault();
         this.keysDown.add(e.code);
       }
+      if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        this.setMeasureMode(this.measureMode === 'placing' ? 'off' : 'placing');
+      } else if (e.code === 'Escape' && this.measureMode === 'placing') {
+        e.preventDefault();
+        // First Escape ends the chain (keeps placed dims, lets the user start
+        // a new chain without re-entering Measure). Second Escape (when no
+        // chain is in progress) exits Measure mode entirely.
+        if (this.pendingSnap) {
+          this.clearPending();
+          this.clearHoverMeasurement();
+        } else {
+          this.setMeasureMode('off');
+        }
+      }
     };
     this.onKeyUp = (e: KeyboardEvent) => {
       this.keysDown.delete(e.code);
@@ -281,6 +352,7 @@ export class Viewer {
 
     container.addEventListener('mousedown', this.onMouseDown);
     container.addEventListener('mouseup', this.onMouseUp);
+    container.addEventListener('mousemove', this.onMouseMove);
     container.addEventListener('focus', this.onFocus);
     container.addEventListener('blur', this.onBlur);
     container.addEventListener('keydown', this.onKeyDown);
@@ -403,6 +475,14 @@ export class Viewer {
     // Store faceGroups for posMap-based hover highlighting
     if (decoded.faceGroups) {
       mesh.userData.faceGroups = decoded.faceGroups;
+    }
+
+    // Store measurement data on the mesh for snap resolution.
+    if (decoded.measurementCache) {
+      mesh.userData.measurementCache = decoded.measurementCache;
+    }
+    if (decoded.edgeLines) {
+      mesh.userData.edgeLines = decoded.edgeLines;
     }
 
     this.scene.add(mesh);
@@ -599,6 +679,243 @@ export class Viewer {
     this.onFaceClickCb?.(entry.file, entry.line, entry.col);
   }
 
+  // -------------------------------------------------------------------------
+  // Measurement / dimensioning
+  // -------------------------------------------------------------------------
+
+  /** Register a callback invoked whenever the measure-mode state changes. */
+  setOnMeasureModeChange(cb: (mode: 'off' | 'placing', hoverOn: boolean) => void): void {
+    this.onMeasureModeChangeCb = cb;
+  }
+
+  /** Public: enter or leave measurement placing mode. */
+  setMeasureMode(mode: 'off' | 'placing'): void {
+    if (this.measureMode === mode) return;
+    this.measureMode = mode;
+    if (mode === 'off') {
+      this.clearPending();
+      this.clearHoverMeasurement();
+    }
+    this.onMeasureModeChangeCb?.(mode, this.hoverReadout);
+  }
+
+  /** Public: toggle the always-on hover readout (independent of placing mode). */
+  setHoverReadout(on: boolean): void {
+    if (this.hoverReadout === on) return;
+    this.hoverReadout = on;
+    if (!on) this.clearHoverMeasurement();
+    this.onMeasureModeChangeCb?.(this.measureMode, this.hoverReadout);
+  }
+
+  /** Public: place an extents box around all loaded user meshes. */
+  showExtents(): void {
+    // Use a world-space bounding box so the labels sit on the actual geometry
+    // (meshes may be offset by centerOnBed).
+    const box = new THREE.Box3();
+    let any = false;
+    for (const obj of this.userMeshes) {
+      if (!(obj instanceof THREE.Mesh)) continue;
+      box.expandByObject(obj);
+      any = true;
+    }
+    if (!any || box.isEmpty()) return;
+    const m: Measurement = {
+      kind: 'extents',
+      min: [box.min.x, box.min.y, box.min.z],
+      max: [box.max.x, box.max.y, box.max.z],
+    };
+    this.measurements.push(m);
+    const g = buildMeasurementGroup(m, this.measurementStyle, { labelWorldHeight: this.measurementLabelHeight() });
+    this.measurementGroup.add(g);
+  }
+
+  /** Public: discard all placed dimensions. */
+  clearMeasurements(): void {
+    this.measurements = [];
+    while (this.measurementGroup.children.length > 0) {
+      const c = this.measurementGroup.children[0];
+      this.measurementGroup.remove(c);
+      disposeMeasurementGroup(c);
+    }
+    this.clearPending();
+    this.clearHoverMeasurement();
+  }
+
+  private clearPending(): void {
+    this.pendingSnap = null;
+    this.chainPrevSnap = null;
+    if (this.pendingMarker) {
+      this.measurementGroup.remove(this.pendingMarker);
+      disposeMeasurementGroup(this.pendingMarker);
+      this.pendingMarker = null;
+    }
+  }
+
+  /** Move the pending marker to `s`. Creates it if missing. */
+  private setPendingMarker(s: Snap): void {
+    if (this.pendingMarker) {
+      this.measurementGroup.remove(this.pendingMarker);
+      disposeMeasurementGroup(this.pendingMarker);
+      this.pendingMarker = null;
+    }
+    this.pendingMarker = buildPendingMarker(s, {
+      color: this.measurementStyle.glyphColor,
+      worldSize: this.measurementLabelHeight() * 0.15,
+    });
+    this.measurementGroup.add(this.pendingMarker);
+  }
+
+  private clearHoverMeasurement(): void {
+    while (this.hoverMeasurementGroup.children.length > 0) {
+      const c = this.hoverMeasurementGroup.children[0];
+      this.hoverMeasurementGroup.remove(c);
+      disposeMeasurementGroup(c);
+    }
+  }
+
+  /** Scale sprite labels so they stay readable across bed sizes. */
+  private measurementLabelHeight(): number {
+    // Roughly 2% of bed grid — mirrors the scale used for axis labels.
+    return Math.max(2, this.gridSize * 0.01);
+  }
+
+  /** Run a raycast against loaded meshes and return the first intersection, or null. */
+  private raycastMeshes(e: MouseEvent): { hit: THREE.Intersection; mesh: THREE.Mesh; cursorPx: { x: number; y: number }; viewportSize: { w: number; h: number } } | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const cursorPx = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const mouse = new THREE.Vector2(
+      (cursorPx.x / rect.width) * 2 - 1,
+      -(cursorPx.y / rect.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(mouse, this.activeCamera);
+    const meshOnly = this.userMeshes.filter(o => o instanceof THREE.Mesh);
+    const intersects = this.raycaster.intersectObjects(meshOnly, false);
+    if (intersects.length === 0) return null;
+    return {
+      hit: intersects[0],
+      mesh: intersects[0].object as THREE.Mesh,
+      cursorPx,
+      viewportSize: { w: rect.width, h: rect.height },
+    };
+  }
+
+  /** Extract the measurement cache and raw mesh arrays from a hit's mesh. */
+  private meshMeasurementData(mesh: THREE.Mesh): {
+    vertices: Float32Array;
+    indices: Uint32Array;
+    faceGroups?: Uint32Array;
+    edgeLines?: Float32Array;
+    cache: MeasurementCache;
+  } | null {
+    const cache = mesh.userData.measurementCache as MeasurementCache | undefined;
+    if (!cache) return null;
+    const vertices = mesh.userData.fgVertices as Float32Array | undefined
+      ?? (mesh.geometry.getAttribute('position')?.array as Float32Array | undefined);
+    const indices = mesh.userData.fgIndices as Uint32Array | undefined;
+    if (!vertices || !indices) return null;
+    const faceGroups = mesh.userData.faceGroups as Uint32Array | undefined;
+    const edgeLines = mesh.userData.edgeLines as Float32Array | undefined;
+    return { vertices, indices, faceGroups, edgeLines, cache };
+  }
+
+  /**
+   * Handle a measurement click. Click 1 starts the chain; each subsequent
+   * click commits a linear dim from the previous chain point and, when a
+   * prior segment exists, a corner-angle at the chain vertex. Escape (or
+   * exiting Measure mode) ends the chain. A circleCenter click while the
+   * chain is empty produces a radial; once the chain is active, radial
+   * single-pick is suppressed so the chain can continue.
+   */
+  private handleMeasurePick(e: MouseEvent): void {
+    const snap = this.snapAtEvent(e);
+    if (!snap) return;
+    const h = this.measurementLabelHeight();
+
+    // Empty chain: circleCenter is its own one-click radial; everything else
+    // becomes the anchor for a new chain.
+    if (!this.pendingSnap) {
+      if (snap.kind === 'circleCenter') {
+        const m = buildRadial(snap);
+        if (m) {
+          this.measurements.push(m);
+          this.measurementGroup.add(buildMeasurementGroup(m, this.measurementStyle, { labelWorldHeight: h }));
+        }
+        return;
+      }
+      this.pendingSnap = snap;
+      this.setPendingMarker(snap);
+      return;
+    }
+
+    // Continuing a chain: build the new linear segment and, if there's a
+    // prior leg, the corner-angle at the current vertex.
+    const linear = buildMeasurement(this.pendingSnap, snap);
+    if (linear) {
+      this.measurements.push(linear);
+      this.measurementGroup.add(buildMeasurementGroup(linear, this.measurementStyle, { labelWorldHeight: h }));
+    }
+    if (this.chainPrevSnap) {
+      const corner = buildCornerAngle(this.chainPrevSnap, this.pendingSnap, snap);
+      if (corner) {
+        this.measurements.push(corner);
+        this.measurementGroup.add(buildMeasurementGroup(corner, this.measurementStyle, { labelWorldHeight: h }));
+      }
+    }
+    this.chainPrevSnap = this.pendingSnap;
+    this.pendingSnap = snap;
+    this.setPendingMarker(snap);
+  }
+
+  /** Live hover readout + second-pick preview line. */
+  private updateMeasurementHover(e: MouseEvent): void {
+    this.clearHoverMeasurement();
+    const snap = this.snapAtEvent(e);
+    if (!snap) return;
+
+    // Always show a marker at the current snap target while measuring so the
+    // user can see which geometry feature they're about to pick.
+    if (this.measureMode === 'placing' || this.hoverReadout) {
+      this.hoverMeasurementGroup.add(
+        buildPendingMarker(snap, { color: this.measurementStyle.glyphColor, worldSize: this.measurementLabelHeight() * 0.12 }),
+      );
+    }
+
+    if (this.pendingSnap) {
+      // Show the pending → hover preview dimension.
+      const m = buildMeasurement(this.pendingSnap, snap);
+      if (m) this.hoverMeasurementGroup.add(
+        buildMeasurementGroup(m, this.measurementStyle, { labelWorldHeight: this.measurementLabelHeight() }),
+      );
+    } else if (this.hoverReadout && snap.kind === 'circleCenter') {
+      const m = buildRadial(snap);
+      if (m) this.hoverMeasurementGroup.add(
+        buildMeasurementGroup(m, this.measurementStyle, { labelWorldHeight: this.measurementLabelHeight() }),
+      );
+    }
+  }
+
+  /** Raycast + snap resolve in one. Returns null if no mesh is under the cursor. */
+  private snapAtEvent(e: MouseEvent): Snap | null {
+    const rc = this.raycastMeshes(e);
+    if (!rc) return null;
+    const data = this.meshMeasurementData(rc.mesh);
+    if (!data) return null;
+    rc.mesh.updateWorldMatrix(true, false);
+    return resolveSnap({
+      hit: rc.hit,
+      vertices: data.vertices,
+      indices: data.indices,
+      faceGroups: data.faceGroups,
+      edgeLines: data.edgeLines,
+      cache: data.cache,
+      camera: this.activeCamera,
+      cursorPx: rc.cursorPx,
+      viewportSize: rc.viewportSize,
+      matrixWorld: rc.mesh.matrixWorld,
+      pending: this.pendingSnap,
+    });
+  }
+
   /** Find the closest posMap entry at or before (line, col) on the same line, filtered by file. */
   private findFaceIDsAtPos(file: string, line: number, col: number): Set<number> | null {
     if (this.posMap.length === 0) return null;
@@ -677,6 +994,14 @@ export class Viewer {
       Viewer._disposeObject3D(obj);
     }
     this.userMeshes = [];
+
+    // Clear dimensions — old face/edge IDs don't refer to anything in a new mesh.
+    this.clearMeasurements();
+    // Also exit placing mode; the next mesh isn't loaded yet and the pending
+    // snap (if any) is anchored to geometry that's gone.
+    if (this.measureMode === 'placing') {
+      this.setMeasureMode('off');
+    }
   }
 
   /** Center all user meshes on the bed. Bed-plane axes are centered; the "up" axis min is at 0. */
@@ -753,6 +1078,34 @@ export class Viewer {
     this.grid = this._createGrid(hexToInt(appearance.gridMajorColor), hexToInt(appearance.gridMinorColor));
     this._setSceneDecorVisible(!this.drawingMode);
     this.scene.add(this.grid);
+
+    // Theme-derived measurement colors. Glyph color follows the line color so
+    // snap markers read against the same background as the dimension lines.
+    this.measurementStyle = {
+      lineColor: hexToInt(appearance.measurementLineColor),
+      labelColor: appearance.measurementLabelColor,
+      glyphColor: appearance.measurementLineColor,
+      format: appearance.measurementFormat,
+    };
+    this.rebuildMeasurementVisuals();
+  }
+
+  /** Rebuild placed measurement visuals from the current style + measurement list. */
+  private rebuildMeasurementVisuals(): void {
+    while (this.measurementGroup.children.length > 0) {
+      const c = this.measurementGroup.children[0];
+      this.measurementGroup.remove(c);
+      disposeMeasurementGroup(c);
+    }
+    for (const m of this.measurements) {
+      this.measurementGroup.add(buildMeasurementGroup(m, this.measurementStyle, { labelWorldHeight: this.measurementLabelHeight() }));
+    }
+    if (this.pendingSnap) {
+      this.pendingMarker = buildPendingMarker(this.pendingSnap, { color: this.measurementStyle.glyphColor, worldSize: this.measurementLabelHeight() * 0.15 });
+      this.measurementGroup.add(this.pendingMarker);
+    } else {
+      this.pendingMarker = null;
+    }
   }
 
   fitToView(): void {
@@ -831,6 +1184,7 @@ export class Viewer {
   dispose(): void {
     this.container.removeEventListener('mousedown', this.onMouseDown);
     this.container.removeEventListener('mouseup', this.onMouseUp);
+    this.container.removeEventListener('mousemove', this.onMouseMove);
     this.container.removeEventListener('focus', this.onFocus);
     this.container.removeEventListener('blur', this.onBlur);
     this.container.removeEventListener('keydown', this.onKeyDown);

@@ -44,6 +44,7 @@ var knownCLIs = []cliDef{
 	{ID: "aichat", Name: "AIChat", Bin: "aichat", Models: []string{}, DefaultModel: ""},
 	{ID: "llm", Name: "LLM", Bin: "llm", Models: []string{}, DefaultModel: ""},
 	{ID: "chatgpt", Name: "ChatGPT", Bin: "chatgpt", Models: []string{"gpt-4o", "gpt-4", "gpt-3.5-turbo"}, DefaultModel: "gpt-4o"},
+	{ID: "qwen", Name: "Qwen Code", Bin: "qwen", Models: []string{"qwen3-coder-plus", "qwen3-coder-flash", "qwen-turbo", "qwen-plus", "qwen-max"}, DefaultModel: "qwen3-coder-plus"},
 }
 
 // extraSearchDirs returns common binary directories not always in PATH.
@@ -223,10 +224,13 @@ func (a *App) PickImageFile() (string, error) {
 }
 
 // SendAssistantMessage sends a user message via the configured AI CLI.
-// Current editor code and errors are included as context.
-// imagePaths is a list of image file paths to attach (Claude only).
-func (a *App) SendAssistantMessage(userMessage string, editorCode string, errors string, imagePaths []string) error {
-	return a.assistant.Send(userMessage, editorCode, errors, imagePaths, a.mcp)
+// Current editor code, errors, and active-tab metadata are included as
+// context. activeTabPath + activeTabReadOnly are latched by the MCP layer
+// for the lifetime of the request so edit_code / replace_code can reject
+// edits to read-only files and tab switches mid-run don't leak to the wrong
+// file. imagePaths is a list of image file paths to attach (Claude only).
+func (a *App) SendAssistantMessage(userMessage, editorCode, errors, activeTabPath string, activeTabReadOnly bool, imagePaths []string) error {
+	return a.assistant.Send(userMessage, editorCode, errors, activeTabPath, activeTabReadOnly, imagePaths, a.mcp)
 }
 
 // CancelAssistant cancels any in-flight assistant request.

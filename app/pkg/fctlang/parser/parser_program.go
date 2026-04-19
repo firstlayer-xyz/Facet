@@ -164,7 +164,7 @@ func (p *parser) parseStructDecl() (*StructDecl, error) {
 		if err := p.consumeOptionalSemi(); err != nil {
 			return nil, err
 		}
-		sf := &StructField{Type: typeStr, Name: fieldName.Text, Default: fieldDefault, Constraint: fieldConstraint, Comments: fieldComments}
+		sf := &StructField{Type: typeStr, Name: fieldName.Text, Default: fieldDefault, Constraint: fieldConstraint, Comments: fieldComments, Pos: Pos{fieldName.Line, fieldName.Col}}
 		sf.Comments = append(sf.Comments, p.drainTrailingComments(fieldName.Line)...)
 		fields = append(fields, sf)
 	}

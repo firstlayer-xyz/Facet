@@ -16,12 +16,13 @@ import (
 
 // AssistantMCPBridge exposes what AssistantService needs from the MCP layer:
 // connection details so the Claude CLI can reach our in-process MCP server,
-// and a way to publish the current editor code so MCP tools can read it. A
-// nil bridge, or one whose Endpoint returns port=0, means MCP is unavailable
-// — Claude falls back to a no-tools mode and generic CLIs are unaffected.
+// and a way to latch the per-run editor context (code + active tab path +
+// read-only flag) so MCP tools can read and enforce it. A nil bridge, or one
+// whose Endpoint returns port=0, means MCP is unavailable — Claude falls back
+// to a no-tools mode and generic CLIs are unaffected.
 type AssistantMCPBridge interface {
 	Endpoint() (port int, token string)
-	SetEditorCode(code string)
+	SetContext(code, activeTabPath string, readOnly bool)
 }
 
 // AssistantService owns all state for the AI assistant panel: the chosen CLI
@@ -101,7 +102,7 @@ func (s *AssistantService) ClearHistory() {
 // Send dispatches a user message through the configured CLI. A previous
 // in-flight request (if any) is cancelled first. mcp may be nil when MCP is
 // unavailable; Claude then runs in no-tools mode.
-func (s *AssistantService) Send(userMessage, editorCode, errorsText string, imagePaths []string, mcp AssistantMCPBridge) error {
+func (s *AssistantService) Send(userMessage, editorCode, errorsText, activeTabPath string, activeTabReadOnly bool, imagePaths []string, mcp AssistantMCPBridge) error {
 	s.mu.Lock()
 	if s.cancel != nil {
 		s.cancel()
@@ -157,9 +158,11 @@ func (s *AssistantService) Send(userMessage, editorCode, errorsText string, imag
 		}
 	}
 
-	// Store editor code for MCP tools to read
+	// Latch per-run context for MCP tools: editor code, active tab path, and
+	// read-only flag. Latched at run start so mid-run tab switches in the UI
+	// don't redirect edit_code/replace_code to a different tab.
 	if mcp != nil {
-		mcp.SetEditorCode(editorCode)
+		mcp.SetContext(editorCode, activeTabPath, activeTabReadOnly)
 	}
 
 	fullPrompt := buildPrompt(userMessage, editorCode, errorsText, imagePaths)
@@ -173,7 +176,12 @@ func (s *AssistantService) Send(userMessage, editorCode, errorsText string, imag
 		if cliID == "claude" {
 			var result streamResult
 			result, err = s.runClaudeStream(ctx, binPath, fullPrompt, sessionID, imagePaths, config.Model, sysPrompt, mcpPort, mcpToken)
-			if err == nil && result.sessionID != "" {
+			// Store the session ID regardless of err: partial-failure
+			// results (notably error_max_turns) still carry a valid
+			// session_id, and dropping it would force the next user
+			// message to start from scratch instead of continuing the
+			// conversation the CLI already persisted.
+			if result.sessionID != "" {
 				s.mu.Lock()
 				s.sessionID = result.sessionID
 				s.mu.Unlock()
@@ -265,9 +273,16 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 		return streamResult{}, fmt.Errorf("failed to create stderr pipe: %v", err)
 	}
 
-	// Stream stderr in the background so we see errors immediately
+	// Stream stderr in the background so we see errors immediately.  The
+	// WaitGroup is load-bearing: cmd.Wait() only syncs Go's own stderr-copy
+	// goroutine, not ours — without this sync, reading stderrBuf after Wait
+	// races the scanner and can return an empty string even when stderr had
+	// content (the "exit status 1" with no detail symptom).
 	var stderrBuf strings.Builder
+	var stderrWG sync.WaitGroup
+	stderrWG.Add(1)
 	go func() {
+		defer stderrWG.Done()
 		sc := bufio.NewScanner(stderrR)
 		for sc.Scan() {
 			line := sc.Text()
@@ -283,6 +298,12 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 	var result streamResult
 	emittedAny := false
 	toolCallCount := 0
+	// streamErr captures error information reported inline on stdout —
+	// the claude CLI emits error/system-error events and is_error=true
+	// result events there, not on stderr.  Without harvesting these, a
+	// non-zero exit with no stderr content degrades to the useless
+	// "exit status 1" message.
+	var streamErr string
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
 
@@ -307,8 +328,10 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 		// type="assistant": message with content blocks (text and/or tool_use)
 		// type="user": tool results
 		// type="result": final summary (has "result" text and session_id)
+		// type="error" / type="system" subtype="error": stream-level errors
 
-		if eventType == "assistant" {
+		switch eventType {
+		case "assistant":
 			if msg, ok := event["message"].(map[string]interface{}); ok {
 				if content, ok := msg["content"].([]interface{}); ok {
 					for _, block := range content {
@@ -331,29 +354,45 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 					}
 				}
 			}
-			continue
-		}
 
-		// type="user": tool results returned — Claude will think about next step
-		if eventType == "user" {
+		case "user":
+			// Tool results returned — Claude will think about next step
 			wailsRuntime.EventsEmit(s.eventCtx, "assistant:thinking", toolCallCount)
-			continue
-		}
 
-		// Result event: session_id and, when the stream produced no
-		// intermediate tokens, the result text itself — otherwise the
-		// user would see an empty assistant turn for completions that
-		// only emit a final summary (e.g. tool-only runs).
-		if _, hasResult := event["result"]; hasResult {
+		case "result":
+			// Final summary: session_id + (when the stream produced no
+			// intermediate tokens) the result text itself, so the user
+			// doesn't see an empty assistant turn for tool-only runs.
 			if sid, ok := event["session_id"].(string); ok && sid != "" {
 				result.sessionID = sid
 				log.Printf("[assistant] session_id: %s", sid)
 			}
-			if !emittedAny {
+			if isErr, _ := event["is_error"].(bool); isErr {
+				if text, ok := event["result"].(string); ok && text != "" {
+					streamErr = text
+				} else if sub, ok := event["subtype"].(string); ok && sub != "" {
+					streamErr = friendlyResultSubtypeError(sub, maxTurns)
+				}
+				log.Printf("[assistant] result is_error: %s", streamErr)
+			} else if !emittedAny {
 				if text, ok := event["result"].(string); ok && text != "" {
 					wailsRuntime.EventsEmit(s.eventCtx, "assistant:token", text)
 				}
 			}
+
+		case "error":
+			streamErr = extractErrorMessage(event)
+			log.Printf("[assistant] error event: %s", streamErr)
+
+		case "system":
+			if sub, _ := event["subtype"].(string); sub == "error" {
+				streamErr = extractErrorMessage(event)
+				log.Printf("[assistant] system error: %s", streamErr)
+			}
+			// Non-error system events (init, etc.) are silent by design.
+
+		default:
+			log.Printf("[assistant] unhandled event type %q: %.200s", eventType, line)
 		}
 	}
 	if err := scanner.Err(); err != nil && ctx.Err() == nil {
@@ -364,14 +403,61 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 		if ctx.Err() != nil {
 			return result, fmt.Errorf("claude was cancelled")
 		}
-		errMsg := stderrBuf.String()
-		if errMsg != "" {
-			return result, fmt.Errorf("claude error: %s", strings.TrimSpace(errMsg))
+		// Drain the stderr scanner before reading its buffer (see
+		// stderrWG comment above).
+		stderrWG.Wait()
+		// Preference order: stream error (most specific — tells the user
+		// *what* went wrong) → stderr text → raw exit status as last
+		// resort.  The raw fallback was the only path before; now it
+		// fires only when both the stream and stderr are empty.
+		if streamErr != "" {
+			return result, fmt.Errorf("claude error: %s", strings.TrimSpace(streamErr))
+		}
+		if errMsg := strings.TrimSpace(stderrBuf.String()); errMsg != "" {
+			return result, fmt.Errorf("claude error: %s", errMsg)
 		}
 		return result, fmt.Errorf("claude error: %v", err)
 	}
+	// Even on success, drain stderr so the goroutine doesn't outlive
+	// this call (the scanner exits when the pipe closes anyway, but
+	// this makes the ordering explicit).
+	stderrWG.Wait()
 
 	return result, nil
+}
+
+// friendlyResultSubtypeError maps a result-event subtype string to a
+// user-facing sentence.  The CLI surfaces these as terse codes
+// ("error_max_turns") that mean nothing to a user; translate the ones
+// we know about and fall back to the raw code so unknown subtypes
+// still reach the UI.
+func friendlyResultSubtypeError(subtype string, maxTurns int) string {
+	switch subtype {
+	case "error_max_turns":
+		return fmt.Sprintf("Assistant reached the max-turns limit (%d) without finishing. Send another message to continue the conversation, or raise the limit in Settings → AI Assistant → Max Turns.", maxTurns)
+	default:
+		return "result subtype: " + subtype
+	}
+}
+
+// extractErrorMessage pulls a human-readable message out of a claude
+// stream-json error/system event.  The CLI's error shape has drifted
+// across versions — check the common fields, then fall back to the raw
+// JSON so no information is lost.
+func extractErrorMessage(event map[string]interface{}) string {
+	if m, ok := event["message"].(string); ok && m != "" {
+		return m
+	}
+	if m, ok := event["error"].(string); ok && m != "" {
+		return m
+	}
+	if sub, ok := event["subtype"].(string); ok && sub != "" {
+		return "error subtype: " + sub
+	}
+	if raw, err := json.Marshal(event); err == nil {
+		return string(raw)
+	}
+	return "unknown error"
 }
 
 // runGenericCLIStream runs a non-Claude AI CLI, pipes the prompt to stdin,
@@ -408,6 +494,17 @@ func (s *AssistantService) runGenericCLIStream(ctx context.Context, cliID, binPa
 		}
 		if sysPrompt != "" {
 			args = append(args, "-p", sysPrompt)
+		}
+	case "qwen":
+		// Qwen Code one-shot mode: prompt arrives via stdin, plain text out.
+		// Unlike gemini-cli (which qwen-code forks), the system prompt has a
+		// native flag — no env-var or temp-file dance needed.
+		args = []string{"--output-format", "text"}
+		if model != "" {
+			args = append(args, "-m", model)
+		}
+		if sysPrompt != "" {
+			args = append(args, "--system-prompt", sysPrompt)
 		}
 	default:
 		return fmt.Errorf("unsupported CLI: %s", cliID)

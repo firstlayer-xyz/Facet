@@ -884,6 +884,9 @@ canvas {
 #mini-preview #center-btn,
 #mini-preview #auto-rotate-btn,
 #mini-preview #head-track-btn,
+#mini-preview #measure-btn,
+#mini-preview #extents-btn,
+#mini-preview #clear-dims-btn,
 #mini-preview #viewpoint-bar,
 #mini-preview #stats-bar,
 #mini-preview #debug-bar,
@@ -1259,6 +1262,9 @@ canvas {
 #canvas-container.docs-open #center-btn,
 #canvas-container.docs-open #auto-rotate-btn,
 #canvas-container.docs-open #head-track-btn,
+#canvas-container.docs-open #measure-btn,
+#canvas-container.docs-open #extents-btn,
+#canvas-container.docs-open #clear-dims-btn,
 #canvas-container.docs-open #viewpoint-bar,
 #canvas-container.docs-open #stats-bar { display: none; }
 
@@ -1681,6 +1687,44 @@ canvas {
 
 #head-track-btn.above-debug-bar {
   bottom: calc(52px + var(--fn-bar-h, 0px));
+}
+
+/* Measurement tool buttons — positioned next to head-track, in the
+   bottom-left stack. */
+#measure-btn,
+#extents-btn,
+#clear-dims-btn {
+  position: absolute;
+  bottom: 12px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  background: var(--ui-panel-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: var(--ui-text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+#measure-btn { left: 138px; }
+#extents-btn { left: 180px; }
+#clear-dims-btn { left: 222px; }
+
+#measure-btn:hover,
+#extents-btn:hover,
+#clear-dims-btn:hover {
+  background: var(--ui-border-hover);
+  color: #fff;
+}
+
+#measure-btn.active {
+  background: var(--ui-accent);
+  color: #fff;
 }
 
 /* Head-tracking overlay (face position visualization) */
@@ -2539,6 +2583,12 @@ canvas {
 #canvas-container #auto-rotate-btn.above-debug-bar { bottom: calc(52px + var(--fn-bar-h, 0px)); }
 #canvas-container #head-track-btn { bottom: calc(12px + var(--fn-bar-h, 0px)); }
 #canvas-container #head-track-btn.above-debug-bar { bottom: calc(52px + var(--fn-bar-h, 0px)); }
+#canvas-container #measure-btn { bottom: calc(12px + var(--fn-bar-h, 0px)); }
+#canvas-container #measure-btn.above-debug-bar { bottom: calc(52px + var(--fn-bar-h, 0px)); }
+#canvas-container #extents-btn { bottom: calc(12px + var(--fn-bar-h, 0px)); }
+#canvas-container #extents-btn.above-debug-bar { bottom: calc(52px + var(--fn-bar-h, 0px)); }
+#canvas-container #clear-dims-btn { bottom: calc(12px + var(--fn-bar-h, 0px)); }
+#canvas-container #clear-dims-btn.above-debug-bar { bottom: calc(52px + var(--fn-bar-h, 0px)); }
 #canvas-container #stats-bar { bottom: calc(10px + var(--fn-bar-h, 0px)); }
 #canvas-container #stats-bar.above-debug-bar { bottom: calc(52px + var(--fn-bar-h, 0px)); }
 

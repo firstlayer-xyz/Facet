@@ -37,7 +37,11 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 		}
 	}
 
-	// Check if the callee is a function-typed variable (e.g., lambda in scope)
+	// Check if the callee is a function-typed variable (e.g., lambda in scope).
+	// NOTE: no reference is recorded for this path — the lambda variable
+	// doesn't resolve to a *parser.Function, and call.Name isn't visited as an
+	// IdentExpr. Recording a ref to the binding site (via env.lookupPos) is a
+	// potential Phase-2 enhancement.
 	if varType, ok := env.lookup(call.Name); ok && varType.ft == typeFunc {
 		// Validate arg count
 		if len(argTypes) != len(varType.funcParams) {
@@ -248,6 +252,13 @@ func (c *checker) resolveNamedArgs(name string, pos parser.Pos, fn *parser.Funct
 		}
 		resolved[idx] = argTypes[i]
 		filled[idx] = true
+		c.addRef(na.Pos, DeclLocation{
+			Line:       fn.Params[idx].Pos.Line,
+			Col:        fn.Params[idx].Pos.Col,
+			File:       c.fileForFunction(fn),
+			Kind:       "param",
+			ReturnType: fn.Params[idx].Type,
+		})
 	}
 
 	for i, p := range fn.Params {
@@ -269,6 +280,16 @@ func (c *checker) resolveNamedArgs(name string, pos parser.Pos, fn *parser.Funct
 
 // checkFuncArgs validates arguments against a function definition and returns the return type.
 func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function, callArgs []parser.Expr, argTypes []typeInfo) typeInfo {
+	// Record reference: callsite -> function declaration. Covers all call paths
+	// in checkCall (single/multi/fallback for user and stdlib candidates) and
+	// method-call paths in checkMethodCall, which also route here.
+	c.addRef(pos, DeclLocation{
+		Line:       fn.Pos.Line,
+		Col:        fn.Pos.Col,
+		File:       c.fileForFunction(fn),
+		Kind:       "fn",
+		ReturnType: fn.ReturnType,
+	})
 	// Reorder named arguments to match parameter positions
 	argTypes = c.resolveNamedArgs(name, pos, fn, callArgs, argTypes)
 

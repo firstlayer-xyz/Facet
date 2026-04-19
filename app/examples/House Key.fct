@@ -92,7 +92,8 @@ fn Key.Build() Solid {
     var bow_w = self.bow_width
     var bow_h = self.bow_height
     var bow_body = Square(x: bow_w, y: bow_h).Fillet(r: 3 mm)
-        .Extrude(z: bt).Move(x: 1 mm - bow_w / 2, y: bw / 2)
+        .Extrude(z: bt)
+        .AlignCenter(pos: Vec3{x: 1 mm - bow_w / 2, y: bw / 2, z: bt / 2})
     var hole_r = 3 mm
     var hole = Cylinder(r: hole_r, h: bt + 1 mm).AlignCenter(
         pos: Vec3{x: 1 mm - bow_w / 2, y: bw / 2 + bow_h / 4, z: bt / 2}

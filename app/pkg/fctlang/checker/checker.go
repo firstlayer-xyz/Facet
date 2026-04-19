@@ -17,6 +17,7 @@ type Result struct {
 	VarTypes            VarTypeMap
 	InferredReturnTypes map[string]string  // fn name → inferred return type display name
 	Declarations        *DeclResult
+	References          References `json:"references,omitempty"`
 }
 
 // DeclLocation is the source position of a declaration.
@@ -57,7 +58,8 @@ func Check(prog loader.Program) *Result {
 		Errors:              c.errors,
 		VarTypes:            c.varTypes,
 		InferredReturnTypes: inferredRets,
-		Declarations:        buildDeclarations(prog),
+		Declarations:        c.declarations,
+		References:          c.references,
 	}
 }
 
@@ -98,7 +100,11 @@ func (c *checker) checkGlobals(prog loader.Program) {
 		env := c.newStdEnv()
 		for _, g := range src.Globals() {
 			t := c.inferExpr(g.Value, env)
-			env.set(g.Name, t)
+			kind := "var"
+			if g.IsConst {
+				kind = "const"
+			}
+			env.bind(g.Name, t, g.Pos, kind)
 			if g.IsConst {
 				env.setConst(g.Name)
 			}
@@ -274,7 +280,7 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog
 		if pt.ft == typeUnknown && p.Type != "" && bareType != "Array" {
 			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q has unknown type %q", fn.Name, p.Name, p.Type))
 		}
-		env.set(p.Name, pt)
+		env.bind(p.Name, pt, p.Pos, "param")
 		if p.Default != nil && pt.ft != typeUnknown {
 			defType := c.inferExpr(p.Default, env)
 			if defType.ft != typeUnknown && !c.typeCompatible(pt, defType) {
@@ -407,6 +413,10 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 		for _, sd := range src.StructDecls() {
 			loc := DeclLocation{Line: sd.Pos.Line, Col: sd.Pos.Col, File: file, Kind: "type"}
 			addDecl(sd.Name, loc)
+			for _, f := range sd.Fields {
+				fieldLoc := DeclLocation{Line: f.Pos.Line, Col: f.Pos.Col, File: file, Kind: "field", ReturnType: f.Type}
+				result.Decls[sd.Name+"."+f.Name] = fieldLoc
+			}
 		}
 		for _, v := range src.Globals() {
 			kind := "var"
@@ -419,11 +429,8 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 			}
 		}
 		// Qualified library declarations (e.g. T.FunctionName, T.StructName)
-		for _, g := range src.Globals() {
-			le, ok := g.Value.(*parser.LibExpr)
-			if !ok {
-				continue
-			}
+		for _, g := range src.LibImports() {
+			le := g.Value.(*parser.LibExpr)
 			libSrc := prog.Sources[prog.Resolve(le.Key())]
 			if libSrc == nil {
 				continue
@@ -446,6 +453,11 @@ func buildDeclarations(prog loader.Program) *DeclResult {
 					result.Decls["struct:"+qualKey] = loc
 				} else {
 					result.Decls[qualKey] = loc
+				}
+				for _, f := range sd.Fields {
+					fieldLoc := DeclLocation{Line: f.Pos.Line, Col: f.Pos.Col, File: le.Path, Kind: "field", ReturnType: f.Type}
+					result.Decls[sd.Name+"."+f.Name] = fieldLoc
+					result.Decls[g.Name+"."+sd.Name+"."+f.Name] = fieldLoc
 				}
 			}
 		}
@@ -474,6 +486,8 @@ type checker struct {
 	opMap                 map[opMapKey]typeInfo
 	errors                []parser.SourceError
 	varTypes              VarTypeMap
+	references            References
+	mainSrcKey            string // primary (non-library, non-stdlib) source key; "" if none
 	currentSrcKey         string
 	libVarToPath          map[string]string // lib variable name → lib path in prog
 	inferredReturns       map[string]typeInfo
@@ -483,6 +497,18 @@ type checker struct {
 	returnElemType typeInfo
 	stdEnv         *typeEnv            // cached stdlib env, computed once
 	srcEnvs        map[string]*typeEnv // per-source env with globals, computed once by checkGlobals
+	// declarations is the precomputed top-level declaration map from
+	// buildDeclarations. Populated once in initChecker; used both for the
+	// Result and by globalDecl() when resolving references to names not
+	// tracked in typeEnv.
+	declarations *DeclResult
+	// funcSrcKey maps each *parser.Function identity to the source key it was
+	// declared in. Built once in initChecker; used by fileForFunction to stamp
+	// DeclLocation.File on recorded references without re-scanning sources.
+	funcSrcKey map[*parser.Function]string
+	// structSrcKey maps each *parser.StructDecl identity to the source key it
+	// was declared in. Built once in initChecker; used by fileForStruct.
+	structSrcKey map[*parser.StructDecl]string
 }
 
 func initChecker(prog loader.Program) *checker {
@@ -495,6 +521,37 @@ func initChecker(prog loader.Program) *checker {
 		libVarToPath:          make(map[string]string),
 		inferredReturns:       make(map[string]typeInfo),
 		inferredReturnStructs: make(map[string]string),
+		references:            make(References),
+	}
+	// Precompute top-level declarations once. Used both for the final Result
+	// and by globalDecl() when resolving identifier references to names not
+	// tracked in typeEnv (e.g. stdlib functions, other globals).
+	c.declarations = buildDeclarations(prog)
+	// Build identity → source-key maps once in a single pass over sources.
+	// fileForFunction / fileForStruct read these to stamp DeclLocation.File on
+	// recorded references without re-scanning sources on every call.
+	c.funcSrcKey = make(map[*parser.Function]string)
+	c.structSrcKey = make(map[*parser.StructDecl]string)
+	for srcKey, src := range prog.Sources {
+		for _, fn := range src.Functions() {
+			c.funcSrcKey[fn] = srcKey
+		}
+		for _, sd := range src.StructDecls() {
+			c.structSrcKey[sd] = srcKey
+		}
+	}
+	// Compute the primary source key once — the one source that isn't stdlib
+	// and isn't imported as a library. addRef uses this to normalize positions
+	// in the main file to DeclLocation.File == "" (see references.go).
+	for srcKey := range prog.Sources {
+		if srcKey == loader.StdlibPath {
+			continue
+		}
+		if prog.IsLibrarySource(srcKey) {
+			continue
+		}
+		c.mainSrcKey = srcKey
+		break
 	}
 	if stdSrc := prog.Std(); stdSrc != nil {
 		for _, fn := range stdSrc.Functions() {

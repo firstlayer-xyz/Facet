@@ -318,6 +318,10 @@ function setDebugBarVisible(visible: boolean) {
   if (fnBar) fnBar.classList.toggle('above-debug-bar', visible);
   const htBtn = document.getElementById('head-track-btn');
   if (htBtn) htBtn.classList.toggle('above-debug-bar', visible);
+  for (const id of ['measure-btn', 'extents-btn', 'clear-dims-btn']) {
+    const b = document.getElementById(id);
+    if (b) b.classList.toggle('above-debug-bar', visible);
+  }
 }
 
 
@@ -339,6 +343,7 @@ function pushEditorData(data: EvalResult) {
   if (data.docIndex) editor.updateDocIndex(data.docIndex);
   if (data.varTypes && Object.keys(data.varTypes).length > 0) editor.updateVarTypes(data.varTypes);
   if (data.declarations?.decls) editor.updateDeclarations(data.declarations.decls);
+  if (data.references) editor.updateReferences(data.references);
   if (data.sources) {
     const textSources: Record<string, string> = {};
     for (const [k, v] of Object.entries(data.sources)) {
@@ -595,6 +600,9 @@ export function switchToTab(file: string) {
   // Update declarations from cached data so Go to Declaration works
   if (lastResult?.declarations?.decls) {
     editor.updateDeclarations(lastResult.declarations.decls);
+  }
+  if (lastResult?.references) {
+    editor.updateReferences(lastResult.references);
   }
 
   // Re-highlight current debug step line if it belongs to this tab
@@ -989,9 +997,25 @@ export async function openDocsToEntry(name: string): Promise<void> {
 
 export function getSources(): Record<string, SourceEntry> { return lastResult?.sources ?? {}; }
 export function getActiveTabValue(): string { return activeTab; }
+export function isActiveTabReadOnly(): boolean { return isReadOnly(activeTab); }
 export function getActiveLabel(): string {
   const tab = tabs[activeTab];
   return tab ? tab.label || tabLabel(activeTab) : 'Untitled';
+}
+
+/**
+ * Create a new editable scratch tab from the assistant and load it with the
+ * given source. Used by the new_file MCP tool. Returns the tab key so the
+ * caller can confirm placement.
+ */
+export async function assistantCreateFile(name: string, source: string): Promise<string> {
+  // Strip any path separators defensively — scratch files are bare names.
+  const safeName = name.replace(/[\/\\]/g, '_');
+  const base = safeName.replace(/\.fct$/i, '');
+  const key = await CreateScratchFile(base + '-' + Date.now());
+  openTab(key, source, base, false);
+  patchSettings({ activeTab: key });
+  return key;
 }
 
 export function isPreviewLocked(): boolean { return previewLocked; }

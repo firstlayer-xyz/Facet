@@ -23,6 +23,7 @@ import {
   debugBar, debugPrevBtn, debugNextBtn, debugSlider, debugLabel, statsBar, compilingOverlay,
   viewpointBar, vpPresetBtn, vpPresetMenu, hiddenLinesBtn, panelResizer,
   previewLockBtn, previewFileBtn, previewFileMenu,
+  measureBtn, extentsBtn, clearDimsBtn,
 } from './toolbar';
 import { FileTree } from './filetree';
 import { FunctionPreview } from './function-preview';
@@ -36,7 +37,7 @@ import {
   openExample, openFile, openRecentFile, saveFile, saveFileAs, newFile, exportMesh, sendToSlicer,
   reeval, toggleDebug, toggleDocs, openDocsToEntry, openLibraryFile, openLibraryTab,
   switchToTab,
-  getSources, getActiveTabValue, getActiveLabel, addRestoredTab, renderTabs,
+  getSources, getActiveTabValue, isActiveTabReadOnly, assistantCreateFile, getActiveLabel, addRestoredTab, renderTabs,
   isPreviewLocked, setPreviewLocked, isDebugStepping,
   setOnTabChange, setOnSourceChange, setOnDebugFilesChange, setOnDebugExit, setOnEntryPoints,
   setEntryOverrides, refreshEditorUI, showError,
@@ -49,7 +50,11 @@ let viewer: Viewer;
 import { promptNewLibrary, showSlicerPicker } from './dialogs';
 import { initFullCode, toggleFullCode } from './fullcode';
 
-function buildViewerAppearance(palette: ReturnType<typeof resolveThemePalette>, appearance: typeof settings.appearance) {
+function buildViewerAppearance(
+  palette: ReturnType<typeof resolveThemePalette>,
+  appearance: typeof settings.appearance,
+  measurement: typeof settings.measurement,
+) {
   return {
     backgroundColor: palette.viewBg,
     meshColor: palette.viewMesh ?? palette.accent,
@@ -61,6 +66,13 @@ function buildViewerAppearance(palette: ReturnType<typeof resolveThemePalette>, 
     ambientIntensity: palette.viewAmbientIntensity,
     gridMajorColor: palette.viewGridMajor,
     gridMinorColor: palette.viewGridMinor,
+    measurementLineColor: palette.text,
+    measurementLabelColor: palette.textBright,
+    measurementFormat: {
+      units: measurement.units,
+      imperialFormat: measurement.imperialFormat,
+      imperialDenominator: measurement.imperialDenominator,
+    },
     bed: appearance.bed,
     gridSize: appearance.gridSize,
     gridSpacing: appearance.gridSpacing,
@@ -73,7 +85,7 @@ function applyCurrentTheme(): void {
   const uiId = resolveUiTheme(settings.appearance.uiTheme, settings.appearance.darkMode);
   const palette = resolveThemePalette(uiId, settings.appearance.themeOverrides, settings.appearance.customThemes);
   applyUIPalette(palette);
-  viewer.applySettings(buildViewerAppearance(palette, settings.appearance));
+  viewer.applySettings(buildViewerAppearance(palette, settings.appearance, settings.measurement));
 
   // Editor theme (follows UI theme)
   editorRef?.setTheme(resolveEditorTheme(
@@ -97,6 +109,7 @@ const assistantPanel = new AssistantPanel(
   viewportPanel,
   () => editorRef?.getContent() ?? '',
   () => errorDiv.textContent ?? '',
+  () => ({ path: getActiveTabValue(), readOnly: isActiveTabReadOnly() }),
   (newCode: string, searchFor?: string) => {
     if (editorRef) {
       if (searchFor !== undefined) {
@@ -116,6 +129,9 @@ const assistantPanel = new AssistantPanel(
     }
   },
   (newCode: string) => { editorRef?.setContentSilent(newCode); refreshEditorUI(); },
+  (name: string, code: string) => {
+    assistantCreateFile(name, code).catch(err => showError(err));
+  },
 );
 
 // Async init — loadSettings reads from Go backend
@@ -138,7 +154,14 @@ async function init() {
   const _initUiId = resolveUiTheme(settings.appearance.uiTheme, settings.appearance.darkMode);
   const _initPalette = resolveThemePalette(_initUiId, settings.appearance.themeOverrides, settings.appearance.customThemes);
   applyUIPalette(_initPalette);
-  viewer = new Viewer(canvasContainer, buildViewerAppearance(_initPalette, settings.appearance));
+  viewer = new Viewer(canvasContainer, buildViewerAppearance(_initPalette, settings.appearance, settings.measurement));
+
+  // Keep the Measure toolbar button in sync with viewer state (Esc / mesh reload
+  // can drop out of placing mode without a button click).
+  viewer.setOnMeasureModeChange((mode) => {
+    measureBtn.classList.toggle('active', mode === 'placing');
+    canvasContainer.style.cursor = mode === 'placing' ? 'crosshair' : '';
+  });
 
   // Initialize app module with all dependencies
   initApp({
@@ -670,6 +693,18 @@ hiddenLinesBtn.addEventListener('click', () => {
   const on = !hiddenLinesBtn.classList.contains('active');
   hiddenLinesBtn.classList.toggle('active', on);
   viewer.setHiddenLines(on);
+});
+
+// Measurement controls
+measureBtn.addEventListener('click', () => {
+  const on = !measureBtn.classList.contains('active');
+  viewer.setMeasureMode(on ? 'placing' : 'off');
+});
+extentsBtn.addEventListener('click', () => {
+  viewer.showExtents();
+});
+clearDimsBtn.addEventListener('click', () => {
+  viewer.clearMeasurements();
 });
 
 // Preset dropdown — toggle

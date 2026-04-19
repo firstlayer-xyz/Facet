@@ -52,16 +52,20 @@ export interface SourceEntry {
   importPath?: string;
 }
 
-/** Location of a declaration for "Go to Definition". */
-export interface DeclEntry {
+/** Location of a declaration for "Go to Definition" (mirrors checker.DeclLocation on the Go side). */
+export interface DeclLocation {
   line: number;
   col: number;
+  /** Empty = main/current file; set for library declarations. */
   file?: string;
+  /** Declaration kind: "fn", "type", "const", "var", "param", "field". */
   kind?: string;
+  /** Declared return type name (for functions) or parameter/field type. */
+  returnType?: string;
 }
 
 export interface Declarations {
-  decls: Record<string, DeclEntry>;
+  decls: Record<string, DeclLocation>;
 }
 
 /** Model statistics (mirrors evaluator.ModelStats on the Go side). */
@@ -81,6 +85,8 @@ export interface EvalResult {
   sources?: Record<string, SourceEntry>;
   varTypes?: Record<string, Record<string, string>>;
   declarations?: Declarations;
+  /** References map: "file:line:col" of a referring token → declaration location. */
+  references?: Record<string, DeclLocation>;
   entryPoints?: EntryPoint[];
   docIndex?: DocEntry[];
 

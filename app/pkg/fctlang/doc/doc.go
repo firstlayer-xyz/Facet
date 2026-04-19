@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"facet/app/stdlib"
@@ -54,7 +55,9 @@ func formatStructSignature(sd *parser.StructDecl) string {
 }
 
 // FormatSignature reconstructs a human-readable signature from a Function AST node.
-// Uses the fn keyword with trailing return type and groups consecutive same-type params.
+// Uses the fn keyword with trailing return type. Each parameter is emitted with
+// its name and type, plus any default literal, so signature-help tools that split
+// on commas produce one labeled parameter per position.
 func FormatSignature(fn *parser.Function) string {
 	var b strings.Builder
 	b.WriteString("fn ")
@@ -64,30 +67,20 @@ func FormatSignature(fn *parser.Function) string {
 	}
 	b.WriteString(fn.Name)
 	b.WriteByte('(')
-	// Group consecutive same-type params: "x, y Length, z Angle"
-	type paramGroup struct {
-		names []string
-		typ   string
-	}
-	var groups []paramGroup
-	for _, p := range fn.Params {
-		if len(groups) == 0 || groups[len(groups)-1].typ != p.Type {
-			groups = append(groups, paramGroup{typ: p.Type})
+	for i, p := range fn.Params {
+		if i > 0 {
+			b.WriteString(", ")
 		}
-		groups[len(groups)-1].names = append(groups[len(groups)-1].names, p.Name)
-	}
-	first := true
-	for _, g := range groups {
-		for _, name := range g.names {
-			if !first {
-				b.WriteString(", ")
-			}
-			first = false
-			b.WriteString(name)
-		}
-		if g.typ != "" {
+		b.WriteString(p.Name)
+		if p.Type != "" {
 			b.WriteByte(' ')
-			b.WriteString(g.typ)
+			b.WriteString(p.Type)
+		}
+		if p.Default != nil {
+			if lit, ok := formatDefaultExpr(p.Default); ok {
+				b.WriteString(" = ")
+				b.WriteString(lit)
+			}
 		}
 	}
 	b.WriteByte(')')
@@ -96,6 +89,41 @@ func FormatSignature(fn *parser.Function) string {
 		b.WriteString(fn.ReturnType)
 	}
 	return b.String()
+}
+
+// formatDefaultExpr renders a default-value expression for display in a
+// function signature. Handles the literal forms actually used as stdlib/library
+// defaults (numbers, units, strings, bools, empty struct literals). Returns
+// ok=false for expressions that don't have a short display form — the caller
+// omits the "= ..." clause rather than spilling a full expression into the
+// signature.
+func formatDefaultExpr(e parser.Expr) (string, bool) {
+	switch v := e.(type) {
+	case *parser.NumberLit:
+		return strconv.FormatFloat(v.Value, 'f', -1, 64), true
+	case *parser.UnitExpr:
+		inner, ok := formatDefaultExpr(v.Expr)
+		if !ok {
+			return "", false
+		}
+		if v.Unit == "" {
+			return inner, true
+		}
+		return inner + " " + v.Unit, true
+	case *parser.StringLit:
+		return strconv.Quote(v.Value), true
+	case *parser.BoolLit:
+		if v.Value {
+			return "true", true
+		}
+		return "false", true
+	case *parser.StructLitExpr:
+		if len(v.Fields) == 0 {
+			return v.TypeName + "{}", true
+		}
+		return "", false
+	}
+	return "", false
 }
 
 // extractDocEntries extracts doc entries (functions, methods, types, fields) from

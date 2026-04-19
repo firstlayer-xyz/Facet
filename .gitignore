@@ -24,3 +24,7 @@ artifacts/
 .DS_Store
 *.test
 facetlibs/
+
+# Agent scratch — superpowers plans and brainstorms, not source.
+docs/superpowers/
+/plans/

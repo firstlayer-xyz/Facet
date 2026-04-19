@@ -1591,6 +1591,58 @@ fn Main() {
 	}
 }
 
+// TestEvalPrimitiveBoundingBoxConvention pins the "bounding-box min corner at
+// origin" convention for all primitive constructors — a regression here means
+// a C++ binding was changed without updating the stdlib docs that advertise
+// this invariant.
+func TestEvalPrimitiveBoundingBoxConvention(t *testing.T) {
+	src := `
+fn Main() {
+    # Sphere: bbox spans (0,0,0)–(2r, 2r, 2r).
+    var sphereBox = Sphere(r: 5 mm).Bounds();
+    assert sphereBox.min.x == 0 mm, "sphere min.x should be 0";
+    assert sphereBox.min.y == 0 mm, "sphere min.y should be 0";
+    assert sphereBox.min.z == 0 mm, "sphere min.z should be 0";
+    assert sphereBox.max.x == 10 mm, "sphere max.x should be 10";
+    assert sphereBox.max.y == 10 mm, "sphere max.y should be 10";
+    assert sphereBox.max.z == 10 mm, "sphere max.z should be 10";
+
+    # Cylinder: XY spans (0,0)–(2r, 2r); Z spans 0..h.
+    var cylBox = Cylinder(r: 3 mm, h: 20 mm).Bounds();
+    assert cylBox.min.x == 0 mm, "cylinder min.x should be 0";
+    assert cylBox.min.y == 0 mm, "cylinder min.y should be 0";
+    assert cylBox.min.z == 0 mm, "cylinder min.z should be 0";
+    assert cylBox.max.x == 6 mm, "cylinder max.x should be 6";
+    assert cylBox.max.y == 6 mm, "cylinder max.y should be 6";
+    assert cylBox.max.z == 20 mm, "cylinder max.z should be 20";
+
+    # Square: 2D rectangle at (0,0)–(x, y).
+    var sqBox = Square(x: 10 mm, y: 20 mm).Bounds();
+    assert sqBox.min.x == 0 mm, "square min.x should be 0";
+    assert sqBox.min.y == 0 mm, "square min.y should be 0";
+    assert sqBox.max.x == 10 mm, "square max.x should be 10";
+    assert sqBox.max.y == 20 mm, "square max.y should be 20";
+
+    # Circle: 2D circle at (0,0)–(2r, 2r).
+    var circBox = Circle(r: 4 mm).Bounds();
+    assert circBox.min.x == 0 mm, "circle min.x should be 0";
+    assert circBox.min.y == 0 mm, "circle min.y should be 0";
+    assert circBox.max.x == 8 mm, "circle max.x should be 8";
+    assert circBox.max.y == 8 mm, "circle max.y should be 8";
+
+    return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil {
+		t.Fatal("expected non-nil mesh")
+	}
+}
+
 func TestEvalBoxMethods(t *testing.T) {
 	src := `
 fn Main() {

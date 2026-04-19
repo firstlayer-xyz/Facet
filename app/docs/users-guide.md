@@ -10,20 +10,20 @@ Common patterns you can copy directly into your program:
 |------|------|
 | Simple box | `Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})` |
 | Uniform cube | `Cube(s: 10 mm)` |
-| Sphere | `Sphere(radius: 8 mm)` |
-| Cylinder | `Cylinder(bottom: 5 mm, top: 5 mm, height: 20 mm)` |
-| Extrude a profile | `Circle(radius: 5 mm).Extrude(height: 20 mm)` |
-| Revolve a profile | `Circle(radius: 3 mm).Move(x: 10 mm, y: 0 mm).Revolve()` |
-| Sweep along a path | `Circle(radius: 2 mm).Sweep(path: path)` |
+| Sphere | `Sphere(r: 8 mm)` |
+| Cylinder | `Cylinder(r1: 5 mm, r2: 5 mm, h: 20 mm)` |
+| Extrude a profile | `Circle(r: 5 mm).Extrude(z: 20 mm)` |
+| Revolve a profile | `Circle(r: 3 mm).Move(x: 10 mm, y: 0 mm).Revolve()` |
+| Sweep along a path | `Circle(r: 2 mm).Sweep(path: path)` |
 | Loft between profiles | `Loft(profiles: [...], heights: [0 mm, 30 mm])` |
-| Drill a hole | `box - Cylinder(radius: 3 mm, height: 30 mm)` |
+| Drill a hole | `box - Cylinder(r: 3 mm, h: 30 mm)` |
 | Move a shape | `.Move(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})` |
 | Rotate a shape | `.Rotate(x: 0 deg, y: 0 deg, z: 45 deg, around: Vec3{})` |
-| Mirror across YZ plane | `.Mirror(nx: 1, ny: 0, nz: 0, offset: 0 mm)` |
+| Mirror across YZ plane | `.Mirror(x: 1, y: 0, z: 0, offset: 0 mm)` |
 | Repeat in a line | `.LinearPattern(count: 4, spacing: Vec3{x: 10 mm})` |
 | Repeat in a ring | `.CircularPattern(count: 6)` |
-| Fillet a profile | `sketch.Fillet(radius: 2 mm).Extrude(height: 5 mm)` |
-| Arc of points | `Arc(center: Vec2{x: 0 mm, y: 0 mm}, radius: 10 mm, startAngle: 0 deg, endAngle: 90 deg, segments: 16)` |
+| Fillet a profile | `sketch.Fillet(r: 2 mm).Extrude(z: 5 mm)` |
+| Arc of points | `Arc(center: Vec2{x: 0 mm, y: 0 mm}, r: 10 mm, startAngle: 0 deg, endAngle: 90 deg, segments: 16)` |
 | Interactive slider | `r Length = 5 mm where [1:20] mm` (on fn params) |
 | Dropdown selector | `s String = "m3" where ["m3", "m4", "m5"]` (on fn params) |
 | Load a library | `var T = lib "facet/threads"` |
@@ -59,16 +59,16 @@ Cube(x: 30 mm, y: 10 mm, z: 20 mm)    # shorthand
 Cube(s: 10 mm)                       # uniform cube
 
 # Sphere by radius
-Sphere(radius: 15 mm)
+Sphere(r: 15 mm)
 
 # Cylinder: bottom radius, top radius, height
-Cylinder(bottom: 10 mm, top: 10 mm, height: 20 mm)   # straight cylinder
-Cylinder(bottom: 10 mm, top: 5 mm, height: 20 mm)    # cone (different radii)
-Cylinder(bottom: 10 mm, top: 0 mm, height: 20 mm)    # pointed cone
-Cylinder(radius: 10 mm, height: 20 mm)                # shorthand (equal radii)
+Cylinder(r1: 10 mm, r2: 10 mm, h: 20 mm)   # straight cylinder
+Cylinder(r1: 10 mm, r2: 5 mm, h: 20 mm)    # cone (different radii)
+Cylinder(r1: 10 mm, r2: 0 mm, h: 20 mm)    # pointed cone
+Cylinder(r: 10 mm, h: 20 mm)                # shorthand (equal radii)
 ```
 
-`Cube` spans from the origin to (x, y, z) — it is NOT centered. `Sphere` and `Circle` are centered at the origin. `Cylinder` has its base at Z=0.
+All primitive constructors place the shape's bounding-box min corner at the origin — the shape sits in the positive octant (3D) or quadrant (2D). `Cube(x,y,z)` spans from (0,0,0) to (x,y,z). `Sphere(r)` spans from (0,0,0) to (2r, 2r, 2r) with its center at (r, r, r). `Cylinder(r, h)` spans XY from (0,0) to (2r, 2r) with its axis at (r, r) and Z from 0 to h. `Circle(r)` and `Square(x, y)` follow the same rule in 2D. Use `.Move()` or `.AlignCenter()` to reposition.
 
 ### 2D Primitives (Sketches)
 
@@ -77,7 +77,7 @@ Cylinder(radius: 10 mm, height: 20 mm)                # shorthand (equal radii)
 ```
 Square(x: 20 mm, y: 10 mm)        # rectangle
 Square(s: 15 mm)                # uniform square
-Circle(radius: 15 mm)             # circle by radius
+Circle(r: 15 mm)             # circle by radius
 Polygon(points: [                  # polygon from points
     Vec2{x: 0 mm, y: 0 mm},
     Vec2{x: 20 mm, y: 0 mm},
@@ -89,7 +89,7 @@ You can also generate arc-shaped point sequences with `Arc`:
 
 ```
 # 90-degree arc with 16 segments
-var pts = Arc(center: Vec2{x: 0 mm, y: 0 mm}, radius: 10 mm, startAngle: 0 deg, endAngle: 90 deg, segments: 16)
+var pts = Arc(center: Vec2{x: 0 mm, y: 0 mm}, r: 10 mm, startAngle: 0 deg, endAngle: 90 deg, segments: 16)
 ```
 
 See the Drawing Guide for more on 2D shapes and sketch operations.
@@ -172,7 +172,7 @@ Cube(s: 10 mm).Move(v: v * 2)    # double the displacement
 All axes default to 0, so you can move along a single axis:
 
 ```
-Sphere(radius: 5 mm).Move(z: 10 mm)    # lift 10mm off the ground
+Sphere(r: 5 mm).Move(z: 10 mm)    # lift 10mm off the ground
 ```
 
 ### Rotate
@@ -198,7 +198,7 @@ Cube(s: 10 mm).Scale(x: 2, y: 1, z: 0.5, around: Vec3{})   # stretch X, squash Z
 Mirror across a plane defined by its normal vector, with an offset:
 
 ```
-Cube(s: 10 mm).Mirror(nx: 1, ny: 0, nz: 0, offset: 0 mm)   # mirror across YZ plane
+Cube(s: 10 mm).Mirror(x: 1, y: 0, z: 0, offset: 0 mm)   # mirror across YZ plane
 ```
 
 ### Chaining Transformations
@@ -229,7 +229,7 @@ For arrays of shapes, use `Union(arr)`, `Difference(arr)`, or `Intersection(arr)
 ```
 fn Main() {
     var cube = Cube(s: 20 mm)
-    var sphere = Sphere(radius: 13 mm)
+    var sphere = Sphere(r: 13 mm)
 
     # Union: merge both shapes
     var merged = cube + sphere
@@ -251,8 +251,8 @@ Use `+=`, `-=`, `&=`, `|=`, and `^=` to modify a variable in place:
 ```
 fn Main() {
     var shape = Cube(s: 20 mm)
-    shape -= Sphere(radius: 13 mm)                        # carve out sphere
-    shape += Cylinder(radius: 3 mm, height: 30 mm)        # add cylinder
+    shape -= Sphere(r: 13 mm)                        # carve out sphere
+    shape += Cylinder(r: 3 mm, h: 30 mm)        # add cylinder
     return shape
 }
 ```
@@ -265,7 +265,7 @@ Push a 2D Sketch upward along Z to create a Solid:
 
 ```
 fn Main() {
-    return Circle(radius: 10 mm).Extrude(height: 20 mm)
+    return Circle(r: 10 mm).Extrude(z: 20 mm)
 }
 ```
 
@@ -276,7 +276,7 @@ The advanced form: `Extrude(height, slices, twist, scaleX, scaleY)`:
 ```
 fn Main() {
     # Twist a square 90 degrees over 30mm, tapering to half size
-    return Square(x: 20 mm, y: 20 mm).Extrude(height: 30 mm, slices: 64, twist: 90 deg, scaleX: 0.5, scaleY: 0.5)
+    return Square(x: 20 mm, y: 20 mm).Extrude(z: 30 mm, slices: 64, twist: 90 deg, taperX: 0.5, taperY: 0.5)
 }
 ```
 
@@ -294,7 +294,7 @@ fn Main() {
     var a = Square(x: 5 mm, y: 20 mm).Move(x: 10 mm, y: 0 mm).Revolve()
 
     # Partial revolution (270 degrees)
-    return Circle(radius: 5 mm).Move(x: 15 mm, y: 0 mm).Revolve(angle: 270 deg)
+    return Circle(r: 5 mm).Move(x: 15 mm, y: 0 mm).Revolve(a: 270 deg)
 }
 ```
 
@@ -309,7 +309,7 @@ fn Main() {
         Vec3{x: 10 mm, y: 0 mm, z: 5 mm},
         Vec3{x: 20 mm, y: 0 mm, z: 0 mm},
     ]
-    return Circle(radius: 2 mm).Sweep(path: path)
+    return Circle(r: 2 mm).Sweep(path: path)
 }
 ```
 
@@ -317,8 +317,8 @@ The path is an array of `Vec3` with at least 2 points. Use `Arc3d` to generate c
 
 ```
 fn Main() {
-    var path = Arc3d(center: Vec3{x: 0 mm, y: 0 mm, z: 0 mm}, radius: 20 mm, startAngle: 0 deg, endAngle: 180 deg, segments: 32)
-    return Circle(radius: 3 mm).Sweep(path: path)
+    var path = Arc3d(center: Vec3{x: 0 mm, y: 0 mm, z: 0 mm}, r: 20 mm, startAngle: 0 deg, endAngle: 180 deg, segments: 32)
+    return Circle(r: 3 mm).Sweep(path: path)
 }
 ```
 
@@ -329,7 +329,7 @@ Blend between two or more cross-sections at different heights:
 ```
 fn Main() {
     return Loft(
-        profiles: [Square(x: 20 mm, y: 20 mm), Circle(radius: 10 mm)],
+        profiles: [Square(x: 20 mm, y: 20 mm), Circle(r: 10 mm)],
         heights: [0 mm, 50 mm]
     )
 }
@@ -342,7 +342,7 @@ A three-section loft:
 ```
 fn Main() {
     return Loft(
-        profiles: [Circle(radius: 15 mm), Square(x: 10 mm, y: 10 mm), Circle(radius: 5 mm)],
+        profiles: [Circle(r: 15 mm), Square(x: 10 mm, y: 10 mm), Circle(r: 5 mm)],
         heights: [0 mm, 30 mm, 60 mm]
     )
 }
@@ -442,7 +442,7 @@ Iterate and collect results into a new array:
 # Create a row of spheres
 fn Main() {
     var spheres = for i [0:<5] {
-        yield Sphere(radius: 5 mm).Move(v: Vec3{x: i * 15 mm, y: 0 mm, z: 0 mm})
+        yield Sphere(r: 5 mm).Move(v: Vec3{x: i * 15 mm, y: 0 mm, z: 0 mm})
     }
     return fold a, b spheres { yield a + b }
 }
@@ -476,7 +476,7 @@ Nest multiple iterators to create grids:
 ```
 fn Main() {
     var grid = for i [0:<3], j [0:<3] {
-        yield Sphere(radius: 3 mm).Move(v: Vec3{x: i * 10 mm, y: j * 10 mm, z: 0 mm})
+        yield Sphere(r: 3 mm).Move(v: Vec3{x: i * 10 mm, y: j * 10 mm, z: 0 mm})
     }
     return fold a, b grid { yield a + b }
 }
@@ -501,7 +501,7 @@ var combined = fold a, b parts { yield a + b };
 ```
 fn RoundedBox(w, h, d, r Length) Solid {
     var box = Cube(s: Vec3{x: w, y: h, z: d})
-    var sphere = Sphere(radius: r)
+    var sphere = Sphere(r: r)
     return box & sphere
 }
 
@@ -514,7 +514,7 @@ Return types are optional — Facet can infer them:
 
 ```
 fn RoundedBox(w, h, d, r Length) {
-    return Cube(s: Vec3{x: w, y: h, z: d}) & Sphere(radius: r)
+    return Cube(s: Vec3{x: w, y: h, z: d}) & Sphere(r: r)
 }
 ```
 
@@ -524,7 +524,7 @@ Parameters with default values can be omitted at the call site. The type comes a
 
 ```
 fn Peg(r Length = 3 mm, h Length = 10 mm) Solid {
-    return Cylinder(radius: r, height: h)
+    return Cylinder(r: r, h: h)
 }
 
 fn Main() {
@@ -555,7 +555,7 @@ Lambdas capture variables from the enclosing scope:
 fn Main() {
     var dx = 25 mm
     var shift = fn(s Solid) Solid { return s.Move(v: Vec3{x: dx, y: 0 mm, z: 0 mm}) }
-    return shift(Sphere(radius: 10 mm))
+    return shift(Sphere(r: 10 mm))
 }
 ```
 
@@ -565,7 +565,7 @@ Pass functions as arguments using `fn(Type) ReturnType` as the parameter type:
 fn Apply(s Solid, f fn(Solid) Solid) Solid { return f(s) }
 
 fn Main() {
-    return Apply(s: Sphere(radius: 10 mm), f: fn(s Solid) Solid { return s.Move(x: 15 mm) })
+    return Apply(s: Sphere(r: 10 mm), f: fn(s Solid) Solid { return s.Move(x: 15 mm) })
 }
 ```
 
@@ -576,7 +576,7 @@ fn Main() {
 ```
 fn Main() {
     # Twist a cylinder by displacing vertices based on Z height
-    return Cylinder(radius: 5 mm, height: 30 mm)
+    return Cylinder(r: 5 mm, h: 30 mm)
         .Refine(n: 3)
         .Warp(f: fn(v Vec3) Vec3 {
             var angle = Number(a: v.z) * 3 deg
@@ -779,7 +779,7 @@ Repeat shapes along a line or around an axis:
 
 ```
 fn Main() {
-    var peg = Cylinder(radius: 3 mm, height: 10 mm)
+    var peg = Cylinder(r: 3 mm, h: 10 mm)
 
     # 5 copies spaced 15mm apart along X
     var row = peg.LinearPattern(count: 5, spacing: Vec3{x: 15 mm})
@@ -805,8 +805,8 @@ Place a solid on top of another, centered in X/Y. The bottom face of `self` land
 ```
 fn Main() {
     var base   = Cube(s: Vec3{x: 40 mm, y: 40 mm, z: 10 mm})
-    var column = Cylinder(radius: 8 mm, height: 30 mm).StackOn(with: base)
-    var cap    = Sphere(radius: 10 mm).StackOn(with: column)
+    var column = Cylinder(r: 8 mm, h: 30 mm).StackOn(with: base)
+    var cap    = Sphere(r: 10 mm).StackOn(with: column)
     return base + column + cap
 }
 ```
@@ -824,8 +824,8 @@ Center one solid relative to another on any combination of axes. By default all 
 ```
 fn Main() {
     var base  = Cube(x: 60 mm, y: 40 mm, z: 8 mm)
-    var boss  = Cylinder(radius: 5 mm, height: 12 mm).AlignCenter(with: base, z: false).StackOn(with: base)
-    var hole  = Cylinder(radius: 3 mm, height: 25 mm).AlignCenter(with: base, z: false)
+    var boss  = Cylinder(r: 5 mm, h: 12 mm).AlignCenter(with: base, z: false).StackOn(with: base)
+    var hole  = Cylinder(r: 3 mm, h: 25 mm).AlignCenter(with: base, z: false)
     return base + boss - hole
 }
 ```
@@ -834,7 +834,7 @@ fn Main() {
 
 ```
 # Place the boss 10 mm to the right of center
-var boss = Cylinder(radius: 5 mm, height: 12 mm)
+var boss = Cylinder(r: 5 mm, h: 12 mm)
     .AlignCenter(with: base, z: false, nudgeX: 10 mm)
     .StackOn(with: base)
 ```
@@ -842,7 +842,7 @@ var boss = Cylinder(radius: 5 mm, height: 12 mm)
 You can also align to an absolute position instead of another solid:
 
 ```
-var centered = Cylinder(radius: 5 mm, height: 10 mm).AlignCenter(pos: Vec3{}, z: false)   # center on the Z axis, leave Z alone
+var centered = Cylinder(r: 5 mm, h: 10 mm).AlignCenter(pos: Vec3{}, z: false)   # center on the Z axis, leave Z alone
 ```
 
 ### AlignLeft / Right / Front / Back / Bottom / Top
@@ -893,7 +893,7 @@ Create 2D text outlines, then extrude:
 
 ```
 fn Main() {
-    return Text(text: "Hello", s: 10 mm).Extrude(height: 2 mm)
+    return Text(text: "Hello", s: 10 mm).Extrude(z: 2 mm)
 }
 ```
 
@@ -901,7 +901,7 @@ Use a custom font:
 
 ```
 fn Main() {
-    return Text(text: "Custom", s: 10 mm, font: "/path/to/font.ttf").Extrude(height: 2 mm)
+    return Text(text: "Custom", s: 10 mm, font: "/path/to/font.ttf").Extrude(z: 2 mm)
 }
 ```
 
@@ -962,7 +962,7 @@ fn Bracket(width Length = 20 mm where [10:50] mm) {
 }
 
 fn Mount(height Length = 15 mm where [5:30] mm) {
-    return Cylinder(radius: 5 mm, height: height)
+    return Cylinder(r: 5 mm, h: height)
 }
 ```
 
@@ -985,7 +985,7 @@ Entry points can return an array of Solids — they'll be arranged in a grid:
 
 ```
 fn Main() {
-    return [Cube(s: 10 mm), Sphere(radius: 8 mm), Cylinder(radius: 5 mm, height: 10 mm)]
+    return [Cube(s: 10 mm), Sphere(r: 8 mm), Cylinder(r: 5 mm, h: 10 mm)]
 }
 ```
 
@@ -993,7 +993,7 @@ fn Main() {
 
 ```
 var parts = for i [0:<5] {
-    yield Sphere(radius: 3 mm).Move(v: Vec3{x: i * 8 mm, y: 0 mm, z: 0 mm})
+    yield Sphere(r: 3 mm).Move(v: Vec3{x: i * 8 mm, y: 0 mm, z: 0 mm})
 }
 var combined = Union(arr: parts)
 ```
@@ -1017,9 +1017,9 @@ Wrap a set of shapes in their convex hull:
 
 ```
 var shapes = [
-    Sphere(radius: 5 mm),
-    Sphere(radius: 5 mm).Move(v: Vec3{x: 20 mm, y: 0 mm, z: 0 mm}),
-    Sphere(radius: 5 mm).Move(v: Vec3{x: 10 mm, y: 15 mm, z: 0 mm}),
+    Sphere(r: 5 mm),
+    Sphere(r: 5 mm).Move(v: Vec3{x: 20 mm, y: 0 mm, z: 0 mm}),
+    Sphere(r: 5 mm).Move(v: Vec3{x: 10 mm, y: 15 mm, z: 0 mm}),
 ]
 var hull = Hull(arr: shapes)
 ```
@@ -1037,9 +1037,9 @@ Names starting with `_` are reserved for internal use. The identifier `self` is 
 
 ## Common Pitfalls
 
-### `Cube` spans from the origin
+### Primitives are anchored by their bounding-box min corner, not their center
 
-`Cube` spans from `(0, 0, 0)` to `(x, y, z)` — it is **not** centered. `Sphere` is centered at the origin. `Cylinder` has its base at Z=0 and top at Z=height.
+Every primitive (`Cube`, `Sphere`, `Cylinder`, `Square`, `Circle`) has its bounding-box min corner at the origin — the shape lives in the positive octant/quadrant. So `Sphere(r: 10 mm)` spans (0,0,0)–(20,20,20) with its center at (10,10,10), not (0,0,0)–(10,10,10) centered on the origin. Use `.Move()` or `.AlignCenter()` if you want a different anchor.
 
 ### Angles accumulate — they don't wrap
 
@@ -1057,7 +1057,7 @@ var b = 24 * 360 deg;       # 8640 deg — intentional for thread twist
 ```
 solid.Rotate(x: 0 deg, y: 0 deg, z: 45 deg, around: Vec3{})
 solid.Scale(x: 2, y: 1, z: 1, around: Vec3{})
-solid.Mirror(nx: 1, ny: 0, nz: 0, offset: 0 mm)
+solid.Mirror(x: 1, y: 0, z: 0, offset: 0 mm)
 ```
 
 ### `Extrude` always goes in +Z
@@ -1070,7 +1070,7 @@ Sketch profiles for `Revolve` must sit to the **right of the Y axis** (`x > 0`):
 
 ```
 # Correct torus — sketch offset from Y axis:
-Circle(radius: 3 mm).Move(x: 10 mm, y: 0 mm).Revolve()
+Circle(r: 3 mm).Move(x: 10 mm, y: 0 mm).Revolve()
 ```
 
 ### `1 / 2 mm` is a type error — use `1/2 mm`
@@ -1097,6 +1097,12 @@ if true { var y = 5 mm }   # y does not exist outside the if block
 You cannot union a `Solid` with a `Sketch` — extrude the sketch first:
 
 ```
-solid + sketch.Extrude(height: 10 mm)   # correct
+solid + sketch.Extrude(z: 10 mm)   # correct
 solid + sketch                           # runtime error: type mismatch
 ```
+
+## Related Guides
+
+- **Drawing Guide** — building 2D profiles with sketches, arcs, text, and patterns.
+- **Color Guide** — painting faces and exporting colored 3MF files.
+- **Dimensioning Guide** — interactive on-model measurements in the 3D viewer.

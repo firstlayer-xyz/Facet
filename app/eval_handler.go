@@ -65,12 +65,13 @@ type debugMeshMeta struct {
 
 // evalResponseHeader is the JSON header of a binary eval response.
 type evalResponseHeader struct {
-	Errors       []parser.SourceError          `json:"errors,omitempty"`
-	Sources      map[string]SourceEntry  `json:"sources,omitempty"`
-	VarTypes     checker.VarTypeMap             `json:"varTypes,omitempty"`
-	Declarations *checker.DeclResult            `json:"declarations,omitempty"`
-	EntryPoints  []EntryPoint            `json:"entryPoints,omitempty"`
-	DocIndex     []doc.DocEntry                 `json:"docIndex,omitempty"`
+	Errors       []parser.SourceError   `json:"errors,omitempty"`
+	Sources      map[string]SourceEntry `json:"sources,omitempty"`
+	VarTypes     checker.VarTypeMap     `json:"varTypes,omitempty"`
+	Declarations *checker.DeclResult    `json:"declarations,omitempty"`
+	References   checker.References     `json:"references,omitempty"`
+	EntryPoints  []EntryPoint           `json:"entryPoints,omitempty"`
+	DocIndex     []doc.DocEntry         `json:"docIndex,omitempty"`
 
 	// Eval data
 	Mesh   *meshMeta            `json:"mesh,omitempty"`
@@ -100,8 +101,23 @@ func loaderOpts() (string, *loader.Options) {
 }
 
 // handleEval processes a stateless eval request: Load → Check → Eval → binary response.
-func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
+// recordRun may be nil; when set, it is invoked with a runSummary after every
+// response is written so the get_last_run MCP tool can read the latest stats.
+func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, recordRun func(runSummary)) {
 	start := time.Now()
+
+	// respond finalises header.Time, writes the binary response, and — if a
+	// recorder is wired — records a runSummary for get_last_run. Using this
+	// helper instead of calling writeBinaryResponse directly guarantees every
+	// exit path updates the lastRun slot. Pass solids on the main-path success
+	// to populate per-object bboxes and piece counts; nil on error paths.
+	respond := func(header *evalResponseHeader, binary []byte, solids []*manifold.Solid) {
+		header.Time = time.Since(start).Seconds()
+		writeBinaryResponse(w, *header, binary)
+		if recordRun != nil {
+			recordRun(buildRunSummary(header, req.Entry, req.Key, req.Sources, solids))
+		}
+	}
 
 	// Load from scratch
 	libDir, opts := loaderOpts()
@@ -110,7 +126,8 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 		if ctx.Err() != nil {
 			return
 		}
-		writeEvalError(w, err)
+		header := evalResponseHeader{Errors: []parser.SourceError{sourceErrorFromErr(err)}}
+		respond(&header, nil, nil)
 		return
 	}
 
@@ -138,14 +155,14 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 		Sources:      sources,
 		VarTypes:     checked.VarTypes,
 		Declarations: checked.Declarations,
+		References:   checked.References,
 		EntryPoints:  entryPoints,
 		DocIndex:     docIndex,
 	}
 
 	// If errors or no entry, return check-only response
 	if len(checked.Errors) > 0 || req.Entry == "" {
-		header.Time = time.Since(start).Seconds()
-		writeBinaryResponse(w, header, nil)
+		respond(&header, nil, nil)
 		return
 	}
 
@@ -154,8 +171,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 	// instead of running the evaluator just to reject the result.
 	if entryErr := checked.ValidateEntryPoint(req.Key, req.Entry); entryErr != nil {
 		header.Errors = append(header.Errors, *entryErr)
-		header.Time = time.Since(start).Seconds()
-		writeBinaryResponse(w, header, nil)
+		respond(&header, nil, nil)
 		return
 	}
 
@@ -167,7 +183,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 				return
 			}
 			header.Errors = append(header.Errors, sourceErrorFromErr(err))
-			writeBinaryResponse(w, header, nil)
+			respond(&header, nil, nil)
 			return
 		}
 		var binaryData []byte
@@ -201,8 +217,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 			header.DebugSteps = append(header.DebugSteps, sm)
 		}
 
-		header.Time = time.Since(start).Seconds()
-		writeBinaryResponse(w, header, binaryData)
+		respond(&header, binaryData, nil)
 		return
 	}
 
@@ -212,7 +227,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 			return
 		}
 		header.Errors = append(header.Errors, sourceErrorFromErr(err))
-		writeBinaryResponse(w, header, nil)
+		respond(&header, nil, nil)
 		return
 	}
 
@@ -228,9 +243,43 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest) {
 	meta, binaryData := appendMeshBinary(binaryData, merged)
 	header.Mesh = meta
 	header.Stats = &stats
-	header.Time = time.Since(start).Seconds()
 	header.PosMap = evalResult.PosMap
-	writeBinaryResponse(w, header, binaryData)
+	respond(&header, binaryData, evalResult.Solids)
+}
+
+// buildRunSummary extracts a runSummary from an eval response header, the
+// raw request sources (user-authored tab contents), and — optionally — the
+// list of top-level solids. Used by handleEval's respond helper to feed
+// get_last_run. solids is nil on check-only and error paths.
+func buildRunSummary(header *evalResponseHeader, entry, key string, sources map[string]string, solids []*manifold.Solid) runSummary {
+	s := runSummary{
+		Errors:  header.Errors,
+		TimeSec: header.Time,
+		Entry:   entry,
+		Key:     key,
+		Sources: sources,
+		Ok:      len(header.Errors) == 0 && header.Stats != nil,
+	}
+	if header.Stats != nil {
+		s.Triangles = header.Stats.Triangles
+		s.Vertices = header.Stats.Vertices
+		s.Volume = header.Stats.Volume
+		s.SurfaceArea = header.Stats.SurfaceArea
+		s.BBoxMin = header.Stats.BBoxMin
+		s.BBoxMax = header.Stats.BBoxMax
+	}
+	for _, sol := range solids {
+		if sol == nil {
+			continue
+		}
+		minX, minY, minZ, maxX, maxY, maxZ := sol.BoundingBox()
+		s.Objects = append(s.Objects, objectSummary{
+			BBoxMin: [3]float64{minX, minY, minZ},
+			BBoxMax: [3]float64{maxX, maxY, maxZ},
+			Pieces:  sol.NumComponents(),
+		})
+	}
+	return s
 }
 
 // appendMeshBinary appends a DisplayMesh's raw data to buf and returns the metadata.
@@ -297,14 +346,6 @@ func writeBinaryResponse(w http.ResponseWriter, header evalResponseHeader, binar
 	if len(binaryData) > 0 {
 		w.Write(binaryData)
 	}
-}
-
-// writeEvalError writes a binary response with a single error message.
-func writeEvalError(w http.ResponseWriter, err error) {
-	header := evalResponseHeader{
-		Errors: []parser.SourceError{sourceErrorFromErr(err)},
-	}
-	writeBinaryResponse(w, header, nil)
 }
 
 // buildSourcesMap creates the sources map for the frontend from a loaded Program.

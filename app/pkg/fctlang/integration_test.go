@@ -223,6 +223,49 @@ fn Main() {
 	}
 }
 
+// TestReferencesRoundTrip_BoltAndNut loads the real example file and confirms
+// that the multi-line method chain (`var knurl = F\n    .Knurl(...)`) — the
+// original motivator for the AST-driven references work — resolves correctly
+// through the full loader → checker pipeline.  Line 14 hosts `.Knurl(...)`;
+// its reference target must point at a library file (non-empty `File`).
+func TestReferencesRoundTrip_BoltAndNut(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "examples", "Bolt And Nut.fct"))
+	if err != nil {
+		t.Fatalf("read example: %v", err)
+	}
+
+	prog := parseTestProg(t, string(src))
+
+	localFacetlibs, _ := filepath.Abs(filepath.Join("..", "..", "..", "facetlibs"))
+	resolveTestProg(t, prog, t.TempDir(), &loader.Options{
+		InstalledLibs: map[string]string{
+			"github.com/firstlayer-xyz/facetlibs": localFacetlibs,
+		},
+	})
+
+	res := fctchecker.Check(prog)
+	for _, ce := range res.Errors {
+		t.Errorf("[check] %d:%d: %s", ce.Line, ce.Col, ce.Message)
+	}
+
+	// Line 14 is "        .Knurl(count: knurl_count, ...)": 8 spaces, then `.`,
+	// so the K of Knurl sits at col 10.  Pin the method-token position
+	// directly — a looser `strings.Contains(k, ":14:")` check would also be
+	// satisfied by the named-arg refs (count/depth/angle) that also live on
+	// line 14 and also point at library params, which would silently hide a
+	// regression of the method-call ref itself (the original motivating bug).
+	got, ok := res.References[":14:10"]
+	if !ok {
+		t.Fatalf("no reference recorded for .Knurl at :14:10; refs=%v", res.References)
+	}
+	if got.Kind != "fn" {
+		t.Errorf("Knurl ref Kind = %q, want fn", got.Kind)
+	}
+	if got.File == "" {
+		t.Error("Knurl ref File is empty; expected library source path")
+	}
+}
+
 func TestInferredArrayTypes(t *testing.T) {
 	tests := []struct {
 		name string

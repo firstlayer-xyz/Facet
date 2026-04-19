@@ -22,6 +22,7 @@ import { registerFacetLanguage } from './facet-language';
 import { registerThemes } from './themes';
 import { ListLibraries, ListLocalLibraries } from '../wailsjs/go/main/App';
 import type { DocEntry } from './docs';
+import type { DeclLocation } from './eval-client';
 
 // Monaco worker setup — only the base editor worker is needed
 self.MonacoEnvironment = {
@@ -186,7 +187,8 @@ export interface EditorHandle {
   updateDocIndex(entries: DocEntry[]): void;
   updateVarTypes(types: Record<string, Record<string, string>>): void;
   setCurrentSource(sourceKey: string): void;
-  updateDeclarations(decls: Record<string, { line: number; col: number; file?: string; kind?: string }>): void;
+  updateDeclarations(decls: Record<string, DeclLocation>): void;
+  updateReferences(refs: Record<string, DeclLocation>): void;
   updateFileSources(sources: Record<string, string>): void;
   getCursorPosition(): { lineNumber: number; column: number };
   onCursorChange(cb: (line: number, col: number) => void): void;
@@ -218,7 +220,11 @@ export function createEditor(
   let allVarTypes: Record<string, Record<string, string>> = {};
   let mainKey = initialFileKey || '';
   let currentSourceKey = mainKey;
-  let declarations: Record<string, { line: number; col: number; file?: string; kind?: string; returnType?: string }> = {};
+  let declarations: Record<string, DeclLocation> = {};
+  // references maps "file:line:col" of a referring token to the declaration it
+  // resolves to. Built by the checker on the backend, refreshed on every eval.
+  // Used by findDecl (goto-definition) and the hover provider.
+  let references: Record<string, DeclLocation> = {};
   let fileSources: Record<string, string> = {};
   let suppressChange = false;
 
@@ -292,6 +298,25 @@ export function createEditor(
     });
   }
 
+  // effectiveTextBefore returns the text before a given 1-based column on
+  // `line`. If the text before the column is whitespace-only (e.g. the line
+  // starts with a `.` chain continuation), walk backwards to the previous
+  // non-empty line and return its trimmed-right content instead — so callers
+  // can resolve the receiver expression that lives on an earlier line.
+  function effectiveTextBefore(
+    model: monaco.editor.ITextModel,
+    lineNumber: number,
+    column: number,
+  ): string {
+    const raw = model.getLineContent(lineNumber).slice(0, column - 1);
+    if (raw.trim().length > 0) return raw;
+    for (let ln = lineNumber - 1; ln >= 1; ln--) {
+      const prev = model.getLineContent(ln).trimEnd();
+      if (prev.length > 0) return prev;
+    }
+    return raw;
+  }
+
   // resolveChainType returns the type of the expression represented by the
   // given text fragment. Handles arbitrary chain depth by recursing.
   // e.g. "Cube(1,1,1).Move(1,0,0)" → "Solid"
@@ -353,6 +378,19 @@ export function createEditor(
       return null;
     }
 
+    // Field access chain: receiverExpr.field — look up <receiverType>.<field>
+    // and return the field's declared type. Recurse on the receiver expression.
+    const fieldMatch = text.match(/^(.*)\.\s*([A-Za-z_]\w*)$/);
+    if (fieldMatch) {
+      const receiverType = resolveChainType(fieldMatch[1]);
+      if (receiverType) {
+        const decl = declarations[receiverType + '.' + fieldMatch[2]];
+        if (decl?.returnType) return decl.returnType;
+      }
+      // Could also be a qualified reference like "F.SomeConst" — no type info.
+      return null;
+    }
+
     // Identifier: look up variable type
     const identMatch = text.match(/([A-Za-z_]\w*)$/);
     if (identMatch) {
@@ -362,50 +400,27 @@ export function createEditor(
     return null;
   }
 
-  // Resolve a declaration key, preferring the function decl at call sites
-  // and the struct decl otherwise.
-  function resolveDeclaration(key: string, isCallSite: boolean): { line: number; col: number; file?: string } | null {
-    const decl = declarations[key];
-    const structDecl = declarations['struct:' + key];
-    if (decl && structDecl) return isCallSite ? decl : structDecl;
-    return decl || structDecl || null;
-  }
-
-  // Go to Declaration — deterministic context-based dispatch
-  function findDecl(editor: monaco.editor.ICodeEditor): { line: number; col: number; file?: string } | null {
+  // findDecl resolves the declaration at the cursor via the references map
+  // built by the checker. The map is keyed by "file:line:col" of the
+  // referring token; currentSourceKey is normalized to "" for the main file
+  // to match the backend's DeclLocation.File convention.
+  //
+  // The checker pre-resolves every identifier, call, method, field access,
+  // struct-lit name, and named arg at type-check time — so there is no
+  // client-side chain walking, receiver-type inference, or local-scope scan.
+  // Multi-line method chains (e.g. `var x = F\n    .Knurl(...)`) just work
+  // because the map keys on the actual token position from the AST.
+  function findDecl(editor: monaco.editor.ICodeEditor): DeclLocation | null {
     const pos = editor.getPosition();
     if (!pos) return null;
     const mdl = editor.getModel();
     if (!mdl) return null;
     const word = mdl.getWordAtPosition(pos);
     if (!word) return null;
-    const name = word.word;
-    const lineContent = mdl.getLineContent(pos.lineNumber);
-    const charAfter = lineContent[word.endColumn - 1] || '';
-    const isCallSite = charAfter === '(';
-    const charBefore = word.startColumn > 1 ? lineContent[word.startColumn - 2] : '';
 
-    if (charBefore === '.') {
-      // Dotted context — resolve the receiver type, then look up Type.Name
-      const textBefore = lineContent.slice(0, word.startColumn - 2);
-      const receiverType = resolveChainType(textBefore);
-      if (receiverType) {
-        const decl = declarations[receiverType + '.' + name];
-        if (decl) return decl;
-      }
-
-      // Direct key lookup for library vars: "K.Knurl", "F.Thumbscrew"
-      const receiverMatch = textBefore.match(/([A-Za-z_]\w*)$/);
-      if (receiverMatch) {
-        const result = resolveDeclaration(receiverMatch[1] + '.' + name, isCallSite);
-        if (result) return result;
-      }
-
-      return null; // no match — don't guess
-    }
-
-    // Bare name — not after a dot
-    return resolveDeclaration(name, isCallSite);
+    const file = currentSourceKey === mainKey ? '' : currentSourceKey;
+    const key = `${file}:${pos.lineNumber}:${word.startColumn}`;
+    return references[key] ?? null;
   }
 
   // "Open Library" context menu — detect lib "path" on current line
@@ -424,6 +439,18 @@ export function createEditor(
   ed.onDidChangeCursorPosition(() => {
     hasDeclKey.set(findDecl(ed) !== null);
     hasLibPathKey.set(getLibPathAtCursor(ed) !== null);
+  });
+
+  // Right-click normally leaves the caret where it was, which means the
+  // `facet.hasDeclaration` context key (updated only on cursor move) would
+  // reflect the stale caret position instead of the token under the mouse.
+  // Move the caret to the click position first so the precondition is
+  // evaluated against the thing the user actually clicked — and the
+  // `Go to Declaration` action fires at that token when invoked.
+  ed.onMouseDown(e => {
+    if (e.event.rightButton && e.target.position) {
+      ed.setPosition(e.target.position);
+    }
   });
 
   ed.addAction({
@@ -531,8 +558,10 @@ export function createEditor(
 
         // Extract receiver type before the dot — use resolveChainType for
         // complex expressions (e.g. arr[0].x, foo().bar.) and fall back to
-        // a simple variable name lookup for the common case.
-        const textBeforeDot = lineContent.slice(0, word.startColumn - 2);
+        // a simple variable name lookup for the common case. When the dot
+        // starts a continuation line, grab the receiver from the preceding
+        // non-empty line.
+        const textBeforeDot = effectiveTextBefore(_model, position.lineNumber, word.startColumn - 1);
         const receiverMatch = textBeforeDot.match(/([A-Za-z_]\w*)$/);
         const receiverName = receiverMatch ? receiverMatch[1] : '';
         const receiverType = resolveChainType(textBeforeDot) || (receiverName && (allVarTypes[currentSourceKey] ?? {})[receiverName]) || '';
@@ -715,6 +744,79 @@ export function createEditor(
     },
   });
 
+  // Hover tooltips — show signature and doc for functions, methods, types, and keywords.
+  //
+  // Primary path: the checker's references map points at the exact declaration
+  // for the token under the cursor. We then find the matching DocEntry by
+  // looking up the same declaration in the declarations map and comparing
+  // positions — so Number-the-type and Number-the-function never get confused.
+  //
+  // Fallback path: if no reference exists at this position (typically because
+  // the cursor is on a keyword — keywords aren't AST nodes and aren't recorded
+  // in references), fall back to a by-name match preferring type/keyword
+  // entries so type annotations like `x Number` still show the type.
+  monaco.languages.registerHoverProvider('facet', {
+    provideHover(model, position) {
+      const wordInfo = model.getWordAtPosition(position);
+      if (!wordInfo) return null;
+      const word = wordInfo.word;
+
+      const file = currentSourceKey === mainKey ? '' : currentSourceKey;
+      const key = `${file}:${position.lineNumber}:${wordInfo.startColumn}`;
+      const ref = references[key];
+
+      let entry: DocEntry | undefined;
+      if (ref) {
+        // Decl-identity match: find the DocEntry whose own declaration sits at
+        // the same (file, line, col) the reference points to.
+        const refFile = ref.file ?? '';
+        entry = docEntries.find(e => {
+          const decl = declarations[e.name];
+          return decl && decl.line === ref.line && decl.col === ref.col && (decl.file ?? '') === refFile;
+        });
+      } else {
+        // No reference — typically a keyword. Prefer type/keyword entries so
+        // hovering `Number` in `x Number` doesn't surface the function.
+        const matches = docEntries.filter(e => e.name === word);
+        entry = matches.find(e => e.kind === 'type' || e.kind === 'keyword')
+          ?? matches.find(e => e.kind === 'function')
+          ?? matches[0];
+      }
+
+      // For local bindings (param, var, const, field access on a local) the
+      // checker has a ref but no DocEntry. Synthesize a minimal tooltip from
+      // the reference's ReturnType so the user still sees the declared type.
+      if (!entry && ref?.returnType) {
+        return {
+          range: new monaco.Range(
+            position.lineNumber, wordInfo.startColumn,
+            position.lineNumber, wordInfo.endColumn,
+          ),
+          contents: [{ value: '```facet\n' + word + ' ' + ref.returnType + '\n```' }],
+        };
+      }
+
+      if (!entry) return null;
+
+      const parts: string[] = [];
+      if (entry.signature) {
+        parts.push('```facet\n' + entry.signature + '\n```');
+      }
+      if (entry.doc) {
+        parts.push(entry.doc);
+      }
+      if (parts.length === 0) return null;
+
+      return {
+        range: new monaco.Range(
+          position.lineNumber, wordInfo.startColumn,
+          position.lineNumber, wordInfo.endColumn,
+        ),
+        contents: parts.map(value => ({ value })),
+      };
+    },
+  });
+
   return {
     getContent(): string {
       return ed.getModel()!.getValue();
@@ -838,8 +940,12 @@ export function createEditor(
       currentSourceKey = sourceKey;
     },
 
-    updateDeclarations(decls: Record<string, { line: number; col: number; file?: string; kind?: string }>) {
+    updateDeclarations(decls: Record<string, DeclLocation>) {
       declarations = decls;
+    },
+
+    updateReferences(refs: Record<string, DeclLocation>) {
+      references = refs;
     },
 
     updateFileSources(sources: Record<string, string>) {

@@ -1,6 +1,10 @@
 package checker
 
-import "strings"
+import (
+	"strings"
+
+	"facet/app/pkg/fctlang/parser"
+)
 
 // facetType represents the type of a facet value during static analysis.
 type facetType int
@@ -257,26 +261,69 @@ func typeDisplayName(t facetType) string {
 
 // typeEnv is a lexically-scoped type environment.
 type typeEnv struct {
-	types  map[string]typeInfo
-	consts map[string]bool // tracks const bindings
-	parent *typeEnv
+	types    map[string]typeInfo
+	consts   map[string]bool        // tracks const bindings
+	declPos  map[string]parser.Pos  // declaration site for each binding in this scope
+	declKind map[string]string      // semantic kind for each binding: "var", "const", "param", "fn", etc.
+	parent   *typeEnv
 }
 
 func (c *checker) newEnv() *typeEnv {
 	return &typeEnv{
-		types:  make(map[string]typeInfo),
-		consts: make(map[string]bool),
+		types:    make(map[string]typeInfo),
+		consts:   make(map[string]bool),
+		declPos:  make(map[string]parser.Pos),
+		declKind: make(map[string]string),
 	}
 }
 
 func (e *typeEnv) child() *typeEnv {
 	return &typeEnv{
-		types:  make(map[string]typeInfo),
-		consts: make(map[string]bool),
-		parent: e,
+		types:    make(map[string]typeInfo),
+		consts:   make(map[string]bool),
+		declPos:  make(map[string]parser.Pos),
+		declKind: make(map[string]string),
+		parent:   e,
 	}
 }
 
+// bind sets the type, declaration position, and semantic kind for name in the
+// current scope. The kind should be one of "var", "const", "param", or "fn".
+// Prefer this over set() wherever a source position is known.
+func (e *typeEnv) bind(name string, t typeInfo, pos parser.Pos, kind string) {
+	e.types[name] = t
+	e.declPos[name] = pos
+	e.declKind[name] = kind
+}
+
+// lookupPos returns the declaration position of name, walking parent scopes.
+func (e *typeEnv) lookupPos(name string) (parser.Pos, bool) {
+	if p, ok := e.declPos[name]; ok {
+		return p, true
+	}
+	if e.parent != nil {
+		return e.parent.lookupPos(name)
+	}
+	return parser.Pos{}, false
+}
+
+// lookupKind returns the semantic kind of name, walking parent scopes.
+// The kind is set at bind time; returns ("", false) if not found.
+func (e *typeEnv) lookupKind(name string) (string, bool) {
+	if k, ok := e.declKind[name]; ok {
+		return k, true
+	}
+	if e.parent != nil {
+		return e.parent.lookupKind(name)
+	}
+	return "", false
+}
+
+// set updates only the type for name in the current scope. Unlike bind,
+// it intentionally does NOT touch declPos or declKind — callers use set
+// for reassignments (where the declaration site is the original bind
+// call, not the reassignment) and for stdlib-env seeding (where no
+// source position exists).
 func (e *typeEnv) set(name string, t typeInfo) {
 	e.types[name] = t
 }

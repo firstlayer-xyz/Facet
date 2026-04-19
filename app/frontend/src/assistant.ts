@@ -22,27 +22,34 @@ export class AssistantPanel {
   private streamStartTime = 0;
   private getEditorCode: () => string;
   private getErrors: () => string;
+  private getActiveTab: () => { path: string; readOnly: boolean };
   private onApplyCode: (newCode: string, searchFor?: string) => void;
   private onSetEditorSilent: (newCode: string) => void;
+  private onNewFile: (name: string, code: string) => void;
   private offToken: (() => void) | null = null;
   private offDone: (() => void) | null = null;
   private offError: (() => void) | null = null;
   private offToolUse: (() => void) | null = null;
   private offReplaceCode: (() => void) | null = null;
+  private offNewFile: (() => void) | null = null;
   private offThinking: (() => void) | null = null;
 
   constructor(
     container: HTMLElement,
     getEditorCode: () => string,
     getErrors: () => string,
+    getActiveTab: () => { path: string; readOnly: boolean },
     onApplyCode: (newCode: string, searchFor?: string) => void,
     onSetEditorSilent: (newCode: string) => void,
+    onNewFile: (name: string, code: string) => void,
   ) {
     this.container = container;
     this.getEditorCode = getEditorCode;
     this.getErrors = getErrors;
+    this.getActiveTab = getActiveTab;
     this.onApplyCode = onApplyCode;
     this.onSetEditorSilent = onSetEditorSilent;
+    this.onNewFile = onNewFile;
 
     this.panel = document.createElement('div');
     this.panel.id = 'assistant-panel';
@@ -210,9 +217,19 @@ export class AssistantPanel {
     this.offToolUse = EventsOn('assistant:tool-use', (toolName: string, callNum: number) => {
       this.showToolUseIndicator(toolName, callNum);
     });
-    // MCP-driven code changes — update editor only, Go handles the build
+    // MCP-driven code changes — update editor only, Go handles the build.
+    // Reject if the active tab is read-only: the backend guards already
+    // refuse read-only edits, but the event could be delivered out-of-band
+    // (e.g. user switched to a read-only tab mid-run). Silent-overwrite of
+    // a read-only file would corrupt its in-memory view.
     this.offReplaceCode = EventsOn('assistant:replace-code', (code: string) => {
+      if (this.getActiveTab().readOnly) return;
       this.onSetEditorSilent(code);
+    });
+    // MCP new_file tool — create a fresh editable tab with the given source.
+    this.offNewFile = EventsOn('assistant:new-file', (payload: { name: string; code: string }) => {
+      if (!payload) return;
+      this.onNewFile(payload.name ?? 'Untitled', payload.code ?? '');
     });
     // Thinking indicator — shown after tool results, before next assistant message
     this.offThinking = EventsOn('assistant:thinking', (callNum: number) => {
@@ -226,6 +243,7 @@ export class AssistantPanel {
     if (this.offError) { this.offError(); this.offError = null; }
     if (this.offToolUse) { this.offToolUse(); this.offToolUse = null; }
     if (this.offReplaceCode) { this.offReplaceCode(); this.offReplaceCode = null; }
+    if (this.offNewFile) { this.offNewFile(); this.offNewFile = null; }
     if (this.offThinking) { this.offThinking(); this.offThinking = null; }
   }
 
@@ -287,7 +305,8 @@ export class AssistantPanel {
     this.updateAttachBadge();
 
     try {
-      await SendAssistantMessage(text, this.getEditorCode(), this.getErrors(), images);
+      const tab = this.getActiveTab();
+      await SendAssistantMessage(text, this.getEditorCode(), this.getErrors(), tab.path, tab.readOnly, images);
     } catch (err: any) {
       this.showError(err?.message || String(err));
     }

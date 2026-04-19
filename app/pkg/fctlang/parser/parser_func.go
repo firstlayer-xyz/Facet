@@ -335,7 +335,7 @@ func (p *parser) parseParams() ([]*Param, error) {
 			if err := p.rejectUnderscoreIdent(tok, "parameter"); err != nil {
 				return nil, err
 			}
-			params = append(params, &Param{Type: typeStr, Name: tok.Text, Default: defExpr, Constraint: constraint})
+			params = append(params, &Param{Type: typeStr, Name: tok.Text, Default: defExpr, Constraint: constraint, Pos: Pos{Line: tok.Line, Col: tok.Col}})
 		}
 
 		if p.cur.Type != TokenComma {

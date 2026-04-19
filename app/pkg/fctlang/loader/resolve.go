@@ -54,6 +54,20 @@ func (p Program) Resolve(importPath string) string {
 	return importPath
 }
 
+// IsLibrarySource reports whether srcKey is the resolved canonical key of a
+// library imported via a LibExpr anywhere in the program.
+func (p Program) IsLibrarySource(srcKey string) bool {
+	for _, src := range p.Sources {
+		for _, g := range src.LibImports() {
+			le := g.Value.(*parser.LibExpr)
+			if p.Resolve(le.Key()) == srcKey {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Load parses source and resolves all library dependencies, returning a Program.
 // key is the canonical identifier for the source being loaded (usually a disk
 // path for a main source; scratch/virtual for non-file sources).

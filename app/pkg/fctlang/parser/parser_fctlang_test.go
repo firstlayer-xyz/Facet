@@ -213,6 +213,50 @@ func TestParseRatioLiteral(t *testing.T) {
 	}
 }
 
+func TestParseStructLitTrailingComma(t *testing.T) {
+	// Struct literals allow a trailing comma, matching arrays and function args.
+	src := `fn Main() Solid { return Cube(s: Vec3{x: 1 mm, y: 2 mm, z: 3 mm,}); }`
+	prog, err := parser.Parse(src, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
+	call := ret.Value.(*parser.CallExpr)
+	na := call.Args[0].(*parser.NamedArg)
+	sl, ok := na.Value.(*parser.StructLitExpr)
+	if !ok {
+		t.Fatalf("expected parser.StructLitExpr, got %T", na.Value)
+	}
+	if len(sl.Fields) != 3 {
+		t.Fatalf("expected 3 fields, got %d", len(sl.Fields))
+	}
+}
+
+func TestParseStructLitTrailingCommaMultiline(t *testing.T) {
+	// Trailing comma on its own line before the closing brace.
+	src := `fn Main() Solid {
+	return Cube(s: Vec3{
+		x: 1 mm,
+		y: 2 mm,
+		z: 3 mm,
+	})
+}`
+	prog, err := parser.Parse(src, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
+	call := ret.Value.(*parser.CallExpr)
+	na := call.Args[0].(*parser.NamedArg)
+	sl, ok := na.Value.(*parser.StructLitExpr)
+	if !ok {
+		t.Fatalf("expected parser.StructLitExpr, got %T", na.Value)
+	}
+	if len(sl.Fields) != 3 {
+		t.Fatalf("expected 3 fields, got %d", len(sl.Fields))
+	}
+}
+
 func TestParseRatioPlainNumber(t *testing.T) {
 	// Ratio without a unit → plain NumberLit
 	src := `fn Main() Solid { return Cube(s: {x: 5 mm, y: 1/2, z: 10 mm}); }`

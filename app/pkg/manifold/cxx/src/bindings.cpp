@@ -82,10 +82,14 @@ ManifoldPtr* facet_cylinder(double height, double radius_low, double radius_high
 // ---------------------------------------------------------------------------
 
 ManifoldCrossSection* facet_square(double x, double y) {
-  return as_c_cs(new CrossSection(CrossSection::Square({x, y}, true)));
+  // Not centered — bbox min at (0,0), matching cube/sphere/cylinder convention.
+  return as_c_cs(new CrossSection(CrossSection::Square({x, y}, false)));
 }
 
 ManifoldCrossSection* facet_circle(double radius, int segments) {
+  // CrossSection::Circle is origin-centered here; the Go wrapper
+  // (CreateCircle in primitives.go) translates by (radius, radius) so the
+  // final bbox min is at (0,0), matching the other primitives.
   return as_c_cs(new CrossSection(CrossSection::Circle(radius, segments)));
 }
 

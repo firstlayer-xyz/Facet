@@ -25,6 +25,14 @@ export interface AppSettings {
     formatOnSave: boolean;
     highlight: 'mouse' | 'cursor' | 'off';
   };
+  measurement: {
+    /** Unit system for on-model dimensions. */
+    units: 'metric' | 'imperial';
+    /** When units = 'imperial': display as reduced fractions or as decimal inches. */
+    imperialFormat: 'fraction' | 'decimal';
+    /** When imperialFormat = 'fraction': round to this denominator (power of 2, 4..128). */
+    imperialDenominator: 4 | 8 | 16 | 32 | 64 | 128;
+  };
   libraries: LibraryEntry[];
   assistant: {
     cli: string;
@@ -76,6 +84,11 @@ const defaults: AppSettings = {
     wordWrap: true,
     formatOnSave: true,
     highlight: 'cursor' as const,
+  },
+  measurement: {
+    units: 'metric' as const,
+    imperialFormat: 'fraction' as const,
+    imperialDenominator: 64 as const,
   },
   libraries: [],
   assistant: {
@@ -134,6 +147,7 @@ function mergeWithDefaults(parsed: any): AppSettings {
     ...parsed, // preserve Go-owned keys (lastFile, recentFiles, savedTabs, etc.)
     appearance,
     editor: pick(defaults.editor, parsed.editor),
+    measurement: pick(defaults.measurement, parsed.measurement),
     libraries,
     assistant: pick(defaults.assistant, parsed.assistant),
     camera: pick(defaults.camera, parsed.camera),
@@ -189,6 +203,7 @@ export function saveSettings(s: AppSettings): void {
   patchSettings({
     appearance: s.appearance,
     editor: s.editor,
+    measurement: s.measurement,
     libraries: s.libraries,
     assistant: s.assistant,
     camera: s.camera,

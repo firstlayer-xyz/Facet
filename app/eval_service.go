@@ -12,13 +12,21 @@ import (
 // stale long-running evaluation cannot keep consuming CPU after the user
 // has moved on.
 type EvalService struct {
-	mu     sync.Mutex
-	cancel context.CancelFunc
+	mu        sync.Mutex
+	cancel    context.CancelFunc
+	recordRun func(runSummary) // nil before wiring; handleEval tolerates nil
 }
 
 // NewEvalService creates a new eval service.
 func NewEvalService() *EvalService {
 	return &EvalService{}
+}
+
+// SetRunRecorder registers a callback invoked after every eval response is
+// written. Used to populate the mcpState lastRun slot for get_last_run.
+// Must be called before any /eval request is served.
+func (s *EvalService) SetRunRecorder(fn func(runSummary)) {
+	s.recordRun = fn
 }
 
 // HTTPHandler returns the http.HandlerFunc for the /eval endpoint. It
@@ -47,6 +55,6 @@ func (s *EvalService) HTTPHandler() http.HandlerFunc {
 		s.mu.Unlock()
 		defer cancel()
 
-		handleEval(ctx, w, req)
+		handleEval(ctx, w, req, s.recordRun)
 	}
 }

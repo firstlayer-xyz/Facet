@@ -59,7 +59,11 @@ func (p *parser) parseStructLit(typeName string, line, col int) (Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			fields = append(fields, &StructFieldInit{Name: fieldName.Text, Value: val})
+			fields = append(fields, &StructFieldInit{
+				Name:  fieldName.Text,
+				Value: val,
+				Pos:   Pos{fieldName.Line, fieldName.Col},
+			})
 			// Consume an optional semicolon (ASI may have inserted one on a
 			// newline before ',' or '}' in a multi-line struct literal).
 			if p.cur.Type == TokenSemicolon {
@@ -72,6 +76,9 @@ func (p *parser) parseStructLit(typeName string, line, col int) (Expr, error) {
 			}
 			if err := p.next(); err != nil { // consume ','
 				return nil, err
+			}
+			if p.cur.Type == TokenRBrace {
+				break // trailing comma
 			}
 		}
 	}

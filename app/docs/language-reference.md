@@ -84,17 +84,17 @@ Hand-written recursive-descent parser.
 |------|------|
 | Simple box | `Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 5 mm})` |
 | Uniform cube | `Cube(s: 10 mm)` |
-| Sphere | `Sphere(radius: 8 mm)` |
-| Cylinder | `Cylinder(bottom: 5 mm, top: 5 mm, height: 20 mm)` |
-| Extrude a profile | `Circle(radius: 5 mm).Extrude(height: 20 mm)` |
-| Revolve a profile | `Circle(radius: 3 mm).Move(x: 10 mm, y: 0 mm).Revolve()` |
-| Drill a hole | `box - Cylinder(radius: 3 mm, height: 30 mm)` |
+| Sphere | `Sphere(r: 8 mm)` |
+| Cylinder | `Cylinder(r1: 5 mm, r2: 5 mm, h: 20 mm)` |
+| Extrude a profile | `Circle(r: 5 mm).Extrude(z: 20 mm)` |
+| Revolve a profile | `Circle(r: 3 mm).Move(x: 10 mm, y: 0 mm).Revolve()` |
+| Drill a hole | `box - Cylinder(r: 3 mm, h: 30 mm)` |
 | Move a solid | `.Move(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})` |
 | Rotate a solid | `.Rotate(x: 0 deg, y: 0 deg, z: 45 deg, around: Vec3{})` |
-| Mirror across YZ plane | `.Mirror(nx: 1, ny: 0, nz: 0, offset: 0 mm)` |
+| Mirror across YZ plane | `.Mirror(x: 1, y: 0, z: 0, offset: 0 mm)` |
 | Repeat in a line | `.LinearPattern(count: 4, spacing: Vec3{x: 10 mm})` |
 | Repeat in a ring | `.CircularPattern(count: 6)` |
-| Fillet a profile | `sketch.Fillet(radius: 2 mm).Extrude(height: 5 mm)` |
+| Fillet a profile | `sketch.Fillet(r: 2 mm).Extrude(z: 5 mm)` |
 | Interactive slider | `r Length = 5 mm where [1:20] mm` (on fn params) |
 | Dropdown selector | `s String = "m3" where ["m3", "m4", "m5"]` (on fn params) |
 | Load a library | `var T = lib "facet/threads"` |
