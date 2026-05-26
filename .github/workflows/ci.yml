@@ -35,15 +35,16 @@ jobs:
         with:
           version: 0.14.1
 
-      - name: Install GTK + WebKit dev libs
-        # Wails 2.x needs gtk+webkit2gtk dev headers. Ubuntu 24.04
-        # ships webkit2gtk-4.1; Wails CGO has webkit2gtk-4.0 hardcoded
-        # in build-tagged source so we symlink the .pc files. (Pinning
-        # Wails to a known 4.1-tag-friendly version would be cleaner;
-        # for now the alias is small and proven.)
+      - name: Install GTK + WebKit + libc++ dev libs
+        # Wails 2.x needs gtk+webkit2gtk dev headers. Ubuntu 24.04 ships
+        # webkit2gtk-4.1; Wails CGO has webkit2gtk-4.0 hardcoded in
+        # build-tagged source so we symlink the .pc files. libc++ is
+        # also installed: our CGO build links -lc++ (zig's default C++
+        # stdlib choice), and gcc's default link path doesn't have it
+        # without libc++-dev/libc++abi-dev.
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config libc++-dev libc++abi-dev
           PKG=/usr/lib/x86_64-linux-gnu/pkgconfig
           for n in webkit2gtk javascriptcoregtk; do
             if [ ! -f "$PKG/${n}-4.0.pc" ] && [ -f "$PKG/${n}-4.1.pc" ]; then
@@ -272,6 +273,19 @@ jobs:
       - name: Install Wails
         shell: bash
         run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Disable Strawberry Perl ccache
+        # windows-latest preinstalls Strawberry Perl which puts ccache.exe
+        # on PATH. CMake auto-detects ccache and wraps ar/ranlib calls
+        # with it, but ccache treats our zig .cmd wrappers as "No such
+        # file or directory" and the manifold link fails. Move the binary
+        # so CMake stops finding it.
+        shell: bash
+        run: |
+          if [ -f "/c/Strawberry/c/bin/ccache.exe" ]; then
+            mv "/c/Strawberry/c/bin/ccache.exe" "/c/Strawberry/c/bin/ccache.exe.disabled"
+            echo "Disabled Strawberry Perl ccache"
+          fi
 
       - name: Build manifold
         # USE_TOOLCHAIN=true is forced on Windows by build-manifold.sh.
