@@ -1,0 +1,224 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  actions: read  # await-ci uses gh CLI to inspect ci.yml runs
+
+jobs:
+  await-ci:
+    runs-on: ubuntu-latest
+    outputs:
+      ci_run_id: ${{ steps.find.outputs.ci_run_id }}
+    steps:
+      - name: Find and wait for ci.yml run for this SHA
+        id: find
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          SHA="${GITHUB_SHA}"
+          REF="${GITHUB_REF}"
+          # For tag refs (refs/tags/v*) the branch filter doesn't apply; for
+          # branch refs (refs/heads/main) we want to match the branch name.
+          if [[ "$REF" == refs/heads/* ]]; then
+            BRANCH_FLAG="--branch ${REF#refs/heads/}"
+          else
+            BRANCH_FLAG=""
+          fi
+          echo "Waiting for ci.yml on $REF @ $SHA"
+          ATTEMPTS=24
+          for i in $(seq 1 $ATTEMPTS); do
+            if [ "$i" -gt 1 ]; then sleep 150; fi
+            RUN=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow ci.yml \
+              --commit "$SHA" \
+              $BRANCH_FLAG \
+              --json databaseId,status,conclusion \
+              --limit 1)
+            ID=$(echo "$RUN" | jq -r '.[0].databaseId // empty')
+            STATUS=$(echo "$RUN" | jq -r '.[0].status // empty')
+            CONCL=$(echo "$RUN" | jq -r '.[0].conclusion // empty')
+            echo "Attempt $i: id=$ID status=$STATUS conclusion=$CONCL"
+            if [ -z "$ID" ]; then
+              continue
+            fi
+            if [ "$STATUS" = "completed" ]; then
+              if [ "$CONCL" = "success" ]; then
+                echo "ci_run_id=$ID" >> "$GITHUB_OUTPUT"
+                exit 0
+              else
+                echo "::error::CI run $ID concluded $CONCL — release aborted."
+                exit 1
+              fi
+            fi
+          done
+          echo "::error::Timed out waiting for ci.yml after ~60 minutes."
+          exit 1
+
+  sign-macos:
+    needs: [await-ci]
+    runs-on: macos-14
+    environment:
+      name: ${{ startsWith(github.ref, 'refs/tags/v') && 'signing-release' || 'signing-main' }}
+    steps:
+      - name: Download unsigned app from CI run
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-app-unsigned
+          path: incoming
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.await-ci.outputs.ci_run_id }}
+
+      - name: Untar Facet.app
+        run: |
+          mkdir -p desktop/build/bin
+          tar xzf incoming/Facet-macOS-arm64-app.tar.gz -C desktop/build/bin
+
+      - name: Import signing certificate
+        run: |
+          set -e
+          echo "${{ secrets.APPLE_CERTIFICATE }}" | base64 -d > cert.p12
+          security create-keychain -p "build" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "build" build.keychain
+          security import cert.p12 -k build.keychain -P "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "build" build.keychain
+          rm -f cert.p12
+
+      - name: Codesign
+        run: |
+          set -e
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No signing identity found after cert import — aborting."
+            exit 1
+          fi
+          echo "Signing with: $IDENTITY"
+          codesign -s "$IDENTITY" --force --deep --options runtime --keychain build.keychain desktop/build/bin/Facet.app
+
+      - name: Create DMG
+        run: |
+          mkdir -p dist
+          hdiutil create -volname Facet -srcfolder desktop/build/bin/Facet.app -ov -format UDZO dist/Facet-macOS-arm64.dmg
+
+      - name: Notarize
+        run: |
+          set -e
+          xcrun notarytool submit dist/Facet-macOS-arm64.dmg \
+            --apple-id "${{ secrets.APPLE_ID }}" \
+            --password "${{ secrets.APPLE_APP_PASSWORD }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --wait
+          xcrun stapler staple dist/Facet-macOS-arm64.dmg
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          security delete-keychain build.keychain || true
+
+      - name: Upload signed DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-signed
+          path: dist/Facet-macOS-arm64.dmg
+          retention-days: 30
+          if-no-files-found: error
+
+  deploy-pages:
+    needs: [await-ci]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ startsWith(github.ref, 'refs/tags/v') && 'signing-release' || 'pages-preview' }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+
+      - name: Download web bundle from CI run
+        uses: actions/download-artifact@v4
+        with:
+          name: web-bundle
+          path: bundle
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.await-ci.outputs.ci_run_id }}
+
+      - name: Stage content and push
+        run: |
+          set -e
+          cd site
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "Tag deploy: replacing root files, preserving preview/"
+            find . -mindepth 1 -maxdepth 1 ! -name preview ! -name .git -exec rm -rf {} +
+            cp -r ../bundle/. .
+          else
+            echo "Main deploy: replacing only preview/"
+            rm -rf preview
+            mkdir preview
+            cp -r ../bundle/. preview/
+          fi
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::No changes to gh-pages; skipping push."
+          else
+            git commit -m "Deploy ${GITHUB_REF_NAME} (${GITHUB_SHA:0:7})"
+            git push
+          fi
+
+  github-release:
+    needs: [await-ci, sign-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: signing-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-artifacts
+          path: dist
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.await-ci.outputs.ci_run_id }}
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifact
+          path: dist
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.await-ci.outputs.ci_run_id }}
+
+      - name: Download signed macOS DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg-signed
+          path: dist
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          VERSION="${GITHUB_REF_NAME}"
+          gh release create "$VERSION" \
+            --title "Facet $VERSION" \
+            --generate-notes \
+            dist/*
