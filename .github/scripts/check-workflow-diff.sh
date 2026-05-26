@@ -14,7 +14,7 @@ set -uo pipefail
 BASE_REF="${BASE_REF:-origin/main}"
 HEAD_REF="${HEAD_REF:-HEAD}"
 PR_LABELS="${PR_LABELS:-}"
-WORKFLOW_PATHS="${WORKFLOW_PATHS:-.github/}"
+WORKFLOW_PATHS="${WORKFLOW_PATHS:-.github/workflows:.github/CODEOWNERS}"
 
 # Resolve a merge-base. Fall back to BASE_REF directly if no shared
 # history exists (e.g. in test harnesses that create orphan branches).

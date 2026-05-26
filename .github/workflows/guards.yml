@@ -2,6 +2,11 @@ name: Guards
 
 on:
   pull_request:
+    # Include labeled/unlabeled so adding the workflow-change-approved
+    # label fires a fresh event with the current label set (reruns reuse
+    # the original event payload, so a post-open label add wouldn't
+    # propagate through `gh run rerun`).
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: [main]
 
 permissions:
