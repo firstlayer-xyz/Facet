@@ -1,0 +1,5 @@
+# Workflow, environment, and governance changes require explicit owner approval.
+# Any other approval does not satisfy the requirement for these paths.
+# Both owners listed; CODEOWNERS treats them as "any one of".
+.github/                @szatmary @jeremycondon
+.github/CODEOWNERS      @szatmary @jeremycondon
