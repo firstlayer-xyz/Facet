@@ -1,0 +1,132 @@
+//go:build js
+
+package manifold
+
+import (
+	"fmt"
+	"syscall/js"
+)
+
+func (s *Solid) Hull() *Solid {
+	id := js.Global().Call("_mf_hull", s.id).Int()
+	r := newSolid(id)
+	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
+	fi := FaceInfo{Color: NoColor}
+	for _, v := range s.FaceMap {
+		if v.Color != NoColor {
+			fi.Color = v.Color
+			break
+		}
+	}
+	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	return r
+}
+
+func BatchHull(solids []*Solid) (*Solid, error) {
+	if len(solids) == 0 {
+		return nil, fmt.Errorf("BatchHull: solids is empty")
+	}
+	arr := js.Global().Get("Array").New()
+	for _, s := range solids {
+		arr.Call("push", s.id)
+	}
+	id := js.Global().Call("_mf_batch_hull", arr).Int()
+	r := newSolid(id)
+	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
+	fi := FaceInfo{Color: NoColor}
+	for _, s := range solids {
+		for _, v := range s.FaceMap {
+			if v.Color != NoColor {
+				fi.Color = v.Color
+				break
+			}
+		}
+		if fi.Color != NoColor {
+			break
+		}
+	}
+	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	return r, nil
+}
+
+func HullPoints(points []Point3D) (*Solid, error) {
+	n := len(points)
+	if n < 4 {
+		return nil, fmt.Errorf("HullPoints: need at least 4 points for a 3D hull, got %d", n)
+	}
+	arr := js.Global().Get("Float64Array").New(n * 3)
+	for i, p := range points {
+		arr.SetIndex(i*3, p.X)
+		arr.SetIndex(i*3+1, p.Y)
+		arr.SetIndex(i*3+2, p.Z)
+	}
+	id := js.Global().Call("_mf_hull_points", arr, n).Int()
+	return newSolidWithOrigin(id), nil
+}
+
+func (s *Solid) TrimByPlane(nx, ny, nz, offset float64) *Solid {
+	id := js.Global().Call("_mf_trim_by_plane", s.id, nx, ny, nz, offset).Int()
+	return transformSolid(s, id)
+}
+
+func (s *Solid) SmoothOut(minSharpAngle, minSmoothness float64) *Solid {
+	id := js.Global().Call("_mf_smooth_out", s.id, minSharpAngle, minSmoothness).Int()
+	return transformSolid(s, id)
+}
+
+func (s *Solid) Refine(n int) *Solid {
+	id := js.Global().Call("_mf_refine", s.id, n).Int()
+	return transformSolid(s, id)
+}
+
+func (s *Solid) Simplify(tolerance float64) *Solid {
+	id := js.Global().Call("_mf_simplify", s.id, tolerance).Int()
+	return transformSolid(s, id)
+}
+
+func (s *Solid) RefineToLength(length float64) *Solid {
+	id := js.Global().Call("_mf_refine_to_length", s.id, length).Int()
+	return transformSolid(s, id)
+}
+
+func SplitSolid(m, cutter *Solid) [2]*Solid {
+	arr := js.Global().Call("_mf_split", m.id, cutter.id)
+	fm := mergeFaceMaps(m.FaceMap, cutter.FaceMap)
+	first := newSolid(arr.Index(0).Int())
+	first.FaceMap = fm
+	second := newSolid(arr.Index(1).Int())
+	second.FaceMap = fm
+	return [2]*Solid{first, second}
+}
+
+func SplitSolidByPlane(s *Solid, nx, ny, nz, offset float64) [2]*Solid {
+	arr := js.Global().Call("_mf_split_by_plane", s.id, nx, ny, nz, offset)
+	fm := s.withFaceMap()
+	first := newSolid(arr.Index(0).Int())
+	first.FaceMap = fm
+	second := newSolid(arr.Index(1).Int())
+	second.FaceMap = fm
+	return [2]*Solid{first, second}
+}
+
+func (p *Sketch) Hull() *Sketch {
+	id := js.Global().Call("_mf_cs_hull", p.id).Int()
+	return newSketch(id)
+}
+
+func SketchBatchHull(sketches []*Sketch) (*Sketch, error) {
+	if len(sketches) == 0 {
+		return nil, fmt.Errorf("SketchBatchHull: sketches is empty")
+	}
+	arr := js.Global().Get("Array").New()
+	for _, p := range sketches {
+		arr.Call("push", p.id)
+	}
+	id := js.Global().Call("_mf_cs_batch_hull", arr).Int()
+	return newSketch(id), nil
+}
+
+func (p *Sketch) Offset(delta float64, segments int) *Sketch {
+	id := js.Global().Call("_mf_cs_offset", p.id, delta, segments).Int()
+	return newSketch(id)
+}

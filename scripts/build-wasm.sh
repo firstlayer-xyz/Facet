@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# Build the facet_cxx geometry layer for browser wasm via Emscripten.
+#
+# Output (override with $OUT_DIR):
+#   build/bin/facet_cxx.js    — JS loader (Module factory)
+#   build/bin/facet_cxx.wasm  — wasm module
+#
+# Requires:
+#   emsdk active in PATH (emcc, emcmake)
+#
+# Builds against Manifold's first-class Emscripten support. Assimp +
+# FreeType paths in our cxx layer are excluded via -DFACET_WASM (mesh I/O
+# moves JS-side, text rendering is stubbed for now).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+MANIFOLD_DIR="$PROJECT_ROOT/third_party/manifold"
+CXX_DIR="$PROJECT_ROOT/pkg/manifold/cxx"
+. "$SCRIPT_DIR/_third-party-versions.sh"
+OUT_DIR="${OUT_DIR:-$PROJECT_ROOT/build/bin}"
+JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
+
+if ! command -v emcc >/dev/null 2>&1; then
+  echo "error: emcc not on PATH. Activate emsdk first."
+  exit 1
+fi
+
+# --- Clone manifold if needed ---
+# third_party/manifold is gitignored, not a submodule. build-manifold.sh
+# clones it lazily for the desktop build; do the same here so a fresh
+# checkout can `make wasm` without first running `make manifold`.
+if [ ! -f "$MANIFOLD_DIR/CMakeLists.txt" ]; then
+  echo "Cloning manifold ${MANIFOLD_VERSION}..."
+  rm -rf "$MANIFOLD_DIR"
+  git clone --depth 1 --branch "$MANIFOLD_VERSION" \
+    https://github.com/elalish/manifold.git "$MANIFOLD_DIR"
+fi
+
+# --- Build Manifold (wasm static lib) ---
+# MANIFOLD_PAR=ON enables Manifold's TBB-backed parallel algorithms. Combined
+# with -pthread on the consumer side this gives us multi-core booleans /
+# decompose / hull in the browser, but requires the page to run in a
+# cross-origin isolated context (COOP: same-origin + COEP: require-corp)
+# so SharedArrayBuffer is available to the worker pool.
+MANIFOLD_BUILD_DIR="$MANIFOLD_DIR/build-wasm-mt"
+echo "Building manifold for wasm (multithreaded)..."
+mkdir -p "$MANIFOLD_BUILD_DIR" && cd "$MANIFOLD_BUILD_DIR"
+emcmake cmake "$MANIFOLD_DIR" \
+  -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DMANIFOLD_CBIND=ON \
+  -DMANIFOLD_TEST=OFF \
+  -DMANIFOLD_PYBIND=OFF \
+  -DMANIFOLD_EXPORT=OFF \
+  -DMANIFOLD_DOWNLOADS=ON \
+  -DMANIFOLD_JSBIND=OFF \
+  -DMANIFOLD_PAR=ON \
+  -DMANIFOLD_USE_BUILTIN_TBB=ON
+emmake ninja -j "$JOBS"
+
+# --- Link facet_cxx as a wasm module ---
+mkdir -p "$OUT_DIR"
+echo "Linking facet_cxx.wasm..."
+
+# Pick out manifold's public headers + the linked archives. emcmake produced
+# .a files alongside its build dirs.
+MANIFOLD_INC="$MANIFOLD_DIR/include"
+SRC_DIR="$MANIFOLD_DIR/src"
+CLIPPER_INC="$MANIFOLD_BUILD_DIR/_deps/clipper2-src/CPP/Clipper2Lib/include"
+
+LIBS=(
+  "$MANIFOLD_BUILD_DIR/src/libmanifold.a"
+  "$MANIFOLD_BUILD_DIR/_deps/clipper2-build/libClipper2.a"
+)
+
+# Manifold's bundled TBB drops static archives under build-*/clang_*_release/.
+# Layout varies a bit across TBB versions, so discover them by glob.
+TBB_LIBS=()
+while IFS= read -r f; do TBB_LIBS+=("$f"); done < <(
+  find "$MANIFOLD_BUILD_DIR" -name 'libtbb*.a' 2>/dev/null
+)
+if [ ${#TBB_LIBS[@]} -eq 0 ]; then
+  echo "error: no libtbb*.a archives found under $MANIFOLD_BUILD_DIR." 1>&2
+  echo "       Manifold's MANIFOLD_USE_BUILTIN_TBB build may have failed." 1>&2
+  exit 1
+fi
+LIBS+=("${TBB_LIBS[@]}")
+echo "Linking ${#TBB_LIBS[@]} TBB archives: ${TBB_LIBS[*]}"
+
+# Exported C functions: read from facet_cxx.h with a regex over the
+# `<type> facet_<name>(...)` declarations, prepend the underscore Emscripten
+# wants. (-sEXPORTED_FUNCTIONS expects names in linker form.)
+EXPORTS_RAW=$(grep -oE ' facet_[a-z_]+\(' "$CXX_DIR/include/facet_cxx.h" | tr -d ' (' | sort -u | sed 's/^/_/' | paste -sd, -)
+# Always retain malloc/free/realloc so JS can build/free buffers across the boundary.
+EXPORTS="${EXPORTS_RAW},_malloc,_free,_realloc"
+echo "Exporting $(echo "$EXPORTS_RAW" | tr ',' '\n' | wc -l | tr -d ' ') C functions"
+
+emcc \
+  "$CXX_DIR/src/bindings.cpp" \
+  "$CXX_DIR/src/polymesh.cpp" \
+  "$CXX_DIR/src/text.cpp" \
+  "${LIBS[@]}" \
+  -DFACET_WASM \
+  -I "$CXX_DIR/include" \
+  -I "$MANIFOLD_INC" \
+  -I "$SRC_DIR" \
+  -I "$CLIPPER_INC" \
+  -std=c++17 \
+  -Oz \
+  -flto \
+  -fexceptions \
+  -pthread \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sMAXIMUM_MEMORY=4294967296 \
+  -sINITIAL_MEMORY=32MB \
+  -sPTHREAD_POOL_SIZE=4 \
+  -sMODULARIZE=1 \
+  -sEXPORT_NAME=createFacetCxx \
+  -sENVIRONMENT=web,worker,node \
+  -sFILESYSTEM=0 \
+  -sIGNORE_MISSING_MAIN=1 \
+  -sEXPORTED_FUNCTIONS="$EXPORTS" \
+  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,getValue,setValue,HEAP8,HEAPU8,HEAP16,HEAPU16,HEAP32,HEAPU32,HEAPF32,HEAPF64 \
+  -o "$OUT_DIR/facet_cxx.js"
+
+# Post-link size pass — wasm-opt finds opportunities Emscripten misses.
+echo "Running wasm-opt -Oz on facet_cxx.wasm..."
+wasm-opt -Oz \
+  --enable-bulk-memory \
+  --enable-sign-ext \
+  --enable-nontrapping-float-to-int \
+  --enable-mutable-globals \
+  --enable-threads \
+  --strip-debug --strip-producers \
+  -o "$OUT_DIR/facet_cxx.wasm" "$OUT_DIR/facet_cxx.wasm"
+
+echo "Wrote $OUT_DIR/facet_cxx.{js,wasm}"
+ls -lh "$OUT_DIR/facet_cxx.js" "$OUT_DIR/facet_cxx.wasm"

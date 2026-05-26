@@ -3,11 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-THIRD_PARTY="$PROJECT_ROOT/app/third_party"
+THIRD_PARTY="$PROJECT_ROOT/third_party"
 MANIFOLD_DIR="$THIRD_PARTY/manifold"
-MANIFOLD_VERSION="v3.3.2"
 ASSIMP_DIR="$THIRD_PARTY/assimp"
-ASSIMP_VERSION="v5.4.3"
+. "$SCRIPT_DIR/_third-party-versions.sh"
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
 
 # --- Resolve target ---
@@ -121,9 +120,23 @@ fi
 
 # Dummy RC compiler for Windows cross-compilation (FreeType tries enable_language(RC))
 if [[ "$TARGET" == windows-* ]]; then
+  # Walks args looking for /fo, -fo, or -o; creates an empty file at the
+  # path that follows. Mirrors the Linux dummy below — without the file-
+  # creation step the linker fails with "No such file or directory" on
+  # the .res output FreeType expects.
   cat > "$WRAPPER_DIR/rc.cmd" << 'ZIGEOF'
 @echo off
-rem Dummy RC compiler — create empty output for cross-compilation
+setlocal EnableDelayedExpansion
+set "PREV="
+:loop
+if "%~1"=="" goto end
+if /I "!PREV!"=="/fo" type nul > "%~1"
+if /I "!PREV!"=="-fo" type nul > "%~1"
+if /I "!PREV!"=="-o" type nul > "%~1"
+set "PREV=%~1"
+shift
+goto loop
+:end
 exit /b 0
 ZIGEOF
 else
@@ -143,40 +156,93 @@ ZIGEOF
 fi
 
 # --- cmake toolchain file ---
-# When building natively (host == target), always use the system compiler.
-# Zig is only needed for cross-compilation — and routing native builds through
-# `zig ar` breaks on recent zig versions (e.g. 0.16 on macOS where `zig ar`
-# fails with "unable to open ...: No such file or directory"). The system
-# compiler also produces artifacts indistinguishable from non-zig builds,
-# which keeps native dev paths stable.
+# Picking the compiler:
+#
+# Linux/macOS native (host == target): use the system compiler. Routing
+# native builds through `zig ar` breaks on recent zig versions (0.16 on
+# macOS fails with "unable to open ...: No such file or directory"), and
+# system-built artifacts match what dev machines produce anyway.
+#
+# macOS cross (e.g. darwin-amd64 host → darwin-arm64): also use the system
+# compiler. Apple's clang handles cross-arch via -arch <name> natively
+# from any macOS host, and using zig instead introduces a libc++ ABI
+# mismatch — zig bundles a newer libc++ (LLVM 19+) than the one Apple
+# ships in Ventura's SDK. Symbols like std::__hash_memory exist in zig's
+# libc++ but not Apple's, so any final link against system libc++ fails.
+#
+# Linux cross / Windows native+cross: zig toolchain wrappers. Required for
+# Linux→other-arch and for Windows because cgo on Windows needs a clang/
+# gcc-style compiler and CMake on Windows can't parse `CC="zig cc"` as a
+# compiler+arg combo.
 HOST_TARGET="$(detect_host_target)"
 USE_TOOLCHAIN=true
-if [[ "$HOST_TARGET" == "$TARGET" ]]; then
+if [[ "$HOST_TARGET" == "$TARGET" ]] && [[ "$TARGET" != windows-* ]]; then
+  USE_TOOLCHAIN=false
+elif [[ "$TARGET" == darwin-* ]]; then
+  # macOS cross-compile via Apple's clang (-arch flag) — see comment above.
   USE_TOOLCHAIN=false
 fi
+
+# darwin-* targets: tell CMake the target arch so Apple's clang emits the
+# right slice (CMAKE_OSX_ARCHITECTURES) AND so any CMakeLists logic that
+# branches on CMAKE_SYSTEM_PROCESSOR sees the target processor instead of
+# the host's (CMAKE_SYSTEM_PROCESSOR). Used whether building native or
+# cross — harmless when native, required when cross.
+DARWIN_OSX_ARCH=()
+case "$TARGET" in
+  darwin-arm64)
+    DARWIN_OSX_ARCH=(-DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_SYSTEM_PROCESSOR=arm64)
+    ;;
+  darwin-amd64)
+    DARWIN_OSX_ARCH=(-DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_SYSTEM_PROCESSOR=x86_64)
+    ;;
+esac
 
 TOOLCHAIN_FILE="$WRAPPER_DIR/toolchain.cmake"
 TOOLCHAIN_FLAG=()
 if $USE_TOOLCHAIN; then
   RC_LINE=""
   if [[ "$TARGET" == windows-* ]]; then
-    EXT=".cmd"
-    RC_LINE="set(CMAKE_RC_COMPILER \"${WRAPPER_DIR}/rc${EXT}\")"
-  else
-    EXT=""
-  fi
-  cat > "$TOOLCHAIN_FILE" << CMAKEEOF
+    # Windows: use zig as the compiler executable directly (no .cmd
+    # wrapper). The .cmd wrappers caused "Access is denied" when ninja
+    # invoked them via CreateProcess — Windows' batch-file dispatch
+    # doesn't always cooperate with non-shell tools. CMAKE_<LANG>_
+    # COMPILER_ARG1 lets us pass "cc"/"c++" as the first arg to zig so
+    # `zig cc <other-flags>` ends up running. ar/ranlib/rc are still
+    # invoked via .cmd wrappers — those don't need to be exec'd by
+    # ninja in the hot path.
+    cat > "$TOOLCHAIN_FILE" << CMAKEEOF
 set(CMAKE_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
 set(CMAKE_SYSTEM_PROCESSOR ${CMAKE_SYSTEM_PROCESSOR})
-set(CMAKE_C_COMPILER "${WRAPPER_DIR}/cc${EXT}")
-set(CMAKE_CXX_COMPILER "${WRAPPER_DIR}/c++${EXT}")
-set(CMAKE_AR "${WRAPPER_DIR}/ar${EXT}")
-set(CMAKE_RANLIB "${WRAPPER_DIR}/ranlib${EXT}")
-${RC_LINE}
+set(CMAKE_C_COMPILER "zig")
+set(CMAKE_C_COMPILER_ARG1 "cc")
+set(CMAKE_CXX_COMPILER "zig")
+set(CMAKE_CXX_COMPILER_ARG1 "c++")
+set(CMAKE_C_FLAGS_INIT "--target=${ZIG_TRIPLE}")
+set(CMAKE_CXX_FLAGS_INIT "--target=${ZIG_TRIPLE}")
+set(CMAKE_AR "${WRAPPER_DIR}/ar.cmd")
+set(CMAKE_RANLIB "${WRAPPER_DIR}/ranlib.cmd")
+set(CMAKE_RC_COMPILER "${WRAPPER_DIR}/rc.cmd")
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 CMAKEEOF
+  else
+    # Linux cross-compile (e.g. linux-amd64 host → linux-arm64 target):
+    # use the shell-script wrappers in $WRAPPER_DIR. These work fine on
+    # Unix because the kernel honors shebang lines.
+    cat > "$TOOLCHAIN_FILE" << CMAKEEOF
+set(CMAKE_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
+set(CMAKE_SYSTEM_PROCESSOR ${CMAKE_SYSTEM_PROCESSOR})
+set(CMAKE_C_COMPILER "${WRAPPER_DIR}/cc")
+set(CMAKE_CXX_COMPILER "${WRAPPER_DIR}/c++")
+set(CMAKE_AR "${WRAPPER_DIR}/ar")
+set(CMAKE_RANLIB "${WRAPPER_DIR}/ranlib")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+CMAKEEOF
+  fi
   TOOLCHAIN_FLAG=(-DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE")
 fi
 
@@ -196,6 +262,7 @@ if [ ! -f "$ASSIMP_INSTALL_DIR/lib/libassimp.a" ]; then
   mkdir -p "$ASSIMP_BUILD_DIR" && cd "$ASSIMP_BUILD_DIR"
   cmake "$ASSIMP_DIR" \
     "${CMAKE_GENERATOR_FLAG[@]}" \
+    "${DARWIN_OSX_ARCH[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
     ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
     -DBUILD_SHARED_LIBS=OFF \
@@ -214,7 +281,6 @@ fi
 
 # --- Build freetype from source if needed ---
 FREETYPE_DIR="$THIRD_PARTY/freetype"
-FREETYPE_VERSION="VER-2-13-3"
 FREETYPE_BUILD_DIR="$FREETYPE_DIR/build-${TARGET}"
 FREETYPE_INSTALL_DIR="$FREETYPE_DIR/install-${TARGET}"
 
@@ -228,6 +294,7 @@ if [ ! -f "$FREETYPE_INSTALL_DIR/lib/libfreetype.a" ]; then
   mkdir -p "$FREETYPE_BUILD_DIR" && cd "$FREETYPE_BUILD_DIR"
   cmake "$FREETYPE_DIR" \
     "${CMAKE_GENERATOR_FLAG[@]}" \
+    "${DARWIN_OSX_ARCH[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
     ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
     -DBUILD_SHARED_LIBS=OFF \
@@ -262,17 +329,17 @@ echo "Building manifold for ${TARGET}..."
 mkdir -p "$MANIFOLD_BUILD_DIR" && cd "$MANIFOLD_BUILD_DIR"
 cmake "$MANIFOLD_DIR" \
   "${CMAKE_GENERATOR_FLAG[@]}" \
+  "${DARWIN_OSX_ARCH[@]}" \
   -DCMAKE_BUILD_TYPE=Release \
   ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
   -DBUILD_SHARED_LIBS=OFF \
   -DMANIFOLD_CBIND=ON \
   -DMANIFOLD_TEST=OFF \
   -DMANIFOLD_PYBIND=OFF \
-  -DMANIFOLD_EXPORT=ON \
+  -DMANIFOLD_EXPORT=OFF \
   -DMANIFOLD_DOWNLOADS=ON \
   -DMANIFOLD_PAR=ON \
-  -DMANIFOLD_USE_BUILTIN_TBB=ON \
-  -DCMAKE_PREFIX_PATH="$ASSIMP_INSTALL_DIR"
+  -DMANIFOLD_USE_BUILTIN_TBB=ON
 cmake --build . --config Release -j "$JOBS"
 
 # --- Copy TBB libs to a known location ---
@@ -289,12 +356,19 @@ if [ -n "$TBB_SRC_DIR" ]; then
 fi
 
 # --- Build facet_cxx ---
-FACET_CXX_DIR="$PROJECT_ROOT/app/pkg/manifold/cxx"
+FACET_CXX_DIR="$PROJECT_ROOT/pkg/manifold/cxx"
 FACET_CXX_BUILD_DIR="$FACET_CXX_DIR/build-${TARGET}"
 echo "Building facet_cxx for ${TARGET}..."
+# Always start from a clean build dir. cmake caches CMAKE_SYSTEM_PROCESSOR
+# in its initial config and won't update it on a re-run, even when -D is
+# passed — so a stale build dir from a different host or prior cross-
+# compile attempt resolves _ARCH to the wrong value (the cached one) and
+# downstream include paths point at install-<wrong-arch>.
+rm -rf "$FACET_CXX_BUILD_DIR"
 mkdir -p "$FACET_CXX_BUILD_DIR" && cd "$FACET_CXX_BUILD_DIR"
 cmake "$FACET_CXX_DIR" \
   "${CMAKE_GENERATOR_FLAG[@]}" \
+  "${DARWIN_OSX_ARCH[@]}" \
   -DCMAKE_BUILD_TYPE=Release \
   ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
   -DBUILD_SHARED_LIBS=OFF

@@ -6,15 +6,27 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    branches: [main]
   workflow_dispatch:  # manual trigger from GitHub UI
 
 jobs:
   build-linux:
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, Linux]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Clone facetlibs (pinned)
+        # Pin to the SHA the tests expect via InstalledLibs override.
+        # Tests use threadResolveOpts() which maps the lib path to the
+        # local facetlibs/ directory regardless of the @ref in source —
+        # so this SHA is what actually controls test behavior, not the
+        # @ref strings in eval_test.go.
+        run: |
+          git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
+          cd facetlibs && git checkout 3af7741
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -26,8 +38,22 @@ jobs:
         with:
           version: 0.14.1
 
-      - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y cmake libgtk-3-dev libwebkit2gtk-4.0-dev
+      - name: Alias webkit2gtk-4.1 as 4.0 for Wails CGO
+        # Wails 2.x's CGO has `pkg-config webkit2gtk-4.0` hardcoded in
+        # build-tagged source files, and `-tags webkit2_41` doesn't fully
+        # work on the version of Wails currently pinned via `@latest`.
+        # Ubuntu 24.04 ships only 4.1, so we symlink the 4.1 .pc files
+        # under the 4.0 names. The ABIs are compatible enough to link;
+        # any runtime difference would surface as a launch-time error,
+        # not a build-time one.
+        run: |
+          set -e
+          PKG=/usr/lib/x86_64-linux-gnu/pkgconfig
+          for n in webkit2gtk javascriptcoregtk; do
+            if [ ! -f "$PKG/${n}-4.0.pc" ] && [ -f "$PKG/${n}-4.1.pc" ]; then
+              sudo ln -s "${n}-4.1.pc" "$PKG/${n}-4.0.pc"
+            fi
+          done
 
       - name: Cache custom Go toolchain
         id: cache-go
@@ -49,8 +75,17 @@ jobs:
           CC: zig cc
           CXX: zig c++
 
+      - name: Run tests
+        # Tests must pass before we waste cycles on packaging. Uses the
+        # same toolchain + manifold artifacts the build does, so this is
+        # a cheap step in this position.
+        run: make test
+        env:
+          CC: zig cc
+          CXX: zig c++
+
       - name: Build Facet
-        run: cd app && ~/go/bin/wails build
+        run: cd desktop && ~/go/bin/wails build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
@@ -60,7 +95,7 @@ jobs:
       - name: Package binary
         run: |
           mkdir -p dist
-          cp app/build/bin/facet dist/Facet-linux-amd64
+          cp desktop/build/bin/facet dist/Facet-linux-amd64
           chmod +x dist/Facet-linux-amd64
           tar czf dist/Facet-linux-amd64.tar.gz -C dist Facet-linux-amd64
           rm dist/Facet-linux-amd64
@@ -74,14 +109,14 @@ jobs:
           mkdir -p "$PKG/usr/share/applications"
           mkdir -p "$PKG/usr/share/icons/hicolor/256x256/apps"
 
-          cp app/build/bin/facet "$PKG/usr/bin/facet"
+          cp desktop/build/bin/facet "$PKG/usr/bin/facet"
           chmod +x "$PKG/usr/bin/facet"
 
           # Resize icon to 256x256 if convert is available, otherwise copy as-is
           if command -v convert >/dev/null 2>&1; then
-            convert app/build/appicon.png -resize 256x256 "$PKG/usr/share/icons/hicolor/256x256/apps/facet.png"
+            convert desktop/build/appicon.png -resize 256x256 "$PKG/usr/share/icons/hicolor/256x256/apps/facet.png"
           else
-            cp app/build/appicon.png "$PKG/usr/share/icons/hicolor/256x256/apps/facet.png"
+            cp desktop/build/appicon.png "$PKG/usr/share/icons/hicolor/256x256/apps/facet.png"
           fi
 
           cat > "$PKG/usr/share/applications/facet.desktop" << 'EOF'
@@ -110,16 +145,16 @@ jobs:
 
           dpkg-deb --build "$PKG" "dist/facet_${VERSION}_amd64.deb"
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: facet-linux
-          path: |
-            dist/Facet-linux-amd64.tar.gz
-            dist/*.deb
+  build-web:
+    # Builds the browser-side wasm bundle and runs the Playwright smoke
+    # suite under web/test/. Runs on the Linux runner — wasm output is
+    # platform-agnostic, so picking the cheapest host. Reuses the
+    # custom Go toolchain cache from build-linux (same key).
+    runs-on: [self-hosted, Linux]
 
-  build-windows:
-    runs-on: windows-latest
+    env:
+      EMSDK_VERSION: "3.1.74"
+      BINARYEN_VERSION: "119"
 
     steps:
       - name: Checkout
@@ -129,6 +164,134 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Install ninja
+        # build-wasm.sh uses `cmake -G Ninja`. Linux runner has cmake
+        # but not ninja by default; the desktop linux build uses
+        # Unix Makefiles via zig and doesn't need it.
+        run: |
+          if ! command -v ninja >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ninja-build
+          fi
+
+      - name: Cache custom Go toolchain
+        id: cache-go
+        uses: actions/cache@v4
+        with:
+          path: .go-toolchain
+          key: go-toolchain-Linux-${{ hashFiles('scripts/setup-go.sh') }}
+
+      - name: Build custom Go toolchain
+        if: steps.cache-go.outputs.cache-hit != 'true'
+        run: bash scripts/setup-go.sh
+
+      - name: Cache emsdk
+        id: cache-emsdk
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/emsdk
+          key: emsdk-Linux-${{ env.EMSDK_VERSION }}
+
+      - name: Set up emsdk
+        if: steps.cache-emsdk.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          git clone https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          cd "$RUNNER_TEMP/emsdk"
+          ./emsdk install "$EMSDK_VERSION"
+          ./emsdk activate "$EMSDK_VERSION"
+
+      - name: Cache binaryen
+        id: cache-binaryen
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/binaryen
+          key: binaryen-Linux-${{ env.BINARYEN_VERSION }}
+
+      - name: Set up binaryen (wasm-opt)
+        if: steps.cache-binaryen.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/binaryen"
+          curl -fsSL "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP/binaryen" --strip-components=1
+
+      - name: Build wasm
+        # `source emsdk_env.sh` puts emcc/emcmake on PATH; binaryen's
+        # bin/ then provides wasm-opt. `make wasm` produces the Go-side
+        # facet.wasm via the custom toolchain and copies all artifacts
+        # into web/ where serve-web can find them.
+        run: |
+          set -e
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          export PATH="$RUNNER_TEMP/binaryen/bin:$PATH"
+          make wasm
+
+      - name: Install Playwright browsers
+        # `npm install playwright` already pulls Chromium via the
+        # postinstall hook, but the Linux host needs system libs (nss,
+        # atk, etc.) for headless Chromium. `--with-deps` installs them
+        # via apt — which is why this needs to run on the runner with
+        # sudo (already required for the webkit2gtk alias step).
+        run: |
+          cd web/test
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run web tests
+        run: make test-web
+
+  build-windows:
+    runs-on: [self-hosted, Windows]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Clone facetlibs (pinned)
+        shell: bash
+        run: |
+          git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
+          cd facetlibs && git checkout 3af7741
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up ninja
+        # Download ninja directly into the workspace so it's on PATH
+        # regardless of what's installed on the runner host. Avoids
+        # WinGet's exec-permission quirks (ninja installed via WinGet
+        # appears as a stub link CMake can't actually run) and Git
+        # Bash PATH inheritance gotchas. Single static .exe, ~700 KB.
+        shell: bash
+        run: |
+          set -e
+          NINJA_VERSION=1.12.1
+          mkdir -p "$RUNNER_TEMP/ninja"
+          curl -fsSL "https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERSION}/ninja-win.zip" -o "$RUNNER_TEMP/ninja/ninja-win.zip"
+          unzip -o "$RUNNER_TEMP/ninja/ninja-win.zip" -d "$RUNNER_TEMP/ninja"
+          echo "$RUNNER_TEMP/ninja" >> $GITHUB_PATH
+
+      - name: Set up zig
+        # Same problem as ninja above: zig installed via WinGet shows up
+        # as a stub link in C:\Program Files\WinGet\Links that CMake
+        # rejects with "not a full path to an existing compiler tool".
+        # Download the zig portable distribution directly so CMake can
+        # find a real zig.exe on PATH. Pinned to 0.14.1 to match what
+        # the linux-runner uses (mlugg/setup-zig).
+        shell: bash
+        run: |
+          set -e
+          ZIG_VERSION=0.14.1
+          ZIG_DIR="$RUNNER_TEMP/zig-$ZIG_VERSION"
+          mkdir -p "$ZIG_DIR"
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-windows-${ZIG_VERSION}.zip" -o "$RUNNER_TEMP/zig.zip"
+          unzip -q -o "$RUNNER_TEMP/zig.zip" -d "$ZIG_DIR"
+          INNER=$(ls "$ZIG_DIR" | head -1)
+          echo "$ZIG_DIR/$INNER" >> $GITHUB_PATH
 
       - name: Cache custom Go toolchain
         id: cache-go
@@ -147,37 +310,87 @@ jobs:
         run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Build manifold
+        # CC/CXX are not exported here — the build-manifold.sh script
+        # forces USE_TOOLCHAIN=true on Windows and uses its own toolchain
+        # configuration via toolchain.cmake. Setting `CC=zig cc` would
+        # break because CMake on Windows treats the value as a single
+        # executable name rather than command+arg.
         shell: bash
         run: make manifold
+
+      - name: Run tests
+        # Go's cgo accepts `CC=zig cc` (it splits on whitespace), unlike
+        # CMake — set the env so the test build can compile cgo bits
+        # (e.g. runtime/cgo, manifold bindings) without expecting gcc.
+        shell: bash
+        run: make test
+        env:
+          CC: zig cc
+          CXX: zig c++
 
       - name: Add Go toolchain to PATH
         shell: bash
         run: echo "${{ github.workspace }}/.go-toolchain/bin" >> $GITHUB_PATH
 
+      - name: Set up gcc shim for Wails bindings
+        # Wails' bindings generator deliberately strips CC from its env
+        # before running `go build -tags bindings` and falls back to the
+        # default Go-cgo compiler — which is "gcc" on Windows. Without
+        # mingw installed the lookup fails, cgo gets disabled, and our
+        # cgo-tagged manifold files drop out, breaking the bindings
+        # build with 'undefined: Solid'. Drop gcc.cmd / g++.cmd shims
+        # into a separate dir and prepend it to PATH only at this point
+        # — adding the shim earlier (alongside zig) caused a "STALE
+        # runtime/cgo: build ID mismatch" during the custom Go toolchain
+        # self-build, because the bootstrap Go expected mingw and our
+        # shim swapped to zig mid-build.
+        shell: bash
+        run: |
+          set -e
+          SHIM_DIR="$RUNNER_TEMP/cc-shim"
+          mkdir -p "$SHIM_DIR"
+          # `command -v zig` returns a Git Bash path (e.g. /d/a/_temp/...),
+          # which cmd.exe can't resolve when the .cmd shim runs. Convert
+          # to a Windows path so the shim can actually exec zig.
+          ZIG_EXE=$(cygpath -w "$(command -v zig)")
+          cat > "$SHIM_DIR/gcc.cmd" <<EOF
+          @echo off
+          "$ZIG_EXE" cc %*
+          EOF
+          cat > "$SHIM_DIR/g++.cmd" <<EOF
+          @echo off
+          "$ZIG_EXE" c++ %*
+          EOF
+          echo "$SHIM_DIR" >> $GITHUB_PATH
+
       - name: Build Facet
         shell: bash
-        run: cd app && ~/go/bin/wails build
+        run: cd desktop && ~/go/bin/wails build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
+          CC: zig cc
+          CXX: zig c++
 
       - name: Package
         shell: bash
         run: |
           mkdir -p dist
-          cp app/build/bin/facet.exe dist/Facet-windows-amd64.exe
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: facet-windows
-          path: dist/Facet-windows-amd64.exe
+          cp desktop/build/bin/facet.exe dist/Facet-windows-amd64.exe
 
   build-macos:
-    runs-on: macos-latest
+    # Self-hosted x86 Sequoia runner. We cross-compile to arm64 so the
+    # release artifact remains Apple Silicon native — the Intel host is a
+    # constraint of the available hardware, not the target.
+    runs-on: [self-hosted, macOS]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Clone facetlibs (pinned)
+        run: |
+          git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
+          cd facetlibs && git checkout 3af7741
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -198,16 +411,52 @@ jobs:
       - name: Install Wails
         run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build manifold
-        run: make manifold
+      - name: Build manifold (arm64 cross-compile)
+        run: make manifold TARGET=darwin-arm64
 
-      - name: Build Facet.app
-        run: cd app && ~/go/bin/wails build
+      - name: Run tests
+        # Tests run native to the host (x86) so they exercise the actual
+        # build environment of the runner. arm64 cross-build artifacts
+        # below are produced separately for shipping.
+        run: make test
+
+      - name: Build Facet.app (arm64)
+        # CGO_LDFLAGS pre-seeds -mmacosx-version-min so Wails won't override
+        # it. Wails (pkg/commands/build/base.go) hardcodes 10.13 unless the
+        # incoming CGO_LDFLAGS already contains -mmacosx-version-min — by
+        # setting it here we keep the link target aligned with the macOS
+        # 13.0 SDK that zig used when building assimp/manifold/tbb.
+        # MACOSX_DEPLOYMENT_TARGET alone is not enough (Wails ignores it).
+        run: cd desktop && ~/go/bin/wails build -platform darwin/arm64
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+          GOOS: darwin
+          GOARCH: arm64
+          MACOSX_DEPLOYMENT_TARGET: "13.0"
+          CGO_LDFLAGS: "-mmacosx-version-min=13.0"
+
+      - name: Determine signing capability
+        id: sign
+        # Sets steps.sign.outputs.enabled based on whether the Apple
+        # signing cert is configured for this repo. The secret is masked
+        # in logs, but its presence/absence isn't sensitive — flagging
+        # it lets downstream signing steps skip cleanly when the cert
+        # isn't available (e.g. private/forked repos that don't inherit
+        # the public release secrets).
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+            echo "Apple signing cert present — will codesign + notarize"
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "::notice::APPLE_CERTIFICATE not set — producing ad-hoc-signed DMG without notarization"
+          fi
 
       - name: Import signing certificate
+        if: github.event_name != 'pull_request' && steps.sign.outputs.enabled == 'true'
         run: |
           echo "${{ secrets.APPLE_CERTIFICATE }}" | base64 -d > cert.p12
           security create-keychain -p "build" build.keychain
@@ -217,27 +466,36 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "build" build.keychain
 
       - name: Codesign
+        # Real Developer ID signing when the cert is present, ad-hoc
+        # otherwise. Ad-hoc signing still satisfies macOS Gatekeeper for
+        # local testing (with --quarantine cleared) but the resulting
+        # artifact won't pass distribution checks — useful for CI smoke
+        # builds, not for shipping to end users.
+        if: github.event_name != 'pull_request'
         run: |
-          echo "=== All identities in build.keychain ==="
-          security find-identity -v build.keychain
-          echo "=== Codesigning identities ==="
-          security find-identity -v -p codesigning build.keychain
-          echo "==="
-          IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
-          if [ -z "$IDENTITY" ]; then
-            echo "No signing identity found — falling back to ad-hoc"
-            codesign -s - --force --deep --options runtime app/build/bin/Facet.app
+          if [ "${{ steps.sign.outputs.enabled }}" = "true" ]; then
+            echo "=== Codesigning identities ==="
+            security find-identity -v -p codesigning build.keychain
+            IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
+            if [ -z "$IDENTITY" ]; then
+              echo "No signing identity found in keychain — falling back to ad-hoc"
+              codesign -s - --force --deep --options runtime desktop/build/bin/Facet.app
+            else
+              echo "Signing with: $IDENTITY"
+              codesign -s "$IDENTITY" --force --deep --options runtime --keychain build.keychain desktop/build/bin/Facet.app
+            fi
           else
-            echo "Signing with: $IDENTITY"
-            codesign -s "$IDENTITY" --force --deep --options runtime --keychain build.keychain app/build/bin/Facet.app
+            echo "No cert configured — ad-hoc signing"
+            codesign -s - --force --deep --options runtime desktop/build/bin/Facet.app
           fi
 
       - name: Create DMG
         run: |
           mkdir -p dist
-          hdiutil create -volname Facet -srcfolder app/build/bin/Facet.app -ov -format UDZO dist/Facet-macOS-arm64.dmg
+          hdiutil create -volname Facet -srcfolder desktop/build/bin/Facet.app -ov -format UDZO dist/Facet-macOS-arm64.dmg
 
       - name: Notarize
+        if: github.event_name != 'pull_request' && steps.sign.outputs.enabled == 'true'
         run: |
           xcrun notarytool submit dist/Facet-macOS-arm64.dmg \
             --apple-id "${{ secrets.APPLE_ID }}" \
@@ -245,93 +503,3 @@ jobs:
             --team-id "${{ secrets.APPLE_TEAM_ID }}" \
             --wait
           xcrun stapler staple dist/Facet-macOS-arm64.dmg
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: facet-macos
-          path: dist/Facet-macOS-arm64.dmg
-
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Clone facetlibs
-        run: git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
-
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.14.1
-
-      - name: Install CMake
-        run: sudo apt-get update && sudo apt-get install -y cmake
-
-      - name: Cache custom Go toolchain
-        id: cache-go
-        uses: actions/cache@v4
-        with:
-          path: .go-toolchain
-          key: go-toolchain-Linux-${{ hashFiles('scripts/setup-go.sh') }}
-
-      - name: Build custom Go toolchain
-        if: steps.cache-go.outputs.cache-hit != 'true'
-        run: bash scripts/setup-go.sh
-
-      - name: Build manifold
-        run: make manifold
-        env:
-          CC: zig cc
-          CXX: zig c++
-
-      - name: Run tests
-        run: make test
-        env:
-          CC: zig cc
-          CXX: zig c++
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule'
-    needs: [build-linux, build-windows, build-macos, test]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: facet-linux
-          path: dist/
-
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: facet-windows
-          path: dist/
-
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: facet-macos
-          path: dist/
-
-      - name: Create tagged release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
-
-      - name: Create or update nightly release
-        if: github.event_name == 'schedule'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: nightly
-          name: Nightly Build
-          prerelease: true
-          files: dist/*
-          body: |
-            Automated nightly build from main branch.
-            Built at ${{ github.event.head_commit.timestamp || 'scheduled run' }}.

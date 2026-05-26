@@ -14,8 +14,8 @@ fn Main(
     height Length = 30 mm where [10:60] mm,
     fins   Number = 4 where [2:8],
 ) {
-    var body = Cylinder(bottom: radius, top: radius, height: height)
-    var nose = Cylinder(bottom: radius, top: 0 mm, height: height * 0.4)
+    var body = Cylinder(r: radius, h: height)
+    var nose = Cone(r: radius, h: height * 0.4)
         .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: height})
     var fin = Cube(size: Vec3{x: 1 mm, y: radius * 1.5, z: height * 0.3})
         .Translate(v: Vec3{x: -0.5 mm, y: radius, z: 0 mm})
@@ -73,7 +73,7 @@ fn rounded_box(w, d, h, r Length) Solid {
 ```
 Cube(size: Vec3{x: 10 mm, y: 20 mm, z: 5 mm})
 Sphere(radius: 8 mm)
-Cylinder(bottom: 5 mm, top: 5 mm, height: 20 mm)
+Cylinder(r: 5 mm, h: 20 mm)
 ```
 
 ### Transforms

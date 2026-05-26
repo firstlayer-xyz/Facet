@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"facet/app/pkg/docgen"
+	"facet/pkg/docgen"
 )
 
 func main() {

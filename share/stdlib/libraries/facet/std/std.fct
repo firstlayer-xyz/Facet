@@ -1,0 +1,1824 @@
+# Facet Standard Library
+# This file wraps internal _snake_case builtins in CamelCase functions.
+# It is auto-included — all functions and methods are globally available.
+# ---------------------------------------------------------------------------
+# Math Constants
+# ---------------------------------------------------------------------------
+# Pi (π) — ratio of a circle's circumference to its diameter.
+const PI = 3.14159265358979323846
+const π = 3.14159265358979323846
+
+# Tau (τ) — 2π, a full turn in radians.
+const TAU = 6.28318530717958647693
+const τ = 6.28318530717958647693
+
+# Euler's number.
+const E = 2.71828182845904523536
+
+# ---------------------------------------------------------------------------
+# Built-in Types
+# ---------------------------------------------------------------------------
+# A 3D solid body — the model most Facet programs produce. Solids are created by primitives (Box, Sphere, Cylinder…) and transformed with methods like Move, Rotate, Scale, and boolean operators (+, -, &).
+type Solid {
+}
+
+# A 2D profile shape. Used as input to Extrude, Revolve, and Sweep to produce Solids. Created by primitives (Circle, Rect, Polygon…) and transformed with Move, Rotate, Scale, Mirror, Offset.
+type Sketch {
+}
+
+# A dimensioned length value. Write literal lengths with a unit suffix: `10 mm`, `1.5 cm`, `0.5 in`. Arithmetic between lengths and Numbers is supported; arithmetic between two lengths returns a Number.
+type Length {
+}
+
+# A dimensioned angle value. Write literal angles with a unit suffix: `90 deg`, `1.57 rad`. Use with Rotate and circular primitives.
+type Angle {
+}
+
+type Number {
+}
+
+type Bool {
+}
+
+type String {
+}
+
+# 2D and 3D displacement vectors. Use struct literal syntax: `Vec2{x: v, y: v}`, `Vec3{x: v, y: v, z: v}`.
+# `Vec2(v)` / `Vec3(v)` set all components to `v`. `Vec3(xy, z)` lifts a Vec2 into 3D.
+type Vec2 {
+    x Length
+    y Length
+}
+
+# Sets both components to `v`.
+fn Vec2(v Length) Vec2 {
+    return Vec2{x: v, y: v}
+}
+
+type Vec3 {
+    x Length
+    y Length
+    z Length
+}
+
+# Sets all three components to `v`.
+fn Vec3(v Length) Vec3 {
+    return Vec3{x: v, y: v, z: v}
+}
+
+# Lifts `xy` into 3D with the given `z` component.
+fn Vec3(xy Vec2, z Length) Vec3 {
+    return Vec3{x: xy.x, y: xy.y, z: z}
+}
+
+# RGBA color with channels in the 0–1 range. Use `Color{r: v, g: v, b: v, a: v}` or the constructors below.
+type Color {
+    r Number
+    g Number
+    b Number
+    a Number
+}
+
+# Color from RGB (0–1 per channel), alpha defaults to 1.
+fn Color(
+    r Number = 0,
+    g Number = 0,
+    b Number = 0,
+    a Number = 1,
+) Color {
+    return Color{r: r, g: g, b: b, a: a}
+}
+
+# Color from a hex string ("#RGB", "#RRGGBB", or "#RRGGBBAA").
+fn Color(hex String) Color {
+    return _color_from_hex(hex)
+}
+
+# Convert a Color to its "#RRGGBB" hex string.
+fn Color.Hex() String {
+    return _color_to_hex(self)
+}
+
+# ---------------------------------------------------------------------------
+# 3D Constructors
+# ---------------------------------------------------------------------------
+# All primitive constructors (2D and 3D) place the shape's bounding-box min
+# corner at the origin — i.e. the shape sits in the positive octant/quadrant.
+# Use .Move() or .AlignCenter() to reposition.
+# 
+# Axis-aligned box with bounding-box min corner at (0,0,0) and max at (x,y,z).
+# Optional `r` rounds every edge with a fillet of that radius — the corners
+# become spherical and the edges quarter-cylindrical, while the bounding
+# box still spans (0,0,0)..(x,y,z). `r` must be at most half the smallest
+# dimension; the rounded form is built as the convex hull of eight spheres
+# placed at the inset corners.
+# ```
+# fn Main() { Cube(s: Vec3{x: 20 mm, y: 10 mm, z: 5 mm}) }
+# fn Main() { Cube(s: 20 mm, r: 2 mm) }
+# ```
+fn Cube(
+    x Length,
+    y Length,
+    z Length,
+    r Length = 0 mm,
+) Solid {
+    if r == 0 mm { return _cube(x, y, z) }
+    assert 2 * r <= x, "Cube: radius too large for x dimension"
+    assert 2 * r <= y, "Cube: radius too large for y dimension"
+    assert 2 * r <= z, "Cube: radius too large for z dimension"
+
+    var s = Sphere(r: r)
+    return Hull(
+        arr: [
+            s, s.Move(x: x - 2 * r), s.Move(y: y - 2 * r),
+            s.Move(x: x - 2 * r, y: y - 2 * r), s.Move(z: z - 2 * r),
+            s.Move(x: x - 2 * r, z: z - 2 * r),
+            s.Move(y: y - 2 * r, z: z - 2 * r),
+            s.Move(x: x - 2 * r, y: y - 2 * r, z: z - 2 * r)
+        ]
+    )
+}
+
+fn Cube(
+    s Vec3,
+    r Length = 0 mm,
+) Solid {
+    return Cube(x: s.x, y: s.y, z: s.z, r: r)
+}
+
+fn Cube(
+    s Length,
+    r Length = 0 mm,
+) Solid {
+    return Cube(x: s, y: s, z: s, r: r)
+}
+
+# UV sphere with bounding-box min corner at (0,0,0) (diameter extends from
+# 0 to 2r on each axis). Optional `segments` controls smoothness (default 32).
+# Accepts either `r:` (radius) or `d:` (diameter).
+# ```
+# fn Main() { Sphere(r: 10 mm) }
+# ```
+fn Sphere(
+    r Length,
+    segments Number = 0,
+) Solid {
+    return _sphere(r, segments)
+}
+
+fn Sphere(
+    d Length,
+    segments Number = 0,
+) Solid {
+    return _sphere(d / 2, segments)
+}
+
+# Uniform cylinder with bounding-box min corner at (0,0,0): axis runs along Z
+# from Z=0 to Z=`h`. Also accepts diameter `d`. Optional `segments` controls
+# smoothness (default 32); use 6 for a hexagonal prism.
+# ```
+# fn Main() { Cylinder(r: 5 mm, h: 20 mm) }
+# ```
+fn Cylinder(
+    r Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, r, r, segments)
+}
+
+fn Cylinder(
+    d Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, d / 2, d / 2, segments)
+}
+
+# Frustum (truncated cone) along Z from Z=0 to Z=`h`. `r1` is the bottom
+# radius, `r2` the top; set either to 0 for a true cone. Also accepts diameters
+# `d1`/`d2`. Optional `segments` controls smoothness (default 32).
+# ```
+# fn Main() { Frustum(r1: 8 mm, r2: 3 mm, h: 20 mm) }
+# ```
+fn Frustum(
+    r1 Length,
+    r2 Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, r1, r2, segments)
+}
+
+fn Frustum(
+    d1 Length,
+    d2 Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, d1 / 2, d2 / 2, segments)
+}
+
+# Cone along Z from Z=0 to Z=`h` with base radius `r`.
+fn Cone(r, h Length) Solid {
+    return _cylinder(h, r, 0 mm)
+}
+
+# Right prism: regular n-gon cross-section extruded along Z. `s` is the
+# polygon side length; `h` the extrusion height. `sides` defaults to 3
+# (triangular prism); pass higher values for square/pentagonal/hexagonal/etc.
+# prisms (minimum 3). Bounding-box min corner sits at (0,0,0).
+# ```
+# fn Main() { Prism(s: 10 mm, h: 20 mm) }              # triangular prism
+# fn Main() { Prism(s: 10 mm, h: 20 mm, sides: 6) }    # hexagonal prism
+# ```
+fn Prism(
+    s Length,
+    h Length,
+    sides Number = 3,
+) Solid {
+    var r = s / (2 * Sin(a: 180 deg / sides))
+    return _cylinder(h, r, r, sides)
+}
+
+# Right prism with an arbitrary triangle cross-section. `a`, `b`, `c` are the
+# triangle's corners in the XY plane; the triangle is extruded along Z to
+# height `h`. Winding is normalized internally — order doesn't matter.
+# ```
+# fn Main() {
+#     Prism(a: Vec2{x: 0 mm, y: 0 mm},
+#           b: Vec2{x: 20 mm, y: 0 mm},
+#           c: Vec2{x: 5 mm, y: 15 mm},
+#           h: 10 mm)
+# }
+# ```
+fn Prism(a, b, c Vec2, h Length) Solid {
+    return Polygon(points: [a, b, c]).Extrude(z: h)
+}
+
+# ---------------------------------------------------------------------------
+# 2D Constructors
+# ---------------------------------------------------------------------------
+# 2D rectangle with bounding-box min corner at (0,0) and max at (x,y).
+# `x` = width, `y` = height.
+# ```
+# fn Main() { Square(20 mm, 20 mm).Extrude(10 mm) }
+# ```
+fn Square(x, y Length) Sketch {
+    return _square(x, y)
+}
+
+# 2D circle with bounding-box min corner at (0,0) (diameter extends from 0
+# to 2r on each axis). Optional `segments` controls smoothness (default 32);
+# use 6 for a hexagon. Accepts either `r:` (radius) or `d:` (diameter).
+# ```
+# fn Main() { Circle(r: 5 mm).Extrude(20 mm) }
+# ```
+fn Circle(
+    r Length,
+    segments Number = 0,
+) Sketch {
+    return _circle(r, segments)
+}
+
+fn Circle(
+    d Length,
+    segments Number = 0,
+) Sketch {
+    return _circle(d / 2, segments)
+}
+
+fn Square(s Length) Sketch {
+    return _square(s, s)
+}
+
+# ---------------------------------------------------------------------------
+# Operator Functions
+# ---------------------------------------------------------------------------
+# Vec3 arithmetic
+fn +(a, b Vec3) Vec3 {
+    return Vec3{x: a.x + b.x, y: a.y + b.y, z: a.z + b.z}
+}
+
+fn -(a, b Vec3) Vec3 {
+    return Vec3{x: a.x - b.x, y: a.y - b.y, z: a.z - b.z}
+}
+
+# Component-wise Vec3*Vec3 — strips units on each side and reapplies the
+# Vec3 field's default mm. Strict units forbid Length*Length in user code;
+# here we make the unit-strip explicit via Number() so the operator remains
+# callable from user code without a surprise dimension error.
+fn *(a, b Vec3) Vec3 {
+    return Vec3{x: Number(from: a.x) * Number(from: b.x),
+        y: Number(from: a.y) * Number(from: b.y),
+        z: Number(from: a.z) * Number(from: b.z)}
+}
+
+fn *(v Vec3, s Number) Vec3 {
+    return Vec3{x: v.x * s, y: v.y * s, z: v.z * s}
+}
+
+fn *(s Number, v Vec3) Vec3 {
+    return v * s
+}
+
+fn /(v Vec3, s Number) Vec3 {
+    return Vec3{x: v.x / s, y: v.y / s, z: v.z / s}
+}
+
+fn -(v Vec3) Vec3 {
+    return Vec3{x: -v.x, y: -v.y, z: -v.z}
+}
+
+# Vec2 arithmetic
+fn +(a, b Vec2) Vec2 {
+    return Vec2{x: a.x + b.x, y: a.y + b.y}
+}
+
+fn -(a, b Vec2) Vec2 {
+    return Vec2{x: a.x - b.x, y: a.y - b.y}
+}
+
+# Component-wise Vec2*Vec2 — see Vec3*Vec3 above for rationale on Number().
+fn *(a, b Vec2) Vec2 {
+    return Vec2{x: Number(from: a.x) * Number(from: b.x),
+        y: Number(from: a.y) * Number(from: b.y)}
+}
+
+fn *(v Vec2, s Number) Vec2 {
+    return Vec2{x: v.x * s, y: v.y * s}
+}
+
+fn *(s Number, v Vec2) Vec2 {
+    return v * s
+}
+
+fn /(v Vec2, s Number) Vec2 {
+    return Vec2{x: v.x / s, y: v.y / s}
+}
+
+fn -(v Vec2) Vec2 {
+    return Vec2{x: -v.x, y: -v.y}
+}
+
+# Dot product — strips mm from each operand before multiplying. Under strict
+# units Length*Length has no type (no Area); dot/cross are inherently such
+# products, so stdlib opts into the strip explicitly via Number().
+fn Dot(a, b Vec3) Number {
+    return Number(from: a.x) * Number(from: b.x) + Number(from: a.y) * Number(
+        from: b.y
+    ) + Number(from: a.z) * Number(from: b.z)
+}
+
+fn Dot(a, b Vec2) Number {
+    return Number(from: a.x) * Number(from: b.x) + Number(from: a.y) * Number(
+        from: b.y
+    )
+}
+
+# Cross product — see Dot() rationale. Result components are re-attached to
+# mm at the Vec3 field boundary.
+fn Cross(a, b Vec3) Vec3 {
+    return Vec3{x: Number(from: a.y) * Number(from: b.z) - Number(from: a.z) * Number(
+            from: b.y
+        ),
+        y: Number(from: a.z) * Number(from: b.x) - Number(from: a.x) * Number(
+            from: b.z
+        ),
+        z: Number(from: a.x) * Number(from: b.y) - Number(from: a.y) * Number(
+            from: b.x
+        )}
+}
+
+# Comparison operators
+fn ==(a, b Vec3) Bool {
+    return a.x == b.x && a.y == b.y && a.z == b.z
+}
+
+fn !=(a, b Vec3) Bool {
+    return !(a == b)
+}
+
+fn ==(a, b Vec2) Bool {
+    return a.x == b.x && a.y == b.y
+}
+
+fn !=(a, b Vec2) Bool {
+    return !(a == b)
+}
+
+# Solid boolean operators
+fn +(a, b Solid) Solid {
+    return _union([a, b])
+}
+
+fn -(a, b Solid) Solid {
+    return _difference([a, b])
+}
+
+fn &(a, b Solid) Solid {
+    return _intersection([a, b])
+}
+
+fn |(a, b Solid) Solid {
+    return a.Insert(part: b)
+}
+
+fn ^(a, b Solid) Solid {
+    return a.Exclude(with: b)
+}
+
+# Sketch boolean operators
+fn +(a, b Sketch) Sketch {
+    return _union([a, b])
+}
+
+fn -(a, b Sketch) Sketch {
+    return _difference([a, b])
+}
+
+fn &(a, b Sketch) Sketch {
+    return _intersection([a, b])
+}
+
+# 2D polygon from an array of Vec2 vertices (minimum 3). Points connect in order; closes automatically.
+fn Polygon(points []Vec2) Sketch {
+    return _polygon(points)
+}
+
+# ---------------------------------------------------------------------------
+# Arc Generators
+# ---------------------------------------------------------------------------
+# Evenly-spaced points along a circular arc. Returns `segments + 1` Vec2 (2D) or Vec3 (3D at `center.z`).
+# `startAngle` to `endAngle` are inclusive. Use as input to `Polygon` or `Sweep`.
+# ```
+# fn Main() { Polygon(Arc(Vec2{0 mm, 0 mm}, 10 mm, 0 deg, 90 deg, 16)).Extrude(5 mm) }
+# ```
+fn Arc(center Vec2, r Length, startAngle, endAngle Angle, segments Number) []Vec2 {
+    return for i [0:segments] {
+        var t = i / segments
+        var a = startAngle + (endAngle - startAngle) * t
+        yield Vec2{x: center.x + Cos(a: a) * r, y: center.y + Sin(a: a) * r}
+    }
+}
+
+fn Arc3d(center Vec3, r Length, startAngle, endAngle Angle, segments Number) []Vec3 {
+    return for i [0:segments] {
+        var t = i / segments
+        var a = startAngle + (endAngle - startAngle) * t
+        yield Vec3{x: center.x + Cos(a: a) * r, y: center.y + Sin(a: a) * r,
+            z: center.z}
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Text Constructors
+# ---------------------------------------------------------------------------
+# 2D text sketch using the built-in Hack font, or a custom `.ttf`/`.otf` `font` path.
+# `s` is the cap height in mm. Extrude to make 3D lettering.
+# ```
+# fn Main() { Text("HELLO", 8 mm).Extrude(2 mm) }
+# ```
+fn Text(
+    text String,
+    s Length,
+    font String = "",
+) Sketch {
+    return _text(text, s, font)
+}
+
+# ---------------------------------------------------------------------------
+# Aggregate Operations
+# ---------------------------------------------------------------------------
+# Convex hull of an array of Solid, Sketch, or Vec3 values.
+fn Hull(arr []Solid) Solid {
+    return _hull(arr)
+}
+
+fn Hull(arr []Sketch) Sketch {
+    return _hull(arr)
+}
+
+fn Hull(arr []Vec3) Solid {
+    return _hull(arr)
+}
+
+# N-ary boolean operations on arrays of Solid or Sketch.
+# Union: combine all. Difference: subtract 2..n from first. Intersection: keep overlap only.
+fn Union(arr []Solid) Solid {
+    return _union(arr)
+}
+
+fn Union(arr []Sketch) Sketch {
+    return _union(arr)
+}
+
+fn Difference(arr []Solid) Solid {
+    return _difference(arr)
+}
+
+fn Difference(arr []Sketch) Sketch {
+    return _difference(arr)
+}
+
+fn Intersection(arr []Solid) Solid {
+    return _intersection(arr)
+}
+
+fn Intersection(arr []Sketch) Sketch {
+    return _intersection(arr)
+}
+
+# Symmetric difference: material in exactly one of {self, b}.
+fn Solid.Exclude(with Solid) Solid {
+    return self + with - (self & with)
+}
+
+# N-ary even-odd fill: material inside an odd number of input solids.
+fn EvenOdd(solids []Solid) Solid {
+    return fold acc, s solids { yield acc + s - (acc & s) }
+}
+
+# Cuts a hole for `part`, removes floating bore plugs, then seats `part`. Used with the `|` operator. Designed for inserting hollow tools (pipes, tubes) into a body.
+fn Solid.Insert(part Solid) Solid {
+    return _insert(self, part)
+}
+
+# Splits a solid into its disconnected components as an array of independent solids.
+fn Decompose(s Solid) []Solid {
+    return _decompose(s)
+}
+
+# Packs non-overlapping solids into one without boolean operations (faster than Union). Behavior is undefined if any solids overlap.
+fn Compose(solids []Solid) Solid {
+    return _compose(solids)
+}
+
+# Splits a solid into [inside, outside] using a cutter solid, or [above, below] using a plane.
+fn Solid.Split(cutter Solid) []Solid {
+    return _split(self, cutter)
+}
+
+# Splits into [above, below] along a plane. `normal` is the plane's orientation vector; `offset` shifts the plane along the normal from the origin.
+fn Solid.SplitByPlane(normal Vec3, offset Length) []Solid {
+    return _split_plane(
+        self,
+        Number(from: normal.x),
+        Number(from: normal.y),
+        Number(from: normal.z),
+        offset
+    )
+}
+
+# Reduces triangle count by collapsing edges shorter than `tolerance`.
+fn Solid.Simplify(tolerance Length) Solid {
+    return _simplify(self, tolerance)
+}
+
+# Subdivides edges longer than `edgeLength`. Finer control than `Refine(n)`.
+fn Solid.RefineToLength(edgeLength Length) Solid {
+    return _refine_to_length(self, edgeLength)
+}
+
+# Topological genus: 0 = sphere-like, 1 = torus-like (one through-hole), etc.
+fn Solid.Genus() Number {
+    return _genus(self)
+}
+
+# Minimum gap (closest distance) between two solids. `searchLength` bounds the search.
+fn Solid.MinGap(with Solid, reach Length) Length {
+    return _min_gap(self, with, reach)
+}
+
+# Blends between two or more cross-sections placed at the corresponding `heights`.
+fn Loft(profiles []Sketch, heights []Length) Solid {
+    return _loft(profiles, heights)
+}
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+# Pack an array of solids onto the X/Y plane using shelf bin-packing.
+# Solids are sorted by footprint area (largest first) and placed left-to-right
+# onto shelves, starting a new shelf when the row width exceeds a target
+# chosen to produce a roughly square overall layout. All solids are
+# repositioned — their original positions are discarded.
+# `gap` sets spacing between items (default: auto, 10% of the largest footprint dimension).
+# ```
+# fn Main() []Solid {
+#     return Layout([Cube(10 mm), Sphere(5 mm), Cylinder(3 mm, 15 mm)])
+# }
+# ```
+fn Layout(
+    solids []Solid,
+    gap Length = -1 mm,
+) []Solid {
+    return _layout(solids, gap)
+}
+
+# ---------------------------------------------------------------------------
+# Trigonometric Functions
+# ---------------------------------------------------------------------------
+# Trigonometric functions. Angles are in degrees internally.
+# Sin/Cos/Tan → Number. Asin/Acos → Angle. Atan2(y, x) → Angle (full-circle, unambiguous).
+fn Sin(a Angle) Number {
+    return _sin(a)
+}
+
+fn Cos(a Angle) Number {
+    return _cos(a)
+}
+
+fn Tan(a Angle) Number {
+    return _tan(a)
+}
+
+fn Asin(n Number) Angle {
+    return _asin(n)
+}
+
+fn Acos(n Number) Angle {
+    return _acos(n)
+}
+
+fn Atan2(y, x Number) Angle {
+    return _atan2(y, x)
+}
+
+# ---------------------------------------------------------------------------
+# Math Helpers
+# ---------------------------------------------------------------------------
+# Math helpers — work on Number, Length, and Angle via `var` generics.
+fn Min(a, b var) var {
+    return _min(a, b)
+}
+
+fn Max(a, b var) var {
+    return _max(a, b)
+}
+
+fn Abs(a var) var {
+    return _abs(a)
+}
+
+fn Sqrt(n Number) Number {
+    return _sqrt(n)
+}
+
+fn Pow(base, exp Number) Number {
+    return _pow(base, exp)
+}
+
+fn Floor(n Number) Number {
+    return _floor(n)
+}
+
+fn Ceil(n Number) Number {
+    return _ceil(n)
+}
+
+fn Round(n Number) Number {
+    return _round(n)
+}
+
+# Linear interpolation: `a + (b - a) * t`. Values outside [0, 1] extrapolate.
+fn Lerp(from, to var, t Number) var {
+    return _lerp(from, to, t)
+}
+
+# Extracts the raw numeric value: Length → mm, Angle → degrees, String → parsed number.
+fn Number(from var) Number {
+    return _number(from)
+}
+
+# Converts a value to its string representation.
+fn String(a var) String {
+    return _string(a)
+}
+
+# Returns the number of elements in an array or characters in a string.
+fn Size(of []var) Number {
+    return _size(of)
+}
+
+fn Size(of String) Number {
+    return _size(of)
+}
+
+# Current UTC date as a string in M/D/YYYY format (no leading zeros).
+fn UtcDate() String {
+    return _utc_date()
+}
+
+# Current UTC time as a string in HH:MM:SS 24-hour format.
+fn UtcTime() String {
+    return _utc_time()
+}
+
+# ---------------------------------------------------------------------------
+# Solid Methods
+# ---------------------------------------------------------------------------
+# Moves a solid. All axes default to 0 so you can move along a single axis.
+fn Solid.Move(
+    x Length = 0 mm,
+    y Length = 0 mm,
+    z Length = 0 mm,
+) Solid {
+    return _translate(self, x, y, z)
+}
+
+fn Solid.Move(v Vec3) Solid {
+    return _translate(self, v.x, v.y, v.z)
+}
+
+# Rotates the solid around X→Y→Z axes through a pivot point. Unspecified axes and pivot default to zero,
+# so `.Rotate(z: 90 deg)` spins around the world Z axis. Pass `self.Bounds().Center()` for the bbox center.
+fn Solid.Rotate(
+    x Angle = 0 deg,
+    y Angle = 0 deg,
+    z Angle = 0 deg,
+    around Vec3 = Vec3{},
+) Solid {
+    return _rotate(self, x, y, z, around.x, around.y, around.z)
+}
+
+# Scales a solid around a pivot point. `Scale(v, around)` uses the same factor for all axes.
+# `Resize(s, around)` scales to exact target dimensions.
+fn Solid.Scale(
+    x Number,
+    y Number,
+    z Number,
+    around Vec3 = Vec3{},
+) Solid {
+    return _scale(self, x, y, z, around.x, around.y, around.z)
+}
+
+fn Solid.Scale(
+    v Number,
+    around Vec3 = Vec3{},
+) Solid {
+    return _scale(self, v, v, v, around.x, around.y, around.z)
+}
+
+fn Solid.Resize(
+    size Vec3,
+    around Vec3 = Vec3{},
+) Solid {
+    var b = self.Bounds()
+    var w = Number(from: b.Width())
+    var d = Number(from: b.Depth())
+    var h = Number(from: b.Height())
+    if w == 0 || d == 0 || h == 0 { return self }
+    return self.Scale(
+        x: Number(from: size.x) / w,
+        y: Number(from: size.y) / d,
+        z: Number(from: size.z) / h,
+        around: around
+    )
+}
+
+# Reflects a solid across a plane defined by normal `(x, y, z)` at `offset` from the origin.
+# Unspecified components default to zero, so `.Mirror(x: 1)` reflects across the YZ plane at the origin.
+fn Solid.Mirror(
+    x Number = 0,
+    y Number = 0,
+    z Number = 0,
+    offset Length = 0 mm,
+) Solid {
+    return _mirror(self, x, y, z, offset)
+}
+
+# Cuts away the portion of a solid on the negative side of a half-space (normal + offset).
+fn Solid.Trim(
+    x Number = 0,
+    y Number = 0,
+    z Number = 0,
+    offset Length = 0 mm,
+) Solid {
+    return _trim(self, x, y, z, offset)
+}
+
+# Smooths edges sharper than `minSharpAngle` using Laplacian relaxation; `minSmoothness` in [0,1].
+# Best results after `.Refine()`. `Refine(n)` subdivides every triangle `n` times (4× per pass).
+fn Solid.Smooth(minSharpAngle Angle, minSmoothness Number) Solid {
+    return _smooth(self, minSharpAngle, minSmoothness)
+}
+
+# Subdivides every triangle `n` times (each pass quadruples triangle count). Use before `Smooth` for best results.
+fn Solid.Refine(n Number) Solid {
+    return _refine(self, n)
+}
+
+# Returns the enclosed volume as a Number. Defaults to cubic millimeters; pass `unit` to convert (e.g. `unit: 1 cm` → cubic centimeters, `unit: 1 in` → cubic inches).
+fn Solid.Volume(
+    unit Length = 1 mm,
+) Number {
+    var u = Number(from: unit)
+    return _volume(self) / (u * u * u)
+}
+
+# Returns the total surface area as a Number. Defaults to square millimeters; pass `unit` to convert (e.g. `unit: 1 cm` → square centimeters, `unit: 1 in` → square inches).
+fn Solid.SurfaceArea(
+    unit Length = 1 mm,
+) Number {
+    var u = Number(from: unit)
+    return _surface_area(self) / (u * u)
+}
+
+# Cross-section at Z=`z` → Sketch. `Project()` → orthographic top-down silhouette.
+fn Solid.Slice(z Length) Sketch {
+    return _slice(self, z)
+}
+
+fn Solid.Project() Sketch {
+    return _project(self)
+}
+
+# Axis-aligned bounding box. Access via `.min`/`.max`, `.Width()`, `.Height()`, `.Depth()`, `.Center()`.
+fn Solid.Bounds() Box {
+    return _bounding_box(self)
+}
+
+# X extent of the bounding box. Shorthand for `Bounds().Width()`.
+fn Solid.Width() Length {
+    var b = _bounding_box(self)
+    return b.max.x - b.min.x
+}
+
+# Y extent (front-to-back depth) of the bounding box. Shorthand for `Bounds().Depth()`.
+fn Solid.Depth() Length {
+    var b = _bounding_box(self)
+    return b.max.y - b.min.y
+}
+
+# Z extent (vertical height) of the bounding box. Shorthand for `Bounds().Height()`.
+fn Solid.Height() Length {
+    var b = _bounding_box(self)
+    return b.max.z - b.min.z
+}
+
+# X coordinate of the left face (bounding box min.x).
+fn Solid.Left() Length {
+    return _bounding_box(self).min.x
+}
+
+# X coordinate of the right face (bounding box max.x).
+fn Solid.Right() Length {
+    return _bounding_box(self).max.x
+}
+
+# Y coordinate of the front face (bounding box min.y).
+fn Solid.Front() Length {
+    return _bounding_box(self).min.y
+}
+
+# Y coordinate of the back face (bounding box max.y).
+fn Solid.Back() Length {
+    return _bounding_box(self).max.y
+}
+
+# Z coordinate of the bottom face (bounding box min.z).
+fn Solid.Bottom() Length {
+    return _bounding_box(self).min.z
+}
+
+# Z coordinate of the top face (bounding box max.z).
+fn Solid.Top() Length {
+    return _bounding_box(self).max.z
+}
+
+# Center point of the bounding box (midpoint of min and max corners).
+fn Solid.Center() Vec3 {
+    return _bounding_box(self).Center()
+}
+
+# World-space position of the left-front-bottom corner (bounding box min).
+fn Solid.LeftFrontBottom() Vec3 {
+    return _bounding_box(self).min
+}
+
+# World-space position of the right-back-top corner (bounding box max).
+fn Solid.RightBackTop() Vec3 {
+    return _bounding_box(self).max
+}
+
+# World-space position of the right-front-bottom corner.
+fn Solid.RightFrontBottom() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.max.x, y: b.min.y, z: b.min.z}
+}
+
+# World-space position of the left-back-bottom corner.
+fn Solid.LeftBackBottom() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.min.x, y: b.max.y, z: b.min.z}
+}
+
+# World-space position of the right-back-bottom corner.
+fn Solid.RightBackBottom() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.max.x, y: b.max.y, z: b.min.z}
+}
+
+# World-space position of the left-front-top corner.
+fn Solid.LeftFrontTop() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.min.x, y: b.min.y, z: b.max.z}
+}
+
+# World-space position of the right-front-top corner.
+fn Solid.RightFrontTop() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.max.x, y: b.min.y, z: b.max.z}
+}
+
+# World-space position of the left-back-top corner.
+fn Solid.LeftBackTop() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.min.x, y: b.max.y, z: b.max.z}
+}
+
+# Aligns this solid's bounding-box center to another solid's center. `x`, `y`, `z`
+# control which axes participate in the alignment (default: all three). `nudgeX`,
+# `nudgeY`, `nudgeZ` add a per-axis offset applied after alignment.
+fn Solid.AlignCenter(
+    with Solid,
+    x Bool = true,
+    y Bool = true,
+    z Bool = true,
+    nudgeX Length = 0 mm,
+    nudgeY Length = 0 mm,
+    nudgeZ Length = 0 mm,
+) Solid {
+    var a = self.Bounds().Center()
+    var b = with.Bounds().Center()
+    var dx = 0 mm
+    var dy = 0 mm
+    var dz = 0 mm
+    if x { dx = b.x - a.x + nudgeX }
+    if y { dy = b.y - a.y + nudgeY }
+    if z { dz = b.z - a.z + nudgeZ }
+    return self.Move(x: dx, y: dy, z: dz)
+}
+
+# Aligns this solid's bounding-box center to a fixed point. Pass `Vec3{}`
+# to recenter a corner-origin primitive (e.g. a freshly-created Sphere) on (0,0,0).
+# `x`, `y`, `z` control which axes participate; `nudgeX/Y/Z` add per-axis offsets.
+fn Solid.AlignCenter(
+    pos Vec3,
+    x Bool = true,
+    y Bool = true,
+    z Bool = true,
+    nudgeX Length = 0 mm,
+    nudgeY Length = 0 mm,
+    nudgeZ Length = 0 mm,
+) Solid {
+    var c = self.Bounds().Center()
+    var dx = 0 mm
+    var dy = 0 mm
+    var dz = 0 mm
+    if x { dx = pos.x - c.x + nudgeX }
+    if y { dy = pos.y - c.y + nudgeY }
+    if z { dz = pos.z - c.z + nudgeZ }
+    return self.Move(x: dx, y: dy, z: dz)
+}
+
+# Moves this solid so its bounding-box minimum corner (left, front, bottom) lands at `pos`.
+fn Solid.MoveTo(pos Vec3) Solid {
+    var m = self.Bounds().min
+    return self.Move(x: pos.x - m.x, y: pos.y - m.y, z: pos.z - m.z)
+}
+
+fn Solid.MoveTo(
+    x Length = 0 mm,
+    y Length = 0 mm,
+    z Length = 0 mm,
+) Solid {
+    var m = self.Bounds().min
+    return self.Move(x: x - m.x, y: y - m.y, z: z - m.z)
+}
+
+# Stack placement helpers — place this solid flush against one face of `of`.
+# Each family aligns the corresponding face of `self` to the matching face of `of` and (by default)
+# centers on the two perpendicular axes. `nudge` adds a gap in the stack direction (positive = more gap).
+# Disable centering on either perpendicular axis with `centerX: false` / `centerY: false` etc.
+# Places this solid on top of `of` — self's bottom face flush with its top face.
+fn Solid.StackOnTop(
+    of Solid,
+    nudge Length = 0 mm,
+    centerX Bool = true,
+    centerY Bool = true,
+) Solid {
+    return self.AlignBottom(pos: of.Bounds().Top() + nudge)
+        .AlignCenter(with: of, x: centerX, y: centerY, z: false)
+}
+
+# Places this solid below `of` — self's top face flush with its bottom face.
+fn Solid.StackOnBottom(
+    of Solid,
+    nudge Length = 0 mm,
+    centerX Bool = true,
+    centerY Bool = true,
+) Solid {
+    return self.AlignTop(pos: of.Bounds().Bottom() - nudge)
+        .AlignCenter(with: of, x: centerX, y: centerY, z: false)
+}
+
+# Places this solid to the right of `of` — self's left face flush with its right face.
+fn Solid.StackOnRight(
+    of Solid,
+    nudge Length = 0 mm,
+    centerY Bool = true,
+    centerZ Bool = true,
+) Solid {
+    return self.AlignLeft(pos: of.Bounds().Right() + nudge)
+        .AlignCenter(with: of, x: false, y: centerY, z: centerZ)
+}
+
+# Places this solid to the left of `of` — self's right face flush with its left face.
+fn Solid.StackOnLeft(
+    of Solid,
+    nudge Length = 0 mm,
+    centerY Bool = true,
+    centerZ Bool = true,
+) Solid {
+    return self.AlignRight(pos: of.Bounds().Left() - nudge)
+        .AlignCenter(with: of, x: false, y: centerY, z: centerZ)
+}
+
+# Places this solid behind `of` — self's front face flush with its back face.
+fn Solid.StackOnBack(
+    of Solid,
+    nudge Length = 0 mm,
+    centerX Bool = true,
+    centerZ Bool = true,
+) Solid {
+    return self.AlignFront(pos: of.Bounds().Back() + nudge)
+        .AlignCenter(with: of, x: centerX, y: false, z: centerZ)
+}
+
+# Places this solid in front of `of` — self's back face flush with its front face.
+fn Solid.StackOnFront(
+    of Solid,
+    nudge Length = 0 mm,
+    centerX Bool = true,
+    centerZ Bool = true,
+) Solid {
+    return self.AlignBack(pos: of.Bounds().Front() - nudge)
+        .AlignCenter(with: of, x: centerX, y: false, z: centerZ)
+}
+
+# Face-alignment helpers. Each aligns one face of this solid to the same face of `other` (or a fixed `pos`).
+# Optional `nudge` offsets after alignment (outward from `other`). The `with Solid` overloads also accept
+# `centerX`/`centerY`/`centerZ` (default false) to center on the perpendicular axes in one call.
+# Families: Left(min.x), Right(max.x), Front(min.y), Back(max.y), Bottom(min.z), Top(max.z).
+fn Solid.AlignLeft(
+    with Solid,
+    nudge Length = 0 mm,
+    centerY Bool = false,
+    centerZ Bool = false,
+) Solid {
+    return self.Move(x: with.Bounds().Left() - self.Bounds().Left() - nudge)
+        .AlignCenter(with: with, x: false, y: centerY, z: centerZ)
+}
+
+# Moves this solid so its left face lands at world-space X = `pos`.
+fn Solid.AlignLeft(pos Length) Solid {
+    return self.Move(x: pos - self.Bounds().Left())
+}
+
+fn Solid.AlignRight(
+    with Solid,
+    nudge Length = 0 mm,
+    centerY Bool = false,
+    centerZ Bool = false,
+) Solid {
+    return self.Move(x: with.Bounds().Right() - self.Bounds().Right() + nudge)
+        .AlignCenter(with: with, x: false, y: centerY, z: centerZ)
+}
+
+# Moves this solid so its right face lands at world-space X = `pos`.
+fn Solid.AlignRight(pos Length) Solid {
+    return self.Move(x: pos - self.Bounds().Right())
+}
+
+fn Solid.AlignFront(
+    with Solid,
+    nudge Length = 0 mm,
+    centerX Bool = false,
+    centerZ Bool = false,
+) Solid {
+    return self.Move(y: with.Bounds().Front() - self.Bounds().Front() - nudge)
+        .AlignCenter(with: with, x: centerX, y: false, z: centerZ)
+}
+
+# Moves this solid so its front face lands at world-space Y = `pos`.
+fn Solid.AlignFront(pos Length) Solid {
+    return self.Move(y: pos - self.Bounds().Front())
+}
+
+fn Solid.AlignBack(
+    with Solid,
+    nudge Length = 0 mm,
+    centerX Bool = false,
+    centerZ Bool = false,
+) Solid {
+    return self.Move(y: with.Bounds().Back() - self.Bounds().Back() + nudge)
+        .AlignCenter(with: with, x: centerX, y: false, z: centerZ)
+}
+
+# Moves this solid so its back face lands at world-space Y = `pos`.
+fn Solid.AlignBack(pos Length) Solid {
+    return self.Move(y: pos - self.Bounds().Back())
+}
+
+fn Solid.AlignBottom(
+    with Solid,
+    nudge Length = 0 mm,
+    centerX Bool = false,
+    centerY Bool = false,
+) Solid {
+    return self.Move(z: with.Bounds().Bottom() - self.Bounds().Bottom() - nudge)
+        .AlignCenter(with: with, x: centerX, y: centerY, z: false)
+}
+
+# Moves this solid so its bottom face lands at world-space Z = `pos`.
+fn Solid.AlignBottom(pos Length) Solid {
+    return self.Move(z: pos - self.Bounds().Bottom())
+}
+
+fn Solid.AlignTop(
+    with Solid,
+    nudge Length = 0 mm,
+    centerX Bool = false,
+    centerY Bool = false,
+) Solid {
+    return self.Move(z: with.Bounds().Top() - self.Bounds().Top() + nudge)
+        .AlignCenter(with: with, x: centerX, y: centerY, z: false)
+}
+
+# Moves this solid so its top face lands at world-space Z = `pos`.
+fn Solid.AlignTop(pos Length) Solid {
+    return self.Move(z: pos - self.Bounds().Top())
+}
+
+# ---------------------------------------------------------------------------
+# Sketch Methods
+# ---------------------------------------------------------------------------
+# Moves a sketch. All axes default to 0.
+fn Sketch.Move(
+    x Length = 0 mm,
+    y Length = 0 mm,
+) Sketch {
+    return _translate(self, x, y)
+}
+
+fn Sketch.Move(v Vec2) Sketch {
+    return _translate(self, v.x, v.y)
+}
+
+# Moves this sketch so its bounding-box minimum corner (left, front) lands at `pos`.
+fn Sketch.MoveTo(pos Vec2) Sketch {
+    var m = self.Bounds().min
+    return self.Move(x: pos.x - m.x, y: pos.y - m.y)
+}
+
+fn Sketch.MoveTo(
+    x Length = 0 mm,
+    y Length = 0 mm,
+) Sketch {
+    var m = self.Bounds().min
+    return self.Move(x: x - m.x, y: y - m.y)
+}
+
+# Rotates a sketch counterclockwise by `a` around a pivot point (defaults to the origin).
+fn Sketch.Rotate(
+    a Angle = 0 deg,
+    around Vec2 = Vec2{},
+) Sketch {
+    return _rotate_origin(self.Move(v: Vec2{x: -around.x, y: -around.y}), a)
+        .Move(v: Vec2{x: around.x, y: around.y})
+}
+
+# Scales a sketch non-uniformly around a pivot point.
+fn Sketch.Scale(
+    x Number,
+    y Number,
+    around Vec2 = Vec2{},
+) Sketch {
+    return _scale(self, x, y, around.x, around.y)
+}
+
+# Reflects a sketch across the axis `(x, y)` at `offset` from the origin.
+# Unspecified components default to zero, so `.Mirror(x: 1)` reflects across the X axis at the origin.
+fn Sketch.Mirror(
+    x Number = 0,
+    y Number = 0,
+    offset Length = 0 mm,
+) Sketch {
+    return _mirror(self, x, y, offset)
+}
+
+# Expands (positive) or shrinks (negative) a sketch with round joins.
+fn Sketch.Offset(delta Length) Sketch {
+    return _offset(self, delta)
+}
+
+# Rounds convex corners by `r`. Use before extruding for filleted edges.
+fn Sketch.Fillet(r Length) Sketch {
+    return _fillet(self, r)
+}
+
+# Bevels convex corners by cutting `distance` from each corner.
+fn Sketch.Chamfer(distance Length) Sketch {
+    return _chamfer(self, distance)
+}
+
+# Axis-aligned bounding box of a sketch (z components are 0).
+fn Sketch.Bounds() Box {
+    return _bounding_box(self)
+}
+
+# X extent of the sketch's bounding box.
+fn Sketch.Width() Length {
+    var b = _bounding_box(self)
+    return b.max.x - b.min.x
+}
+
+# Y extent of the sketch's bounding box.
+fn Sketch.Depth() Length {
+    var b = _bounding_box(self)
+    return b.max.y - b.min.y
+}
+
+# Minimum X of the bounding box.
+fn Sketch.Left() Length {
+    return _bounding_box(self).min.x
+}
+
+# Maximum X of the bounding box.
+fn Sketch.Right() Length {
+    return _bounding_box(self).max.x
+}
+
+# Minimum Y of the bounding box.
+fn Sketch.Front() Length {
+    return _bounding_box(self).min.y
+}
+
+# Maximum Y of the bounding box.
+fn Sketch.Back() Length {
+    return _bounding_box(self).max.y
+}
+
+# Centroid of the bounding box.
+fn Sketch.Center() Vec2 {
+    var b = _bounding_box(self)
+    return Vec2{x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2}
+}
+
+# Signed area enclosed by the sketch.
+fn Sketch.Area() Number {
+    return _area(self)
+}
+
+# Extrudes a sketch upward along +Z. The sketch extends from Z=0 to Z=`z`.
+# Optional args: `slices` (resolution for twist), `twist` (total rotation bottom→top),
+# `taperX`/`taperY` (top-face taper; 1 = no change).
+# ```
+# fn Main() { Circle(5 mm).Extrude(20 mm) }
+# ```
+fn Sketch.Extrude(
+    z Length,
+    slices Number = 1,
+    twist Angle = 0 deg,
+    taperX Number = 1,
+    taperY Number = 1,
+) Solid {
+    return _extrude(self, z, slices, twist, taperX, taperY)
+}
+
+# Revolves a sketch around the Y axis. Move the sketch away from Y first for a torus.
+# Optional `a` limits the arc (default 360°).
+fn Sketch.Revolve(
+    a Angle = 360 deg,
+) Solid {
+    return _revolve(self, a)
+}
+
+# Sweeps the sketch along a 3D path using a rotation-minimizing frame.
+fn Sketch.Sweep(path []Vec3) Solid {
+    return _sweep(self, path)
+}
+
+# ---------------------------------------------------------------------------
+# Pattern Operations
+# ---------------------------------------------------------------------------
+# Repeats a solid `count` times at even `spacing`.
+# Copies are placed at 0, 1×spacing, … (count-1)×spacing and unioned together.
+fn Solid.LinearPattern(
+    count Number,
+    spacing Vec3 = Vec3{},
+) Solid {
+    var copies = for i [0:<count] {
+        yield self.Move(x: i * spacing.x, y: i * spacing.y, z: i * spacing.z)
+    }
+    return fold a, b copies { yield a + b }
+}
+
+# Repeats a solid `count` times evenly around the Z axis (full 360°, or `span` degrees).
+# Requires `count >= 2` when `span` is given.
+fn Solid.CircularPattern(
+    count Number,
+    span Angle = 0 deg,
+) Solid {
+    if span == 0 deg {
+        assert count >= 1, "CircularPattern requires count >= 1"
+        var step = 360 / count * 1 deg
+        var copies = for i [0:<count] { yield self.Rotate(z: i * step) }
+        return fold a, b copies { yield a + b }
+    } else {
+        assert count >= 2, "CircularPattern with span requires count >= 2"
+        var step = span / (count - 1)
+        var copies = for i [0:<count] { yield self.Rotate(z: i * step) }
+        return fold a, b copies { yield a + b }
+    }
+}
+
+# Same as Solid.LinearPattern but for Sketch.
+fn Sketch.LinearPattern(
+    count Number,
+    spacing Vec2 = Vec2{},
+) Sketch {
+    var copies = for i [0:<count] {
+        yield self.Move(x: i * spacing.x, y: i * spacing.y)
+    }
+    return fold a, b copies { yield a + b }
+}
+
+# Same as Solid.CircularPattern but for Sketch.
+fn Sketch.CircularPattern(
+    count Number,
+    span Angle = 0 deg,
+) Sketch {
+    if span == 0 deg {
+        assert count >= 1, "CircularPattern requires count >= 1"
+        var step = 360 / count * 1 deg
+        var copies = for i [0:<count] { yield _rotate_origin(self, i * step) }
+        return fold a, b copies { yield a + b }
+    } else {
+        assert count >= 2, "CircularPattern with span requires count >= 2"
+        var step = span / (count - 1)
+        var copies = for i [0:<count] { yield _rotate_origin(self, i * step) }
+        return fold a, b copies { yield a + b }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Mesh Import
+# ---------------------------------------------------------------------------
+# Imports an STL or OBJ file as a Solid. Path is relative to the current file.
+fn LoadMesh(path String) Solid {
+    return _load_mesh(path)
+}
+
+# ---------------------------------------------------------------------------
+# String Methods
+# ---------------------------------------------------------------------------
+# Returns `length` characters starting at `start` (0-indexed, rune-based).
+fn String.SubStr(start, length Number) String {
+    return _sub_str(self, start, length)
+}
+
+# Returns true if the string starts with `prefix`.
+fn String.HasPrefix(prefix String) Bool {
+    return _has_prefix(self, prefix)
+}
+
+# Returns true if the string ends with `suffix`.
+fn String.HasSuffix(suffix String) Bool {
+    return _has_suffix(self, suffix)
+}
+
+# Splits the string on `delimiter` and returns the resulting parts.
+fn String.Split(delimiter String) []String {
+    return _split(self, delimiter)
+}
+
+# Match returns [full match, capture1, …] or [] if no match.
+fn String.Match(pattern String) []String {
+    return _match(self, pattern)
+}
+
+# Returns the string converted to uppercase.
+fn String.ToUpper() String {
+    return _to_upper(self)
+}
+
+# Returns the string converted to lowercase.
+fn String.ToLower() String {
+    return _to_lower(self)
+}
+
+# Returns the string with leading and trailing whitespace removed.
+fn String.Trim() String {
+    return _trim_str(self)
+}
+
+# Returns a new string with all occurrences of `old` replaced by `new`.
+fn String.Replace(old, new String) String {
+    return _replace(self, old, new)
+}
+
+# Returns the index of the first occurrence of `substr`, or -1 if not found.
+fn String.IndexOf(substr String) Number {
+    return _index_of(self, substr)
+}
+
+# Returns true if the string contains `substr`.
+fn String.Contains(substr String) Bool {
+    return _contains(self, substr)
+}
+
+# Returns the number of characters (runes) in the string.
+fn String.Length() Number {
+    return _length(self)
+}
+
+# ---------------------------------------------------------------------------
+# Box Type (3D axis-aligned bounding box)
+# ---------------------------------------------------------------------------
+# Axis-aligned bounding box defined by a `min` and `max` corner.
+type Box {
+    min Vec3
+    max Vec3
+}
+
+# Constructs a Box from two corners.
+fn Box(min, max Vec3) Box {
+    return Box{min: min, max: max}
+}
+
+# ---------------------------------------------------------------------------
+# Box Methods
+# ---------------------------------------------------------------------------
+# X extent (left to right).
+fn Box.Width() Length {
+    return self.max.x - self.min.x
+}
+
+# Z extent (bottom to top).
+fn Box.Height() Length {
+    return self.max.z - self.min.z
+}
+
+# Y extent (front to back).
+fn Box.Depth() Length {
+    return self.max.y - self.min.y
+}
+
+# Minimum X.
+fn Box.Left() Length {
+    return self.min.x
+}
+
+# Maximum X.
+fn Box.Right() Length {
+    return self.max.x
+}
+
+# Minimum Y.
+fn Box.Front() Length {
+    return self.min.y
+}
+
+# Maximum Y.
+fn Box.Back() Length {
+    return self.max.y
+}
+
+# Minimum Z.
+fn Box.Bottom() Length {
+    return self.min.z
+}
+
+# Maximum Z.
+fn Box.Top() Length {
+    return self.max.z
+}
+
+# Center point of the box.
+fn Box.Center() Vec3 {
+    return Vec3{x: (self.min.x + self.max.x) / 2,
+        y: (self.min.y + self.max.y) / 2, z: (self.min.z + self.max.z) / 2}
+}
+
+# Returns true if point `p` is inside or on the surface of this box.
+fn Box.ContainsPoint(p Vec3) Bool {
+    return p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y && p.z >= self.min.z && p.z <= self.max.z
+}
+
+# Returns true if `other` is fully contained within this box.
+fn Box.ContainsBox(other Box) Bool {
+    return other.min.x >= self.min.x && other.max.x <= self.max.x && other.min.y >= self.min.y && other.max.y <= self.max.y && other.min.z >= self.min.z && other.max.z <= self.max.z
+}
+
+# Returns true if this box and `other` share any volume.
+fn Box.Overlaps(other Box) Bool {
+    return self.min.x <= other.max.x && self.max.x >= other.min.x && self.min.y <= other.max.y && self.max.y >= other.min.y && self.min.z <= other.max.z && self.max.z >= other.min.z
+}
+
+# Returns the smallest box that contains both this box and `other`.
+fn Box.Union(other Box) Box {
+    return Box{min: Vec3{x: Min(a: self.min.x, b: other.min.x),
+            y: Min(a: self.min.y, b: other.min.y),
+            z: Min(a: self.min.z, b: other.min.z)},
+        max: Vec3{x: Max(a: self.max.x, b: other.max.x),
+            y: Max(a: self.max.y, b: other.max.y),
+            z: Max(a: self.max.z, b: other.max.z)}}
+}
+
+# ---------------------------------------------------------------------------
+# Tri Type (triangle index triple)
+# ---------------------------------------------------------------------------
+# Index triple referencing three vertices of a triangle.
+type Face {
+    v0 Number
+    v1 Number
+    v2 Number
+}
+
+# Constructs a Face from three vertex indices.
+fn Face(v0, v1, v2 Number) Face {
+    return Face{v0: v0, v1: v1, v2: v2}
+}
+
+# ---------------------------------------------------------------------------
+# Mesh Type (vertex + index data)
+# ---------------------------------------------------------------------------
+# Triangle mesh with a flat vertex list and index triples.
+type Mesh {
+    vertices []Vec3
+    indices  []Face
+}
+
+# Extracts triangle mesh (`.vertices` []Vec3, `.indices` []Face). `Mesh.Solid()` reconstructs.
+fn Solid.Mesh() Mesh {
+    return _mesh(self)
+}
+
+# Reconstructs a Solid from this mesh's vertices and indices.
+fn Mesh.Solid() Solid {
+    return _solid_from_mesh(self.vertices, self.indices)
+}
+
+# ---------------------------------------------------------------------------
+# Mesh Methods (pure Facet)
+# ---------------------------------------------------------------------------
+# Returns one outward normal per face (same order as `.indices`).
+fn Mesh.FaceNormals() []Vec3 {
+    return _face_normals(self)
+}
+
+# Returns one averaged normal per vertex (same order as `.vertices`).
+fn Mesh.VertexNormals() []Vec3 {
+    return _vertex_normals(self)
+}
+
+# Axis-aligned bounding box of the mesh.
+fn Mesh.Bounds() Box {
+    var minV = fold a, v self.vertices {
+        yield Vec3{x: Min(a: a.x, b: v.x), y: Min(a: a.y, b: v.y),
+            z: Min(a: a.z, b: v.z)}
+    }
+
+    var maxV = fold a, v self.vertices {
+        yield Vec3{x: Max(a: a.x, b: v.x), y: Max(a: a.y, b: v.y),
+            z: Max(a: a.z, b: v.z)}
+    }
+
+    return Box{min: minV, max: maxV}
+}
+
+# X extent.
+fn Mesh.Width() Length {
+    var b = self.Bounds()
+    return b.max.x - b.min.x
+}
+
+# Y extent.
+fn Mesh.Depth() Length {
+    var b = self.Bounds()
+    return b.max.y - b.min.y
+}
+
+# Z extent.
+fn Mesh.Height() Length {
+    var b = self.Bounds()
+    return b.max.z - b.min.z
+}
+
+# Minimum X.
+fn Mesh.Left() Length {
+    return self.Bounds().min.x
+}
+
+# Maximum X.
+fn Mesh.Right() Length {
+    return self.Bounds().max.x
+}
+
+# Minimum Y.
+fn Mesh.Front() Length {
+    return self.Bounds().min.y
+}
+
+# Maximum Y.
+fn Mesh.Back() Length {
+    return self.Bounds().max.y
+}
+
+# Minimum Z.
+fn Mesh.Bottom() Length {
+    return self.Bounds().min.z
+}
+
+# Maximum Z.
+fn Mesh.Top() Length {
+    return self.Bounds().max.z
+}
+
+# Center of the bounding box.
+fn Mesh.Center() Vec3 {
+    return self.Bounds().Center()
+}
+
+# ---------------------------------------------------------------------------
+# PolyMesh Type (polygonal mesh with N-gon faces)
+# ---------------------------------------------------------------------------
+# Polygonal mesh whose faces can be arbitrary N-gons (not just triangles). Used with Conway operators and Platonic/Archimedean solid primitives.
+type PolyMesh {
+    vertices []Vec3
+    faces    [][]Number
+}
+
+# ---------------------------------------------------------------------------
+# PolyMesh Conway Operators
+# ---------------------------------------------------------------------------
+# Returns the dual polyhedron (vertices ↔ faces swapped).
+fn PolyMesh.Dual() PolyMesh {
+    return _dual(self)
+}
+
+# Rectifies the mesh: new vertices at edge midpoints, original vertices removed.
+fn PolyMesh.Ambo() PolyMesh {
+    return _ambo(self)
+}
+
+# Kleetope: each face is replaced by a pyramid, subdividing the mesh.
+fn PolyMesh.Kis() PolyMesh {
+    return _kis(self)
+}
+
+# Cuts each vertex to produce new faces at the corners.
+fn PolyMesh.Truncate() PolyMesh {
+    return _truncate(self)
+}
+
+# Expands faces outward so every edge becomes a new rectangular face.
+fn PolyMesh.Expand() PolyMesh {
+    return _expand(self)
+}
+
+# Chiral variant of Expand; rotates faces slightly before expanding.
+fn PolyMesh.Snub() PolyMesh {
+    return _snub(self)
+}
+
+# ---------------------------------------------------------------------------
+# PolyMesh Utility Methods
+# ---------------------------------------------------------------------------
+# Adjusts vertices so all edges are tangent to the unit sphere (`maxIter` / `tolerance` control convergence).
+fn PolyMesh.Canonicalize(
+    maxIter Number = 200,
+    tolerance Number = 0.000001,
+) PolyMesh {
+    return _canonicalize(self, maxIter, tolerance)
+}
+
+# Scales vertices uniformly so the farthest vertex is at radius `r` from the origin.
+fn PolyMesh.ScaleToRadius(r Length) PolyMesh {
+    return _scale_to_radius(self, r)
+}
+
+# Scales all vertices by a dimensionless `factor`.
+fn PolyMesh.ScaleUniform(factor Number) PolyMesh {
+    return _scale_uniform(self, factor)
+}
+
+# Converts this PolyMesh to a Solid by triangulating its faces.
+fn PolyMesh.Solid() Solid {
+    return _solid(self)
+}
+
+# Axis-aligned bounding box of the mesh.
+fn PolyMesh.Bounds() Box {
+    var minV = fold a, v self.vertices {
+        yield Vec3{x: Min(a: a.x, b: v.x), y: Min(a: a.y, b: v.y),
+            z: Min(a: a.z, b: v.z)}
+    }
+
+    var maxV = fold a, v self.vertices {
+        yield Vec3{x: Max(a: a.x, b: v.x), y: Max(a: a.y, b: v.y),
+            z: Max(a: a.z, b: v.z)}
+    }
+
+    return Box{min: minV, max: maxV}
+}
+
+# X extent.
+fn PolyMesh.Width() Length {
+    var b = self.Bounds()
+    return b.max.x - b.min.x
+}
+
+# Y extent.
+fn PolyMesh.Depth() Length {
+    var b = self.Bounds()
+    return b.max.y - b.min.y
+}
+
+# Z extent.
+fn PolyMesh.Height() Length {
+    var b = self.Bounds()
+    return b.max.z - b.min.z
+}
+
+# Minimum X.
+fn PolyMesh.Left() Length {
+    return self.Bounds().min.x
+}
+
+# Maximum X.
+fn PolyMesh.Right() Length {
+    return self.Bounds().max.x
+}
+
+# Minimum Y.
+fn PolyMesh.Front() Length {
+    return self.Bounds().min.y
+}
+
+# Maximum Y.
+fn PolyMesh.Back() Length {
+    return self.Bounds().max.y
+}
+
+# Minimum Z.
+fn PolyMesh.Bottom() Length {
+    return self.Bounds().min.z
+}
+
+# Maximum Z.
+fn PolyMesh.Top() Length {
+    return self.Bounds().max.z
+}
+
+# Center of the bounding box.
+fn PolyMesh.Center() Vec3 {
+    return self.Bounds().Center()
+}
+
+# Extracts a PolyMesh from this Solid using face ID grouping (reconstructs original polygon boundaries).
+fn Solid.PolyMesh() PolyMesh {
+    return _polymesh(self)
+}
+
+# Deforms each vertex using a pure Vec3→Vec3 function (runs in parallel). Refine first for smooth results.
+fn Solid.Warp(f fn(Vec3) Vec3) Solid {
+    return _warp(self, f)
+}
+
+# Sets a uniform color on all faces. Survives booleans via originalID tracking.
+fn Solid.Color(c Color) Solid {
+    return _color(self, c.r, c.g, c.b)
+}
+
+fn Solid.Color(hex String) Solid {
+    return self.Color(c: Color(hex: hex))
+}
+
+fn Solid.Color(
+    r Number = 0,
+    g Number = 0,
+    b Number = 0,
+    a Number = 1,
+) Solid {
+    return _color(self, r, g, b)
+}
+
+# Creates a solid from a signed-distance-field (SDF). The SDF returns negative inside, positive outside.
+# Sampled over `bounds`; `edgeLength` controls mesh resolution (smaller = finer, slower).
+fn LevelSet(f fn(Vec3) Number, bounds Box, edgeLength Length) Solid {
+    return _level_set(f, bounds, edgeLength)
+}

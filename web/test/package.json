@@ -1,0 +1,13 @@
+{
+  "name": "facet-web-test",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright smoke tests for the Facet wasm browser viewer.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node parse-simple.test.js && node eval.test.js && node lib-import.test.js"
+  },
+  "dependencies": {
+    "playwright": "^1.59.1"
+  }
+}

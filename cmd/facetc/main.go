@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 
-	"facet/app/pkg/fctlang/checker"
-	"facet/app/pkg/fctlang/evaluator"
-	"facet/app/pkg/fctlang/formatter"
-	"facet/app/pkg/fctlang/loader"
-	"facet/app/pkg/fctlang/parser"
-	"facet/app/pkg/manifold"
+	"facet/pkg/fctlang/checker"
+	"facet/pkg/fctlang/evaluator"
+	"facet/pkg/fctlang/formatter"
+	"facet/pkg/fctlang/loader"
+	"facet/pkg/fctlang/parser"
+	"facet/pkg/manifold"
 )
 
 func usage() {
