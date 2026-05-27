@@ -4,7 +4,15 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: ['**']
+    # Only fire push trigger on main + version tags. Feature branches
+    # are covered by the pull_request trigger (synchronize event) once
+    # a PR is open. This avoids the dual-trigger problem where one
+    # push to a PR'd branch produced two workflow runs — concurrency
+    # cancelled one, but cancelled jobs render as red ✗ in the PR UI
+    # and look indistinguishable from real failures.
+    # If you need CI on a branch before opening a PR, open a draft PR
+    # or use workflow_dispatch from the Actions UI.
+    branches: [main]
     tags: ['v*']
   schedule:
     - cron: '0 5 * * *'  # nightly at 5am UTC
@@ -265,11 +273,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Clone facetlibs (pinned)
-        shell: bash
-        run: |
-          git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
-          cd facetlibs && git checkout 3af7741
+      - name: Disable Windows Defender real-time scanning
+        # Defender's per-file scanning adds significant overhead to
+        # Windows CI runs (notably 'Run tests' which spawns short-lived
+        # processes and reads many .fct/.cpp/.obj files). The runner is
+        # ephemeral and we control all inputs: source from this repo,
+        # pinned tool versions (zig, ninja via choco, Wails), facetlibs
+        # fetched from a known git repo. Equivalent scanning isn't done
+        # on Linux/macOS runners, so disabling here just brings Windows
+        # in line with the existing trust model. Requires admin which
+        # the github-hosted runner has.
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
