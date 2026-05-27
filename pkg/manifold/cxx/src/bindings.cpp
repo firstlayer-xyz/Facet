@@ -21,6 +21,13 @@
 #include <string>
 #include <vector>
 
+// TBB info header — only included if the manifold build linked parallel TBB.
+// FACET_MANIFOLD_PAR is forwarded from the same MANIFOLD_PAR value Manifold
+// was built with. See facet_tbb_default_concurrency() below.
+#if defined(FACET_MANIFOLD_PAR) && FACET_MANIFOLD_PAR == 1
+#include <oneapi/tbb/info.h>
+#endif
+
 #ifdef FACET_WASM
 // Under wasm, the warp/levelset callback bridges are provided by the JS
 // host. We declare them as imported functions here; the JS-side glue (see
@@ -1642,6 +1649,30 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
     *out_run_original_id = nullptr;
     *out_run_index = nullptr;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics — used by a one-off pkg/manifold test to confirm whether
+// Manifold's TBB parallelism actually activates on each platform. The
+// Linux profile showed 2.6 cores in use; the Windows profile showed 1.
+// These probes tell us whether MANIFOLD_PAR is compiled in (build-time)
+// and whether TBB itself sees more than one thread (runtime).
+// ---------------------------------------------------------------------------
+
+int facet_manifold_par(void) {
+#if defined(FACET_MANIFOLD_PAR)
+  return FACET_MANIFOLD_PAR;
+#else
+  return 0;
+#endif
+}
+
+int facet_tbb_default_concurrency(void) {
+#if defined(FACET_MANIFOLD_PAR) && FACET_MANIFOLD_PAR == 1
+  return (int)tbb::info::default_concurrency();
+#else
+  return -1;
+#endif
 }
 
 }  // extern "C"

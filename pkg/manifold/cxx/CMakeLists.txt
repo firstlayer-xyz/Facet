@@ -32,9 +32,26 @@ set(FREETYPE_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/freet
 set(ASSIMP_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/assimp/install-${_OS}-${_ARCH}")
 
 add_library(facet_cxx STATIC src/bindings.cpp src/polymesh.cpp src/text.cpp)
+
+# TBB info header — used by facet_tbb_default_concurrency() for runtime
+# parallelism diagnostics. Located in Manifold's bundled TBB clone tree.
+set(MANIFOLD_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/manifold/build-${_OS}-${_ARCH}")
+
 target_include_directories(facet_cxx
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/manifold/include
+          ${MANIFOLD_BUILD_DIR}/_deps/tbb-src/include
           ${FREETYPE_INSTALL_DIR}/include/freetype2
           ${ASSIMP_INSTALL_DIR}/include
 )
+
+# Forward Manifold's MANIFOLD_PAR build choice into facet_cxx so the
+# diagnostic helpers can report what Manifold was built with. We default
+# to ON (matches scripts/build-manifold.sh); pass -DFACET_MANIFOLD_PAR=OFF
+# only if the upstream build is configured serial.
+option(FACET_MANIFOLD_PAR "Manifold built with TBB-backed parallelism" ON)
+if(FACET_MANIFOLD_PAR)
+  target_compile_definitions(facet_cxx PRIVATE FACET_MANIFOLD_PAR=1)
+else()
+  target_compile_definitions(facet_cxx PRIVATE FACET_MANIFOLD_PAR=-1)
+endif()

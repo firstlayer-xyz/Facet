@@ -341,6 +341,21 @@ void facet_extract_polymesh(
     int** out_face_indices, int* out_face_indices_len,
     int** out_face_sizes, int* out_num_faces);
 
+// ---------------------------------------------------------------------------
+// Diagnostics
+// ---------------------------------------------------------------------------
+
+// Reports whether Manifold was built with TBB-backed parallelism enabled.
+// Returns 1 if Manifold's MANIFOLD_PAR=1 (parallel), -1 if serial, 0 if
+// unknown. The header that defines MANIFOLD_PAR is internal to Manifold
+// so facet_cxx reads its own -DMANIFOLD_PAR define instead.
+int facet_manifold_par(void);
+
+// Reports tbb::info::default_concurrency() — the number of logical
+// threads TBB believes the system has available. Returns -1 if the
+// build didn't link against TBB (parallel disabled at compile time).
+int facet_tbb_default_concurrency(void);
+
 #ifdef __cplusplus
 }
 #endif
