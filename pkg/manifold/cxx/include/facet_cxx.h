@@ -16,133 +16,137 @@ typedef struct ManifoldCrossSection ManifoldCrossSection;
 
 void facet_delete_solid(ManifoldPtr* m);
 void facet_delete_sketch(ManifoldCrossSection* cs);
-size_t facet_solid_memory_size(ManifoldPtr* m);
-size_t facet_sketch_memory_size(ManifoldCrossSection* cs);
 
 // ---------------------------------------------------------------------------
 // 3D Primitives
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_cube(double x, double y, double z);
-ManifoldPtr* facet_sphere(double radius, int segments);
-ManifoldPtr* facet_cylinder(double height, double radius_low, double radius_high, int segments);
+ManifoldPtr* facet_cube(double x, double y, double z, size_t* out_size);
+ManifoldPtr* facet_sphere(double radius, int segments, size_t* out_size);
+ManifoldPtr* facet_cylinder(double height, double radius_low, double radius_high, int segments, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 2D Primitives
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_square(double x, double y);
-ManifoldCrossSection* facet_circle(double radius, int segments);
-ManifoldCrossSection* facet_polygon(double* xy_pairs, size_t n_points);
-ManifoldCrossSection* facet_cs_empty(void);
+ManifoldCrossSection* facet_square(double x, double y, size_t* out_size);
+ManifoldCrossSection* facet_circle(double radius, int segments, size_t* out_size);
+ManifoldCrossSection* facet_polygon(double* xy_pairs, size_t n_points, size_t* out_size);
+ManifoldCrossSection* facet_cs_empty(size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 3D Booleans
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_union(ManifoldPtr* a, ManifoldPtr* b);
-ManifoldPtr* facet_difference(ManifoldPtr* a, ManifoldPtr* b);
-ManifoldPtr* facet_intersection(ManifoldPtr* a, ManifoldPtr* b);
-ManifoldPtr* facet_insert(ManifoldPtr* a, ManifoldPtr* b);
+ManifoldPtr* facet_union(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size);
+ManifoldPtr* facet_difference(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size);
+ManifoldPtr* facet_intersection(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size);
+ManifoldPtr* facet_insert(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size);
 
 // Splits m into connected components. Returns count; fills *out_components with
-// a malloc'd array of ManifoldPtr*. Caller frees each with facet_delete_solid,
-// then frees *out_components with free().
-int facet_decompose(ManifoldPtr* m, ManifoldPtr*** out_components);
+// a malloc'd array of ManifoldPtr* and *out_sizes with a malloc'd parallel array
+// of size_t. Caller frees each component with facet_delete_solid, then frees
+// *out_components and *out_sizes with free().
+int facet_decompose(ManifoldPtr* m, ManifoldPtr*** out_components, size_t** out_sizes);
 
 // ---------------------------------------------------------------------------
 // 2D Booleans
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_cs_union(ManifoldCrossSection* a, ManifoldCrossSection* b);
-ManifoldCrossSection* facet_cs_difference(ManifoldCrossSection* a, ManifoldCrossSection* b);
-ManifoldCrossSection* facet_cs_intersection(ManifoldCrossSection* a, ManifoldCrossSection* b);
+ManifoldCrossSection* facet_cs_union(ManifoldCrossSection* a, ManifoldCrossSection* b, size_t* out_size);
+ManifoldCrossSection* facet_cs_difference(ManifoldCrossSection* a, ManifoldCrossSection* b, size_t* out_size);
+ManifoldCrossSection* facet_cs_intersection(ManifoldCrossSection* a, ManifoldCrossSection* b, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 3D Transforms
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_translate(ManifoldPtr* m, double x, double y, double z);
-ManifoldPtr* facet_rotate(ManifoldPtr* m, double x, double y, double z);
-ManifoldPtr* facet_scale(ManifoldPtr* m, double x, double y, double z);
-ManifoldPtr* facet_mirror(ManifoldPtr* m, double nx, double ny, double nz);
-ManifoldPtr* facet_scale_local(ManifoldPtr* m, double x, double y, double z);
-ManifoldPtr* facet_rotate_local(ManifoldPtr* m, double x, double y, double z);
-ManifoldPtr* facet_mirror_local(ManifoldPtr* m, double nx, double ny, double nz);
-ManifoldPtr* facet_rotate_at(ManifoldPtr* m, double rx, double ry, double rz, double ox, double oy, double oz);
+ManifoldPtr* facet_translate(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
+ManifoldPtr* facet_rotate(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
+ManifoldPtr* facet_scale(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
+ManifoldPtr* facet_mirror(ManifoldPtr* m, double nx, double ny, double nz, size_t* out_size);
+ManifoldPtr* facet_scale_local(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
+ManifoldPtr* facet_rotate_local(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
+ManifoldPtr* facet_mirror_local(ManifoldPtr* m, double nx, double ny, double nz, size_t* out_size);
+ManifoldPtr* facet_rotate_at(ManifoldPtr* m, double rx, double ry, double rz, double ox, double oy, double oz, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 2D Transforms
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_cs_translate(ManifoldCrossSection* cs, double x, double y);
-ManifoldCrossSection* facet_cs_rotate(ManifoldCrossSection* cs, double degrees);
-ManifoldCrossSection* facet_cs_scale(ManifoldCrossSection* cs, double x, double y);
-ManifoldCrossSection* facet_cs_mirror(ManifoldCrossSection* cs, double ax, double ay);
-ManifoldCrossSection* facet_cs_rotate_local(ManifoldCrossSection* cs, double degrees);
-ManifoldCrossSection* facet_cs_mirror_local(ManifoldCrossSection* cs, double ax, double ay);
-ManifoldCrossSection* facet_cs_offset(ManifoldCrossSection* cs, double delta, int segments);
+ManifoldCrossSection* facet_cs_translate(ManifoldCrossSection* cs, double x, double y, size_t* out_size);
+ManifoldCrossSection* facet_cs_rotate(ManifoldCrossSection* cs, double degrees, size_t* out_size);
+ManifoldCrossSection* facet_cs_scale(ManifoldCrossSection* cs, double x, double y, size_t* out_size);
+ManifoldCrossSection* facet_cs_mirror(ManifoldCrossSection* cs, double ax, double ay, size_t* out_size);
+ManifoldCrossSection* facet_cs_rotate_local(ManifoldCrossSection* cs, double degrees, size_t* out_size);
+ManifoldCrossSection* facet_cs_mirror_local(ManifoldCrossSection* cs, double ax, double ay, size_t* out_size);
+ManifoldCrossSection* facet_cs_offset(ManifoldCrossSection* cs, double delta, int segments, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 2D → 3D
 // ---------------------------------------------------------------------------
 
 ManifoldPtr* facet_extrude(ManifoldCrossSection* cs, double height, int slices,
-                                double twist, double scale_x, double scale_y);
-ManifoldPtr* facet_revolve(ManifoldCrossSection* cs, int segments, double degrees);
+                                double twist, double scale_x, double scale_y, size_t* out_size);
+ManifoldPtr* facet_revolve(ManifoldCrossSection* cs, int segments, double degrees, size_t* out_size);
 ManifoldPtr* facet_sweep(ManifoldCrossSection* cs,
-                              double* path_xyz, size_t n_path_points);
+                              double* path_xyz, size_t n_path_points, size_t* out_size);
 ManifoldPtr* facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
-                             double* heights, size_t n_heights);
+                             double* heights, size_t n_heights, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 3D → 2D
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_slice(ManifoldPtr* m, double height);
-ManifoldCrossSection* facet_project(ManifoldPtr* m);
+ManifoldCrossSection* facet_slice(ManifoldPtr* m, double height, size_t* out_size);
+ManifoldCrossSection* facet_project(ManifoldPtr* m, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 3D Hulls
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_hull(ManifoldPtr* m);
-ManifoldPtr* facet_batch_hull(ManifoldPtr** solids, size_t count);
-ManifoldPtr* facet_hull_points(double* xyz, size_t n_points);
+ManifoldPtr* facet_hull(ManifoldPtr* m, size_t* out_size);
+ManifoldPtr* facet_batch_hull(ManifoldPtr** solids, size_t count, size_t* out_size);
+ManifoldPtr* facet_hull_points(double* xyz, size_t n_points, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 2D Hulls
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_cs_hull(ManifoldCrossSection* cs);
-ManifoldCrossSection* facet_cs_batch_hull(ManifoldCrossSection** sketches, size_t count);
+ManifoldCrossSection* facet_cs_hull(ManifoldCrossSection* cs, size_t* out_size);
+ManifoldCrossSection* facet_cs_batch_hull(ManifoldCrossSection** sketches, size_t count, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 3D Operations
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_trim_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset);
-ManifoldPtr* facet_smooth_out(ManifoldPtr* m, double min_sharp_angle, double min_smoothness);
-ManifoldPtr* facet_refine(ManifoldPtr* m, int n);
-ManifoldPtr* facet_simplify(ManifoldPtr* m, double tolerance);
-ManifoldPtr* facet_refine_to_length(ManifoldPtr* m, double length);
+ManifoldPtr* facet_trim_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset, size_t* out_size);
+ManifoldPtr* facet_smooth_out(ManifoldPtr* m, double min_sharp_angle, double min_smoothness, size_t* out_size);
+ManifoldPtr* facet_refine(ManifoldPtr* m, int n, size_t* out_size);
+ManifoldPtr* facet_simplify(ManifoldPtr* m, double tolerance, size_t* out_size);
+ManifoldPtr* facet_refine_to_length(ManifoldPtr* m, double length, size_t* out_size);
 
 // Split returns two manifolds: the part of m inside cutter and the part outside.
 // Returned as a flat pair — caller frees each with facet_delete_solid.
-typedef struct { ManifoldPtr* first; ManifoldPtr* second; } FacetManifoldPair;
+typedef struct {
+    ManifoldPtr* first;  size_t first_size;
+    ManifoldPtr* second; size_t second_size;
+} FacetManifoldPair;
 FacetManifoldPair facet_split(ManifoldPtr* m, ManifoldPtr* cutter);
 FacetManifoldPair facet_split_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset);
 
 // Out-pointer variants of the above. Used by the wasm/cwrap bridge, which
-// can't unpack a two-pointer struct return.
+// can't unpack a multi-field struct return.
 void facet_split_to(ManifoldPtr* m, ManifoldPtr* cutter,
-                    ManifoldPtr** out_first, ManifoldPtr** out_second);
+                    ManifoldPtr** out_first, size_t* out_first_size,
+                    ManifoldPtr** out_second, size_t* out_second_size);
 void facet_split_by_plane_to(ManifoldPtr* m, double nx, double ny, double nz, double offset,
-                             ManifoldPtr** out_first, ManifoldPtr** out_second);
+                             ManifoldPtr** out_first, size_t* out_first_size,
+                             ManifoldPtr** out_second, size_t* out_second_size);
 
 // Compose assembles n non-overlapping manifolds into one without boolean operations.
 // Components must not intersect; the result is undefined if they do.
-ManifoldPtr* facet_compose(ManifoldPtr** manifolds, int n);
+ManifoldPtr* facet_compose(ManifoldPtr** manifolds, int n, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // 3D Measurements
@@ -190,7 +194,7 @@ void facet_extract_display_mesh(ManifoldPtr* m,
 // to a malloc'd, null-terminated error string (caller frees via
 // facet_free_string). On success *out_err is set to NULL. out_err must be
 // non-NULL.
-ManifoldPtr* facet_import_mesh(const char* path, char** out_err);
+ManifoldPtr* facet_import_mesh(const char* path, char** out_err, size_t* out_size);
 
 // Exports a Manifold to a mesh file via Assimp. Returns NULL on success, or
 // a malloc'd, null-terminated error string on failure (caller frees via
@@ -203,7 +207,7 @@ void facet_free_string(char* s);
 
 // Create a Manifold from raw mesh data (vertices as flat float xyz, indices as uint32).
 ManifoldPtr* facet_solid_from_mesh(float* verts, size_t n_verts,
-                                        uint32_t* indices, size_t n_tris);
+                                        uint32_t* indices, size_t n_tris, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // Merged Display Mesh Extraction
@@ -248,7 +252,7 @@ void facet_merge_extract_expanded_mesh(
 // Returns empty CrossSection if text is empty or font fails to load.
 // Returns NULL on error (caller should check).
 ManifoldCrossSection* facet_text_to_cross_section(
-    const char* font_path, const char* text, double size_mm);
+    const char* font_path, const char* text, double size_mm, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // Callback operations
@@ -260,7 +264,7 @@ extern double facetLevelSetBridge(int id, double x, double y, double z);
 
 // Warp deforms each vertex of a solid using a per-vertex callback.
 // callback_id identifies the Go closure to invoke for each vertex.
-ManifoldPtr* facet_warp(ManifoldPtr* m, int callback_id);
+ManifoldPtr* facet_warp(ManifoldPtr* m, int callback_id, size_t* out_size);
 
 // LevelSet creates a solid from a signed-distance-field (SDF) callback.
 // Points where sdf(p) <= level form the interior; the surface is at sdf(p) = level.
@@ -268,7 +272,7 @@ ManifoldPtr* facet_warp(ManifoldPtr* m, int callback_id);
 ManifoldPtr* facet_level_set(int callback_id,
                                   double min_x, double min_y, double min_z,
                                   double max_x, double max_y, double max_z,
-                                  double edge_length);
+                                  double edge_length, size_t* out_size);
 
 // ---------------------------------------------------------------------------
 // Color
@@ -283,7 +287,7 @@ int facet_original_id(ManifoldPtr* m);
 
 // Marks a manifold as an original, assigning it a unique originalID.
 // Returns a new manifold (caller owns).
-ManifoldPtr* facet_as_original(ManifoldPtr* m);
+ManifoldPtr* facet_as_original(ManifoldPtr* m, size_t* out_size);
 
 // Extracts mesh data with run information for per-face color mapping.
 // runOriginalID[i] is the originalID for triangle run i.
@@ -302,7 +306,8 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
 ManifoldPtr* facet_solid_from_mesh_with_face_ids(
     float* vert_props, size_t n_verts,
     uint32_t* tri_verts, size_t n_tris,
-    uint32_t* face_ids, size_t n_face_ids
+    uint32_t* face_ids, size_t n_face_ids,
+    size_t* out_size
 );
 
 void facet_extract_polymesh(

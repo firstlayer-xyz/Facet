@@ -20,7 +20,8 @@ func ImportMesh(path string) (*Solid, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	var cErr *C.char
-	ptr := C.facet_import_mesh(cPath, &cErr)
+	var sz C.size_t
+	ptr := C.facet_import_mesh(cPath, &cErr, &sz)
 	if ptr == nil {
 		msg := "unknown error"
 		if cErr != nil {
@@ -29,7 +30,7 @@ func ImportMesh(path string) (*Solid, error) {
 		}
 		return nil, fmt.Errorf("ImportMesh %s: %s", path, msg)
 	}
-	s := newSolid(ptr)
+	s := newSolid(ptr, sz)
 	origID := uint32(C.facet_original_id(s.ptr))
 	runtime.KeepAlive(s)
 	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
@@ -46,13 +47,15 @@ func CreateSolidFromMesh(vertices []float32, indices []uint32) (*Solid, error) {
 	nVerts := len(vertices) / 3
 	nTris := len(indices) / 3
 
+	var sz C.size_t
 	ptr := C.facet_solid_from_mesh(
 		(*C.float)(unsafe.Pointer(&vertices[0])), C.size_t(nVerts),
-		(*C.uint32_t)(unsafe.Pointer(&indices[0])), C.size_t(nTris))
+		(*C.uint32_t)(unsafe.Pointer(&indices[0])), C.size_t(nTris),
+		&sz)
 	if ptr == nil {
 		return nil, fmt.Errorf("CreateSolidFromMesh: manifold creation failed")
 	}
-	s := newSolid(ptr)
+	s := newSolid(ptr, sz)
 	origID := uint32(C.facet_original_id(s.ptr))
 	runtime.KeepAlive(s)
 	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}

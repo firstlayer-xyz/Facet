@@ -1,4 +1,5 @@
 #include "facet_cxx.h"
+#include "internal.h"
 #include "manifold/manifold.h"
 #include "manifold/cross_section.h"
 #include "manifold/polygon.h"
@@ -42,19 +43,7 @@ extern "C" {
 #endif
 
 using namespace manifold;
-
-static Manifold* as_cpp(ManifoldPtr* m) {
-  return reinterpret_cast<Manifold*>(m);
-}
-static ManifoldPtr* as_c(Manifold* m) {
-  return reinterpret_cast<ManifoldPtr*>(m);
-}
-static CrossSection* as_cpp_cs(ManifoldCrossSection* cs) {
-  return reinterpret_cast<CrossSection*>(cs);
-}
-static ManifoldCrossSection* as_c_cs(CrossSection* cs) {
-  return reinterpret_cast<ManifoldCrossSection*>(cs);
-}
+using namespace facet_cxx_internal;  // as_cpp, as_cpp_cs, wrap, wrap_cs, solid_size, sketch_size
 
 extern "C" {
 
@@ -65,86 +54,73 @@ extern "C" {
 void facet_delete_solid(ManifoldPtr* m) { delete as_cpp(m); }
 void facet_delete_sketch(ManifoldCrossSection* cs) { delete as_cpp_cs(cs); }
 
-size_t facet_solid_memory_size(ManifoldPtr* m) {
-  auto* cpp = as_cpp(m);
-  size_t nv = cpp->NumVert();
-  size_t nt = cpp->NumTri();
-  size_t np = cpp->NumProp();
-  return nv * (24 + np * 8) + nt * 108;
-}
-
-size_t facet_sketch_memory_size(ManifoldCrossSection* cs) {
-  auto* cpp = as_cpp_cs(cs);
-  return cpp->NumVert() * 16 + cpp->NumContour() * 24;
-}
-
 // ---------------------------------------------------------------------------
 // 3D Primitives
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_cube(double x, double y, double z) {
-  return as_c(new Manifold(Manifold::Cube({x, y, z}, false).AsOriginal()));
+ManifoldPtr* facet_cube(double x, double y, double z, size_t* out_size) {
+  return wrap(new Manifold(Manifold::Cube({x, y, z}, false).AsOriginal()), out_size);
 }
 
-ManifoldPtr* facet_sphere(double radius, int segments) {
+ManifoldPtr* facet_sphere(double radius, int segments, size_t* out_size) {
   // Manifold::Sphere is centered at origin; translate so bbox starts at (0,0,0).
   auto s = Manifold::Sphere(radius, segments).Translate({radius, radius, radius});
-  return as_c(new Manifold(s.AsOriginal()));
+  return wrap(new Manifold(s.AsOriginal()), out_size);
 }
 
-ManifoldPtr* facet_cylinder(double height, double radius_low, double radius_high, int segments) {
+ManifoldPtr* facet_cylinder(double height, double radius_low, double radius_high, int segments, size_t* out_size) {
   // Manifold::Cylinder is XY-centered with base at z=0; translate XY so bbox
   // starts at (0,0,0) on all axes, matching cube/sphere/square/circle.
   double r = std::fmax(radius_low, radius_high);
   auto s = Manifold::Cylinder(height, radius_low, radius_high, segments).Translate({r, r, 0});
-  return as_c(new Manifold(s.AsOriginal()));
+  return wrap(new Manifold(s.AsOriginal()), out_size);
 }
 
 // ---------------------------------------------------------------------------
 // 2D Primitives
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_square(double x, double y) {
+ManifoldCrossSection* facet_square(double x, double y, size_t* out_size) {
   // Not centered — bbox min at (0,0), matching cube/sphere/cylinder convention.
-  return as_c_cs(new CrossSection(CrossSection::Square({x, y}, false)));
+  return wrap_cs(new CrossSection(CrossSection::Square({x, y}, false)), out_size);
 }
 
-ManifoldCrossSection* facet_circle(double radius, int segments) {
+ManifoldCrossSection* facet_circle(double radius, int segments, size_t* out_size) {
   // CrossSection::Circle is origin-centered here; the Go wrapper
   // (CreateCircle in primitives.go) translates by (radius, radius) so the
   // final bbox min is at (0,0), matching the other primitives.
-  return as_c_cs(new CrossSection(CrossSection::Circle(radius, segments)));
+  return wrap_cs(new CrossSection(CrossSection::Circle(radius, segments)), out_size);
 }
 
-ManifoldCrossSection* facet_polygon(double* xy_pairs, size_t n_points) {
+ManifoldCrossSection* facet_polygon(double* xy_pairs, size_t n_points, size_t* out_size) {
   SimplePolygon poly(n_points);
   for (size_t i = 0; i < n_points; i++) {
     poly[i] = {xy_pairs[i * 2], xy_pairs[i * 2 + 1]};
   }
-  return as_c_cs(new CrossSection(CrossSection({poly}, CrossSection::FillRule::Positive)));
+  return wrap_cs(new CrossSection(CrossSection({poly}, CrossSection::FillRule::Positive)), out_size);
 }
 
-ManifoldCrossSection* facet_cs_empty(void) {
-  return as_c_cs(new CrossSection());
+ManifoldCrossSection* facet_cs_empty(size_t* out_size) {
+  return wrap_cs(new CrossSection(), out_size);
 }
 
 // ---------------------------------------------------------------------------
 // 3D Booleans
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_union(ManifoldPtr* a, ManifoldPtr* b) {
-  return as_c(new Manifold(*as_cpp(a) + *as_cpp(b)));
+ManifoldPtr* facet_union(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size) {
+  return wrap(new Manifold(*as_cpp(a) + *as_cpp(b)), out_size);
 }
 
-ManifoldPtr* facet_difference(ManifoldPtr* a, ManifoldPtr* b) {
-  return as_c(new Manifold(*as_cpp(a) - *as_cpp(b)));
+ManifoldPtr* facet_difference(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size) {
+  return wrap(new Manifold(*as_cpp(a) - *as_cpp(b)), out_size);
 }
 
-ManifoldPtr* facet_intersection(ManifoldPtr* a, ManifoldPtr* b) {
-  return as_c(new Manifold(*as_cpp(a) ^ *as_cpp(b)));
+ManifoldPtr* facet_intersection(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size) {
+  return wrap(new Manifold(*as_cpp(a) ^ *as_cpp(b)), out_size);
 }
 
-ManifoldPtr* facet_insert(ManifoldPtr* a, ManifoldPtr* b) {
+ManifoldPtr* facet_insert(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size) {
   Manifold diff = *as_cpp(a) - *as_cpp(b);
   auto components = diff.Decompose();
   Manifold pierced;
@@ -159,23 +135,27 @@ ManifoldPtr* facet_insert(ManifoldPtr* a, ManifoldPtr* b) {
     }
     pierced = outer.empty() ? std::move(diff) : Manifold::Compose(outer);
   }
-  return as_c(new Manifold(pierced + *as_cpp(b)));
+  return wrap(new Manifold(pierced + *as_cpp(b)), out_size);
 }
 
 // Returns count of connected components; fills *out_components with a malloc'd
-// array of ManifoldPtr* (one per component). Caller must free each
-// element with facet_delete_solid, then free(*out_components).
-int facet_decompose(ManifoldPtr* m, ManifoldPtr*** out_components) {
+// array of ManifoldPtr* (one per component) and *out_sizes with a malloc'd
+// parallel array of size_t. Caller must free each component with
+// facet_delete_solid, then free(*out_components) and free(*out_sizes).
+int facet_decompose(ManifoldPtr* m, ManifoldPtr*** out_components, size_t** out_sizes) {
   auto components = as_cpp(m)->Decompose();
   int n = (int)components.size();
   if (n == 0) {
     *out_components = nullptr;
+    *out_sizes = nullptr;
     return 0;
   }
   ManifoldPtr** arr = (ManifoldPtr**)malloc(n * sizeof(ManifoldPtr*));
+  size_t* sz = (size_t*)malloc(n * sizeof(size_t));
   for (int i = 0; i < n; i++)
-    arr[i] = as_c(new Manifold(std::move(components[i])));
+    arr[i] = wrap(new Manifold(std::move(components[i])), &sz[i]);
   *out_components = arr;
+  *out_sizes = sz;
   return n;
 }
 
@@ -183,119 +163,119 @@ int facet_decompose(ManifoldPtr* m, ManifoldPtr*** out_components) {
 // 2D Booleans
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_cs_union(ManifoldCrossSection* a, ManifoldCrossSection* b) {
-  return as_c_cs(new CrossSection(*as_cpp_cs(a) + *as_cpp_cs(b)));
+ManifoldCrossSection* facet_cs_union(ManifoldCrossSection* a, ManifoldCrossSection* b, size_t* out_size) {
+  return wrap_cs(new CrossSection(*as_cpp_cs(a) + *as_cpp_cs(b)), out_size);
 }
 
-ManifoldCrossSection* facet_cs_difference(ManifoldCrossSection* a, ManifoldCrossSection* b) {
-  return as_c_cs(new CrossSection(*as_cpp_cs(a) - *as_cpp_cs(b)));
+ManifoldCrossSection* facet_cs_difference(ManifoldCrossSection* a, ManifoldCrossSection* b, size_t* out_size) {
+  return wrap_cs(new CrossSection(*as_cpp_cs(a) - *as_cpp_cs(b)), out_size);
 }
 
-ManifoldCrossSection* facet_cs_intersection(ManifoldCrossSection* a, ManifoldCrossSection* b) {
-  return as_c_cs(new CrossSection(*as_cpp_cs(a) ^ *as_cpp_cs(b)));
+ManifoldCrossSection* facet_cs_intersection(ManifoldCrossSection* a, ManifoldCrossSection* b, size_t* out_size) {
+  return wrap_cs(new CrossSection(*as_cpp_cs(a) ^ *as_cpp_cs(b)), out_size);
 }
 
 // ---------------------------------------------------------------------------
 // 3D Transforms
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_translate(ManifoldPtr* m, double x, double y, double z) {
-  return as_c(new Manifold(as_cpp(m)->Translate({x, y, z})));
+ManifoldPtr* facet_translate(ManifoldPtr* m, double x, double y, double z, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->Translate({x, y, z})), out_size);
 }
 
-ManifoldPtr* facet_rotate(ManifoldPtr* m, double x, double y, double z) {
-  return as_c(new Manifold(as_cpp(m)->Rotate(x, y, z)));
+ManifoldPtr* facet_rotate(ManifoldPtr* m, double x, double y, double z, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->Rotate(x, y, z)), out_size);
 }
 
-ManifoldPtr* facet_scale(ManifoldPtr* m, double x, double y, double z) {
-  return as_c(new Manifold(as_cpp(m)->Scale({x, y, z})));
+ManifoldPtr* facet_scale(ManifoldPtr* m, double x, double y, double z, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->Scale({x, y, z})), out_size);
 }
 
-ManifoldPtr* facet_mirror(ManifoldPtr* m, double nx, double ny, double nz) {
-  return as_c(new Manifold(as_cpp(m)->Mirror({nx, ny, nz})));
+ManifoldPtr* facet_mirror(ManifoldPtr* m, double nx, double ny, double nz, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->Mirror({nx, ny, nz})), out_size);
 }
 
 // Pivot operations — translate-op-translate fused into a single C++ call.
 
 // Scale pivoting at the bounding box min corner (bottom-left-front stays fixed).
-ManifoldPtr* facet_scale_local(ManifoldPtr* m, double x, double y, double z) {
+ManifoldPtr* facet_scale_local(ManifoldPtr* m, double x, double y, double z, size_t* out_size) {
   Manifold* src = as_cpp(m);
   auto bb = src->BoundingBox();
   double mx = bb.min.x, my = bb.min.y, mz = bb.min.z;
   Manifold result = src->Translate({-mx, -my, -mz}).Scale({x, y, z}).Translate({mx, my, mz});
-  return as_c(new Manifold(std::move(result)));
+  return wrap(new Manifold(std::move(result)), out_size);
 }
 
 // Rotate pivoting at the bounding box center.
-ManifoldPtr* facet_rotate_local(ManifoldPtr* m, double x, double y, double z) {
+ManifoldPtr* facet_rotate_local(ManifoldPtr* m, double x, double y, double z, size_t* out_size) {
   Manifold* src = as_cpp(m);
   auto bb = src->BoundingBox();
   double cx = (bb.min.x + bb.max.x) * 0.5;
   double cy = (bb.min.y + bb.max.y) * 0.5;
   double cz = (bb.min.z + bb.max.z) * 0.5;
   Manifold result = src->Translate({-cx, -cy, -cz}).Rotate(x, y, z).Translate({cx, cy, cz});
-  return as_c(new Manifold(std::move(result)));
+  return wrap(new Manifold(std::move(result)), out_size);
 }
 
 // Mirror pivoting at the bounding box center.
-ManifoldPtr* facet_mirror_local(ManifoldPtr* m, double nx, double ny, double nz) {
+ManifoldPtr* facet_mirror_local(ManifoldPtr* m, double nx, double ny, double nz, size_t* out_size) {
   Manifold* src = as_cpp(m);
   auto bb = src->BoundingBox();
   double cx = (bb.min.x + bb.max.x) * 0.5;
   double cy = (bb.min.y + bb.max.y) * 0.5;
   double cz = (bb.min.z + bb.max.z) * 0.5;
   Manifold result = src->Translate({-cx, -cy, -cz}).Mirror({nx, ny, nz}).Translate({cx, cy, cz});
-  return as_c(new Manifold(std::move(result)));
+  return wrap(new Manifold(std::move(result)), out_size);
 }
 
 // Rotate by (rx, ry, rz) degrees around pivot point (ox, oy, oz).
-ManifoldPtr* facet_rotate_at(ManifoldPtr* m, double rx, double ry, double rz, double ox, double oy, double oz) {
+ManifoldPtr* facet_rotate_at(ManifoldPtr* m, double rx, double ry, double rz, double ox, double oy, double oz, size_t* out_size) {
   Manifold result = as_cpp(m)->Translate({-ox, -oy, -oz}).Rotate(rx, ry, rz).Translate({ox, oy, oz});
-  return as_c(new Manifold(std::move(result)));
+  return wrap(new Manifold(std::move(result)), out_size);
 }
 
 // ---------------------------------------------------------------------------
 // 2D Transforms
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_cs_translate(ManifoldCrossSection* cs, double x, double y) {
-  return as_c_cs(new CrossSection(as_cpp_cs(cs)->Translate({x, y})));
+ManifoldCrossSection* facet_cs_translate(ManifoldCrossSection* cs, double x, double y, size_t* out_size) {
+  return wrap_cs(new CrossSection(as_cpp_cs(cs)->Translate({x, y})), out_size);
 }
 
-ManifoldCrossSection* facet_cs_rotate(ManifoldCrossSection* cs, double degrees) {
-  return as_c_cs(new CrossSection(as_cpp_cs(cs)->Rotate(degrees)));
+ManifoldCrossSection* facet_cs_rotate(ManifoldCrossSection* cs, double degrees, size_t* out_size) {
+  return wrap_cs(new CrossSection(as_cpp_cs(cs)->Rotate(degrees)), out_size);
 }
 
-ManifoldCrossSection* facet_cs_scale(ManifoldCrossSection* cs, double x, double y) {
-  return as_c_cs(new CrossSection(as_cpp_cs(cs)->Scale({x, y})));
+ManifoldCrossSection* facet_cs_scale(ManifoldCrossSection* cs, double x, double y, size_t* out_size) {
+  return wrap_cs(new CrossSection(as_cpp_cs(cs)->Scale({x, y})), out_size);
 }
 
-ManifoldCrossSection* facet_cs_mirror(ManifoldCrossSection* cs, double ax, double ay) {
-  return as_c_cs(new CrossSection(as_cpp_cs(cs)->Mirror({ax, ay})));
+ManifoldCrossSection* facet_cs_mirror(ManifoldCrossSection* cs, double ax, double ay, size_t* out_size) {
+  return wrap_cs(new CrossSection(as_cpp_cs(cs)->Mirror({ax, ay})), out_size);
 }
 
 // Rotate sketch pivoting at the bounding box center.
-ManifoldCrossSection* facet_cs_rotate_local(ManifoldCrossSection* cs, double degrees) {
+ManifoldCrossSection* facet_cs_rotate_local(ManifoldCrossSection* cs, double degrees, size_t* out_size) {
   CrossSection* src = as_cpp_cs(cs);
   auto bb = src->Bounds();
   double cx = (bb.min.x + bb.max.x) * 0.5;
   double cy = (bb.min.y + bb.max.y) * 0.5;
   CrossSection result = src->Translate({-cx, -cy}).Rotate(degrees).Translate({cx, cy});
-  return as_c_cs(new CrossSection(std::move(result)));
+  return wrap_cs(new CrossSection(std::move(result)), out_size);
 }
 
 // Mirror sketch pivoting at the bounding box center.
-ManifoldCrossSection* facet_cs_mirror_local(ManifoldCrossSection* cs, double ax, double ay) {
+ManifoldCrossSection* facet_cs_mirror_local(ManifoldCrossSection* cs, double ax, double ay, size_t* out_size) {
   CrossSection* src = as_cpp_cs(cs);
   auto bb = src->Bounds();
   double cx = (bb.min.x + bb.max.x) * 0.5;
   double cy = (bb.min.y + bb.max.y) * 0.5;
   CrossSection result = src->Translate({-cx, -cy}).Mirror({ax, ay}).Translate({cx, cy});
-  return as_c_cs(new CrossSection(std::move(result)));
+  return wrap_cs(new CrossSection(std::move(result)), out_size);
 }
 
-ManifoldCrossSection* facet_cs_offset(ManifoldCrossSection* cs, double delta, int segments) {
-  return as_c_cs(new CrossSection(as_cpp_cs(cs)->Offset(delta, CrossSection::JoinType::Round, 2.0, segments)));
+ManifoldCrossSection* facet_cs_offset(ManifoldCrossSection* cs, double delta, int segments, size_t* out_size) {
+  return wrap_cs(new CrossSection(as_cpp_cs(cs)->Offset(delta, CrossSection::JoinType::Round, 2.0, segments)), out_size);
 }
 
 // ---------------------------------------------------------------------------
@@ -303,19 +283,19 @@ ManifoldCrossSection* facet_cs_offset(ManifoldCrossSection* cs, double delta, in
 // ---------------------------------------------------------------------------
 
 ManifoldPtr* facet_extrude(ManifoldCrossSection* cs, double height, int slices,
-                                double twist, double scale_x, double scale_y) {
+                                double twist, double scale_x, double scale_y, size_t* out_size) {
   auto polys = as_cpp_cs(cs)->ToPolygons();
-  return as_c(new Manifold(Manifold::Extrude(polys, height, slices, twist, {scale_x, scale_y}).AsOriginal()));
+  return wrap(new Manifold(Manifold::Extrude(polys, height, slices, twist, {scale_x, scale_y}).AsOriginal()), out_size);
 }
 
-ManifoldPtr* facet_revolve(ManifoldCrossSection* cs, int segments, double degrees) {
+ManifoldPtr* facet_revolve(ManifoldCrossSection* cs, int segments, double degrees, size_t* out_size) {
   auto polys = as_cpp_cs(cs)->ToPolygons();
-  return as_c(new Manifold(Manifold::Revolve(polys, segments, degrees).AsOriginal()));
+  return wrap(new Manifold(Manifold::Revolve(polys, segments, degrees).AsOriginal()), out_size);
 }
 
 ManifoldPtr* facet_sweep(ManifoldCrossSection* cs,
-                              double* path_xyz, size_t n_path_points) {
-  if (n_path_points < 2) return as_c(new Manifold());
+                              double* path_xyz, size_t n_path_points, size_t* out_size) {
+  if (n_path_points < 2) return wrap(new Manifold(), out_size);
 
   auto polys = as_cpp_cs(cs)->ToPolygons();
 
@@ -332,7 +312,7 @@ ManifoldPtr* facet_sweep(ManifoldCrossSection* cs,
     }
   }
   size_t nCS = csVerts.size();
-  if (nCS == 0) return as_c(new Manifold());
+  if (nCS == 0) return wrap(new Manifold(), out_size);
   size_t nPath = n_path_points;
 
   // Read path points.
@@ -476,12 +456,12 @@ ManifoldPtr* facet_sweep(ManifoldCrossSection* cs,
   mesh.numProp = 3;
   mesh.vertProperties = std::move(vertProps);
   mesh.triVerts.assign(triVerts.begin(), triVerts.end());
-  return as_c(new Manifold(Manifold(mesh).AsOriginal()));
+  return wrap(new Manifold(Manifold(mesh).AsOriginal()), out_size);
 }
 
 ManifoldPtr* facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
-                             double* heights, size_t n_heights) {
-  if (n_sketches < 2 || n_sketches != n_heights) return as_c(new Manifold());
+                             double* heights, size_t n_heights, size_t* out_size) {
+  if (n_sketches < 2 || n_sketches != n_heights) return wrap(new Manifold(), out_size);
 
   // Extract polygons for each sketch.
   std::vector<Polygons> allPolys(n_sketches);
@@ -494,7 +474,7 @@ ManifoldPtr* facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
   for (auto& polys : allPolys) {
     if (polys.size() > maxContours) maxContours = polys.size();
   }
-  if (maxContours == 0) return as_c(new Manifold());
+  if (maxContours == 0) return wrap(new Manifold(), out_size);
 
   // Resample helper: walk a contour's edges and place targetN points at
   // uniform arc-length spacing.
@@ -562,7 +542,7 @@ ManifoldPtr* facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
   // Total vertices per ring.
   size_t ringVerts = 0;
   for (auto t : contourTargets) ringVerts += t;
-  if (ringVerts == 0) return as_c(new Manifold());
+  if (ringVerts == 0) return wrap(new Manifold(), out_size);
 
   // Resample all sketches so each has maxContours contours, each with
   // matching vertex count. Missing contours degenerate to centroid of
@@ -655,116 +635,128 @@ ManifoldPtr* facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
   mesh.numProp = 3;
   mesh.vertProperties = std::move(vertProps);
   mesh.triVerts.assign(triVerts.begin(), triVerts.end());
-  return as_c(new Manifold(Manifold(mesh).AsOriginal()));
+  return wrap(new Manifold(Manifold(mesh).AsOriginal()), out_size);
 }
 
 // ---------------------------------------------------------------------------
 // 3D → 2D
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_slice(ManifoldPtr* m, double height) {
+ManifoldCrossSection* facet_slice(ManifoldPtr* m, double height, size_t* out_size) {
   auto polys = as_cpp(m)->Slice(height);
-  return as_c_cs(new CrossSection(CrossSection(polys, CrossSection::FillRule::Positive)));
+  return wrap_cs(new CrossSection(CrossSection(polys, CrossSection::FillRule::Positive)), out_size);
 }
 
-ManifoldCrossSection* facet_project(ManifoldPtr* m) {
+ManifoldCrossSection* facet_project(ManifoldPtr* m, size_t* out_size) {
   auto polys = as_cpp(m)->Project();
-  return as_c_cs(new CrossSection(CrossSection(polys, CrossSection::FillRule::Positive)));
+  return wrap_cs(new CrossSection(CrossSection(polys, CrossSection::FillRule::Positive)), out_size);
 }
 
 // ---------------------------------------------------------------------------
 // 3D Hulls
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_hull(ManifoldPtr* m) {
-  return as_c(new Manifold(as_cpp(m)->Hull().AsOriginal()));
+ManifoldPtr* facet_hull(ManifoldPtr* m, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->Hull().AsOriginal()), out_size);
 }
 
-ManifoldPtr* facet_batch_hull(ManifoldPtr** solids, size_t count) {
+ManifoldPtr* facet_batch_hull(ManifoldPtr** solids, size_t count, size_t* out_size) {
   std::vector<Manifold> vec(count);
   for (size_t i = 0; i < count; i++) {
     vec[i] = *as_cpp(solids[i]);
   }
-  return as_c(new Manifold(Manifold::Hull(vec).AsOriginal()));
+  return wrap(new Manifold(Manifold::Hull(vec).AsOriginal()), out_size);
 }
 
-ManifoldPtr* facet_hull_points(double* xyz, size_t n_points) {
+ManifoldPtr* facet_hull_points(double* xyz, size_t n_points, size_t* out_size) {
   std::vector<vec3> pts(n_points);
   for (size_t i = 0; i < n_points; i++) {
     pts[i] = {xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2]};
   }
-  return as_c(new Manifold(Manifold::Hull(pts).AsOriginal()));
+  return wrap(new Manifold(Manifold::Hull(pts).AsOriginal()), out_size);
 }
 
 // ---------------------------------------------------------------------------
 // 2D Hulls
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_cs_hull(ManifoldCrossSection* cs) {
-  return as_c_cs(new CrossSection(as_cpp_cs(cs)->Hull()));
+ManifoldCrossSection* facet_cs_hull(ManifoldCrossSection* cs, size_t* out_size) {
+  return wrap_cs(new CrossSection(as_cpp_cs(cs)->Hull()), out_size);
 }
 
-ManifoldCrossSection* facet_cs_batch_hull(ManifoldCrossSection** sketches, size_t count) {
+ManifoldCrossSection* facet_cs_batch_hull(ManifoldCrossSection** sketches, size_t count, size_t* out_size) {
   std::vector<CrossSection> vec(count);
   for (size_t i = 0; i < count; i++) {
     vec[i] = *as_cpp_cs(sketches[i]);
   }
-  return as_c_cs(new CrossSection(CrossSection::Hull(vec)));
+  return wrap_cs(new CrossSection(CrossSection::Hull(vec)), out_size);
 }
 
 // ---------------------------------------------------------------------------
 // 3D Operations
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_trim_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset) {
-  return as_c(new Manifold(as_cpp(m)->TrimByPlane({nx, ny, nz}, offset)));
+ManifoldPtr* facet_trim_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->TrimByPlane({nx, ny, nz}, offset)), out_size);
 }
 
-ManifoldPtr* facet_smooth_out(ManifoldPtr* m, double min_sharp_angle, double min_smoothness) {
-  return as_c(new Manifold(as_cpp(m)->SmoothOut(min_sharp_angle, min_smoothness)));
+ManifoldPtr* facet_smooth_out(ManifoldPtr* m, double min_sharp_angle, double min_smoothness, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->SmoothOut(min_sharp_angle, min_smoothness)), out_size);
 }
 
-ManifoldPtr* facet_refine(ManifoldPtr* m, int n) {
-  return as_c(new Manifold(as_cpp(m)->Refine(n)));
+ManifoldPtr* facet_refine(ManifoldPtr* m, int n, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->Refine(n)), out_size);
 }
 
-ManifoldPtr* facet_simplify(ManifoldPtr* m, double tolerance) {
-  return as_c(new Manifold(as_cpp(m)->Simplify(tolerance)));
+ManifoldPtr* facet_simplify(ManifoldPtr* m, double tolerance, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->Simplify(tolerance)), out_size);
 }
 
-ManifoldPtr* facet_refine_to_length(ManifoldPtr* m, double length) {
-  return as_c(new Manifold(as_cpp(m)->RefineToLength(length)));
+ManifoldPtr* facet_refine_to_length(ManifoldPtr* m, double length, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->RefineToLength(length)), out_size);
 }
 
 FacetManifoldPair facet_split(ManifoldPtr* m, ManifoldPtr* cutter) {
   auto [first, second] = as_cpp(m)->Split(*as_cpp(cutter));
-  return { as_c(new Manifold(std::move(first))), as_c(new Manifold(std::move(second))) };
+  FacetManifoldPair r;
+  r.first  = wrap(new Manifold(std::move(first)),  &r.first_size);
+  r.second = wrap(new Manifold(std::move(second)), &r.second_size);
+  return r;
 }
 
 FacetManifoldPair facet_split_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset) {
   auto [first, second] = as_cpp(m)->SplitByPlane({nx, ny, nz}, offset);
-  return { as_c(new Manifold(std::move(first))), as_c(new Manifold(std::move(second))) };
+  FacetManifoldPair r;
+  r.first  = wrap(new Manifold(std::move(first)),  &r.first_size);
+  r.second = wrap(new Manifold(std::move(second)), &r.second_size);
+  return r;
 }
 
 void facet_split_to(ManifoldPtr* m, ManifoldPtr* cutter,
-                    ManifoldPtr** out_first, ManifoldPtr** out_second) {
+                    ManifoldPtr** out_first, size_t* out_first_size,
+                    ManifoldPtr** out_second, size_t* out_second_size) {
   auto p = facet_split(m, cutter);
-  *out_first = p.first;
-  *out_second = p.second;
+  *out_first       = p.first;
+  *out_first_size  = p.first_size;
+  *out_second      = p.second;
+  *out_second_size = p.second_size;
 }
 
 void facet_split_by_plane_to(ManifoldPtr* m, double nx, double ny, double nz, double offset,
-                             ManifoldPtr** out_first, ManifoldPtr** out_second) {
+                             ManifoldPtr** out_first, size_t* out_first_size,
+                             ManifoldPtr** out_second, size_t* out_second_size) {
   auto p = facet_split_by_plane(m, nx, ny, nz, offset);
-  *out_first = p.first;
-  *out_second = p.second;
+  *out_first       = p.first;
+  *out_first_size  = p.first_size;
+  *out_second      = p.second;
+  *out_second_size = p.second_size;
 }
 
-ManifoldPtr* facet_compose(ManifoldPtr** manifolds, int n) {
+ManifoldPtr* facet_compose(ManifoldPtr** manifolds, int n, size_t* out_size) {
   std::vector<Manifold> v;
   v.reserve(n);
   for (int i = 0; i < n; i++) v.push_back(*as_cpp(manifolds[i]));
-  return as_c(new Manifold(Manifold::Compose(v)));
+  return wrap(new Manifold(Manifold::Compose(v)), out_size);
 }
 
 // ---------------------------------------------------------------------------
@@ -1005,8 +997,9 @@ std::string assimp_export_type(const std::string& path) {
 extern "C" {
 
 #ifndef FACET_WASM
-ManifoldPtr* facet_import_mesh(const char* path, char** out_err) {
+ManifoldPtr* facet_import_mesh(const char* path, char** out_err, size_t* out_size) {
   *out_err = nullptr;
+  *out_size = 0;
   std::string ext = path_ext_lower(path);
 
   Assimp::Importer importer;
@@ -1068,7 +1061,7 @@ ManifoldPtr* facet_import_mesh(const char* path, char** out_err) {
     return nullptr;
   }
 
-  return as_c(new Manifold(Manifold(mesh_out).AsOriginal()));
+  return wrap(new Manifold(Manifold(mesh_out).AsOriginal()), out_size);
 }
 
 char* facet_export_mesh(ManifoldPtr* m, const char* path) {
@@ -1110,8 +1103,9 @@ static char* dup_err(const char* msg) {
   return out;
 }
 
-ManifoldPtr* facet_import_mesh(const char* /*path*/, char** out_err) {
+ManifoldPtr* facet_import_mesh(const char* /*path*/, char** out_err, size_t* out_size) {
   if (out_err) *out_err = dup_err("import_mesh: not available in wasm build (use JS-side loader)");
+  *out_size = 0;
   return nullptr;
 }
 
@@ -1123,12 +1117,12 @@ char* facet_export_mesh(ManifoldPtr* /*m*/, const char* /*path*/) {
 void facet_free_string(char* s) { std::free(s); }
 
 ManifoldPtr* facet_solid_from_mesh(float* verts, size_t n_verts,
-                                        uint32_t* indices, size_t n_tris) {
+                                        uint32_t* indices, size_t n_tris, size_t* out_size) {
   MeshGL mesh;
   mesh.numProp = 3;
   mesh.vertProperties.assign(verts, verts + n_verts * 3);
   mesh.triVerts.assign(indices, indices + n_tris * 3);
-  return as_c(new Manifold(Manifold(mesh).AsOriginal()));
+  return wrap(new Manifold(Manifold(mesh).AsOriginal()), out_size);
 }
 
 // ---------------------------------------------------------------------------
@@ -1564,24 +1558,24 @@ void facet_merge_extract_expanded_mesh(
 // Callback operations
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_warp(ManifoldPtr* m, int callback_id) {
-  return as_c(new Manifold(as_cpp(m)->Warp([callback_id](vec3& v) {
+ManifoldPtr* facet_warp(ManifoldPtr* m, int callback_id, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->Warp([callback_id](vec3& v) {
     double x = v.x, y = v.y, z = v.z;
     facetWarpBridge(callback_id, &x, &y, &z);
     v.x = x; v.y = y; v.z = z;
-  })));
+  })), out_size);
 }
 
 ManifoldPtr* facet_level_set(int callback_id,
                                    double min_x, double min_y, double min_z,
                                    double max_x, double max_y, double max_z,
-                                   double edge_length) {
+                                   double edge_length, size_t* out_size) {
   Box bounds{vec3{min_x, min_y, min_z}, vec3{max_x, max_y, max_z}};
-  return as_c(new Manifold(Manifold::LevelSet(
+  return wrap(new Manifold(Manifold::LevelSet(
       [callback_id](vec3 v) -> double {
         return facetLevelSetBridge(callback_id, v.x, v.y, v.z);
       },
-      bounds, edge_length, 0.0, -1.0, false).AsOriginal()));
+      bounds, edge_length, 0.0, -1.0, false).AsOriginal()), out_size);
 }
 
 // ---------------------------------------------------------------------------
@@ -1592,8 +1586,8 @@ int facet_original_id(ManifoldPtr* m) {
   return as_cpp(m)->OriginalID();
 }
 
-ManifoldPtr* facet_as_original(ManifoldPtr* m) {
-  return as_c(new Manifold(as_cpp(m)->AsOriginal()));
+ManifoldPtr* facet_as_original(ManifoldPtr* m, size_t* out_size) {
+  return wrap(new Manifold(as_cpp(m)->AsOriginal()), out_size);
 }
 
 void facet_extract_mesh_with_runs(ManifoldPtr* m,
