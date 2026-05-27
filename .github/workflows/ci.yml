@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Clone facetlibs (pinned)
         run: |
@@ -26,7 +26,7 @@ jobs:
           cd facetlibs && git checkout 3af7741
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 
@@ -54,7 +54,7 @@ jobs:
 
       - name: Cache custom Go toolchain
         id: cache-go
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .go-toolchain
           key: go-toolchain-Linux-${{ hashFiles('scripts/setup-go.sh') }}
@@ -66,7 +66,23 @@ jobs:
       - name: Install Wails
         run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
+      - name: Cache manifold + third-party builds
+        # Caches the manifold/assimp/freetype/tbb source clones and built
+        # libs, plus the facet_cxx glue layer build. Key invalidates when
+        # the pinned versions or the build script change, or when our
+        # cxx glue sources change. Skip 'Build manifold' on hit;
+        # build-manifold.sh is idempotent so 'make test' re-running
+        # manifold as a dep is fast.
+        id: cache-manifold
+        uses: actions/cache@v5
+        with:
+          path: |
+            third_party
+            pkg/manifold/cxx/build-*
+          key: manifold-${{ runner.os }}-${{ hashFiles('scripts/_third-party-versions.sh', 'scripts/build-manifold.sh', 'pkg/manifold/cxx/CMakeLists.txt', 'pkg/manifold/cxx/include/**', 'pkg/manifold/cxx/src/**') }}
+
       - name: Build manifold
+        if: steps.cache-manifold.outputs.cache-hit != 'true'
         run: make manifold
         env:
           CC: zig cc
@@ -133,7 +149,7 @@ jobs:
           dpkg-deb --build "$PKG" "dist/facet_${VERSION}_amd64.deb"
 
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-artifacts
           path: |
@@ -149,10 +165,10 @@ jobs:
       BINARYEN_VERSION: '119'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 
@@ -163,7 +179,7 @@ jobs:
 
       - name: Cache custom Go toolchain
         id: cache-go
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .go-toolchain
           key: go-toolchain-Linux-${{ hashFiles('scripts/setup-go.sh') }}
@@ -174,7 +190,7 @@ jobs:
 
       - name: Cache emsdk
         id: cache-emsdk
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/emsdk
           key: emsdk-Linux-${{ env.EMSDK_VERSION }}
@@ -190,7 +206,7 @@ jobs:
 
       - name: Cache binaryen
         id: cache-binaryen
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/binaryen
           key: binaryen-Linux-${{ env.BINARYEN_VERSION }}
@@ -220,7 +236,7 @@ jobs:
         run: make test-web
 
       - name: Upload web bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-bundle
           path: |
@@ -237,7 +253,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Clone facetlibs (pinned)
         shell: bash
@@ -246,7 +262,7 @@ jobs:
           cd facetlibs && git checkout 3af7741
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 
@@ -260,7 +276,7 @@ jobs:
 
       - name: Cache custom Go toolchain
         id: cache-go
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .go-toolchain
           key: go-toolchain-Windows-${{ hashFiles('scripts/setup-go.sh') }}
@@ -273,6 +289,16 @@ jobs:
       - name: Install Wails
         shell: bash
         run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Cache manifold + third-party builds
+        # See Linux job for rationale.
+        id: cache-manifold
+        uses: actions/cache@v5
+        with:
+          path: |
+            third_party
+            pkg/manifold/cxx/build-*
+          key: manifold-${{ runner.os }}-${{ hashFiles('scripts/_third-party-versions.sh', 'scripts/build-manifold.sh', 'pkg/manifold/cxx/CMakeLists.txt', 'pkg/manifold/cxx/include/**', 'pkg/manifold/cxx/src/**') }}
 
       - name: Disable Strawberry Perl ccache
         # windows-latest preinstalls Strawberry Perl which puts ccache.exe
@@ -291,6 +317,7 @@ jobs:
         # USE_TOOLCHAIN=true is forced on Windows by build-manifold.sh.
         # Don't set CC/CXX — CMake on Windows can't handle "zig cc" as a
         # single executable name (treats it as one literal program).
+        if: steps.cache-manifold.outputs.cache-hit != 'true'
         shell: bash
         run: make manifold
 
@@ -344,7 +371,7 @@ jobs:
           cp desktop/build/bin/facet.exe dist/Facet-windows-amd64.exe
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-artifact
           path: dist/Facet-windows-amd64.exe
@@ -355,7 +382,7 @@ jobs:
     runs-on: macos-14  # arm64 native — no cross-compile needed
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Clone facetlibs (pinned)
         run: |
@@ -363,13 +390,13 @@ jobs:
           cd facetlibs && git checkout 3af7741
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 
       - name: Cache custom Go toolchain
         id: cache-go
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .go-toolchain
           key: go-toolchain-macOS-${{ hashFiles('scripts/setup-go.sh') }}
@@ -381,7 +408,18 @@ jobs:
       - name: Install Wails
         run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
+      - name: Cache manifold + third-party builds
+        # See Linux job for rationale.
+        id: cache-manifold
+        uses: actions/cache@v5
+        with:
+          path: |
+            third_party
+            pkg/manifold/cxx/build-*
+          key: manifold-${{ runner.os }}-${{ hashFiles('scripts/_third-party-versions.sh', 'scripts/build-manifold.sh', 'pkg/manifold/cxx/CMakeLists.txt', 'pkg/manifold/cxx/include/**', 'pkg/manifold/cxx/src/**') }}
+
       - name: Build manifold (native arm64)
+        if: steps.cache-manifold.outputs.cache-hit != 'true'
         run: make manifold
 
       - name: Run tests
@@ -407,7 +445,7 @@ jobs:
           tar czf dist/Facet-macOS-arm64-app.tar.gz -C desktop/build/bin Facet.app
 
       - name: Upload unsigned macOS app tarball
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-app-unsigned
           path: dist/Facet-macOS-arm64-app.tar.gz
