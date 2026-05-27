@@ -1,0 +1,120 @@
+name: Profile Windows
+
+# Diagnostic workflow — measures where time goes in `make test` on
+# Windows so we can stop guessing about the 4x slowdown vs Linux.
+# Triggers only on workflow_dispatch (run manually from the Actions UI
+# when you want fresh data). Reuses the same toolchain caches as ci.yml
+# so it doesn't double-pay for the build setup.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Disable Windows Defender real-time scanning
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install ninja
+        run: choco install ninja --no-progress -y
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Cache custom Go toolchain
+        id: cache-go
+        uses: actions/cache@v5
+        with:
+          path: .go-toolchain
+          key: go-toolchain-Windows-${{ hashFiles('scripts/setup-go.sh') }}
+
+      - name: Build custom Go toolchain
+        if: steps.cache-go.outputs.cache-hit != 'true'
+        shell: bash
+        run: bash scripts/setup-go.sh
+
+      - name: Install Wails
+        shell: bash
+        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Cache manifold + third-party builds
+        id: cache-manifold
+        uses: actions/cache@v5
+        with:
+          path: |
+            third_party
+            pkg/manifold/cxx/build-*
+          key: manifold-${{ runner.os }}-${{ hashFiles('scripts/_third-party-versions.sh', 'scripts/build-manifold.sh', 'pkg/manifold/cxx/CMakeLists.txt', 'pkg/manifold/cxx/include/**', 'pkg/manifold/cxx/src/**') }}
+
+      - name: Disable Strawberry Perl ccache
+        shell: bash
+        run: |
+          if [ -f "/c/Strawberry/c/bin/ccache.exe" ]; then
+            mv "/c/Strawberry/c/bin/ccache.exe" "/c/Strawberry/c/bin/ccache.exe.disabled"
+          fi
+
+      - name: Build manifold
+        if: steps.cache-manifold.outputs.cache-hit != 'true'
+        shell: bash
+        run: make manifold
+
+      - name: Run tests with cpuprofile
+        # `-cpuprofile=cpu.prof` writes a profile per test binary into
+        # each package's source directory. `-count=1` disables Go's
+        # test cache so the profile reflects a real run. We use the
+        # custom Go directly (not `make test`) so we can pass the
+        # profile flag.
+        shell: bash
+        run: |
+          set -e
+          export CC="zig cc"
+          export CXX="zig c++"
+          .go-toolchain/bin/go test \
+            -cpuprofile=cpu.prof \
+            -count=1 \
+            ./pkg/fctlang/... ./pkg/manifold/...
+
+      - name: Collect profiles
+        # Each package wrote cpu.prof into its own directory. Gather
+        # them under a single dir for the upload, renaming with the
+        # package path so we know what is what.
+        shell: bash
+        run: |
+          set -e
+          mkdir -p profiles
+          # Also collect the per-package test binary (.exe / .test) so
+          # we can resolve symbols locally when we run `go tool pprof`.
+          while IFS= read -r prof; do
+            pkg_dir=$(dirname "$prof")
+            slug=$(echo "$pkg_dir" | tr '/' '_' | sed 's/^\._//')
+            cp "$prof" "profiles/${slug}_cpu.prof"
+            # Test binary is named <pkg>.test or <pkg>.test.exe
+            for bin in "$pkg_dir"/*.test "$pkg_dir"/*.test.exe; do
+              [ -f "$bin" ] && cp "$bin" "profiles/${slug}_$(basename "$bin")"
+            done
+          done < <(find . -name cpu.prof -not -path './third_party/*' -not -path './.go-toolchain/*')
+          echo "=== profiles collected ==="
+          ls -la profiles/
+
+      - name: Upload profiles
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-cpu-profiles
+          path: profiles/
+          retention-days: 14
+          if-no-files-found: error
