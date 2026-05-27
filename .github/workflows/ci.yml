@@ -265,11 +265,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Clone facetlibs (pinned)
-        shell: bash
-        run: |
-          git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
-          cd facetlibs && git checkout 3af7741
+      - name: Disable Windows Defender real-time scanning
+        # Defender's per-file scanning adds significant overhead to
+        # Windows CI runs (notably 'Run tests' which spawns short-lived
+        # processes and reads many .fct/.cpp/.obj files). The runner is
+        # ephemeral and we control all inputs: source from this repo,
+        # pinned tool versions (zig, ninja via choco, Wails), facetlibs
+        # fetched from a known git repo. Equivalent scanning isn't done
+        # on Linux/macOS runners, so disabling here just brings Windows
+        # in line with the existing trust model. Requires admin which
+        # the github-hosted runner has.
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
