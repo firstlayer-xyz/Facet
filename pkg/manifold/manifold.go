@@ -32,12 +32,14 @@ import (
 	"runtime"
 )
 
-// newSolid wraps a C ManifoldPtr pointer and registers a finalizer to free it.
-func newSolid(ptr *C.ManifoldPtr) *Solid {
+// newSolid wraps a C ManifoldPtr (and its pre-computed memory size) and
+// registers a finalizer to free it. The size comes from the same cgo call
+// that produced ptr — no second crossing needed.
+func newSolid(ptr *C.ManifoldPtr, size C.size_t) *Solid {
 	if ptr == nil {
 		return nil
 	}
-	sz := uint64(C.facet_solid_memory_size(ptr))
+	sz := uint64(size)
 	s := &Solid{ptr: ptr, memSize: sz}
 	runtime.ExternalAlloc(sz)
 	runtime.SetFinalizer(s, func(s *Solid) {
@@ -47,9 +49,11 @@ func newSolid(ptr *C.ManifoldPtr) *Solid {
 	return s
 }
 
-// newSketch wraps a C ManifoldCrossSection pointer and registers a finalizer to free it.
-func newSketch(ptr *C.ManifoldCrossSection) *Sketch {
-	sz := uint64(C.facet_sketch_memory_size(ptr))
+// newSketch wraps a C ManifoldCrossSection (and its pre-computed memory
+// size) and registers a finalizer. The size comes from the same cgo call
+// that produced ptr.
+func newSketch(ptr *C.ManifoldCrossSection, size C.size_t) *Sketch {
+	sz := uint64(size)
 	sk := &Sketch{ptr: ptr, memSize: sz}
 	runtime.ExternalAlloc(sz)
 	runtime.SetFinalizer(sk, func(sk *Sketch) {
@@ -174,11 +178,11 @@ func (s *Solid) SetColor(r, g, b float64) *Solid {
 
 // newSolidWithOrigin wraps a C ManifoldPtr pointer, registers a finalizer,
 // and initializes a single-entry FaceMap using the solid's originalID.
-func newSolidWithOrigin(ptr *C.ManifoldPtr) *Solid {
+func newSolidWithOrigin(ptr *C.ManifoldPtr, size C.size_t) *Solid {
 	if ptr == nil {
 		return nil
 	}
-	s := newSolid(ptr)
+	s := newSolid(ptr, size)
 	origID := uint32(C.facet_original_id(s.ptr))
 	runtime.KeepAlive(s)
 	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
@@ -186,11 +190,12 @@ func newSolidWithOrigin(ptr *C.ManifoldPtr) *Solid {
 }
 
 // transformSolid wraps a unary C transform that produces a new ManifoldPtr.
-// The caller passes the already-evaluated C result pointer; this function keeps
-// the source solid alive, wraps the result, and copies the FaceMap.
-func transformSolid(s *Solid, ptr *C.ManifoldPtr) *Solid {
+// The caller passes the already-evaluated C result pointer and its size;
+// this function keeps the source solid alive, wraps the result, and copies
+// the FaceMap.
+func transformSolid(s *Solid, ptr *C.ManifoldPtr, size C.size_t) *Solid {
 	runtime.KeepAlive(s)
-	r := newSolid(ptr)
+	r := newSolid(ptr, size)
 	r.FaceMap = s.withFaceMap()
 	return r
 }

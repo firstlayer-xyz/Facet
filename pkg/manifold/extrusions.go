@@ -20,9 +20,10 @@ func (p *Sketch) Extrude(height float64, slices int, twist, scaleX, scaleY float
 	if height == 0 {
 		return nil, fmt.Errorf("Extrude: height must be non-zero")
 	}
-	ptr := C.facet_extrude(p.ptr, C.double(height), C.int(slices), C.double(twist), C.double(scaleX), C.double(scaleY))
+	var sz C.size_t
+	ptr := C.facet_extrude(p.ptr, C.double(height), C.int(slices), C.double(twist), C.double(scaleX), C.double(scaleY), &sz)
 	runtime.KeepAlive(p)
-	s := newSolidWithOrigin(ptr)
+	s := newSolidWithOrigin(ptr, sz)
 	if s == nil {
 		return nil, fmt.Errorf("manifold: failed to extrude")
 	}
@@ -31,9 +32,10 @@ func (p *Sketch) Extrude(height float64, slices int, twist, scaleX, scaleY float
 
 // Revolve revolves a sketch around the Y axis.
 func (p *Sketch) Revolve(segments int, degrees float64) (*Solid, error) {
-	ptr := C.facet_revolve(p.ptr, C.int(segments), C.double(degrees))
+	var sz C.size_t
+	ptr := C.facet_revolve(p.ptr, C.int(segments), C.double(degrees), &sz)
 	runtime.KeepAlive(p)
-	s := newSolidWithOrigin(ptr)
+	s := newSolidWithOrigin(ptr, sz)
 	if s == nil {
 		return nil, fmt.Errorf("manifold: failed to revolve")
 	}
@@ -49,9 +51,10 @@ func (p *Sketch) Sweep(path []Point3D) (*Solid, error) {
 	for i, pt := range path {
 		flat[i*3], flat[i*3+1], flat[i*3+2] = C.double(pt.X), C.double(pt.Y), C.double(pt.Z)
 	}
-	ptr := C.facet_sweep(p.ptr, &flat[0], C.size_t(len(path)))
+	var sz C.size_t
+	ptr := C.facet_sweep(p.ptr, &flat[0], C.size_t(len(path)), &sz)
 	runtime.KeepAlive(p)
-	s := newSolidWithOrigin(ptr)
+	s := newSolidWithOrigin(ptr, sz)
 	if s == nil {
 		return nil, fmt.Errorf("manifold: failed to sweep")
 	}
@@ -75,9 +78,10 @@ func Loft(sketches []*Sketch, heights []float64) (*Solid, error) {
 	for i, h := range heights {
 		hs[i] = C.double(h)
 	}
-	ptr := C.facet_loft(&ptrs[0], C.size_t(len(sketches)), &hs[0], C.size_t(len(heights)))
+	var sz C.size_t
+	ptr := C.facet_loft(&ptrs[0], C.size_t(len(sketches)), &hs[0], C.size_t(len(heights)), &sz)
 	runtime.KeepAlive(sketches)
-	return newSolidWithOrigin(ptr), nil
+	return newSolidWithOrigin(ptr, sz), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -86,14 +90,16 @@ func Loft(sketches []*Sketch, heights []float64) (*Solid, error) {
 
 // Slice takes a cross-section of a solid at the given Z height.
 func (s *Solid) Slice(height float64) *Sketch {
-	ptr := C.facet_slice(s.ptr, C.double(height))
+	var sz C.size_t
+	ptr := C.facet_slice(s.ptr, C.double(height), &sz)
 	runtime.KeepAlive(s)
-	return newSketch(ptr)
+	return newSketch(ptr, sz)
 }
 
 // Project projects a solid onto the XY plane.
 func (s *Solid) Project() *Sketch {
-	ptr := C.facet_project(s.ptr)
+	var sz C.size_t
+	ptr := C.facet_project(s.ptr, &sz)
 	runtime.KeepAlive(s)
-	return newSketch(ptr)
+	return newSketch(ptr, sz)
 }

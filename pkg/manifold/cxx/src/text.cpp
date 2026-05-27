@@ -1,4 +1,5 @@
 #include "facet_cxx.h"
+#include "internal.h"
 #include "manifold/cross_section.h"
 
 #ifndef FACET_WASM
@@ -13,15 +14,7 @@
 #include <string>
 
 using namespace manifold;
-
-// Cast helpers — defined unconditionally so the FACET_WASM stub below
-// can use them too.
-static CrossSection* as_cpp_cs(ManifoldCrossSection* cs) {
-  return reinterpret_cast<CrossSection*>(cs);
-}
-static ManifoldCrossSection* as_c_cs(CrossSection* cs) {
-  return reinterpret_cast<ManifoldCrossSection*>(cs);
-}
+using namespace facet_cxx_internal;  // wrap_cs
 
 #ifndef FACET_WASM
 
@@ -112,10 +105,10 @@ static bool linearize_contour(FT_Outline* outline, int contour_start, int contou
 extern "C" {
 
 ManifoldCrossSection* facet_text_to_cross_section(
-    const char* font_path, const char* text, double size_mm) {
+    const char* font_path, const char* text, double size_mm, size_t* out_size) {
 
   if (!text || text[0] == '\0') {
-    return as_c_cs(new CrossSection());
+    return wrap_cs(new CrossSection(), out_size);
   }
 
   FT_Library library;
@@ -190,10 +183,10 @@ ManifoldCrossSection* facet_text_to_cross_section(
   FT_Done_FreeType(library);
 
   if (allPolys.empty()) {
-    return as_c_cs(new CrossSection());
+    return wrap_cs(new CrossSection(), out_size);
   }
 
-  return as_c_cs(new CrossSection(CrossSection(allPolys, CrossSection::FillRule::EvenOdd)));
+  return wrap_cs(new CrossSection(CrossSection(allPolys, CrossSection::FillRule::EvenOdd)), out_size);
 }
 
 }  // extern "C"
@@ -205,8 +198,8 @@ ManifoldCrossSection* facet_text_to_cross_section(
 extern "C" {
 
 ManifoldCrossSection* facet_text_to_cross_section(
-    const char* /*font_path*/, const char* /*text*/, double /*size_mm*/) {
-  return as_c_cs(new CrossSection());
+    const char* /*font_path*/, const char* /*text*/, double /*size_mm*/, size_t* out_size) {
+  return wrap_cs(new CrossSection(), out_size);
 }
 
 }  // extern "C"

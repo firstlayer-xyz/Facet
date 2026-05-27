@@ -18,21 +18,29 @@ import (
 
 // Translate moves a solid by (x, y, z).
 func (s *Solid) Translate(x, y, z float64) *Solid {
-	return transformSolid(s, C.facet_translate(s.ptr, C.double(x), C.double(y), C.double(z)))
+	var sz C.size_t
+	ptr := C.facet_translate(s.ptr, C.double(x), C.double(y), C.double(z), &sz)
+	return transformSolid(s, ptr, sz)
 }
 
 func scale(s *Solid, x, y, z float64) *Solid {
-	return transformSolid(s, C.facet_scale(s.ptr, C.double(x), C.double(y), C.double(z)))
+	var sz C.size_t
+	ptr := C.facet_scale(s.ptr, C.double(x), C.double(y), C.double(z), &sz)
+	return transformSolid(s, ptr, sz)
 }
 
 func mirror(s *Solid, nx, ny, nz float64) *Solid {
-	return transformSolid(s, C.facet_mirror(s.ptr, C.double(nx), C.double(ny), C.double(nz)))
+	var sz C.size_t
+	ptr := C.facet_mirror(s.ptr, C.double(nx), C.double(ny), C.double(nz), &sz)
+	return transformSolid(s, ptr, sz)
 }
 
 // Rotate rotates a solid by (x, y, z) degrees around each axis, pivoting on
 // the bounding box center so the solid spins in place.
 func (s *Solid) Rotate(x, y, z float64) *Solid {
-	return transformSolid(s, C.facet_rotate_local(s.ptr, C.double(x), C.double(y), C.double(z)))
+	var sz C.size_t
+	ptr := C.facet_rotate_local(s.ptr, C.double(x), C.double(y), C.double(z), &sz)
+	return transformSolid(s, ptr, sz)
 }
 
 // Scale scales a solid by (x, y, z) around pivot point (ox, oy, oz).
@@ -61,7 +69,9 @@ func (s *Solid) Mirror(nx, ny, nz, offset float64) (*Solid, error) {
 
 // RotateAt rotates a solid by (rx, ry, rz) degrees around pivot point (ox, oy, oz).
 func (s *Solid) RotateAt(rx, ry, rz, ox, oy, oz float64) *Solid {
-	return transformSolid(s, C.facet_rotate_at(s.ptr, C.double(rx), C.double(ry), C.double(rz), C.double(ox), C.double(oy), C.double(oz)))
+	var sz C.size_t
+	ptr := C.facet_rotate_at(s.ptr, C.double(rx), C.double(ry), C.double(rz), C.double(ox), C.double(oy), C.double(oz), &sz)
+	return transformSolid(s, ptr, sz)
 }
 
 // ---------------------------------------------------------------------------
@@ -70,35 +80,40 @@ func (s *Solid) RotateAt(rx, ry, rz, ox, oy, oz float64) *Solid {
 
 // Translate moves a sketch by (x, y).
 func (p *Sketch) Translate(x, y float64) *Sketch {
-	ptr := C.facet_cs_translate(p.ptr, C.double(x), C.double(y))
+	var sz C.size_t
+	ptr := C.facet_cs_translate(p.ptr, C.double(x), C.double(y), &sz)
 	runtime.KeepAlive(p)
-	return newSketch(ptr)
+	return newSketch(ptr, sz)
 }
 
 // RotateOrigin rotates a sketch by degrees around the world origin (0, 0).
 func (p *Sketch) RotateOrigin(degrees float64) *Sketch {
-	ptr := C.facet_cs_rotate(p.ptr, C.double(degrees))
+	var sz C.size_t
+	ptr := C.facet_cs_rotate(p.ptr, C.double(degrees), &sz)
 	runtime.KeepAlive(p)
-	return newSketch(ptr)
+	return newSketch(ptr, sz)
 }
 
 func sketchScale(p *Sketch, x, y float64) *Sketch {
-	ptr := C.facet_cs_scale(p.ptr, C.double(x), C.double(y))
+	var sz C.size_t
+	ptr := C.facet_cs_scale(p.ptr, C.double(x), C.double(y), &sz)
 	runtime.KeepAlive(p)
-	return newSketch(ptr)
+	return newSketch(ptr, sz)
 }
 
 func sketchMirror(p *Sketch, ax, ay float64) *Sketch {
-	ptr := C.facet_cs_mirror(p.ptr, C.double(ax), C.double(ay))
+	var sz C.size_t
+	ptr := C.facet_cs_mirror(p.ptr, C.double(ax), C.double(ay), &sz)
 	runtime.KeepAlive(p)
-	return newSketch(ptr)
+	return newSketch(ptr, sz)
 }
 
 // Rotate rotates a sketch by degrees, pivoting on the bounding box center.
 func (p *Sketch) Rotate(degrees float64) *Sketch {
-	ptr := C.facet_cs_rotate_local(p.ptr, C.double(degrees))
+	var sz C.size_t
+	ptr := C.facet_cs_rotate_local(p.ptr, C.double(degrees), &sz)
 	runtime.KeepAlive(p)
-	return newSketch(ptr)
+	return newSketch(ptr, sz)
 }
 
 // Scale scales a sketch by (x, y) around pivot point (px, py).
