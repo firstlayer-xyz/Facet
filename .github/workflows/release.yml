@@ -69,7 +69,7 @@ jobs:
       name: ${{ startsWith(github.ref, 'refs/tags/v') && 'signing-release' || 'signing-main' }}
     steps:
       - name: Download unsigned app from CI run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: macos-app-unsigned
           path: incoming
@@ -124,7 +124,7 @@ jobs:
           security delete-keychain build.keychain || true
 
       - name: Upload signed DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-dmg-signed
           path: dist/Facet-macOS-arm64.dmg
@@ -140,13 +140,13 @@ jobs:
       contents: write
     steps:
       - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: gh-pages
           path: site
 
       - name: Download web bundle from CI run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-bundle
           path: bundle
@@ -185,10 +185,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: linux-artifacts
           path: dist
@@ -196,7 +196,7 @@ jobs:
           run-id: ${{ needs.await-ci.outputs.ci_run_id }}
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: windows-artifact
           path: dist
@@ -204,7 +204,7 @@ jobs:
           run-id: ${{ needs.await-ci.outputs.ci_run_id }}
 
       - name: Download signed macOS DMG
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: macos-dmg-signed
           path: dist
