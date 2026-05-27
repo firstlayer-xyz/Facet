@@ -65,6 +65,25 @@ case "$TARGET" in
     ;;
 esac
 
+# ISA baseline for x86_64 targets. windows-latest and ubuntu-latest runners
+# are CPU-heterogeneous: a lib compiled with the build runner's native ISA
+# may emit instructions (AVX2, BMI, etc.) that crash with
+# STATUS_ILLEGAL_INSTRUCTION on a different runner from the same pool.
+# `nehalem` is the oldest CPU that supports SSE4.2 (~2008, equivalent to
+# x86-64-v2 from gcc's naming): negligible perf loss vs native code and
+# guaranteed portable across the github-hosted runner fleet. We pick a
+# concrete CPU name rather than `x86-64-v2` because zig 0.14.1's bundled
+# clang accepts underscored microarchitecture levels (x86_64_v2) but not
+# the hyphenated form, and concrete CPU names sidestep that quirk.
+case "$TARGET" in
+  linux-amd64|windows-amd64|darwin-amd64)
+    ISA_BASELINE_FLAGS="-march=nehalem"
+    ;;
+  *)
+    ISA_BASELINE_FLAGS=""
+    ;;
+esac
+
 echo "Building for target: $TARGET (zig triple: $ZIG_TRIPLE)"
 
 # Force Ninja generator so the zig toolchain file is respected (the default
@@ -271,8 +290,8 @@ if [ ! -f "$ASSIMP_INSTALL_DIR/lib/libassimp.a" ]; then
     -DASSIMP_BUILD_ZLIB=ON \
     -DASSIMP_NO_EXPORT=OFF \
     -DASSIMP_WARNINGS_AS_ERRORS=OFF \
-    -DCMAKE_C_FLAGS="-Dfdopen=fdopen" \
-    -DCMAKE_CXX_FLAGS="-Wno-nontrivial-memcall -Wno-unknown-pragmas" \
+    -DCMAKE_C_FLAGS="-Dfdopen=fdopen $ISA_BASELINE_FLAGS" \
+    -DCMAKE_CXX_FLAGS="-Wno-nontrivial-memcall -Wno-unknown-pragmas $ISA_BASELINE_FLAGS" \
     -DCMAKE_INSTALL_PREFIX="$ASSIMP_INSTALL_DIR"
   cmake --build . --config Release -j "$JOBS"
   cmake --install . --config Release
@@ -303,6 +322,8 @@ if [ ! -f "$FREETYPE_INSTALL_DIR/lib/libfreetype.a" ]; then
     -DFT_DISABLE_HARFBUZZ=ON \
     -DFT_DISABLE_PNG=ON \
     -DFT_DISABLE_ZLIB=ON \
+    -DCMAKE_C_FLAGS="$ISA_BASELINE_FLAGS" \
+    -DCMAKE_CXX_FLAGS="$ISA_BASELINE_FLAGS" \
     -DCMAKE_INSTALL_PREFIX="$FREETYPE_INSTALL_DIR"
   cmake --build . --config Release -j "$JOBS"
   cmake --install . --config Release
@@ -347,7 +368,9 @@ if [ ! -f "$MANIFOLD_BUILD_DIR/src/libmanifold.a" ]; then
     -DMANIFOLD_EXPORT=OFF \
     -DMANIFOLD_DOWNLOADS=ON \
     -DMANIFOLD_PAR=ON \
-    -DMANIFOLD_USE_BUILTIN_TBB=ON
+    -DMANIFOLD_USE_BUILTIN_TBB=ON \
+    -DCMAKE_C_FLAGS="$ISA_BASELINE_FLAGS" \
+    -DCMAKE_CXX_FLAGS="$ISA_BASELINE_FLAGS"
   cmake --build . --config Release -j "$JOBS"
 else
   echo "manifold already built for ${TARGET} (libmanifold.a present) — skipping cmake+build."
@@ -382,7 +405,9 @@ cmake "$FACET_CXX_DIR" \
   "${DARWIN_OSX_ARCH[@]}" \
   -DCMAKE_BUILD_TYPE=Release \
   ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
-  -DBUILD_SHARED_LIBS=OFF
+  -DBUILD_SHARED_LIBS=OFF \
+  -DCMAKE_C_FLAGS="$ISA_BASELINE_FLAGS" \
+  -DCMAKE_CXX_FLAGS="$ISA_BASELINE_FLAGS"
 cmake --build . --config Release -j "$JOBS"
 echo "facet_cxx build complete."
 
