@@ -18,12 +18,10 @@ import (
 
 // Hull computes the convex hull of a solid.
 func (s *Solid) Hull() *Solid {
-	var sz C.size_t
-	ptr := C.facet_hull(s.ptr, &sz)
+	var ret C.FacetSolidRet
+	C.facet_hull(s.ptr, &ret)
 	runtime.KeepAlive(s)
-	r := newSolid(ptr, sz)
-	origID := uint32(C.facet_original_id(r.ptr))
-	runtime.KeepAlive(r)
+	r := newSolid(ret)
 	// Hull creates new geometry; carry over any color from the input.
 	fi := FaceInfo{Color: NoColor}
 	for _, v := range s.FaceMap {
@@ -32,7 +30,7 @@ func (s *Solid) Hull() *Solid {
 			break
 		}
 	}
-	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	r.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): fi}
 	return r
 }
 
@@ -46,12 +44,10 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 	for i, s := range solids {
 		ptrs[i] = s.ptr
 	}
-	var sz C.size_t
-	ptr := C.facet_batch_hull(&ptrs[0], C.size_t(len(solids)), &sz)
+	var ret C.FacetSolidRet
+	C.facet_batch_hull(&ptrs[0], C.size_t(len(solids)), &ret)
 	runtime.KeepAlive(solids)
-	r := newSolid(ptr, sz)
-	origID := uint32(C.facet_original_id(r.ptr))
-	runtime.KeepAlive(r)
+	r := newSolid(ret)
 	// Hull creates new geometry; carry over any color from inputs.
 	fi := FaceInfo{Color: NoColor}
 	for _, s := range solids {
@@ -65,7 +61,7 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 			break
 		}
 	}
-	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	r.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): fi}
 	return r, nil
 }
 
@@ -82,67 +78,69 @@ func HullPoints(points []Point3D) (*Solid, error) {
 		coords[i*3+1] = C.double(p.Y)
 		coords[i*3+2] = C.double(p.Z)
 	}
-	var sz C.size_t
-	ptr := C.facet_hull_points(&coords[0], C.size_t(n), &sz)
-	return newSolidWithOrigin(ptr, sz), nil
+	var ret C.FacetSolidRet
+	C.facet_hull_points(&coords[0], C.size_t(n), &ret)
+	return newSolidWithOrigin(ret), nil
 }
 
 // TrimByPlane trims a solid by the plane defined by normal and offset.
 func (s *Solid) TrimByPlane(nx, ny, nz, offset float64) *Solid {
-	var sz C.size_t
-	ptr := C.facet_trim_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset), &sz)
-	return transformSolid(s, ptr, sz)
+	var ret C.FacetSolidRet
+	C.facet_trim_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset), &ret)
+	return transformSolid(s, ret)
 }
 
 // SmoothOut smooths sharp edges of a solid.
 func (s *Solid) SmoothOut(minSharpAngle, minSmoothness float64) *Solid {
-	var sz C.size_t
-	ptr := C.facet_smooth_out(s.ptr, C.double(minSharpAngle), C.double(minSmoothness), &sz)
-	return transformSolid(s, ptr, sz)
+	var ret C.FacetSolidRet
+	C.facet_smooth_out(s.ptr, C.double(minSharpAngle), C.double(minSmoothness), &ret)
+	return transformSolid(s, ret)
 }
 
 // Refine subdivides the mesh of a solid n times.
 func (s *Solid) Refine(n int) *Solid {
-	var sz C.size_t
-	ptr := C.facet_refine(s.ptr, C.int(n), &sz)
-	return transformSolid(s, ptr, sz)
+	var ret C.FacetSolidRet
+	C.facet_refine(s.ptr, C.int(n), &ret)
+	return transformSolid(s, ret)
 }
 
 // Simplify reduces the triangle count of a solid by merging edges shorter than tolerance.
 func (s *Solid) Simplify(tolerance float64) *Solid {
-	var sz C.size_t
-	ptr := C.facet_simplify(s.ptr, C.double(tolerance), &sz)
-	return transformSolid(s, ptr, sz)
+	var ret C.FacetSolidRet
+	C.facet_simplify(s.ptr, C.double(tolerance), &ret)
+	return transformSolid(s, ret)
 }
 
 // RefineToLength subdivides edges longer than the given length.
 func (s *Solid) RefineToLength(length float64) *Solid {
-	var sz C.size_t
-	ptr := C.facet_refine_to_length(s.ptr, C.double(length), &sz)
-	return transformSolid(s, ptr, sz)
+	var ret C.FacetSolidRet
+	C.facet_refine_to_length(s.ptr, C.double(length), &ret)
+	return transformSolid(s, ret)
 }
 
 // SplitSolid splits m by cutter, returning [inside, outside].
 func SplitSolid(m, cutter *Solid) [2]*Solid {
-	pair := C.facet_split(m.ptr, cutter.ptr)
+	var pair C.FacetSolidPair
+	C.facet_split(m.ptr, cutter.ptr, &pair)
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(cutter)
 	fm := mergeFaceMaps(m.FaceMap, cutter.FaceMap)
-	first := newSolid(pair.first, pair.first_size)
+	first := newSolid(pair.first)
 	first.FaceMap = fm
-	second := newSolid(pair.second, pair.second_size)
+	second := newSolid(pair.second)
 	second.FaceMap = fm
 	return [2]*Solid{first, second}
 }
 
 // SplitSolidByPlane splits a solid by an infinite plane, returning [above, below].
 func SplitSolidByPlane(s *Solid, nx, ny, nz, offset float64) [2]*Solid {
-	pair := C.facet_split_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset))
+	var pair C.FacetSolidPair
+	C.facet_split_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset), &pair)
 	runtime.KeepAlive(s)
 	fm := s.withFaceMap()
-	first := newSolid(pair.first, pair.first_size)
+	first := newSolid(pair.first)
 	first.FaceMap = fm
-	second := newSolid(pair.second, pair.second_size)
+	second := newSolid(pair.second)
 	second.FaceMap = fm
 	return [2]*Solid{first, second}
 }
@@ -157,12 +155,12 @@ func ComposeSolids(solids []*Solid) (*Solid, error) {
 	for i, s := range solids {
 		ptrs[i] = s.ptr
 	}
-	var sz C.size_t
-	ptr := C.facet_compose((**C.ManifoldPtr)(unsafe.Pointer(&ptrs[0])), C.int(len(solids)), &sz)
+	var ret C.FacetSolidRet
+	C.facet_compose((**C.ManifoldPtr)(unsafe.Pointer(&ptrs[0])), C.int(len(solids)), &ret)
 	for _, s := range solids {
 		runtime.KeepAlive(s)
 	}
-	r := newSolid(ptr, sz)
+	r := newSolid(ret)
 	for _, s := range solids {
 		r.FaceMap = mergeFaceMaps(r.FaceMap, s.FaceMap)
 	}
@@ -175,10 +173,10 @@ func ComposeSolids(solids []*Solid) (*Solid, error) {
 
 // Hull computes the convex hull of a sketch.
 func (p *Sketch) Hull() *Sketch {
-	var sz C.size_t
-	ptr := C.facet_cs_hull(p.ptr, &sz)
+	var ret C.FacetSketchRet
+	C.facet_cs_hull(p.ptr, &ret)
 	runtime.KeepAlive(p)
-	return newSketch(ptr, sz)
+	return newSketch(ret)
 }
 
 // SketchBatchHull computes the convex hull of multiple sketches together.
@@ -191,16 +189,16 @@ func SketchBatchHull(sketches []*Sketch) (*Sketch, error) {
 	for i, p := range sketches {
 		ptrs[i] = p.ptr
 	}
-	var sz C.size_t
-	ptr := C.facet_cs_batch_hull(&ptrs[0], C.size_t(len(sketches)), &sz)
+	var ret C.FacetSketchRet
+	C.facet_cs_batch_hull(&ptrs[0], C.size_t(len(sketches)), &ret)
 	runtime.KeepAlive(sketches)
-	return newSketch(ptr, sz), nil
+	return newSketch(ret), nil
 }
 
 // Offset offsets a sketch's edges by delta with round join.
 func (p *Sketch) Offset(delta float64, segments int) *Sketch {
-	var sz C.size_t
-	ptr := C.facet_cs_offset(p.ptr, C.double(delta), C.int(segments), &sz)
+	var ret C.FacetSketchRet
+	C.facet_cs_offset(p.ptr, C.double(delta), C.int(segments), &ret)
 	runtime.KeepAlive(p)
-	return newSketch(ptr, sz)
+	return newSketch(ret)
 }

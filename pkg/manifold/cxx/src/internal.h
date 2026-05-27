@@ -19,8 +19,7 @@ static inline manifold::CrossSection* as_cpp_cs(ManifoldCrossSection* cs) {
 
 // Approximate Go-side memory footprint, used by Go's runtime.ExternalAlloc.
 // Written inline so every creator can return both pointer and size in one
-// C call, avoiding a separate facet_solid_memory_size cgo crossing per
-// allocated handle.
+// C call without a separate facet_solid_memory_size cgo crossing.
 static inline std::size_t solid_size(const manifold::Manifold* m) {
   return (std::size_t)m->NumVert() * (24 + (std::size_t)m->NumProp() * 8)
        + (std::size_t)m->NumTri() * 108;
@@ -29,18 +28,21 @@ static inline std::size_t sketch_size(const manifold::CrossSection* cs) {
   return (std::size_t)cs->NumVert() * 16 + (std::size_t)cs->NumContour() * 24;
 }
 
-// The ONLY sanctioned way to construct a C handle from a freshly-allocated
-// C++ object. Writes the Go-side memory size through out_size and returns
-// the opaque C handle. out_size is REQUIRED by contract — callers must
-// always pass a valid pointer (no NULL check; passing NULL is a programmer
-// bug that should fail loudly).
-static inline ManifoldPtr* wrap(manifold::Manifold* m, std::size_t* out_size) {
-  *out_size = solid_size(m);
-  return reinterpret_cast<ManifoldPtr*>(m);
+// Fill a FacetSolidRet for a freshly-allocated Manifold: stores the opaque
+// handle, the bookkeeping size, and the original-ID (or -1 if the C++ side
+// didn't mark it as original). The single sanctioned way to construct a
+// FacetSolidRet — anything else risks skipping size or ID accounting that
+// the Go side relies on.
+//
+// `out` is REQUIRED. Passing NULL is a programmer bug that fails loudly.
+static inline void wrap(manifold::Manifold* m, FacetSolidRet* out) {
+  out->ptr         = reinterpret_cast<ManifoldPtr*>(m);
+  out->size        = solid_size(m);
+  out->original_id = m->OriginalID();  // -1 if not an original
 }
-static inline ManifoldCrossSection* wrap_cs(manifold::CrossSection* cs, std::size_t* out_size) {
-  *out_size = sketch_size(cs);
-  return reinterpret_cast<ManifoldCrossSection*>(cs);
+static inline void wrap_cs(manifold::CrossSection* cs, FacetSketchRet* out) {
+  out->ptr  = reinterpret_cast<ManifoldCrossSection*>(cs);
+  out->size = sketch_size(cs);
 }
 
 }  // namespace facet_cxx_internal

@@ -104,22 +104,27 @@ static bool linearize_contour(FT_Outline* outline, int contour_start, int contou
 
 extern "C" {
 
-ManifoldCrossSection* facet_text_to_cross_section(
-    const char* font_path, const char* text, double size_mm, size_t* out_size) {
+void facet_text_to_cross_section(
+    const char* font_path, const char* text, double size_mm, FacetSketchRet* out) {
 
   if (!text || text[0] == '\0') {
-    return wrap_cs(new CrossSection(), out_size);
+    wrap_cs(new CrossSection(), out);
+    return;
   }
 
   FT_Library library;
   if (FT_Init_FreeType(&library) != 0) {
-    return nullptr;
+    out->ptr = nullptr;
+    out->size = 0;
+    return;
   }
 
   FT_Face face;
   if (FT_New_Face(library, font_path, 0, &face) != 0) {
     FT_Done_FreeType(library);
-    return nullptr;
+    out->ptr = nullptr;
+    out->size = 0;
+    return;
   }
 
   double unitsPerEM = (double)face->units_per_EM;
@@ -183,10 +188,11 @@ ManifoldCrossSection* facet_text_to_cross_section(
   FT_Done_FreeType(library);
 
   if (allPolys.empty()) {
-    return wrap_cs(new CrossSection(), out_size);
+    wrap_cs(new CrossSection(), out);
+    return;
   }
 
-  return wrap_cs(new CrossSection(CrossSection(allPolys, CrossSection::FillRule::EvenOdd)), out_size);
+  wrap_cs(new CrossSection(CrossSection(allPolys, CrossSection::FillRule::EvenOdd)), out);
 }
 
 }  // extern "C"
@@ -197,9 +203,9 @@ ManifoldCrossSection* facet_text_to_cross_section(
 
 extern "C" {
 
-ManifoldCrossSection* facet_text_to_cross_section(
-    const char* /*font_path*/, const char* /*text*/, double /*size_mm*/, size_t* out_size) {
-  return wrap_cs(new CrossSection(), out_size);
+void facet_text_to_cross_section(
+    const char* /*font_path*/, const char* /*text*/, double /*size_mm*/, FacetSketchRet* out) {
+  wrap_cs(new CrossSection(), out);
 }
 
 }  // extern "C"

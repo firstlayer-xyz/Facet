@@ -15,10 +15,10 @@ import "runtime"
 func (s *Solid) Warp(fn func(x, y, z float64) (float64, float64, float64)) *Solid {
 	id := registerWarp(fn)
 	defer unregisterWarp(id)
-	var sz C.size_t
-	ptr := C.facet_warp(s.ptr, C.int(id), &sz)
+	var ret C.FacetSolidRet
+	C.facet_warp(s.ptr, C.int(id), &ret)
 	runtime.KeepAlive(s)
-	r := newSolid(ptr, sz)
+	r := newSolid(ret)
 	r.FaceMap = s.withFaceMap()
 	return r
 }
@@ -29,14 +29,10 @@ func (s *Solid) Warp(fn func(x, y, z float64) (float64, float64, float64)) *Soli
 func LevelSet(fn func(x, y, z float64) float64, minX, minY, minZ, maxX, maxY, maxZ, edgeLen float64) *Solid {
 	id := registerLevelSet(fn)
 	defer unregisterLevelSet(id)
-	var sz C.size_t
-	ptr := C.facet_level_set(C.int(id),
+	var ret C.FacetSolidRet
+	C.facet_level_set(C.int(id),
 		C.double(minX), C.double(minY), C.double(minZ),
 		C.double(maxX), C.double(maxY), C.double(maxZ),
-		C.double(edgeLen), &sz)
-	s := newSolid(ptr, sz)
-	origID := uint32(C.facet_original_id(s.ptr))
-	runtime.KeepAlive(s)
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
+		C.double(edgeLen), &ret)
+	return newSolidWithOrigin(ret)
 }

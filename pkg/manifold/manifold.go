@@ -32,15 +32,15 @@ import (
 	"runtime"
 )
 
-// newSolid wraps a C ManifoldPtr (and its pre-computed memory size) and
-// registers a finalizer to free it. The size comes from the same cgo call
-// that produced ptr — no second crossing needed.
-func newSolid(ptr *C.ManifoldPtr, size C.size_t) *Solid {
-	if ptr == nil {
+// newSolid wraps a FacetSolidRet returned by C and registers a finalizer
+// to free the underlying Manifold. Every Solid creator goes through here
+// so external-memory accounting is consistent.
+func newSolid(ret C.FacetSolidRet) *Solid {
+	if ret.ptr == nil {
 		return nil
 	}
-	sz := uint64(size)
-	s := &Solid{ptr: ptr, memSize: sz}
+	sz := uint64(ret.size)
+	s := &Solid{ptr: ret.ptr, memSize: sz}
 	runtime.ExternalAlloc(sz)
 	runtime.SetFinalizer(s, func(s *Solid) {
 		runtime.ExternalFree(s.memSize)
@@ -49,12 +49,13 @@ func newSolid(ptr *C.ManifoldPtr, size C.size_t) *Solid {
 	return s
 }
 
-// newSketch wraps a C ManifoldCrossSection (and its pre-computed memory
-// size) and registers a finalizer. The size comes from the same cgo call
-// that produced ptr.
-func newSketch(ptr *C.ManifoldCrossSection, size C.size_t) *Sketch {
-	sz := uint64(size)
-	sk := &Sketch{ptr: ptr, memSize: sz}
+// newSketch wraps a FacetSketchRet returned by C and registers a finalizer.
+func newSketch(ret C.FacetSketchRet) *Sketch {
+	if ret.ptr == nil {
+		return nil
+	}
+	sz := uint64(ret.size)
+	sk := &Sketch{ptr: ret.ptr, memSize: sz}
 	runtime.ExternalAlloc(sz)
 	runtime.SetFinalizer(sk, func(sk *Sketch) {
 		runtime.ExternalFree(sk.memSize)
@@ -176,26 +177,26 @@ func (s *Solid) SetColor(r, g, b float64) *Solid {
 	return s
 }
 
-// newSolidWithOrigin wraps a C ManifoldPtr pointer, registers a finalizer,
-// and initializes a single-entry FaceMap using the solid's originalID.
-func newSolidWithOrigin(ptr *C.ManifoldPtr, size C.size_t) *Solid {
-	if ptr == nil {
+// newSolidWithOrigin wraps a FacetSolidRet and seeds a single-entry FaceMap
+// from its original_id. The original_id is populated by the same cgo call
+// that produced the pointer — no extra crossing.
+func newSolidWithOrigin(ret C.FacetSolidRet) *Solid {
+	s := newSolid(ret)
+	if s == nil {
 		return nil
 	}
-	s := newSolid(ptr, size)
-	origID := uint32(C.facet_original_id(s.ptr))
-	runtime.KeepAlive(s)
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
+	if ret.original_id >= 0 {
+		s.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): {Color: NoColor}}
+	}
 	return s
 }
 
-// transformSolid wraps a unary C transform that produces a new ManifoldPtr.
-// The caller passes the already-evaluated C result pointer and its size;
-// this function keeps the source solid alive, wraps the result, and copies
-// the FaceMap.
-func transformSolid(s *Solid, ptr *C.ManifoldPtr, size C.size_t) *Solid {
+// transformSolid wraps a unary C transform that produced a new Manifold.
+// Keeps the source alive, wraps the result, and copies the FaceMap so face
+// colors survive the transform.
+func transformSolid(s *Solid, ret C.FacetSolidRet) *Solid {
 	runtime.KeepAlive(s)
-	r := newSolid(ptr, size)
+	r := newSolid(ret)
 	r.FaceMap = s.withFaceMap()
 	return r
 }

@@ -228,51 +228,60 @@ function setupBridge() {
   globalThis._mf_sketch_free = id => { if (id) M._facet_delete_sketch(id); };
   globalThis._mf_original_id = id => M._facet_original_id(id);
 
-  // Shared out-parameter for size_t returned by every creator. The wasm bridge
-  // does no external memory accounting (no equivalent of Go's runtime.ExternalAlloc),
-  // so we allocate one 8-byte scratch slot and pass it to every C call, ignoring
-  // the value the C side writes. Two-pair calls (split_to) need two slots so they
-  // don't trample each other; we use SZ_PTR and SZ_PTR2.
-  const SZ_PTR  = M._malloc(8);
-  const SZ_PTR2 = M._malloc(8);
+  // Every Solid/Sketch creator writes a struct (FacetSolidRet / FacetSketchRet)
+  // through an out-pointer; pair-producing calls (split, split_by_plane) write
+  // a FacetSolidPair. The bridge allocates one shared scratch slot per type and
+  // reuses it for every call — the result is read out immediately and never
+  // outlives the JS shim. (The wasm bridge does no external-memory accounting,
+  // so the size field in each struct is read and discarded.)
+  //
+  // Sizes match the C structs in facet_cxx.h (wasm32: pointers + size_t + int
+  // are all 4 bytes). Pad to 16 / 32 for safe alignment on future growth.
+  const SOLID_RET  = M._malloc(16); // FacetSolidRet  {ptr, size, original_id}
+  const SKETCH_RET = M._malloc(8);  // FacetSketchRet {ptr, size}
+  const PAIR_RET   = M._malloc(32); // FacetSolidPair {first, second}
+  const solidPtr  = () => u32at(SOLID_RET);
+  const sketchPtr = () => u32at(SKETCH_RET);
 
   // ── 3D Primitives ──────────────────────────────────────────────────────────
-  globalThis._mf_cube     = (x, y, z)        => M._facet_cube(x, y, z, SZ_PTR);
-  globalThis._mf_sphere   = (r, segs)        => M._facet_sphere(r, segs, SZ_PTR);
-  globalThis._mf_cylinder = (h, rl, rh, seg) => M._facet_cylinder(h, rl, rh, seg, SZ_PTR);
+  globalThis._mf_cube     = (x, y, z)        => (M._facet_cube(x, y, z, SOLID_RET), solidPtr());
+  globalThis._mf_sphere   = (r, segs)        => (M._facet_sphere(r, segs, SOLID_RET), solidPtr());
+  globalThis._mf_cylinder = (h, rl, rh, seg) => (M._facet_cylinder(h, rl, rh, seg, SOLID_RET), solidPtr());
 
   // ── 3D Booleans ────────────────────────────────────────────────────────────
-  globalThis._mf_union        = (a, b) => M._facet_union(a, b, SZ_PTR);
-  globalThis._mf_difference   = (a, b) => M._facet_difference(a, b, SZ_PTR);
-  globalThis._mf_intersection = (a, b) => M._facet_intersection(a, b, SZ_PTR);
+  globalThis._mf_union        = (a, b) => (M._facet_union(a, b, SOLID_RET),        solidPtr());
+  globalThis._mf_difference   = (a, b) => (M._facet_difference(a, b, SOLID_RET),   solidPtr());
+  globalThis._mf_intersection = (a, b) => (M._facet_intersection(a, b, SOLID_RET), solidPtr());
   globalThis._mf_decompose = id => {
-    const outArr  = M._malloc(4); // ManifoldPtr** out_components
-    const outSzs  = M._malloc(4); // size_t**     out_sizes (we discard the values)
-    const n = M._facet_decompose(id, outArr, outSzs);
+    // facet_decompose returns an int (component count) and writes a
+    // FacetSolidRet[] (one per component) through *out_components. We extract
+    // each component's `ptr` field (offset 0 in the 12-byte struct) and free
+    // the array; the individual handles now belong to Go.
+    const outArr = M._malloc(4);
+    const n = M._facet_decompose(id, outArr);
     const arrPtr = u32at(outArr);
-    const szsPtr = u32at(outSzs);
     const ids = new Array(n);
-    for (let i = 0; i < n; i++) ids[i] = M.HEAPU32[(arrPtr >>> 2) + i];
+    for (let i = 0; i < n; i++) ids[i] = M.HEAPU32[(arrPtr + i * 12) >>> 2];
     if (arrPtr) M._free(arrPtr);
-    if (szsPtr) M._free(szsPtr);
     M._free(outArr);
-    M._free(outSzs);
     return ids;
   };
   globalThis._mf_compose = idsArr => {
     const a = Array.from(idsArr);
     const ptr = copyU32ArrayToHeap(a);
-    const result = M._facet_compose(ptr, a.length, SZ_PTR);
+    M._facet_compose(ptr, a.length, SOLID_RET);
     M._free(ptr);
-    return result;
+    return solidPtr();
   };
 
   // ── 3D Transforms ─────────────────────────────────────────────────────────
-  globalThis._mf_translate    = (id, x, y, z)             => M._facet_translate(id, x, y, z, SZ_PTR);
-  globalThis._mf_scale        = (id, x, y, z)             => M._facet_scale(id, x, y, z, SZ_PTR);
-  globalThis._mf_mirror       = (id, nx, ny, nz)          => M._facet_mirror(id, nx, ny, nz, SZ_PTR);
-  globalThis._mf_rotate_local = (id, x, y, z)             => M._facet_rotate_local(id, x, y, z, SZ_PTR);
-  globalThis._mf_rotate_at    = (id, rx, ry, rz, ox, oy, oz) => M._facet_rotate_at(id, rx, ry, rz, ox, oy, oz, SZ_PTR);
+  globalThis._mf_translate    = (id, x, y, z)             => (M._facet_translate(id, x, y, z, SOLID_RET),    solidPtr());
+  globalThis._mf_scale        = (id, x, y, z)             => (M._facet_scale(id, x, y, z, SOLID_RET),        solidPtr());
+  globalThis._mf_mirror       = (id, nx, ny, nz)          => (M._facet_mirror(id, nx, ny, nz, SOLID_RET),    solidPtr());
+  globalThis._mf_rotate_local = (id, x, y, z)             => (M._facet_rotate_local(id, x, y, z, SOLID_RET), solidPtr());
+  globalThis._mf_rotate_at    = (id, rx, ry, rz, ox, oy, oz) => (M._facet_rotate_at(id, rx, ry, rz, ox, oy, oz, SOLID_RET), solidPtr());
+  globalThis._mf_scale_at     = (id, x, y, z, ox, oy, oz)    => (M._facet_scale_at(id, x, y, z, ox, oy, oz, SOLID_RET),    solidPtr());
+  globalThis._mf_mirror_at    = (id, nx, ny, nz, off)        => (M._facet_mirror_at(id, nx, ny, nz, off, SOLID_RET),       solidPtr());
 
   // ── 3D Queries ────────────────────────────────────────────────────────────
   globalThis._mf_bounding_box = id => {
@@ -293,61 +302,59 @@ function setupBridge() {
   globalThis._mf_min_gap        = (a, b, len) => M._facet_min_gap(a, b, len);
 
   // ── 3D Operations ─────────────────────────────────────────────────────────
-  globalThis._mf_hull            = id => M._facet_hull(id, SZ_PTR);
+  globalThis._mf_hull            = id => (M._facet_hull(id, SOLID_RET), solidPtr());
   globalThis._mf_batch_hull      = idsArr => {
     const a = Array.from(idsArr);
     const ptr = copyU32ArrayToHeap(a);
-    const result = M._facet_batch_hull(ptr, a.length, SZ_PTR);
+    M._facet_batch_hull(ptr, a.length, SOLID_RET);
     M._free(ptr);
-    return result;
+    return solidPtr();
   };
   globalThis._mf_hull_points = (f64arr, n) => {
     const ptr = copyTypedArrayToHeap(f64arr);
-    const result = M._facet_hull_points(ptr, n, SZ_PTR);
+    M._facet_hull_points(ptr, n, SOLID_RET);
     M._free(ptr);
-    return result;
+    return solidPtr();
   };
-  globalThis._mf_trim_by_plane    = (id, nx, ny, nz, off)     => M._facet_trim_by_plane(id, nx, ny, nz, off, SZ_PTR);
-  globalThis._mf_smooth_out       = (id, minAng, minSmooth)   => M._facet_smooth_out(id, minAng, minSmooth, SZ_PTR);
-  globalThis._mf_refine           = (id, n)                   => M._facet_refine(id, n, SZ_PTR);
-  globalThis._mf_simplify         = (id, tol)                 => M._facet_simplify(id, tol, SZ_PTR);
-  globalThis._mf_refine_to_length = (id, len)                 => M._facet_refine_to_length(id, len, SZ_PTR);
+  globalThis._mf_trim_by_plane    = (id, nx, ny, nz, off)     => (M._facet_trim_by_plane(id, nx, ny, nz, off, SOLID_RET),  solidPtr());
+  globalThis._mf_smooth_out       = (id, minAng, minSmooth)   => (M._facet_smooth_out(id, minAng, minSmooth, SOLID_RET),   solidPtr());
+  globalThis._mf_refine           = (id, n)                   => (M._facet_refine(id, n, SOLID_RET),                       solidPtr());
+  globalThis._mf_simplify         = (id, tol)                 => (M._facet_simplify(id, tol, SOLID_RET),                   solidPtr());
+  globalThis._mf_refine_to_length = (id, len)                 => (M._facet_refine_to_length(id, len, SOLID_RET),           solidPtr());
+  // FacetSolidPair {FacetSolidRet first; FacetSolidRet second} — first.ptr at
+  // byte 0, second.ptr at byte 12 (sizeof FacetSolidRet on wasm32).
   globalThis._mf_split = (mid, cid) => {
-    const buf = M._malloc(8); // two ManifoldPtr* outputs
-    M._facet_split_to(mid, cid, buf, SZ_PTR, buf + 4, SZ_PTR2);
-    const r = [u32at(buf), u32at(buf + 4)];
-    M._free(buf);
-    return r;
+    M._facet_split(mid, cid, PAIR_RET);
+    return [u32at(PAIR_RET), u32at(PAIR_RET + 12)];
   };
   globalThis._mf_split_by_plane = (id, nx, ny, nz, off) => {
-    const buf = M._malloc(8);
-    M._facet_split_by_plane_to(id, nx, ny, nz, off, buf, SZ_PTR, buf + 4, SZ_PTR2);
-    const r = [u32at(buf), u32at(buf + 4)];
-    M._free(buf);
-    return r;
+    M._facet_split_by_plane(id, nx, ny, nz, off, PAIR_RET);
+    return [u32at(PAIR_RET), u32at(PAIR_RET + 12)];
   };
 
   // ── 2D Primitives ─────────────────────────────────────────────────────────
-  globalThis._mf_square = (x, y)      => M._facet_square(x, y, SZ_PTR);
-  globalThis._mf_circle = (r, segs)   => M._facet_circle(r, segs, SZ_PTR);
+  globalThis._mf_square = (x, y)      => (M._facet_square(x, y, SKETCH_RET),    sketchPtr());
+  globalThis._mf_circle = (r, segs)   => (M._facet_circle(r, segs, SKETCH_RET), sketchPtr());
   globalThis._mf_polygon = (f64arr, n) => {
     const ptr = copyTypedArrayToHeap(f64arr);
-    const result = M._facet_polygon(ptr, n, SZ_PTR);
+    M._facet_polygon(ptr, n, SKETCH_RET);
     M._free(ptr);
-    return result;
+    return sketchPtr();
   };
 
   // ── 2D Booleans ───────────────────────────────────────────────────────────
-  globalThis._mf_cs_union        = (a, b) => M._facet_cs_union(a, b, SZ_PTR);
-  globalThis._mf_cs_difference   = (a, b) => M._facet_cs_difference(a, b, SZ_PTR);
-  globalThis._mf_cs_intersection = (a, b) => M._facet_cs_intersection(a, b, SZ_PTR);
+  globalThis._mf_cs_union        = (a, b) => (M._facet_cs_union(a, b, SKETCH_RET),        sketchPtr());
+  globalThis._mf_cs_difference   = (a, b) => (M._facet_cs_difference(a, b, SKETCH_RET),   sketchPtr());
+  globalThis._mf_cs_intersection = (a, b) => (M._facet_cs_intersection(a, b, SKETCH_RET), sketchPtr());
 
   // ── 2D Transforms ─────────────────────────────────────────────────────────
-  globalThis._mf_cs_translate    = (id, x, y)  => M._facet_cs_translate(id, x, y, SZ_PTR);
-  globalThis._mf_cs_rotate       = (id, deg)   => M._facet_cs_rotate(id, deg, SZ_PTR);
-  globalThis._mf_cs_rotate_local = (id, deg)   => M._facet_cs_rotate_local(id, deg, SZ_PTR);
-  globalThis._mf_cs_scale        = (id, x, y)  => M._facet_cs_scale(id, x, y, SZ_PTR);
-  globalThis._mf_cs_mirror       = (id, ax, ay) => M._facet_cs_mirror(id, ax, ay, SZ_PTR);
+  globalThis._mf_cs_translate    = (id, x, y)   => (M._facet_cs_translate(id, x, y, SKETCH_RET),    sketchPtr());
+  globalThis._mf_cs_rotate       = (id, deg)    => (M._facet_cs_rotate(id, deg, SKETCH_RET),        sketchPtr());
+  globalThis._mf_cs_rotate_local = (id, deg)    => (M._facet_cs_rotate_local(id, deg, SKETCH_RET),  sketchPtr());
+  globalThis._mf_cs_scale        = (id, x, y)   => (M._facet_cs_scale(id, x, y, SKETCH_RET),        sketchPtr());
+  globalThis._mf_cs_mirror       = (id, ax, ay) => (M._facet_cs_mirror(id, ax, ay, SKETCH_RET),     sketchPtr());
+  globalThis._mf_cs_scale_at     = (id, x, y, px, py)  => (M._facet_cs_scale_at(id, x, y, px, py, SKETCH_RET),  sketchPtr());
+  globalThis._mf_cs_mirror_at    = (id, ax, ay, off)   => (M._facet_cs_mirror_at(id, ax, ay, off, SKETCH_RET),  sketchPtr());
 
   // ── 2D Queries ────────────────────────────────────────────────────────────
   globalThis._mf_cs_bounds = id => {
@@ -361,37 +368,37 @@ function setupBridge() {
   globalThis._mf_cs_area = id => M._facet_cs_area(id);
 
   // ── 2D Operations ─────────────────────────────────────────────────────────
-  globalThis._mf_cs_hull = id => M._facet_cs_hull(id, SZ_PTR);
+  globalThis._mf_cs_hull = id => (M._facet_cs_hull(id, SKETCH_RET), sketchPtr());
   globalThis._mf_cs_batch_hull = idsArr => {
     const a = Array.from(idsArr);
     const ptr = copyU32ArrayToHeap(a);
-    const result = M._facet_cs_batch_hull(ptr, a.length, SZ_PTR);
+    M._facet_cs_batch_hull(ptr, a.length, SKETCH_RET);
     M._free(ptr);
-    return result;
+    return sketchPtr();
   };
-  globalThis._mf_cs_offset = (id, delta, segs) => M._facet_cs_offset(id, delta, segs, SZ_PTR);
+  globalThis._mf_cs_offset = (id, delta, segs) => (M._facet_cs_offset(id, delta, segs, SKETCH_RET), sketchPtr());
 
   // ── Extrusion ─────────────────────────────────────────────────────────────
-  globalThis._mf_extrude = (csId, h, slices, twist, sx, sy) => M._facet_extrude(csId, h, slices, twist, sx, sy, SZ_PTR);
-  globalThis._mf_revolve = (csId, segs, deg) => M._facet_revolve(csId, segs, deg, SZ_PTR);
-  globalThis._mf_slice   = (id, h)           => M._facet_slice(id, h, SZ_PTR);
-  globalThis._mf_project = id                => M._facet_project(id, SZ_PTR);
+  globalThis._mf_extrude = (csId, h, slices, twist, sx, sy) => (M._facet_extrude(csId, h, slices, twist, sx, sy, SOLID_RET), solidPtr());
+  globalThis._mf_revolve = (csId, segs, deg) => (M._facet_revolve(csId, segs, deg, SOLID_RET), solidPtr());
+  globalThis._mf_slice   = (id, h)           => (M._facet_slice(id, h, SKETCH_RET),            sketchPtr());
+  globalThis._mf_project = id                => (M._facet_project(id, SKETCH_RET),             sketchPtr());
 
   // ── Mesh creation from Go data ────────────────────────────────────────────
   globalThis._mf_solid_from_mesh = (f32verts, nVerts, u32idx, nTris) => {
     const vp = copyTypedArrayToHeap(f32verts);
     const ip = copyTypedArrayToHeap(u32idx);
-    const result = M._facet_solid_from_mesh(vp, nVerts, ip, nTris, SZ_PTR);
+    M._facet_solid_from_mesh(vp, nVerts, ip, nTris, SOLID_RET);
     M._free(vp); M._free(ip);
-    return result;
+    return solidPtr();
   };
   globalThis._mf_solid_from_mesh_with_face_ids = (f32verts, nVerts, u32idx, nTris, u32faceIDs, nFaceIDs) => {
     const vp = copyTypedArrayToHeap(f32verts);
     const ip = copyTypedArrayToHeap(u32idx);
     const fp = copyTypedArrayToHeap(u32faceIDs);
-    const result = M._facet_solid_from_mesh_with_face_ids(vp, nVerts, ip, nTris, fp, nFaceIDs, SZ_PTR);
+    M._facet_solid_from_mesh_with_face_ids(vp, nVerts, ip, nTris, fp, nFaceIDs, SOLID_RET);
     M._free(vp); M._free(ip); M._free(fp);
-    return result;
+    return solidPtr();
   };
 
   // ── Mesh extraction ───────────────────────────────────────────────────────
@@ -444,30 +451,32 @@ function setupBridge() {
     M.HEAPF64[yPtr >>> 3] = r[1];
     M.HEAPF64[zPtr >>> 3] = r[2];
   };
-  globalThis._mf_warp = (solidId, callbackId) => M._facet_warp(solidId, callbackId, SZ_PTR);
+  globalThis._mf_warp = (solidId, callbackId) => (M._facet_warp(solidId, callbackId, SOLID_RET), solidPtr());
 
   // ── LevelSet callback ───────────────────────────────────────────────────
   // Same pattern as Warp but the bridge returns a single scalar (the SDF
   // value at the queried point) instead of writing back to pointers.
   M.facetLevelSetBridge = (callbackId, x, y, z) =>
     globalThis._facetLevelSetDispatch(callbackId, x, y, z);
-  globalThis._mf_level_set = (callbackId, minX, minY, minZ, maxX, maxY, maxZ, edgeLen) =>
-    M._facet_level_set(callbackId, minX, minY, minZ, maxX, maxY, maxZ, edgeLen, SZ_PTR);
+  globalThis._mf_level_set = (callbackId, minX, minY, minZ, maxX, maxY, maxZ, edgeLen) => {
+    M._facet_level_set(callbackId, minX, minY, minZ, maxX, maxY, maxZ, edgeLen, SOLID_RET);
+    return solidPtr();
+  };
 
   // ── Sweep / Loft (pure C calls, no callbacks) ───────────────────────────
   globalThis._mf_sweep = (csId, f64path, n) => {
     const ptr = copyTypedArrayToHeap(f64path);
-    const result = M._facet_sweep(csId, ptr, n, SZ_PTR);
+    M._facet_sweep(csId, ptr, n, SOLID_RET);
     M._free(ptr);
-    return result;
+    return solidPtr();
   };
   globalThis._mf_loft = (sketchIds, nSketches, f64heights, nHeights) => {
     const skPtr = copyU32ArrayToHeap(Array.from(sketchIds));
     const htPtr = copyTypedArrayToHeap(f64heights);
-    const result = M._facet_loft(skPtr, nSketches, htPtr, nHeights, SZ_PTR);
+    M._facet_loft(skPtr, nSketches, htPtr, nHeights, SOLID_RET);
     M._free(skPtr);
     M._free(htPtr);
-    return result;
+    return solidPtr();
   };
 
   // ── PolyMesh extraction ─────────────────────────────────────────────────
