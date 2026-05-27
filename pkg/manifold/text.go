@@ -19,10 +19,10 @@ func CreateText(fontPath, text string, sizeMM float64) (*Sketch, error) {
 	cText := C.CString(text)
 	defer C.free(unsafe.Pointer(cText))
 
-	var sz C.size_t
-	ptr := C.facet_text_to_cross_section(cPath, cText, C.double(sizeMM), &sz)
-	if ptr == nil {
+	var ret C.FacetSketchRet
+	C.facet_text_to_cross_section(cPath, cText, C.double(sizeMM), &ret)
+	if ret.ptr == nil {
 		return nil, fmt.Errorf("failed to load font %q", fontPath)
 	}
-	return newSketch(ptr, sz), nil
+	return newSketch(ret), nil
 }

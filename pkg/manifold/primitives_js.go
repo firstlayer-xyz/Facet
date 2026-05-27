@@ -43,9 +43,9 @@ func CreateSquare(x, y float64) *Sketch {
 }
 
 func CreateCircle(radius float64, segments int) *Sketch {
+	// _mf_circle translates the circle in C so its bbox starts at (0,0).
 	id := js.Global().Call("_mf_circle", radius, segments).Int()
-	sk := newSketch(id)
-	return sk.Translate(radius, radius)
+	return newSketch(id)
 }
 
 func CreatePolygon(points []Point2D) (*Sketch, error) {

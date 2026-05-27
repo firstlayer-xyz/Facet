@@ -11,6 +11,38 @@ typedef struct ManifoldPtr ManifoldPtr;
 typedef struct ManifoldCrossSection ManifoldCrossSection;
 
 // ---------------------------------------------------------------------------
+// Return bundles
+// ---------------------------------------------------------------------------
+//
+// Every Solid/Sketch creator writes its result through a FacetSolidRet* or
+// FacetSketchRet* out parameter. One cgo crossing produces the opaque
+// handle and all bookkeeping the Go side needs:
+//   - size:        Go's runtime.ExternalAlloc accounting
+//   - original_id: Solid.FaceMap key (or -1 if not marked as an original)
+//
+// Out-pointer (not by-value return) keeps the same signature usable by both
+// Go cgo and emscripten/cwrap; an emscripten caller allocates one
+// shared scratch slot of the right size and reads back the fields.
+
+typedef struct {
+    ManifoldPtr* ptr;
+    size_t       size;
+    int          original_id;  // -1 if the C++ side did not call AsOriginal()
+} FacetSolidRet;
+
+typedef struct {
+    ManifoldCrossSection* ptr;
+    size_t                size;
+} FacetSketchRet;
+
+// Split / SplitByPlane produce two Solids; each is fully described by a
+// FacetSolidRet, so the pair contains two of them.
+typedef struct {
+    FacetSolidRet first;
+    FacetSolidRet second;
+} FacetSolidPair;
+
+// ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
 
@@ -21,132 +53,130 @@ void facet_delete_sketch(ManifoldCrossSection* cs);
 // 3D Primitives
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_cube(double x, double y, double z, size_t* out_size);
-ManifoldPtr* facet_sphere(double radius, int segments, size_t* out_size);
-ManifoldPtr* facet_cylinder(double height, double radius_low, double radius_high, int segments, size_t* out_size);
+void facet_cube(double x, double y, double z, FacetSolidRet* out);
+void facet_sphere(double radius, int segments, FacetSolidRet* out);
+void facet_cylinder(double height, double radius_low, double radius_high, int segments, FacetSolidRet* out);
 
 // ---------------------------------------------------------------------------
 // 2D Primitives
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_square(double x, double y, size_t* out_size);
-ManifoldCrossSection* facet_circle(double radius, int segments, size_t* out_size);
-ManifoldCrossSection* facet_polygon(double* xy_pairs, size_t n_points, size_t* out_size);
-ManifoldCrossSection* facet_cs_empty(size_t* out_size);
+void facet_square(double x, double y, FacetSketchRet* out);
+// CrossSection::Circle is origin-centered. facet_circle translates the
+// result so its bbox starts at (0,0) — matching cube/sphere/cylinder
+// convention and avoiding a separate Go-side Translate cgo call.
+void facet_circle(double radius, int segments, FacetSketchRet* out);
+void facet_polygon(double* xy_pairs, size_t n_points, FacetSketchRet* out);
+void facet_cs_empty(FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
 // 3D Booleans
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_union(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size);
-ManifoldPtr* facet_difference(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size);
-ManifoldPtr* facet_intersection(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size);
-ManifoldPtr* facet_insert(ManifoldPtr* a, ManifoldPtr* b, size_t* out_size);
+void facet_union(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out);
+void facet_difference(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out);
+void facet_intersection(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out);
+void facet_insert(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out);
 
-// Splits m into connected components. Returns count; fills *out_components with
-// a malloc'd array of ManifoldPtr* and *out_sizes with a malloc'd parallel array
-// of size_t. Caller frees each component with facet_delete_solid, then frees
-// *out_components and *out_sizes with free().
-int facet_decompose(ManifoldPtr* m, ManifoldPtr*** out_components, size_t** out_sizes);
+// Splits m into connected components. Returns count; fills *out_components
+// with a malloc'd array of FacetSolidRet (one per component). Caller frees
+// each component's ptr with facet_delete_solid, then frees *out_components
+// with free().
+int facet_decompose(ManifoldPtr* m, FacetSolidRet** out_components);
 
 // ---------------------------------------------------------------------------
 // 2D Booleans
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_cs_union(ManifoldCrossSection* a, ManifoldCrossSection* b, size_t* out_size);
-ManifoldCrossSection* facet_cs_difference(ManifoldCrossSection* a, ManifoldCrossSection* b, size_t* out_size);
-ManifoldCrossSection* facet_cs_intersection(ManifoldCrossSection* a, ManifoldCrossSection* b, size_t* out_size);
+void facet_cs_union(ManifoldCrossSection* a, ManifoldCrossSection* b, FacetSketchRet* out);
+void facet_cs_difference(ManifoldCrossSection* a, ManifoldCrossSection* b, FacetSketchRet* out);
+void facet_cs_intersection(ManifoldCrossSection* a, ManifoldCrossSection* b, FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
 // 3D Transforms
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_translate(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
-ManifoldPtr* facet_rotate(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
-ManifoldPtr* facet_scale(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
-ManifoldPtr* facet_mirror(ManifoldPtr* m, double nx, double ny, double nz, size_t* out_size);
-ManifoldPtr* facet_scale_local(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
-ManifoldPtr* facet_rotate_local(ManifoldPtr* m, double x, double y, double z, size_t* out_size);
-ManifoldPtr* facet_mirror_local(ManifoldPtr* m, double nx, double ny, double nz, size_t* out_size);
-ManifoldPtr* facet_rotate_at(ManifoldPtr* m, double rx, double ry, double rz, double ox, double oy, double oz, size_t* out_size);
+void facet_translate(ManifoldPtr* m, double x, double y, double z, FacetSolidRet* out);
+void facet_rotate(ManifoldPtr* m, double x, double y, double z, FacetSolidRet* out);
+void facet_scale(ManifoldPtr* m, double x, double y, double z, FacetSolidRet* out);
+void facet_mirror(ManifoldPtr* m, double nx, double ny, double nz, FacetSolidRet* out);
+void facet_scale_local(ManifoldPtr* m, double x, double y, double z, FacetSolidRet* out);
+void facet_rotate_local(ManifoldPtr* m, double x, double y, double z, FacetSolidRet* out);
+void facet_mirror_local(ManifoldPtr* m, double nx, double ny, double nz, FacetSolidRet* out);
+void facet_rotate_at(ManifoldPtr* m, double rx, double ry, double rz, double ox, double oy, double oz, FacetSolidRet* out);
+// Scale (x,y,z) pivoting at point (ox,oy,oz) — fused translate-scale-translate.
+void facet_scale_at(ManifoldPtr* m, double x, double y, double z, double ox, double oy, double oz, FacetSolidRet* out);
+// Mirror across plane with normal (nx,ny,nz) at signed offset from origin —
+// fused translate-mirror-translate. The normal is normalized in C.
+void facet_mirror_at(ManifoldPtr* m, double nx, double ny, double nz, double offset, FacetSolidRet* out);
 
 // ---------------------------------------------------------------------------
 // 2D Transforms
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_cs_translate(ManifoldCrossSection* cs, double x, double y, size_t* out_size);
-ManifoldCrossSection* facet_cs_rotate(ManifoldCrossSection* cs, double degrees, size_t* out_size);
-ManifoldCrossSection* facet_cs_scale(ManifoldCrossSection* cs, double x, double y, size_t* out_size);
-ManifoldCrossSection* facet_cs_mirror(ManifoldCrossSection* cs, double ax, double ay, size_t* out_size);
-ManifoldCrossSection* facet_cs_rotate_local(ManifoldCrossSection* cs, double degrees, size_t* out_size);
-ManifoldCrossSection* facet_cs_mirror_local(ManifoldCrossSection* cs, double ax, double ay, size_t* out_size);
-ManifoldCrossSection* facet_cs_offset(ManifoldCrossSection* cs, double delta, int segments, size_t* out_size);
+void facet_cs_translate(ManifoldCrossSection* cs, double x, double y, FacetSketchRet* out);
+void facet_cs_rotate(ManifoldCrossSection* cs, double degrees, FacetSketchRet* out);
+void facet_cs_scale(ManifoldCrossSection* cs, double x, double y, FacetSketchRet* out);
+void facet_cs_mirror(ManifoldCrossSection* cs, double ax, double ay, FacetSketchRet* out);
+void facet_cs_rotate_local(ManifoldCrossSection* cs, double degrees, FacetSketchRet* out);
+void facet_cs_mirror_local(ManifoldCrossSection* cs, double ax, double ay, FacetSketchRet* out);
+void facet_cs_offset(ManifoldCrossSection* cs, double delta, int segments, FacetSketchRet* out);
+// Scale (x,y) pivoting at point (px,py) — fused translate-scale-translate.
+void facet_cs_scale_at(ManifoldCrossSection* cs, double x, double y, double px, double py, FacetSketchRet* out);
+// Mirror across axis (ax,ay) at signed offset from origin — fused
+// translate-mirror-translate. The axis is normalized in C.
+void facet_cs_mirror_at(ManifoldCrossSection* cs, double ax, double ay, double offset, FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
 // 2D → 3D
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_extrude(ManifoldCrossSection* cs, double height, int slices,
-                                double twist, double scale_x, double scale_y, size_t* out_size);
-ManifoldPtr* facet_revolve(ManifoldCrossSection* cs, int segments, double degrees, size_t* out_size);
-ManifoldPtr* facet_sweep(ManifoldCrossSection* cs,
-                              double* path_xyz, size_t n_path_points, size_t* out_size);
-ManifoldPtr* facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
-                             double* heights, size_t n_heights, size_t* out_size);
+void facet_extrude(ManifoldCrossSection* cs, double height, int slices,
+                   double twist, double scale_x, double scale_y, FacetSolidRet* out);
+void facet_revolve(ManifoldCrossSection* cs, int segments, double degrees, FacetSolidRet* out);
+void facet_sweep(ManifoldCrossSection* cs, double* path_xyz, size_t n_path_points, FacetSolidRet* out);
+void facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
+                double* heights, size_t n_heights, FacetSolidRet* out);
 
 // ---------------------------------------------------------------------------
 // 3D → 2D
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_slice(ManifoldPtr* m, double height, size_t* out_size);
-ManifoldCrossSection* facet_project(ManifoldPtr* m, size_t* out_size);
+void facet_slice(ManifoldPtr* m, double height, FacetSketchRet* out);
+void facet_project(ManifoldPtr* m, FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
 // 3D Hulls
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_hull(ManifoldPtr* m, size_t* out_size);
-ManifoldPtr* facet_batch_hull(ManifoldPtr** solids, size_t count, size_t* out_size);
-ManifoldPtr* facet_hull_points(double* xyz, size_t n_points, size_t* out_size);
+void facet_hull(ManifoldPtr* m, FacetSolidRet* out);
+void facet_batch_hull(ManifoldPtr** solids, size_t count, FacetSolidRet* out);
+void facet_hull_points(double* xyz, size_t n_points, FacetSolidRet* out);
 
 // ---------------------------------------------------------------------------
 // 2D Hulls
 // ---------------------------------------------------------------------------
 
-ManifoldCrossSection* facet_cs_hull(ManifoldCrossSection* cs, size_t* out_size);
-ManifoldCrossSection* facet_cs_batch_hull(ManifoldCrossSection** sketches, size_t count, size_t* out_size);
+void facet_cs_hull(ManifoldCrossSection* cs, FacetSketchRet* out);
+void facet_cs_batch_hull(ManifoldCrossSection** sketches, size_t count, FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
 // 3D Operations
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_trim_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset, size_t* out_size);
-ManifoldPtr* facet_smooth_out(ManifoldPtr* m, double min_sharp_angle, double min_smoothness, size_t* out_size);
-ManifoldPtr* facet_refine(ManifoldPtr* m, int n, size_t* out_size);
-ManifoldPtr* facet_simplify(ManifoldPtr* m, double tolerance, size_t* out_size);
-ManifoldPtr* facet_refine_to_length(ManifoldPtr* m, double length, size_t* out_size);
+void facet_trim_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset, FacetSolidRet* out);
+void facet_smooth_out(ManifoldPtr* m, double min_sharp_angle, double min_smoothness, FacetSolidRet* out);
+void facet_refine(ManifoldPtr* m, int n, FacetSolidRet* out);
+void facet_simplify(ManifoldPtr* m, double tolerance, FacetSolidRet* out);
+void facet_refine_to_length(ManifoldPtr* m, double length, FacetSolidRet* out);
 
 // Split returns two manifolds: the part of m inside cutter and the part outside.
-// Returned as a flat pair — caller frees each with facet_delete_solid.
-typedef struct {
-    ManifoldPtr* first;  size_t first_size;
-    ManifoldPtr* second; size_t second_size;
-} FacetManifoldPair;
-FacetManifoldPair facet_split(ManifoldPtr* m, ManifoldPtr* cutter);
-FacetManifoldPair facet_split_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset);
-
-// Out-pointer variants of the above. Used by the wasm/cwrap bridge, which
-// can't unpack a multi-field struct return.
-void facet_split_to(ManifoldPtr* m, ManifoldPtr* cutter,
-                    ManifoldPtr** out_first, size_t* out_first_size,
-                    ManifoldPtr** out_second, size_t* out_second_size);
-void facet_split_by_plane_to(ManifoldPtr* m, double nx, double ny, double nz, double offset,
-                             ManifoldPtr** out_first, size_t* out_first_size,
-                             ManifoldPtr** out_second, size_t* out_second_size);
+void facet_split(ManifoldPtr* m, ManifoldPtr* cutter, FacetSolidPair* out);
+void facet_split_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset, FacetSolidPair* out);
 
 // Compose assembles n non-overlapping manifolds into one without boolean operations.
 // Components must not intersect; the result is undefined if they do.
-ManifoldPtr* facet_compose(ManifoldPtr** manifolds, int n, size_t* out_size);
+void facet_compose(ManifoldPtr** manifolds, int n, FacetSolidRet* out);
 
 // ---------------------------------------------------------------------------
 // 3D Measurements
@@ -189,25 +219,24 @@ void facet_extract_display_mesh(ManifoldPtr* m,
 // Import / Export
 // ---------------------------------------------------------------------------
 
-// Imports a mesh file via Assimp. Returns a new Manifold (caller owns via
-// facet_delete_solid) on success; returns NULL on failure with *out_err set
-// to a malloc'd, null-terminated error string (caller frees via
-// facet_free_string). On success *out_err is set to NULL. out_err must be
-// non-NULL.
-ManifoldPtr* facet_import_mesh(const char* path, char** out_err, size_t* out_size);
+// Imports a mesh file via Assimp. On success writes the resulting solid into
+// *out and sets *out_err = NULL. On failure leaves *out untouched (with
+// out->ptr == NULL meaning "no solid") and sets *out_err to a malloc'd,
+// null-terminated error string (caller frees via facet_free_string).
+// out_err must be non-NULL.
+void facet_import_mesh(const char* path, FacetSolidRet* out, char** out_err);
 
 // Exports a Manifold to a mesh file via Assimp. Returns NULL on success, or
 // a malloc'd, null-terminated error string on failure (caller frees via
 // facet_free_string).
 char* facet_export_mesh(ManifoldPtr* m, const char* path);
 
-// Frees a string returned via out-pointer or return value by the import/export
-// API. Safe to call with NULL.
+// Frees a string returned by the import/export API. Safe to call with NULL.
 void facet_free_string(char* s);
 
 // Create a Manifold from raw mesh data (vertices as flat float xyz, indices as uint32).
-ManifoldPtr* facet_solid_from_mesh(float* verts, size_t n_verts,
-                                        uint32_t* indices, size_t n_tris, size_t* out_size);
+void facet_solid_from_mesh(float* verts, size_t n_verts,
+                           uint32_t* indices, size_t n_tris, FacetSolidRet* out);
 
 // ---------------------------------------------------------------------------
 // Merged Display Mesh Extraction
@@ -248,11 +277,11 @@ void facet_merge_extract_expanded_mesh(
 // Text
 // ---------------------------------------------------------------------------
 
-// Renders text string to a CrossSection using FreeType.
-// Returns empty CrossSection if text is empty or font fails to load.
-// Returns NULL on error (caller should check).
-ManifoldCrossSection* facet_text_to_cross_section(
-    const char* font_path, const char* text, double size_mm, size_t* out_size);
+// Renders text string to a CrossSection using FreeType. Writes empty
+// CrossSection if text is empty or font fails to load. Sets out->ptr to NULL
+// on failure (caller should check).
+void facet_text_to_cross_section(
+    const char* font_path, const char* text, double size_mm, FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
 // Callback operations
@@ -264,30 +293,27 @@ extern double facetLevelSetBridge(int id, double x, double y, double z);
 
 // Warp deforms each vertex of a solid using a per-vertex callback.
 // callback_id identifies the Go closure to invoke for each vertex.
-ManifoldPtr* facet_warp(ManifoldPtr* m, int callback_id, size_t* out_size);
+void facet_warp(ManifoldPtr* m, int callback_id, FacetSolidRet* out);
 
 // LevelSet creates a solid from a signed-distance-field (SDF) callback.
 // Points where sdf(p) <= level form the interior; the surface is at sdf(p) = level.
 // callback_id: Go closure ID; bounds: axis-aligned box to sample; edge_length: mesh resolution.
-ManifoldPtr* facet_level_set(int callback_id,
-                                  double min_x, double min_y, double min_z,
-                                  double max_x, double max_y, double max_z,
-                                  double edge_length, size_t* out_size);
-
-// ---------------------------------------------------------------------------
-// Color
-// ---------------------------------------------------------------------------
+void facet_level_set(int callback_id,
+                     double min_x, double min_y, double min_z,
+                     double max_x, double max_y, double max_z,
+                     double edge_length, FacetSolidRet* out);
 
 // ---------------------------------------------------------------------------
 // OriginalID tracking (for faceID-based color)
 // ---------------------------------------------------------------------------
 
 // Returns the originalID of a manifold (-1 if not marked as original).
+// (Most callers should not need this — FacetSolidRet.original_id is
+// populated by every creator. Kept here for diagnostic uses.)
 int facet_original_id(ManifoldPtr* m);
 
 // Marks a manifold as an original, assigning it a unique originalID.
-// Returns a new manifold (caller owns).
-ManifoldPtr* facet_as_original(ManifoldPtr* m, size_t* out_size);
+void facet_as_original(ManifoldPtr* m, FacetSolidRet* out);
 
 // Extracts mesh data with run information for per-face color mapping.
 // runOriginalID[i] is the originalID for triangle run i.
@@ -303,19 +329,17 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
 // PolyMesh
 // ---------------------------------------------------------------------------
 
-ManifoldPtr* facet_solid_from_mesh_with_face_ids(
+void facet_solid_from_mesh_with_face_ids(
     float* vert_props, size_t n_verts,
     uint32_t* tri_verts, size_t n_tris,
     uint32_t* face_ids, size_t n_face_ids,
-    size_t* out_size
-);
+    FacetSolidRet* out);
 
 void facet_extract_polymesh(
     ManifoldPtr* manifold,
     double** out_vertices, int* out_num_verts,
     int** out_face_indices, int* out_face_indices_len,
-    int** out_face_sizes, int* out_num_faces
-);
+    int** out_face_sizes, int* out_num_faces);
 
 #ifdef __cplusplus
 }

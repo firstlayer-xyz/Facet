@@ -19,9 +19,9 @@ func CreateCube(x, y, z float64) (*Solid, error) {
 	if x <= 0 || y <= 0 || z <= 0 {
 		return nil, fmt.Errorf("Cube: all dimensions must be positive, got (%.4g, %.4g, %.4g)", x, y, z)
 	}
-	var sz C.size_t
-	ptr := C.facet_cube(C.double(x), C.double(y), C.double(z), &sz)
-	s := newSolidWithOrigin(ptr, sz)
+	var ret C.FacetSolidRet
+	C.facet_cube(C.double(x), C.double(y), C.double(z), &ret)
+	s := newSolidWithOrigin(ret)
 	if s == nil {
 		return nil, fmt.Errorf("manifold: failed to create cube")
 	}
@@ -34,9 +34,9 @@ func CreateSphere(radius float64, segments int) (*Solid, error) {
 	if radius <= 0 {
 		return nil, fmt.Errorf("Sphere: radius must be positive, got %.4g", radius)
 	}
-	var sz C.size_t
-	ptr := C.facet_sphere(C.double(radius), C.int(segments), &sz)
-	s := newSolidWithOrigin(ptr, sz)
+	var ret C.FacetSolidRet
+	C.facet_sphere(C.double(radius), C.int(segments), &ret)
+	s := newSolidWithOrigin(ret)
 	if s == nil {
 		return nil, fmt.Errorf("manifold: failed to create sphere")
 	}
@@ -56,9 +56,9 @@ func CreateCylinder(height, radiusLow, radiusHigh float64, segments int) (*Solid
 	if radiusLow == 0 && radiusHigh == 0 {
 		return nil, fmt.Errorf("Cylinder: at least one radius must be positive")
 	}
-	var sz C.size_t
-	ptr := C.facet_cylinder(C.double(height), C.double(radiusLow), C.double(radiusHigh), C.int(segments), &sz)
-	s := newSolidWithOrigin(ptr, sz)
+	var ret C.FacetSolidRet
+	C.facet_cylinder(C.double(height), C.double(radiusLow), C.double(radiusHigh), C.int(segments), &ret)
+	s := newSolidWithOrigin(ret)
 	if s == nil {
 		return nil, fmt.Errorf("manifold: failed to create cylinder")
 	}
@@ -71,19 +71,19 @@ func CreateCylinder(height, radiusLow, radiusHigh float64, segments int) (*Solid
 
 // CreateSquare creates a 2D rectangle.
 func CreateSquare(x, y float64) *Sketch {
-	var sz C.size_t
-	ptr := C.facet_square(C.double(x), C.double(y), &sz)
-	return newSketch(ptr, sz)
+	var ret C.FacetSketchRet
+	C.facet_square(C.double(x), C.double(y), &ret)
+	return newSketch(ret)
 }
 
 // CreateCircle creates a 2D circle.
 // The circle's bounding box starts at (0, 0) and ends at (2r, 2r).
+// (The C side translates by (r, r) so a separate Go-side Translate cgo
+// crossing isn't needed.)
 func CreateCircle(radius float64, segments int) *Sketch {
-	var sz C.size_t
-	ptr := C.facet_circle(C.double(radius), C.int(segments), &sz)
-	s := newSketch(ptr, sz)
-	// Circle is centered at origin; translate so bounding box starts at (0,0).
-	return s.Translate(radius, radius)
+	var ret C.FacetSketchRet
+	C.facet_circle(C.double(radius), C.int(segments), &ret)
+	return newSketch(ret)
 }
 
 // CreatePolygon creates a 2D sketch from a slice of points.
@@ -115,7 +115,7 @@ func CreatePolygon(points []Point2D) (*Sketch, error) {
 			coords[i*2+1] = C.double(p.Y)
 		}
 	}
-	var sz C.size_t
-	ptr := C.facet_polygon(&coords[0], C.size_t(n), &sz)
-	return newSketch(ptr, sz), nil
+	var ret C.FacetSketchRet
+	C.facet_polygon(&coords[0], C.size_t(n), &ret)
+	return newSketch(ret), nil
 }

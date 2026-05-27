@@ -14,11 +14,11 @@ using namespace facet_cxx_internal;  // as_cpp, wrap
 
 extern "C" {
 
-ManifoldPtr* facet_solid_from_mesh_with_face_ids(
+void facet_solid_from_mesh_with_face_ids(
     float* vert_props, size_t n_verts,
     uint32_t* tri_verts, size_t n_tris,
     uint32_t* face_ids, size_t n_face_ids,
-    size_t* out_size) {
+    FacetSolidRet* out) {
   MeshGL mesh;
   mesh.numProp = 3;
   mesh.vertProperties.assign(vert_props, vert_props + n_verts * 3);
@@ -26,7 +26,7 @@ ManifoldPtr* facet_solid_from_mesh_with_face_ids(
   if (face_ids && n_face_ids > 0) {
     mesh.faceID.assign(face_ids, face_ids + n_face_ids);
   }
-  return wrap(new Manifold(Manifold(mesh).AsOriginal()), out_size);
+  wrap(new Manifold(Manifold(mesh).AsOriginal()), out);
 }
 
 void facet_extract_polymesh(
