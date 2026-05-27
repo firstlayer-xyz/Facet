@@ -723,25 +723,16 @@ func TestEvalRevolveDefaultSegments(t *testing.T) {
 	}
 }
 
-func threadResolveOpts() *loader.Options {
-	localFacetlibs, _ := filepath.Abs(filepath.Join("..", "..", "..", "facetlibs"))
-	return &loader.Options{
-		InstalledLibs: map[string]string{
-			"github.com/firstlayer-xyz/facetlibs": localFacetlibs,
-		},
-	}
-}
-
 func TestEvalThreadStructAPI(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@main";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
 
 fn Main() {
     return T.Thread(size: "m3").Outside(length: 2 mm);
 }
 `
 	prog := parseTestProg(t, src)
-	resolveTestProg(t, prog, "", threadResolveOpts())
+	resolveTestProg(t, prog, "", nil)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
 		t.Fatalf("eval error: %v", err)
@@ -756,14 +747,14 @@ fn Main() {
 
 func TestEvalSAEThread(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@main";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
 
 fn Main() {
     return T.Thread(size: "1/4-20").Outside(length: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)
-	resolveTestProg(t, prog, "", threadResolveOpts())
+	resolveTestProg(t, prog, "", nil)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
 		t.Fatalf("eval error: %v", err)
@@ -778,14 +769,14 @@ fn Main() {
 
 func TestEvalSAEFineThread(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@main";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
 
 fn Main() {
     return T.Thread(size: "1/4-28").Outside(length: 5 mm);
 }
 `
 	prog := parseTestProg(t, src)
-	resolveTestProg(t, prog, "", threadResolveOpts())
+	resolveTestProg(t, prog, "", nil)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
 		t.Fatalf("eval error: %v", err)
@@ -800,14 +791,14 @@ fn Main() {
 
 func TestEvalNPTThread(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@main";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
 
 fn Main() {
     return T.Thread(size: "1/4-npt").Outside(length: 10 mm);
 }
 `
 	prog := parseTestProg(t, src)
-	resolveTestProg(t, prog, "", threadResolveOpts())
+	resolveTestProg(t, prog, "", nil)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
 		t.Fatalf("eval error: %v", err)
@@ -1894,7 +1885,7 @@ fn Main() {
 
 func TestEvalKnurlCylinder(t *testing.T) {
 	src := `
-var K = lib "github.com/firstlayer-xyz/facetlibs/knurling@main";
+var K = lib "github.com/firstlayer-xyz/facetlibs/knurling@3af7741";
 
 fn Main() {
     var knurl = K.Knurl(count: 20, depth: 0.5 mm, angle: 30 deg);
@@ -1903,7 +1894,7 @@ fn Main() {
 }
 `
 	prog := parseTestProg(t, src)
-	resolveTestProg(t, prog, "", threadResolveOpts())
+	resolveTestProg(t, prog, "", nil)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
 		t.Fatalf("eval error: %v", err)
@@ -1918,7 +1909,7 @@ fn Main() {
 
 func TestEvalKnurlSphere(t *testing.T) {
 	src := `
-var K = lib "github.com/firstlayer-xyz/facetlibs/knurling@main";
+var K = lib "github.com/firstlayer-xyz/facetlibs/knurling@3af7741";
 
 fn Main() {
     var knurl = K.Knurl(count: 16, depth: 0.5 mm, angle: 30 deg);
@@ -1927,7 +1918,7 @@ fn Main() {
 }
 `
 	prog := parseTestProg(t, src)
-	resolveTestProg(t, prog, "", threadResolveOpts())
+	resolveTestProg(t, prog, "", nil)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
 		t.Fatalf("eval error: %v", err)
@@ -2820,7 +2811,7 @@ fn Main() {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			prog := parseTestProg(t, tc.src)
-			resolveTestProg(t, prog, "", threadResolveOpts())
+			resolveTestProg(t, prog, "", nil)
 			mesh, err := evalMerged(context.Background(), prog, nil)
 			if err != nil {
 				t.Fatalf("eval error: %v", err)
@@ -2985,7 +2976,7 @@ var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@3af7741";
 fn Main() { return %s; }
 `, tc.expr)
 			prog := parseTestProg(t, src)
-			resolveTestProg(t, prog, "", threadResolveOpts())
+			resolveTestProg(t, prog, "", nil)
 			mesh, err := evalMerged(context.Background(), prog, nil)
 			if err != nil {
 				t.Fatalf("eval error: %v", err)
@@ -3068,11 +3059,11 @@ fn Main() {
 
 func TestEvalMetricFineThread(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@main";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
 fn Main() { return T.Thread(size: "m8x1").Outside(length: 5 mm); }
 `
 	prog := parseTestProg(t, src)
-	resolveTestProg(t, prog, "", threadResolveOpts())
+	resolveTestProg(t, prog, "", nil)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
 		t.Fatalf("eval error: %v", err)
@@ -3251,7 +3242,7 @@ fn Main() {
 }
 `
 	prog := parseTestProg(t, src)
-	resolveTestProg(t, prog, "", threadResolveOpts())
+	resolveTestProg(t, prog, "", nil)
 
 	result, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
 	if err != nil {

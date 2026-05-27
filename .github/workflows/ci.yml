@@ -35,11 +35,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Clone facetlibs (pinned)
-        run: |
-          git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
-          cd facetlibs && git checkout 3af7741
-
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -402,11 +397,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Clone facetlibs (pinned)
-        run: |
-          git clone https://github.com/firstlayer-xyz/facetlibs facetlibs
-          cd facetlibs && git checkout 3af7741
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
