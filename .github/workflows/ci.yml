@@ -290,22 +290,19 @@ jobs:
         shell: bash
         run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      # DIAGNOSTIC: re-enabled Windows manifold cache to reproduce the
-      # STATUS_ILLEGAL_INSTRUCTION cgo crash issue. To be reverted after
-      # diagnosis. See project_todo and the "Hash manifold artifacts" step
-      # below for the experiment.
-      - name: Cache manifold + third-party builds (DIAGNOSTIC)
-        # Diagnostic key prefix 'diag-' so this branch starts with a
-        # guaranteed cache miss (fresh build) on the first run. A
-        # subsequent trivial commit on this branch will then hit this
-        # cache and we can compare hashes.
+      - name: Cache manifold + third-party builds
+        # Re-enabled after the ISA baseline fix in build-manifold.sh
+        # (-march=x86-64-v2 on x86_64 targets). Earlier failures were
+        # not cache corruption — hashes were byte-identical — but CPU
+        # heterogeneity in the windows-latest runner pool: the cached
+        # lib used native ISA instructions some runners don't support.
         id: cache-manifold
         uses: actions/cache@v5
         with:
           path: |
             third_party
             pkg/manifold/cxx/build-*
-          key: diag-manifold-${{ runner.os }}-${{ hashFiles('scripts/_third-party-versions.sh', 'scripts/build-manifold.sh', 'pkg/manifold/cxx/CMakeLists.txt', 'pkg/manifold/cxx/include/**', 'pkg/manifold/cxx/src/**') }}
+          key: manifold-${{ runner.os }}-${{ hashFiles('scripts/_third-party-versions.sh', 'scripts/build-manifold.sh', 'pkg/manifold/cxx/CMakeLists.txt', 'pkg/manifold/cxx/include/**', 'pkg/manifold/cxx/src/**') }}
 
       - name: Disable Strawberry Perl ccache
         # windows-latest preinstalls Strawberry Perl which puts ccache.exe
@@ -327,32 +324,6 @@ jobs:
         if: steps.cache-manifold.outputs.cache-hit != 'true'
         shell: bash
         run: make manifold
-
-      - name: DIAGNOSTIC — hash manifold artifacts
-        shell: bash
-        run: |
-          set -e
-          CACHE_STATE=${{ steps.cache-manifold.outputs.cache-hit == 'true' && 'restored' || 'fresh' }}
-          OUT="manifold-hashes-Windows-${CACHE_STATE}.txt"
-          echo "cache-hit was: ${{ steps.cache-manifold.outputs.cache-hit }}"
-          echo "state: $CACHE_STATE"
-          find third_party pkg/manifold/cxx -type f \( -name '*.a' -o -name '*.lib' -o -name '*.o' -o -name '*.obj' -o -name 'CMakeCache.txt' \) -print0 2>/dev/null \
-            | xargs -0 sha256sum 2>/dev/null \
-            | sort > "$OUT"
-          echo "=== File count ==="
-          wc -l "$OUT"
-          echo "=== Static libs ==="
-          find third_party pkg/manifold/cxx -type f \( -name '*.a' -o -name '*.lib' \) -exec ls -la {} \; 2>/dev/null
-          echo "=== Top of hash list ==="
-          head -20 "$OUT"
-
-      - name: DIAGNOSTIC — upload hashes
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: manifold-hashes-${{ steps.cache-manifold.outputs.cache-hit == 'true' && 'restored' || 'fresh' }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: manifold-hashes-Windows-*.txt
-          if-no-files-found: warn
 
       - name: Run tests
         # Go's cgo splits CC on whitespace so "zig cc" works here, unlike CMake.
