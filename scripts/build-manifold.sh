@@ -290,8 +290,8 @@ if [ ! -f "$ASSIMP_INSTALL_DIR/lib/libassimp.a" ]; then
     -DASSIMP_BUILD_ZLIB=ON \
     -DASSIMP_NO_EXPORT=OFF \
     -DASSIMP_WARNINGS_AS_ERRORS=OFF \
-    -DCMAKE_C_FLAGS="-Dfdopen=fdopen $ISA_BASELINE_FLAGS" \
-    -DCMAKE_CXX_FLAGS="-Wno-nontrivial-memcall -Wno-unknown-pragmas $ISA_BASELINE_FLAGS" \
+    -DCMAKE_C_FLAGS="-Dfdopen=fdopen -Wno-deprecated-non-prototype $ISA_BASELINE_FLAGS" \
+    -DCMAKE_CXX_FLAGS="-Wno-nontrivial-memaccess -Wno-unknown-pragmas $ISA_BASELINE_FLAGS" \
     -DCMAKE_INSTALL_PREFIX="$ASSIMP_INSTALL_DIR"
   cmake --build . --config Release -j "$JOBS"
   cmake --install . --config Release

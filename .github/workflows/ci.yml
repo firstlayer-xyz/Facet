@@ -64,7 +64,7 @@ jobs:
         run: bash scripts/setup-go.sh
 
       - name: Install Wails
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 
       - name: Cache manifold + third-party builds
         # Caches the manifold/assimp/freetype/tbb source clones and built
@@ -288,7 +288,7 @@ jobs:
 
       - name: Install Wails
         shell: bash
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 
       - name: Cache manifold + third-party builds
         # Re-enabled after the ISA baseline fix in build-manifold.sh
@@ -410,7 +410,7 @@ jobs:
         run: bash scripts/setup-go.sh
 
       - name: Install Wails
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 
       - name: Cache manifold + third-party builds
         # See Linux job for rationale.
