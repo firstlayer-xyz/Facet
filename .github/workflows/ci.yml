@@ -10,6 +10,21 @@ on:
     - cron: '0 5 * * *'  # nightly at 5am UTC
   workflow_dispatch:
 
+# Auto-cancel obsolete in-progress runs. A push to a PR branch fires both
+# 'push' and 'pull_request: synchronize', producing duplicate runs for the
+# same SHA. Grouping by PR number (when on a PR) or ref (when not) and
+# cancel-in-progress keeps only the most recent run alive.
+# Not applied to release.yml: interrupting a partial sign/notarize would
+# leave artifacts in a half-signed state.
+concurrency:
+  # Use head_ref || ref_name so push and pull_request events on the same
+  # branch share a group. github.head_ref is set for PR events (source
+  # branch), github.ref_name is set for push events (the branch name).
+  # Using github.ref or pull_request.number would put push and PR-sync
+  # events in different groups → no cross-cancellation.
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
