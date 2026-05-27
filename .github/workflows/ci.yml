@@ -290,15 +290,14 @@ jobs:
         shell: bash
         run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Cache manifold + third-party builds
-        # See Linux job for rationale.
-        id: cache-manifold
-        uses: actions/cache@v5
-        with:
-          path: |
-            third_party
-            pkg/manifold/cxx/build-*
-          key: manifold-${{ runner.os }}-${{ hashFiles('scripts/_third-party-versions.sh', 'scripts/build-manifold.sh', 'pkg/manifold/cxx/CMakeLists.txt', 'pkg/manifold/cxx/include/**', 'pkg/manifold/cxx/src/**') }}
+      # NOTE: manifold cache intentionally skipped on Windows. When the
+      # cached libmanifold.a is restored on a subsequent run, cgo-called
+      # code crashes at test time with STATUS_ILLEGAL_INSTRUCTION
+      # (Exception 0xc000001d). Reproduces deterministically (not a CPU
+      # heterogeneity flake — same lib fails on rerun). Cause not yet
+      # diagnosed; possibly a Windows runner cache restore artifact
+      # (NTFS attributes, zip extraction). Linux/macOS cache works fine.
+      # Tracked in project_todo memory.
 
       - name: Disable Strawberry Perl ccache
         # windows-latest preinstalls Strawberry Perl which puts ccache.exe
@@ -317,7 +316,8 @@ jobs:
         # USE_TOOLCHAIN=true is forced on Windows by build-manifold.sh.
         # Don't set CC/CXX — CMake on Windows can't handle "zig cc" as a
         # single executable name (treats it as one literal program).
-        if: steps.cache-manifold.outputs.cache-hit != 'true'
+        # No cache-hit gate: manifold cache is disabled on Windows (see
+        # note above the Disable Strawberry Perl ccache step).
         shell: bash
         run: make manifold
 

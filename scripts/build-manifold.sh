@@ -325,22 +325,33 @@ if [ -d "$THIRD_PARTY/patches" ]; then
 fi
 
 # --- Build manifold ---
-echo "Building manifold for ${TARGET}..."
-mkdir -p "$MANIFOLD_BUILD_DIR" && cd "$MANIFOLD_BUILD_DIR"
-cmake "$MANIFOLD_DIR" \
-  "${CMAKE_GENERATOR_FLAG[@]}" \
-  "${DARWIN_OSX_ARCH[@]}" \
-  -DCMAKE_BUILD_TYPE=Release \
-  ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
-  -DBUILD_SHARED_LIBS=OFF \
-  -DMANIFOLD_CBIND=ON \
-  -DMANIFOLD_TEST=OFF \
-  -DMANIFOLD_PYBIND=OFF \
-  -DMANIFOLD_EXPORT=OFF \
-  -DMANIFOLD_DOWNLOADS=ON \
-  -DMANIFOLD_PAR=ON \
-  -DMANIFOLD_USE_BUILTIN_TBB=ON
-cmake --build . --config Release -j "$JOBS"
+# Skip if libmanifold.a already exists (e.g. CI cache restore). Matches the
+# assimp/freetype early-exit pattern above. Without this, re-entering the
+# script after a cache restore (e.g. `make test` running `make manifold`
+# as a dep) re-invokes cmake against a stale CMakeCache.txt whose
+# absolute CMAKE_CXX_COMPILER path points at a previous run's zig install
+# (mlugg/setup-zig puts zig under $RUNNER_TEMP/<run-id>/, so the path
+# changes per CI run).
+if [ ! -f "$MANIFOLD_BUILD_DIR/src/libmanifold.a" ]; then
+  echo "Building manifold for ${TARGET}..."
+  mkdir -p "$MANIFOLD_BUILD_DIR" && cd "$MANIFOLD_BUILD_DIR"
+  cmake "$MANIFOLD_DIR" \
+    "${CMAKE_GENERATOR_FLAG[@]}" \
+    "${DARWIN_OSX_ARCH[@]}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DMANIFOLD_CBIND=ON \
+    -DMANIFOLD_TEST=OFF \
+    -DMANIFOLD_PYBIND=OFF \
+    -DMANIFOLD_EXPORT=OFF \
+    -DMANIFOLD_DOWNLOADS=ON \
+    -DMANIFOLD_PAR=ON \
+    -DMANIFOLD_USE_BUILTIN_TBB=ON
+  cmake --build . --config Release -j "$JOBS"
+else
+  echo "manifold already built for ${TARGET} (libmanifold.a present) — skipping cmake+build."
+fi
 
 # --- Copy TBB libs to a known location ---
 TBB_INSTALL_DIR="$MANIFOLD_BUILD_DIR/tbb"
