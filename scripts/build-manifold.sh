@@ -68,12 +68,16 @@ esac
 # ISA baseline for x86_64 targets. windows-latest and ubuntu-latest runners
 # are CPU-heterogeneous: a lib compiled with the build runner's native ISA
 # may emit instructions (AVX2, BMI, etc.) that crash with
-# STATUS_ILLEGAL_INSTRUCTION on a different runner from the same pool. v2
-# requires SSE4.2 (every CPU since ~2009); negligible perf loss vs native
-# and guarantees portability across the github-hosted runner fleet.
+# STATUS_ILLEGAL_INSTRUCTION on a different runner from the same pool.
+# `nehalem` is the oldest CPU that supports SSE4.2 (~2008, equivalent to
+# x86-64-v2 from gcc's naming): negligible perf loss vs native code and
+# guaranteed portable across the github-hosted runner fleet. We pick a
+# concrete CPU name rather than `x86-64-v2` because zig 0.14.1's bundled
+# clang accepts underscored microarchitecture levels (x86_64_v2) but not
+# the hyphenated form, and concrete CPU names sidestep that quirk.
 case "$TARGET" in
   linux-amd64|windows-amd64|darwin-amd64)
-    ISA_BASELINE_FLAGS="-march=x86-64-v2"
+    ISA_BASELINE_FLAGS="-march=nehalem"
     ;;
   *)
     ISA_BASELINE_FLAGS=""
