@@ -91,13 +91,6 @@ func TestAllExamples(t *testing.T) {
 		t.Fatalf("reading examples dir: %v", err)
 	}
 
-	localFacetlibs, _ := filepath.Abs(filepath.Join("..", "..", "facetlibs"))
-	resolveOpts := &loader.Options{
-		InstalledLibs: map[string]string{
-			"github.com/firstlayer-xyz/facetlibs": localFacetlibs,
-		},
-	}
-
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".fct" {
 			continue
@@ -115,7 +108,7 @@ func TestAllExamples(t *testing.T) {
 			}
 
 			// Resolve libraries
-			resolveTestProg(t, prog, libDir, resolveOpts)
+			resolveTestProg(t, prog, libDir, nil)
 
 			// Check for type errors — must be zero
 			checkErrs := fctchecker.Check(prog).Errors
@@ -238,12 +231,7 @@ func TestReferencesRoundTrip_BoltAndNut(t *testing.T) {
 
 	prog := parseTestProg(t, string(src))
 
-	localFacetlibs, _ := filepath.Abs(filepath.Join("..", "..", "facetlibs"))
-	resolveTestProg(t, prog, t.TempDir(), &loader.Options{
-		InstalledLibs: map[string]string{
-			"github.com/firstlayer-xyz/facetlibs": localFacetlibs,
-		},
-	})
+	resolveTestProg(t, prog, t.TempDir(), nil)
 
 	res := fctchecker.Check(prog)
 	for _, ce := range res.Errors {
