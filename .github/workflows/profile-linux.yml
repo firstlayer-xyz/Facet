@@ -1,0 +1,103 @@
+name: Profile Linux
+
+# Diagnostic counterpart to profile-windows.yml. Runs the same per-package
+# cpuprofile sweep on ubuntu-latest so we can compare hotspots: with
+# Windows cgo overhead now squeezed out (PR #11, PR #12), the residual
+# `runtime.cgocall` time is real C++ work, and we want to know whether
+# Linux pays the same C++ cost or whether the Windows gap lives in MSVC
+# vs gcc codegen / libc++ vs libstdc++ / process-launch overhead.
+#
+# Triggers only on workflow_dispatch (run manually). Reuses ci.yml's
+# toolchain caches so it doesn't double-pay for setup.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Install libc++ dev libs
+        # Our CGO build links -lc++ (zig's default C++ stdlib choice),
+        # and gcc's default link path doesn't have it without
+        # libc++-dev / libc++abi-dev. (We don't need Wails GTK headers
+        # here — the profile job only builds the test binaries, not the
+        # desktop app.)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc++-dev libc++abi-dev
+
+      - name: Cache custom Go toolchain
+        id: cache-go
+        uses: actions/cache@v5
+        with:
+          path: .go-toolchain
+          key: go-toolchain-Linux-${{ hashFiles('scripts/setup-go.sh') }}
+
+      - name: Build custom Go toolchain
+        if: steps.cache-go.outputs.cache-hit != 'true'
+        run: bash scripts/setup-go.sh
+
+      - name: Install Wails
+        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Cache manifold + third-party builds
+        id: cache-manifold
+        uses: actions/cache@v5
+        with:
+          path: |
+            third_party
+            pkg/manifold/cxx/build-*
+          key: manifold-${{ runner.os }}-${{ hashFiles('scripts/_third-party-versions.sh', 'scripts/build-manifold.sh', 'pkg/manifold/cxx/CMakeLists.txt', 'pkg/manifold/cxx/include/**', 'pkg/manifold/cxx/src/**') }}
+
+      - name: Build manifold
+        if: steps.cache-manifold.outputs.cache-hit != 'true'
+        run: make manifold
+
+      - name: Run tests with cpuprofile
+        # Same per-package loop as profile-windows.yml so the resulting
+        # profiles are directly comparable. `-cpuprofile=` can only be
+        # used with a single package per invocation; `-count=1` disables
+        # Go's test cache so the profile reflects a real run.
+        run: |
+          set -e
+          export CC="zig cc"
+          export CXX="zig c++"
+          mkdir -p profiles
+          for pkg in pkg/manifold pkg/fctlang/evaluator pkg/fctlang; do
+            out="profiles/$(echo "$pkg" | tr / _).prof"
+            bin="profiles/$(echo "$pkg" | tr / _).test"
+            echo "::group::profiling ./$pkg/"
+            .go-toolchain/bin/go test \
+              -cpuprofile="$out" \
+              -o "$bin" \
+              -count=1 \
+              "./$pkg/" || echo "WARN: ./$pkg/ tests failed (profile still captured if produced)"
+            echo "::endgroup::"
+          done
+          echo "=== profiles collected ==="
+          ls -la profiles/
+
+      - name: Upload profiles
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-cpu-profiles
+          path: profiles/
+          retention-days: 14
+          if-no-files-found: error
