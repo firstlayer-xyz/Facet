@@ -74,40 +74,28 @@ jobs:
         run: make manifold
 
       - name: Run tests with cpuprofile
-        # `-cpuprofile=cpu.prof` writes a profile per test binary into
-        # each package's source directory. `-count=1` disables Go's
-        # test cache so the profile reflects a real run. We use the
-        # custom Go directly (not `make test`) so we can pass the
-        # profile flag.
+        # `-cpuprofile=` can only be used with a single package per
+        # invocation (output file would be overwritten). Loop over the
+        # packages that have the slow cgo-using tests and capture a
+        # profile per package. `-count=1` disables Go's test cache so
+        # the profile reflects a real run.
         shell: bash
         run: |
           set -e
           export CC="zig cc"
           export CXX="zig c++"
-          .go-toolchain/bin/go test \
-            -cpuprofile=cpu.prof \
-            -count=1 \
-            ./pkg/fctlang/... ./pkg/manifold/...
-
-      - name: Collect profiles
-        # Each package wrote cpu.prof into its own directory. Gather
-        # them under a single dir for the upload, renaming with the
-        # package path so we know what is what.
-        shell: bash
-        run: |
-          set -e
           mkdir -p profiles
-          # Also collect the per-package test binary (.exe / .test) so
-          # we can resolve symbols locally when we run `go tool pprof`.
-          while IFS= read -r prof; do
-            pkg_dir=$(dirname "$prof")
-            slug=$(echo "$pkg_dir" | tr '/' '_' | sed 's/^\._//')
-            cp "$prof" "profiles/${slug}_cpu.prof"
-            # Test binary is named <pkg>.test or <pkg>.test.exe
-            for bin in "$pkg_dir"/*.test "$pkg_dir"/*.test.exe; do
-              [ -f "$bin" ] && cp "$bin" "profiles/${slug}_$(basename "$bin")"
-            done
-          done < <(find . -name cpu.prof -not -path './third_party/*' -not -path './.go-toolchain/*')
+          for pkg in pkg/manifold pkg/fctlang/evaluator pkg/fctlang; do
+            out="profiles/$(echo "$pkg" | tr / _).prof"
+            bin="profiles/$(echo "$pkg" | tr / _).test.exe"
+            echo "::group::profiling ./$pkg/"
+            .go-toolchain/bin/go test \
+              -cpuprofile="$out" \
+              -o "$bin" \
+              -count=1 \
+              "./$pkg/" || echo "WARN: ./$pkg/ tests failed (profile still captured if produced)"
+            echo "::endgroup::"
+          done
           echo "=== profiles collected ==="
           ls -la profiles/
 
