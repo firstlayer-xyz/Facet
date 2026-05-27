@@ -2,16 +2,864 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Facet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Facet Web</title>
   <style>
-    body { font-family: -apple-system, system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; color: #222; }
-    a { color: #0366d6; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #141414;
+      --surface:  #1e1e1e;
+      --border:   #2e2e2e;
+      --text:     #d4d4d4;
+      --muted:    #6b6b6b;
+      --accent:   #4a8fcb;
+      --error:    #e05c5c;
+      --sidebar:  280px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      height: 44px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
+    header .server-url { color: var(--muted); font-size: 11px; font-family: monospace; }
+
+    #load-btn {
+      margin-left: auto;
+      padding: 5px 14px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    #load-btn:hover { opacity: 0.85; }
+    #file-input { display: none; }
+
+    /* ── Export ── */
+    .export-group {
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+    #export-btn {
+      padding: 5px 12px;
+      background: #2a2a2a;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-right: none;
+      border-radius: 5px 0 0 5px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    #export-btn:hover:not(:disabled) { background: #333; }
+    #export-btn:disabled { opacity: 0.4; cursor: default; }
+    #export-fmt {
+      padding: 5px 6px;
+      background: #2a2a2a;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 0 5px 5px 0;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #export-fmt:disabled { opacity: 0.4; cursor: default; }
+
+    /* ── Body layout ── */
+    .body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    aside {
+      width: var(--sidebar);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .drop-zone {
+      margin: 12px;
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      padding: 14px 12px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .drop-zone.drag-over { border-color: var(--accent); color: var(--accent); }
+    .drop-zone .filename {
+      margin-top: 4px;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Entry points ── */
+    #entries-section { padding: 0 12px 8px; flex-shrink: 0; }
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      padding: 8px 0 6px;
+    }
+    .entry-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+    .entry-tab {
+      padding: 3px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      background: transparent;
+      color: var(--text);
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .entry-tab:hover { background: #2a2a2a; }
+    .entry-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── Params ── */
+    #params-section {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 12px 12px;
+    }
+    #params-section::-webkit-scrollbar { width: 4px; }
+    #params-section::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .param-item { margin-bottom: 14px; }
+    .param-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4px;
+    }
+    .param-name { font-weight: 500; font-size: 12px; }
+    .param-value { font-size: 11px; color: var(--accent); font-family: monospace; }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    select, input[type="number"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+
+    /* ── Stats ── */
+    #stats-section {
+      border-top: 1px solid var(--border);
+      padding: 10px 12px;
+      flex-shrink: 0;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 10px;
+    }
+    .stat { display: flex; flex-direction: column; }
+    .stat-label { font-size: 10px; color: var(--muted); }
+    .stat-value { font-size: 12px; font-family: monospace; }
+
+    /* ── Viewport ── */
+    main {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    #canvas { display: block; width: 100%; height: 100%; }
+
+    /* ── Overlay states ── */
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      pointer-events: none;
+    }
+    #overlay.hidden { display: none; }
+    .overlay-icon { font-size: 40px; opacity: 0.3; }
+    .overlay-text { color: var(--muted); font-size: 14px; }
+
+    #status-bar {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      color: var(--text);
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    #status-bar.hidden { opacity: 0; }
+
+    #errors {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(20, 10, 10, 0.9);
+      border-top: 1px solid var(--error);
+      padding: 8px 14px;
+      font-family: monospace;
+      font-size: 12px;
+      color: var(--error);
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    #errors.hidden { display: none; }
+    .error-line { margin-bottom: 2px; }
   </style>
 </head>
 <body>
-  <h1>Facet</h1>
-  <p>Code-driven 3D modeling. Stable build pending first tagged release.</p>
-  <p>Preview build: <a href="preview/">/preview/</a></p>
-  <p>Source: <a href="https://github.com/firstlayer-xyz/Facet">firstlayer-xyz/Facet</a></p>
+
+<header>
+  <h1>Facet Web</h1>
+  <span class="server-url" id="server-url">localhost:8765</span>
+  <button id="load-btn">Open File</button>
+  <input type="file" id="file-input" accept=".fct">
+  <div class="export-group">
+    <button id="export-btn" disabled>Export</button>
+    <select id="export-fmt" disabled>
+      <option value="3mf">3MF</option>
+      <option value="stl">STL</option>
+      <option value="obj">OBJ</option>
+    </select>
+  </div>
+</header>
+
+<div class="body">
+  <aside>
+    <div class="drop-zone" id="drop-zone">
+      <div>Drop a .fct file or click to open</div>
+      <div class="filename" id="filename"></div>
+    </div>
+
+    <div id="entries-section" style="display:none">
+      <div class="section-label">Entry Point</div>
+      <div class="entry-tabs" id="entry-tabs"></div>
+    </div>
+
+    <div id="params-section">
+      <div class="section-label" id="params-label" style="display:none">Parameters</div>
+      <div id="params"></div>
+    </div>
+
+    <div id="stats-section" style="display:none">
+      <div class="section-label">Model</div>
+      <div class="stats-grid" id="stats-grid"></div>
+    </div>
+  </aside>
+
+  <main>
+    <canvas id="canvas"></canvas>
+    <div id="overlay">
+      <div class="overlay-icon">◻</div>
+      <div class="overlay-text">Open a .fct file to begin</div>
+    </div>
+    <div id="status-bar" class="hidden"></div>
+    <div id="errors" class="hidden"></div>
+  </main>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── Config ────────────────────────────────────────────────────────────────────
+
+const SERVER = 'http://localhost:8765';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let source = '';
+let currentEntry = '';
+let params = {};           // name → current value
+let entryPoints = [];      // from server
+let loadedFilename = '';   // original .fct filename for export naming
+
+// ── Three.js setup ────────────────────────────────────────────────────────────
+
+const canvas  = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x141414);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 10000);
+camera.position.set(80, 60, 120);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(100, 200, 150);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x8ab4d8, 0.4);
+fill.position.set(-80, 40, -60);
+scene.add(fill);
+
+// Grid
+const grid = new THREE.GridHelper(400, 40, 0x2a2a2a, 0x222222);
+scene.add(grid);
+
+// Resize
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (renderer.domElement.width !== w || renderer.domElement.height !== h) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+}
+
+// Render loop
+(function loop() {
+  requestAnimationFrame(loop);
+  resize();
+  controls.update();
+  renderer.render(scene, camera);
+})();
+
+// ── Scene objects ─────────────────────────────────────────────────────────────
+
+let modelMesh = null;
+let edgeMesh  = null;
+
+function clearModel() {
+  if (modelMesh) { scene.remove(modelMesh); modelMesh.geometry.dispose(); modelMesh = null; }
+  if (edgeMesh)  { scene.remove(edgeMesh);  edgeMesh.geometry.dispose();  edgeMesh  = null; }
+}
+
+function loadMesh(buffer, binaryStart, meta) {
+  clearModel();
+
+  // Prefer expanded (non-indexed) for flat shading; fall back to indexed.
+  if (meta.expanded) {
+    const bytes = buffer.slice(binaryStart + meta.expanded.offset,
+                               binaryStart + meta.expanded.offset + meta.expanded.size);
+    const positions = new Float32Array(bytes);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x7fb0d0,
+      roughness: 0.35,
+      metalness: 0.1,
+      side: THREE.DoubleSide,
+    });
+    modelMesh = new THREE.Mesh(geo, mat);
+    scene.add(modelMesh);
+  } else if (meta.vertexCount > 0) {
+    const vBytes = buffer.slice(binaryStart + meta.vertices.offset,
+                                binaryStart + meta.vertices.offset + meta.vertices.size);
+    const iBytes = buffer.slice(binaryStart + meta.indices.offset,
+                                binaryStart + meta.indices.offset + meta.indices.size);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vBytes), 3));
+    geo.setIndex(new THREE.BufferAttribute(new Uint32Array(iBytes), 1));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x7fb0d0, roughness: 0.35, metalness: 0.1, side: THREE.DoubleSide });
+    modelMesh = new THREE.Mesh(geo, mat);
+    scene.add(modelMesh);
+  }
+
+  // Edge lines
+  if (meta.edgeLines) {
+    const bytes = buffer.slice(binaryStart + meta.edgeLines.offset,
+                               binaryStart + meta.edgeLines.offset + meta.edgeLines.size);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(bytes), 3));
+    edgeMesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x1a3a50 }));
+    scene.add(edgeMesh);
+  }
+}
+
+function frameCamera(stats) {
+  if (!stats) return;
+  const min = new THREE.Vector3(...stats.bboxMin);
+  const max = new THREE.Vector3(...stats.bboxMax);
+  const center = new THREE.Vector3().addVectors(min, max).multiplyScalar(0.5);
+  const size   = new THREE.Vector3().subVectors(max, min).length();
+
+  if (size < 0.001) return;
+
+  controls.target.copy(center);
+  const dist = size * 1.6;
+  camera.position.copy(center).add(new THREE.Vector3(dist * 0.6, dist * 0.4, dist));
+  camera.near = size / 200;
+  camera.far  = size * 200;
+  camera.updateProjectionMatrix();
+  controls.update();
+}
+
+// ── Binary response parser ────────────────────────────────────────────────────
+
+function parseBinaryResponse(buffer) {
+  const view = new DataView(buffer);
+  const headerLen = view.getUint32(0, true);
+  const headerText = new TextDecoder().decode(new Uint8Array(buffer, 4, headerLen));
+  const header = JSON.parse(headerText);
+  const binaryStart = 4 + headerLen;
+  return { header, binaryStart, buffer };
+}
+
+// ── Eval ──────────────────────────────────────────────────────────────────────
+
+let evalController = null;
+
+async function runEval() {
+  if (!source || !currentEntry) return;
+
+  if (evalController) evalController.abort();
+  evalController = new AbortController();
+
+  showStatus('Computing…');
+  hideErrors();
+
+  try {
+    const resp = await fetch(`${SERVER}/eval`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source,
+        key: 'model.fct',
+        entry: currentEntry,
+        overrides: params,
+      }),
+      signal: evalController.signal,
+    });
+
+    const buffer = await resp.arrayBuffer();
+    const { header, binaryStart } = parseBinaryResponse(buffer);
+
+    if (header.errors?.length) {
+      showErrors(header.errors);
+      clearModel();
+      hideStatus();
+      return;
+    }
+
+    if (header.mesh) {
+      loadMesh(buffer, binaryStart, header.mesh);
+    }
+
+    if (header.stats) {
+      updateStats(header.stats);
+      if (!modelMesh?.userData.framed) {
+        frameCamera(header.stats);
+        if (modelMesh) modelMesh.userData.framed = true;
+      }
+    }
+
+    setExportEnabled(!!header.mesh);
+    hideStatus();
+    hideErrors();
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      showErrors([{ message: e.message }]);
+      hideStatus();
+    }
+  }
+}
+
+const debouncedEval = debounce(runEval, 120);
+
+// ── File loading ──────────────────────────────────────────────────────────────
+
+async function loadSource(text, filename) {
+  source = text;
+  loadedFilename = filename;
+  currentEntry = '';
+  params = {};
+  clearModel();
+  clearStats();
+  setExportEnabled(false);
+  document.getElementById('filename').textContent = filename;
+
+  showStatus('Parsing…');
+  hideErrors();
+
+  try {
+    const resp = await fetch(`${SERVER}/eval`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, key: 'model.fct', entry: '' }),
+    });
+    const buffer = await resp.arrayBuffer();
+    const { header } = parseBinaryResponse(buffer);
+
+    if (header.errors?.length) {
+      showErrors(header.errors);
+      hideStatus();
+      return;
+    }
+
+    entryPoints = header.entryPoints || [];
+    renderEntryTabs(entryPoints);
+
+    if (entryPoints.length > 0) {
+      selectEntry(entryPoints[0]);
+    }
+  } catch (e) {
+    showErrors([{ message: `Cannot reach server at ${SERVER}. Is facet-server running?` }]);
+    hideStatus();
+  }
+}
+
+function handleFile(file) {
+  if (!file || !file.name.endsWith('.fct')) return;
+  const reader = new FileReader();
+  reader.onload = e => loadSource(e.target.result, file.name);
+  reader.readAsText(file);
+}
+
+// ── UI: entry tabs ────────────────────────────────────────────────────────────
+
+function renderEntryTabs(eps) {
+  const section = document.getElementById('entries-section');
+  const container = document.getElementById('entry-tabs');
+  container.innerHTML = '';
+  if (eps.length === 0) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  for (const ep of eps) {
+    const btn = document.createElement('button');
+    btn.className = 'entry-tab';
+    btn.textContent = ep.name;
+    btn.onclick = () => selectEntry(ep);
+    container.appendChild(btn);
+  }
+}
+
+function selectEntry(ep) {
+  currentEntry = ep.name;
+  params = {};
+
+  // Seed params with defaults.
+  for (const p of ep.params) {
+    if (p.default !== null && p.default !== undefined) {
+      params[p.name] = p.default;
+    }
+  }
+
+  // Update tab highlight.
+  document.querySelectorAll('.entry-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent === ep.name);
+  });
+
+  renderParams(ep.params);
+
+  // Reset framed flag so camera reframes on first result.
+  if (modelMesh) modelMesh.userData.framed = false;
+
+  runEval();
+}
+
+// ── UI: param sliders ─────────────────────────────────────────────────────────
+
+function renderParams(paramList) {
+  const container = document.getElementById('params');
+  const label     = document.getElementById('params-label');
+  container.innerHTML = '';
+  label.style.display = paramList.length ? '' : 'none';
+
+  for (const p of paramList) {
+    const item = document.createElement('div');
+    item.className = 'param-item';
+
+    const header = document.createElement('div');
+    header.className = 'param-header';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'param-name';
+    nameEl.textContent = p.name;
+
+    const valEl = document.createElement('span');
+    valEl.className = 'param-value';
+    valEl.id = `val-${p.name}`;
+
+    header.appendChild(nameEl);
+    header.appendChild(valEl);
+    item.appendChild(header);
+
+    const c = p.constraint;
+
+    if (c?.kind === 'range' && c.min !== undefined && c.max !== undefined) {
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min  = c.min;
+      slider.max  = c.max;
+      slider.step = c.step ?? computeStep(c.min, c.max);
+      slider.value = params[p.name] ?? p.default ?? c.min;
+
+      valEl.textContent = fmtVal(parseFloat(slider.value), p.unit);
+
+      slider.addEventListener('input', () => {
+        const v = parseFloat(slider.value);
+        params[p.name] = v;
+        valEl.textContent = fmtVal(v, p.unit);
+        debouncedEval();
+      });
+      item.appendChild(slider);
+
+    } else if (c?.kind === 'enum' && c.values?.length) {
+      const sel = document.createElement('select');
+      for (const v of c.values) {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        if (v == (params[p.name] ?? p.default)) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      valEl.textContent = fmtVal(params[p.name] ?? p.default, p.unit);
+      sel.addEventListener('change', () => {
+        const v = isNaN(parseFloat(sel.value)) ? sel.value : parseFloat(sel.value);
+        params[p.name] = v;
+        valEl.textContent = fmtVal(v, p.unit);
+        debouncedEval();
+      });
+      item.appendChild(sel);
+
+    } else {
+      // Free or no constraint: plain number input.
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.value = params[p.name] ?? p.default ?? 0;
+      valEl.textContent = fmtVal(parseFloat(input.value), p.unit);
+      input.addEventListener('change', () => {
+        const v = parseFloat(input.value);
+        params[p.name] = v;
+        valEl.textContent = fmtVal(v, p.unit);
+        debouncedEval();
+      });
+      item.appendChild(input);
+    }
+
+    container.appendChild(item);
+  }
+}
+
+function computeStep(min, max) {
+  const range = max - min;
+  if (range <= 1)   return 0.001;
+  if (range <= 10)  return 0.01;
+  if (range <= 100) return 0.1;
+  return 1;
+}
+
+function fmtVal(v, unit) {
+  if (v === null || v === undefined) return '';
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  if (isNaN(n)) return String(v);
+  const decimals = Math.abs(n) < 10 ? 2 : (Math.abs(n) < 100 ? 1 : 0);
+  return unit ? `${n.toFixed(decimals)} ${unit}` : n.toFixed(decimals);
+}
+
+// ── UI: stats ─────────────────────────────────────────────────────────────────
+
+function updateStats(stats) {
+  const section = document.getElementById('stats-section');
+  const grid    = document.getElementById('stats-grid');
+  section.style.display = '';
+
+  const items = [
+    ['Volume',   fmtNum(stats.volume) + ' mm³'],
+    ['Area',     fmtNum(stats.surfaceArea) + ' mm²'],
+    ['Triangles',fmtNum(stats.triangles)],
+    ['Vertices', fmtNum(stats.vertices)],
+  ];
+
+  grid.innerHTML = '';
+  for (const [label, value] of items) {
+    const el = document.createElement('div');
+    el.className = 'stat';
+    el.innerHTML = `<span class="stat-label">${label}</span><span class="stat-value">${value}</span>`;
+    grid.appendChild(el);
+  }
+}
+
+function clearStats() {
+  document.getElementById('stats-section').style.display = 'none';
+}
+
+function fmtNum(n) {
+  if (n == null) return '—';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+  return n.toFixed(1);
+}
+
+// ── UI: status / errors ───────────────────────────────────────────────────────
+
+function showStatus(msg) {
+  const el = document.getElementById('status-bar');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+function hideStatus() {
+  document.getElementById('status-bar').classList.add('hidden');
+}
+
+function showErrors(errors) {
+  const el = document.getElementById('errors');
+  el.innerHTML = errors.map(e => {
+    const loc = e.line ? ` (line ${e.line})` : '';
+    return `<div class="error-line">⚠ ${e.message}${loc}</div>`;
+  }).join('');
+  el.classList.remove('hidden');
+  document.getElementById('overlay').classList.add('hidden');
+}
+function hideErrors() {
+  document.getElementById('errors').classList.add('hidden');
+  document.getElementById('overlay').classList.add('hidden');
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+function setExportEnabled(enabled) {
+  document.getElementById('export-btn').disabled = !enabled;
+  document.getElementById('export-fmt').disabled = !enabled;
+}
+
+async function runExport() {
+  if (!source || !currentEntry) return;
+
+  const format = document.getElementById('export-fmt').value;
+  const btn = document.getElementById('export-btn');
+  const origText = btn.textContent;
+  btn.textContent = 'Exporting…';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(`${SERVER}/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source,
+        key: loadedFilename || 'model.fct',
+        entry: currentEntry,
+        overrides: params,
+        format,
+      }),
+    });
+
+    if (!resp.ok) {
+      const msg = await resp.text();
+      showErrors([{ message: `Export failed: ${msg}` }]);
+      return;
+    }
+
+    const blob = await resp.blob();
+    const baseName = (loadedFilename || 'model').replace(/\.fct$/i, '');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${baseName}.${format}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    showErrors([{ message: `Export error: ${e.message}` }]);
+  } finally {
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
+}
+
+// ── Wire up file input & drag-drop ────────────────────────────────────────────
+
+document.getElementById('load-btn').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+document.getElementById('export-btn').addEventListener('click', runExport);
+document.getElementById('drop-zone').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+document.getElementById('file-input').addEventListener('change', e => {
+  handleFile(e.target.files[0]);
+});
+
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// Also allow dropping on the viewport.
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function debounce(fn, delay) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+}
+
+</script>
 </body>
 </html>
