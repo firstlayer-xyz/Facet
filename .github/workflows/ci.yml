@@ -263,7 +263,6 @@ jobs:
             web/facet_cxx.wasm
             web/wasm_exec.js
             web/index.html
-            web/wasm.html
           retention-days: 14
           if-no-files-found: error
 
