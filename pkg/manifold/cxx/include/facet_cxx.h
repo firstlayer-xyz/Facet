@@ -356,6 +356,19 @@ int facet_manifold_par(void);
 // build didn't link against TBB (parallel disabled at compile time).
 int facet_tbb_default_concurrency(void);
 
+// Times a tbb::parallel_for over a CPU-bound workload (sqrt sum over
+// [0, n)). Returns microseconds elapsed. Used to verify whether
+// parallel_for actually parallelizes on each platform — if Windows
+// takes ~ncores× as long as Linux for the same n, TBB is silently
+// running serial. Returns -1 if MANIFOLD_PAR != 1.
+double facet_tbb_parallel_for_us(int n);
+
+// Counts unique OS thread IDs that handled at least one iteration of
+// a tbb::parallel_for over [0, n). Returns -1 if MANIFOLD_PAR != 1.
+// >1 means TBB is genuinely spawning worker threads; 1 means it's
+// serial regardless of what default_concurrency() reports.
+int facet_tbb_parallel_for_threads(int n);
+
 #ifdef __cplusplus
 }
 #endif

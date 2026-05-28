@@ -21,11 +21,19 @@
 #include <string>
 #include <vector>
 
-// TBB info header — only included if the manifold build linked parallel TBB.
+// TBB headers — only included if the manifold build linked parallel TBB.
 // FACET_MANIFOLD_PAR is forwarded from the same MANIFOLD_PAR value Manifold
-// was built with. See facet_tbb_default_concurrency() below.
+// was built with. See the diag helpers at the end of this file.
 #if defined(FACET_MANIFOLD_PAR) && FACET_MANIFOLD_PAR == 1
 #include <oneapi/tbb/info.h>
+#include <oneapi/tbb/parallel_for.h>
+#include <oneapi/tbb/blocked_range.h>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <mutex>
+#include <set>
+#include <thread>
 #endif
 
 #ifdef FACET_WASM
@@ -1671,6 +1679,53 @@ int facet_tbb_default_concurrency(void) {
 #if defined(FACET_MANIFOLD_PAR) && FACET_MANIFOLD_PAR == 1
   return (int)tbb::info::default_concurrency();
 #else
+  return -1;
+#endif
+}
+
+double facet_tbb_parallel_for_us(int n) {
+#if defined(FACET_MANIFOLD_PAR) && FACET_MANIFOLD_PAR == 1
+  // CPU-bound, branchless inner loop. Atomic accumulator with relaxed
+  // ordering keeps cross-thread cache traffic minimal so we measure
+  // dispatch + compute, not contention.
+  std::atomic<double> sum{0.0};
+  auto t0 = std::chrono::steady_clock::now();
+  tbb::parallel_for(tbb::blocked_range<int>(0, n),
+      [&](const tbb::blocked_range<int>& r) {
+        double local = 0;
+        for (int i = r.begin(); i < r.end(); ++i) local += std::sqrt((double)i);
+        // Add the partial sum once per chunk via compare-exchange loop.
+        double cur = sum.load(std::memory_order_relaxed);
+        while (!sum.compare_exchange_weak(cur, cur + local,
+                std::memory_order_relaxed)) {}
+      });
+  auto t1 = std::chrono::steady_clock::now();
+  // Discard the sum (consume to prevent dead-code elimination).
+  (void)sum.load(std::memory_order_relaxed);
+  return std::chrono::duration<double, std::micro>(t1 - t0).count();
+#else
+  (void)n;
+  return -1.0;
+#endif
+}
+
+int facet_tbb_parallel_for_threads(int n) {
+#if defined(FACET_MANIFOLD_PAR) && FACET_MANIFOLD_PAR == 1
+  std::set<std::thread::id> ids;
+  std::mutex m;
+  tbb::parallel_for(tbb::blocked_range<int>(0, n),
+      [&](const tbb::blocked_range<int>& r) {
+        // Do a tiny bit of work so TBB doesn't fuse adjacent chunks
+        // before they reach their assigned worker.
+        volatile double x = 0;
+        for (int i = r.begin(); i < r.end(); ++i) x += std::sqrt((double)i);
+        (void)x;
+        std::lock_guard<std::mutex> lk(m);
+        ids.insert(std::this_thread::get_id());
+      });
+  return (int)ids.size();
+#else
+  (void)n;
   return -1;
 #endif
 }
