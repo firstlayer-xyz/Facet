@@ -76,7 +76,7 @@ test-web: go-toolchain
 	@$(GO) run scripts/serve-web.go > /tmp/facet-test-web.log 2>&1 & \
 		echo $$! > /tmp/facet-test-web.pid; \
 		trap 'kill $$(cat /tmp/facet-test-web.pid) 2>/dev/null; rm -f /tmp/facet-test-web.pid' EXIT; \
-		until curl -sf http://localhost:8000/wasm.html > /dev/null 2>&1; do sleep 0.2; done; \
+		until curl -sf http://localhost:8000/ > /dev/null 2>&1; do sleep 0.2; done; \
 		(cd web/test && npm test)
 
 clean:

@@ -5,7 +5,7 @@
 // The harness handles browser launch, navigation to the wasm page,
 // console + page-error logging, and exit codes.
 
-const URL = process.env.FACET_WEB_URL || 'http://localhost:8000/wasm.html';
+const URL = process.env.FACET_WEB_URL || 'http://localhost:8000/';
 
 async function runTest(name, body, chromium) {
   const browser = await chromium.launch({
