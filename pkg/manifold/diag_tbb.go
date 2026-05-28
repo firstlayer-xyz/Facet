@@ -8,7 +8,7 @@ package manifold
 import "C"
 
 // diagManifoldPar reports how Manifold was compiled: 1 = parallel (TBB),
-// -1 = serial, 0 = unknown. Used by TestDiagTBBConcurrency.
+// -1 = serial, 0 = unknown.
 func diagManifoldPar() int { return int(C.facet_manifold_par()) }
 
 // diagTBBDefaultConcurrency reports tbb::info::default_concurrency() — the
