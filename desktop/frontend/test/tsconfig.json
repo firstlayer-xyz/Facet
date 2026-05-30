@@ -1,3 +1,8 @@
+// Test-only TypeScript config. Extends the frontend's main tsconfig.json and
+// adds Node + Playwright types — these belong here, not in src/, because we
+// don't want Node types bleeding into the production Vite build. tsc against
+// this file (via `npm test`) covers all test/**/*.ts plus the Wails-generated
+// App.d.ts for drift detection.
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {

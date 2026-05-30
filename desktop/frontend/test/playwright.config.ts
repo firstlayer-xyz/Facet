@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const PREVIEW_PORT = 4173;
+
 export default defineConfig({
   testDir: '.',
   testMatch: '**/*.test.ts',
@@ -9,7 +11,7 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     ...devices['Desktop Chrome'],
-    baseURL: 'http://localhost:4173',
+    baseURL: `http://localhost:${PREVIEW_PORT}`,
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
   },
@@ -17,9 +19,9 @@ export default defineConfig({
     // Build first so dist/ exists, then serve the built bundle. We use the
     // production build (not vite dev) so what we test matches what Wails
     // embeds into the desktop binary.
-    command: 'npm run build && npx vite preview --port 4173 --strictPort',
+    command: `npm run build && npx vite preview --port ${PREVIEW_PORT} --strictPort`,
     cwd: '..',
-    port: 4173,
+    port: PREVIEW_PORT,
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,
   },
