@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "@playwright/test"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts", "../wailsjs/go/main/App.d.ts"]
+}

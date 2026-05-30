@@ -5,9 +5,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "tsc --noEmit -p test/tsconfig.json && playwright test --config test/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^22.0.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.0"
   },
