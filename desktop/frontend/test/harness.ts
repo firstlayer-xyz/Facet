@@ -1,6 +1,7 @@
 import { test as base, Page } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { installEvalRoute, loadEvalFixture, EvalHandler } from './mocks/eval-mock';
 
 // Static drift check: if the Go side adds/removes/renames a Wails method,
 // this typeof-import fails to compile and forces a mock update.
@@ -32,7 +33,7 @@ const DEFAULT_FIXTURES: Partial<Record<keyof WailsApp, unknown>> = {
   ConfirmDiscard: true,
 };
 
-export const test = base.extend<{ mockedPage: Page }>({
+export const test = base.extend<{ mockedPage: Page; setEvalHandler: (handler: EvalHandler) => Promise<void> }>({
   mockedPage: async ({ page }, use) => {
     await page.addInitScript((defaults) => {
       // Runs in the page context BEFORE any app code. `defaults` is the
@@ -72,21 +73,9 @@ export const test = base.extend<{ mockedPage: Page }>({
     }, DEFAULT_FIXTURES);
 
     // Intercept eval HTTP calls — the app POSTs to http://127.0.0.1:<port>/eval
-    // during boot. We return a minimal valid framed response (4-byte LE header
-    // length + header JSON) so the app doesn't throw and log a console error.
-    await page.route('**/eval', async (route) => {
-      const headerJSON = JSON.stringify({});
-      const headerBytes = new TextEncoder().encode(headerJSON);
-      const buf = new ArrayBuffer(4 + headerBytes.length);
-      const view = new DataView(buf);
-      view.setUint32(0, headerBytes.length, true /* little-endian */);
-      new Uint8Array(buf, 4).set(headerBytes);
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/octet-stream',
-        body: Buffer.from(buf),
-      });
-    });
+    // during boot. Default response is the eval-cube fixture so the app's
+    // post-eval code path doesn't fault.
+    await installEvalRoute(page, () => loadEvalFixture('eval-cube'));
 
     // Forward console errors as test failures.
     const consoleErrors: string[] = [];
@@ -100,6 +89,12 @@ export const test = base.extend<{ mockedPage: Page }>({
     if (consoleErrors.length) {
       throw new Error(`Console errors during test:\n${consoleErrors.join('\n')}`);
     }
+  },
+  setEvalHandler: async ({ page }, use) => {
+    await use(async (handler: EvalHandler) => {
+      await page.unroute('**/eval');
+      await installEvalRoute(page, handler);
+    });
   },
 });
 
