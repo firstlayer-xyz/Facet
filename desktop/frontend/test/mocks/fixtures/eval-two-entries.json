@@ -1,0 +1,25 @@
+{
+  "value": {
+    "errors": [],
+    "entryPoints": [
+      {
+        "name": "Main",
+        "signature": "Main() Solid",
+        "params": [],
+        "libPath": "",
+        "libVar": "",
+        "doc": ""
+      },
+      {
+        "name": "Demo",
+        "signature": "Demo() Solid",
+        "params": [],
+        "libPath": "",
+        "libVar": "",
+        "doc": ""
+      }
+    ],
+    "docIndex": [],
+    "posMap": []
+  }
+}
