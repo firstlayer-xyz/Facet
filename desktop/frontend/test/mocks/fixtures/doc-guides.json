@@ -1,0 +1,14 @@
+{
+  "value": [
+    {
+      "title": "Getting Started",
+      "slug": "getting-started",
+      "markdown": "# Getting Started\n\nHello [cube](#cube) world."
+    },
+    {
+      "title": "Reference",
+      "slug": "reference",
+      "markdown": "# Reference\n\nSee [getting-started](#getting-started)."
+    }
+  ]
+}
