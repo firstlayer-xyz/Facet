@@ -1,15 +1,15 @@
 import { test as base, Page } from '@playwright/test';
 import { installEvalRoute, loadFixture, EvalHandler } from './mocks/eval-mock';
 
-// Static drift check: if the Go side adds/removes/renames a Wails method,
-// this typeof-import fails to compile and forces a mock update.
-type WailsApp = typeof import('../wailsjs/go/main/App');
-
 // Defaults: minimum a fresh boot needs. Each test can override individual
 // methods via page.evaluate(o => Object.assign(window.__mockOverrides, o), {...}).
-// Keys here are method NAMES on WailsApp; the value is whatever that method
-// should resolve with by default.
-const DEFAULT_FIXTURES: Partial<Record<keyof WailsApp, unknown>> = {
+// Keys are method NAMES on the Wails-generated App module. The wailsjs/ tree
+// is gitignored and only exists locally after `wails dev` or `wails build`, so
+// we cannot statically import it here (CI would fail tsc). At runtime, the
+// Proxy in the addInitScript below returns undefined for unknown methods, so
+// a missed default surfaces as a method returning undefined rather than a
+// throw — usually loud enough for the test to fail on its own.
+const DEFAULT_FIXTURES: Record<string, unknown> = {
   GetDefaultSource: loadFixture('default-source'),
   GetSettings: '{}',
   GetHTTPAuth: { port: 65432, token: 'mock-token' },  // page.route below intercepts before fetch lands
