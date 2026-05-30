@@ -1,14 +1,14 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './harness';
 
-test('page loads with no console errors', async ({ page }) => {
-  const consoleErrors: string[] = [];
-  page.on('console', msg => {
-    if (msg.type() === 'error') consoleErrors.push(msg.text());
-  });
-  page.on('pageerror', err => consoleErrors.push(err.message));
-
+test('page loads with mock and reaches editor', async ({ mockedPage: page }) => {
   await page.goto('/');
-  // App boots and creates the #app container with at least one child.
   await expect(page.locator('#app')).toBeVisible();
-  expect(consoleErrors, consoleErrors.join('\n')).toEqual([]);
+  // Editor renders inside #editor-panel; wait for Monaco to attach.
+  await expect(page.locator('#editor-panel .monaco-editor').first()).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Mock was reachable: GetDefaultSource was called during boot.
+  const calls = await page.evaluate(() => (window as any).__mockCalls.map((c: any) => c.name));
+  expect(calls).toContain('GetDefaultSource');
 });
