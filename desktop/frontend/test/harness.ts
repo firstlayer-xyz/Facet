@@ -19,7 +19,6 @@ function loadFixture(name: string): unknown {
 // should resolve with by default.
 const DEFAULT_FIXTURES: Partial<Record<keyof WailsApp, unknown>> = {
   GetDefaultSource: loadFixture('default-source'),
-  GetExampleList: loadFixture('examples-list'),
   GetSettings: '{}',
   GetHTTPAuth: { port: 65432, token: 'mock-token' },  // page.route below intercepts before fetch lands
   ListLibraries: [],
@@ -58,11 +57,14 @@ export const test = base.extend<{ mockedPage: Page }>({
 
       (window as any).go = { main: { App } };
 
-      // Wails runtime stubs — minimal, only what main.ts touches at boot.
+      // Wails runtime stubs — covers all window.runtime methods the app calls.
       // EventsOn in the Wails JS bridge delegates to EventsOnMultiple, so
-      // both must be present.
+      // both must be present. EventsOff/EventsOffAll are used as cleanup in
+      // settings_debug.ts and must be present to avoid TypeError at teardown.
       (window as any).runtime = {
         EventsOnMultiple: () => {},
+        EventsOff: () => {},
+        EventsOffAll: () => {},
         ClipboardSetText: async () => {},
         ClipboardGetText: async () => '',
         WindowToggleMaximise: () => {},
