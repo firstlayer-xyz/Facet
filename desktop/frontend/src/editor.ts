@@ -281,6 +281,14 @@ export function createEditor(
     },
   });
 
+  // Expose monaco and the editor instance for integration tests. Monaco is
+  // imported as an ESM module and is otherwise unreachable from page-context
+  // scripts (Playwright `page.evaluate`); without this, the test suite cannot
+  // drive the editor (setValue, getPosition, getScrolledVisiblePosition, etc.).
+  // The cost is a single property on window that points at code already in the
+  // bundle — no additional payload.
+  (window as unknown as { monaco: typeof monaco }).monaco = monaco;
+
   const errorCollection = ed.createDecorationsCollection();
   const debugCollection = ed.createDecorationsCollection();
   const gutterCollection = ed.createDecorationsCollection();
