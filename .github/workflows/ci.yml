@@ -70,9 +70,16 @@ jobs:
             fi
           done
 
+      # actions/cache flakes occasionally — most often on windows-latest,
+      # where the action silently fails in ~1s with no log output. A
+      # missed cache is a soft failure everywhere (the gated rebuild step
+      # below handles it), so we tolerate the action's own errors and
+      # rebuild from source on miss. The same continue-on-error applies
+      # to every cache step in this file.
       - name: Cache custom Go toolchain
         id: cache-go
         uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: .go-toolchain
           key: go-toolchain-Linux-${{ hashFiles('scripts/setup-go.sh') }}
@@ -93,6 +100,7 @@ jobs:
         # manifold as a dep is fast.
         id: cache-manifold
         uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: |
             third_party
@@ -198,6 +206,7 @@ jobs:
       - name: Cache custom Go toolchain
         id: cache-go
         uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: .go-toolchain
           key: go-toolchain-Linux-${{ hashFiles('scripts/setup-go.sh') }}
@@ -209,6 +218,7 @@ jobs:
       - name: Cache emsdk
         id: cache-emsdk
         uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: ${{ runner.temp }}/emsdk
           key: emsdk-Linux-${{ env.EMSDK_VERSION }}
@@ -225,6 +235,7 @@ jobs:
       - name: Cache binaryen
         id: cache-binaryen
         uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: ${{ runner.temp }}/binaryen
           key: binaryen-Linux-${{ env.BINARYEN_VERSION }}
@@ -301,6 +312,7 @@ jobs:
       - name: Cache custom Go toolchain
         id: cache-go
         uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: .go-toolchain
           key: go-toolchain-Windows-${{ hashFiles('scripts/setup-go.sh') }}
@@ -322,6 +334,7 @@ jobs:
         # lib used native ISA instructions some runners don't support.
         id: cache-manifold
         uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: |
             third_party
@@ -420,6 +433,7 @@ jobs:
       - name: Cache custom Go toolchain
         id: cache-go
         uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: .go-toolchain
           key: go-toolchain-macOS-${{ hashFiles('scripts/setup-go.sh') }}
@@ -435,6 +449,7 @@ jobs:
         # See Linux job for rationale.
         id: cache-manifold
         uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: |
             third_party
