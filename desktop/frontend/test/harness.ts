@@ -1,18 +1,9 @@
 import { test as base, Page } from '@playwright/test';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { installEvalRoute, loadEvalFixture, EvalHandler } from './mocks/eval-mock';
+import { installEvalRoute, loadFixture, EvalHandler } from './mocks/eval-mock';
 
 // Static drift check: if the Go side adds/removes/renames a Wails method,
 // this typeof-import fails to compile and forces a mock update.
 type WailsApp = typeof import('../wailsjs/go/main/App');
-
-const FIXTURE_DIR = path.join(__dirname, 'mocks/fixtures');
-
-function loadFixture(name: string): unknown {
-  const raw = fs.readFileSync(path.join(FIXTURE_DIR, `${name}.json`), 'utf8');
-  return JSON.parse(raw).value;
-}
 
 // Defaults: minimum a fresh boot needs. Each test can override individual
 // methods via page.evaluate(o => Object.assign(window.__mockOverrides, o), {...}).
@@ -75,7 +66,7 @@ export const test = base.extend<{ mockedPage: Page; setEvalHandler: (handler: Ev
     // Intercept eval HTTP calls — the app POSTs to http://127.0.0.1:<port>/eval
     // during boot. Default response is the eval-cube fixture so the app's
     // post-eval code path doesn't fault.
-    await installEvalRoute(page, () => loadEvalFixture('eval-cube'));
+    await installEvalRoute(page, () => loadFixture('eval-cube'));
 
     // Forward console errors as test failures.
     const consoleErrors: string[] = [];

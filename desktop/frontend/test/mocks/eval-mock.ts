@@ -14,7 +14,7 @@ export type EvalRequestBody = {
 
 export type EvalHandler = (body: EvalRequestBody) => unknown;
 
-export function loadEvalFixture(name: string): unknown {
+export function loadFixture(name: string): unknown {
   const raw = fs.readFileSync(path.join(FIXTURE_DIR, `${name}.json`), 'utf8');
   return JSON.parse(raw).value;
 }
