@@ -16,15 +16,12 @@ test('switching tabs preserves each tab\'s entry-point selection without error',
   mockedPage: page,
   setEvalHandler,
 }) => {
-  // Stub CreateScratchFile to return a deterministic second-tab key so the
-  // eval-mock can recognize which tab is sending sources.
-  await page.addInitScript(() => {
-    (window as any).__pendingNewBtnKey = 'scratch-2';
-  });
+  // Stub CreateScratchFile to return a deterministic second-tab key. The key
+  // becomes the tab's libPath, which the eval handler below uses to emit
+  // entry-points scoped to each tab.
   await page.goto('/');
   await page.evaluate(() => {
-    (window as any).__mockOverrides.CreateScratchFile = () =>
-      (window as any).__pendingNewBtnKey;
+    (window as any).__mockOverrides.CreateScratchFile = () => 'scratch-2';
   });
 
   // The eval mock emits one entry-point per `fn` declared in each source, with

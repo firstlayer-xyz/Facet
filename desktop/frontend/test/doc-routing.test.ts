@@ -12,20 +12,14 @@ const docGuides = JSON.parse(
 test('clicking a doc guide opens it in the docs panel, not the function-preview bar', async ({
   mockedPage: page,
 }) => {
-  // Inject the fixture as the GetDocGuides response BEFORE page boot so the
-  // docs panel hydrates with our guides on first open. addInitScript runs in
-  // page context before app code, so __mockOverrides exists when we read it
-  // back later in evaluate().
-  await page.addInitScript(g => {
-    (window as any).__pendingDocOverride = g;
-  }, docGuides);
   await page.goto('/');
 
-  // Wire the override now that __mockOverrides is in scope.
-  await page.evaluate(() => {
-    (window as any).__mockOverrides.GetDocGuides = () =>
-      (window as any).__pendingDocOverride;
-  });
+  // Stub GetDocGuides with our fixture. The docs panel fetches this lazily
+  // on first open, so wiring the override before clicking the Docs button is
+  // sufficient.
+  await page.evaluate(guides => {
+    (window as any).__mockOverrides.GetDocGuides = () => guides;
+  }, docGuides);
 
   await expect(page.locator('#editor-panel .monaco-editor').first()).toBeVisible({
     timeout: 10_000,
