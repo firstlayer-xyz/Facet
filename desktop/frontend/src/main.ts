@@ -30,9 +30,10 @@ import {
   debugBtn, assistantBtn, exportBtn, slicerBtn, fullCodeBtn, errorDiv, tabBar,
   debugBar, debugPrevBtn, debugNextBtn, debugSlider, debugLabel, statsBar, compilingOverlay,
   debugRestartBtn, debugContinueBtn, debugStopBtn,
-  vpPane, vpPaneSummary, hiddenLinesBtn, panelResizer, previewSelector,
+  vpPane, vpPaneSummary, hiddenLinesBtn, panelResizer, docsResizer, previewSelector,
   previewFileBtn, previewFileMenu,
   measureBtn, extentsBtn, clearDimsBtn, hudTools,
+  drawerStack,
 } from './toolbar';
 import { FunctionPreview } from './function-preview';
 import type { EntryPoint } from './function-preview';
@@ -106,18 +107,21 @@ function applyCurrentTheme(): void {
 async function handleDocsToggle() {
   const active = await toggleDocs();
   docsBtn.classList.toggle('active', active);
+  docsResizer.classList.toggle('open', active);
 }
 
 // Status bar eval state — set inside initApp once the status elements exist
 let applyEvalStatus: ((state: 'idle' | 'ready' | 'error', ms?: number) => void) | undefined;
 
-// Docs panel
-const docsPanel = new DocsPanel(canvasContainer, handleDocsToggle);
+// Docs panel renders into its drawer-stack slot. The slot is a stable
+// DOM home that never gets reparented across mode changes — fullcode
+// (the View toggle) doesn't touch it.
+const docsPanel = new DocsPanel(drawerStack, handleDocsToggle);
 
 // Assistant panel
 let editorRef: EditorHandle | null = null;
 const assistantPanel = new AssistantPanel(
-  viewportPanel,
+  drawerStack,
   () => editorRef?.getContent() ?? '',
   () => errorDiv.textContent ?? '',
   () => ({ path: getActiveTabValue(), readOnly: isActiveTabReadOnly() }),
@@ -200,7 +204,7 @@ async function init() {
 
   initFullCode({
     viewer, editorPanel, viewportPanel, canvasContainer, divider,
-    panelResizer, app, fullCodeBtn, autoRotateBtn,
+    app, fullCodeBtn, autoRotateBtn,
   });
 
   // Restore saved tab state or load default tutorial
@@ -252,6 +256,7 @@ async function init() {
   const editor = createEditor(monacoContainer, first.source, autoRun, async (name) => {
     await openDocsToEntry(name);
     docsBtn.classList.add('active');
+    docsResizer.classList.add('open');
   }, (file, source, line, col) => {
     openLibraryFile(file, source, line, col);
   }, first.path);
@@ -660,12 +665,13 @@ function handleDebugToggle() {
 }
 debugBtn.addEventListener('click', handleDebugToggle);
 
-// Assistant toggle
+// Assistant toggle. AssistantPanel manages `.open` on its own panel;
+// the resizer's `.open` is in lockstep.
 assistantBtn.addEventListener('click', () => {
   assistantPanel.toggle();
   const assistantVisible = assistantPanel.isVisible();
   assistantBtn.classList.toggle('active', assistantVisible);
-  panelResizer.style.display = assistantVisible ? 'block' : 'none';
+  panelResizer.classList.toggle('open', assistantVisible);
 });
 
 // Docs toggle
@@ -802,10 +808,18 @@ divider.addEventListener('mousedown', (e) => {
 
 // Panel resizer drag logic (canvas ↔ right panel)
 let panelDragging = false;
+let docsDragging = false;
 
 panelResizer.addEventListener('mousedown', (e) => {
   e.preventDefault();
   panelDragging = true;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+});
+
+docsResizer.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  docsDragging = true;
   document.body.style.cursor = 'col-resize';
   document.body.style.userSelect = 'none';
 });
@@ -825,6 +839,17 @@ window.addEventListener('mousemove', (e) => {
     const activePanel = document.getElementById('assistant-panel');
     if (activePanel) activePanel.style.width = `${clamped}px`;
   }
+  if (docsDragging) {
+    // Docs drawer sits to the LEFT of the assistant (if open), so the
+    // drawer's right edge depends on whether the assistant is showing.
+    const docsEl = document.getElementById('docs-panel');
+    if (docsEl) {
+      const docsRect = docsEl.getBoundingClientRect();
+      const newWidth = docsRect.right - e.clientX;
+      const clamped = Math.min(Math.max(newWidth, 240), 900);
+      docsEl.style.width = `${clamped}px`;
+    }
+  }
 });
 
 window.addEventListener('mouseup', () => {
@@ -835,6 +860,11 @@ window.addEventListener('mouseup', () => {
   }
   if (panelDragging) {
     panelDragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+  if (docsDragging) {
+    docsDragging = false;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
   }

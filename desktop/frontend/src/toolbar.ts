@@ -368,10 +368,36 @@ canvasContainer.appendChild(vpPane);
 canvasContainer.appendChild(statsBar);
 canvasContainer.appendChild(compilingOverlay);
 
-// Resizer between canvas and the right panels (params / assistant)
+// Top-level overlay container for the right-edge drawers (docs + assistant).
+// Lives directly under #app so it overlays editor + canvas via absolute
+// position rather than competing with them for horizontal flex space.
+//
+// Children, left to right: docs-resizer, docs slot, assistant-resizer,
+// assistant slot. Left-most in this stack sits furthest from #app's
+// right edge — so docs ends up inside of assistant when both are open.
+export const drawerStack = document.createElement('div');
+drawerStack.id = 'drawer-stack';
+
+// Docs resizer (left edge of the docs slot). Visibility toggled via
+// `.open` class in lockstep with the docs slot.
+export const docsResizer = document.createElement('div');
+docsResizer.id = 'docs-resizer';
+drawerStack.appendChild(docsResizer);
+
+// Assistant resizer (left edge of the assistant panel). The id is
+// `assistant-resizer`; the export name `panelResizer` is kept so the
+// existing resize-handler import in main.ts continues to work.
 export const panelResizer = document.createElement('div');
-panelResizer.id = 'panel-resizer';
-panelResizer.style.display = 'none';
-viewportPanel.appendChild(panelResizer);
+panelResizer.id = 'assistant-resizer';
+drawerStack.appendChild(panelResizer);
+
+// DocsPanel + AssistantPanel append their own panels into drawerStack
+// at runtime (in show() and the constructor respectively). The drawer
+// stack uses CSS `order:` to keep arrangement consistent regardless of
+// when each panel was inserted:
+//   docs-resizer (1) | docs-panel (2) | assistant-resizer (3) | assistant-panel (4)
+// — so when both are open, docs sits inside of assistant from the
+// right edge of the app.
+app.appendChild(drawerStack);
 
 export { app };

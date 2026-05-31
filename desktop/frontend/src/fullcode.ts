@@ -8,7 +8,6 @@ interface FullCodeDeps {
   viewportPanel: HTMLElement;
   canvasContainer: HTMLElement;
   divider: HTMLElement;
-  panelResizer: HTMLElement;
   app: HTMLElement;
   fullCodeBtn: HTMLElement;
   autoRotateBtn: HTMLElement;
@@ -41,9 +40,9 @@ function enter() {
   viewportPanel.style.display = 'none';
   editorPanel.style.flex = '1';
 
-  // Lift assistant panel so it can float over the editor
-  const assistantEl = document.getElementById('assistant-panel');
-  if (assistantEl) { app.appendChild(assistantEl); assistantEl.classList.add('fullcode-float'); }
+  // Drawers (assistant, docs) live in #drawer-stack permanently — they
+  // overlay #app independently of the editor/viewport split, so fullcode
+  // doesn't need to touch them.
 
   // Create floating preview anchored to the bottom-right of the editor panel
   const preview = document.createElement('div');
@@ -106,20 +105,17 @@ function enter() {
 }
 
 function exit() {
-  const { viewer, editorPanel, viewportPanel, canvasContainer, divider, panelResizer, fullCodeBtn, autoRotateBtn } = deps;
+  const { viewer, editorPanel, viewportPanel, canvasContainer, divider, fullCodeBtn, autoRotateBtn } = deps;
   if (dragMove) { document.removeEventListener('mousemove', dragMove); dragMove = null; }
   if (dragUp) { document.removeEventListener('mouseup', dragUp); dragUp = null; }
 
   active = false;
   fullCodeBtn.classList.add('active');
 
-  // Move canvas back
-  viewportPanel.insertBefore(canvasContainer, panelResizer);
+  // Move canvas back into the viewport panel. Drawers stay in
+  // #drawer-stack — fullcode doesn't touch them.
+  viewportPanel.appendChild(canvasContainer);
   document.getElementById('mini-preview')?.remove();
-
-  // Return assistant panel to the viewport panel
-  const assistantEl = document.getElementById('assistant-panel');
-  if (assistantEl) { assistantEl.classList.remove('fullcode-float'); viewportPanel.insertBefore(assistantEl, panelResizer); }
 
   // Restore layout
   divider.style.display = '';

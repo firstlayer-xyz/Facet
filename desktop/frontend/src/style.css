@@ -451,16 +451,20 @@ body.macos-fullscreen #titlebar-drag {
   background: var(--ui-accent);
 }
 
-#panel-resizer {
+#assistant-resizer,
+#docs-resizer {
   flex: 0 0 3px;
   background: var(--ui-border-hover);
   cursor: col-resize;
   z-index: 10;
+  display: none;
 }
-
-#panel-resizer:hover {
-  background: var(--ui-accent);
-}
+#docs-resizer { order: 1; }
+#assistant-resizer { order: 3; }
+#assistant-resizer.open,
+#docs-resizer.open { display: block; }
+#assistant-resizer:hover,
+#docs-resizer:hover { background: var(--ui-accent); }
 
 #viewport-panel {
   flex: 1;
@@ -1030,17 +1034,6 @@ canvas {
 #mini-preview #debug-bar,
 #mini-preview #compiling-overlay { display: none !important; }
 
-/* Full-code mode: side panels float over the right edge of the editor */
-#assistant-panel.fullcode-float {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 40;
-  box-shadow: -4px 0 16px rgba(0,0,0,0.3);
-}
-
-
 #drawing-mode-btn {
   background: var(--ui-accent);
   color: #fff;
@@ -1530,20 +1523,23 @@ canvas {
 
 
 
-/* Docs panel */
+/* Docs drawer — direct child of #drawer-stack added by DocsPanel.show().
+   Visible only when DocsPanel applies `.open` to the panel itself. The
+   `order: 2` keeps docs sitting between docs-resizer (1) and the
+   assistant pair (3, 4) regardless of insertion order. */
 #docs-panel {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex-shrink: 0;
+  width: 480px;
   background: var(--ui-bg);
   overflow: hidden;
   padding: 0;
-  z-index: 20;
-  display: flex;
+  display: none;
   flex-direction: column;
+  height: 100%;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.3);
+  order: 2;
 }
+#docs-panel.open { display: flex; }
 
 .docs-search {
   flex-shrink: 0;
@@ -1747,9 +1743,8 @@ mark.search-highlight {
 }
 
 /* Hide 3D viewport controls when docs panel is open */
-#canvas-container.docs-open #hud-tools,
-#canvas-container.docs-open #viewpoint-bar,
-#canvas-container.docs-open #stats-bar { display: none; }
+/* (Previously hid HUD elements when docs was an overlay on canvas-container.
+   Docs is now a sibling drawer, so the HUD coexists with it.) */
 
 .docs-nav {
   display: flex;
@@ -2213,15 +2208,21 @@ mark.search-highlight {
 
 /* Assistant button */
 
-/* Assistant panel */
+/* Assistant panel — permanent direct child of #drawer-stack (appended at
+   AssistantPanel construction). Visible only when `.open` is set on the
+   panel. `order: 4` keeps it as the outermost (rightmost) drawer slot. */
 #assistant-panel {
   flex-shrink: 0;
   width: 400px;
   background: var(--ui-surface);
-  display: flex;
+  display: none;
   flex-direction: column;
   overflow: hidden;
+  height: 100%;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.3);
+  order: 4;
 }
+#assistant-panel.open { display: flex; }
 
 .assistant-header {
   padding: 10px 14px;
@@ -2932,7 +2933,8 @@ mark.search-highlight {
 
 /* Hide preview selector in mini-preview and docs mode */
 #mini-preview #preview-selector { display: none !important; }
-#canvas-container.docs-open #preview-selector { display: none; }
+/* (Previously hid preview-selector when docs overlay covered the canvas.
+   Docs is now a sibling drawer; preview-selector stays visible.) */
 
 /* ── Function preview bar ─────────────────────────────────────────────────── */
 
@@ -3227,3 +3229,21 @@ mark.search-highlight {
   font-family: 'JetBrains Mono', monospace;
   font-style: italic;
 }
+
+/* ── Drawer stack ───────────────────────────────────────────────────────
+   Right-edge overlay for the docs + assistant drawers. Absolute-positioned
+   so it doesn't share horizontal space budget with editor/canvas. Drawers
+   live inside this container as flex children; resizers live alongside
+   their drawers and toggle in lockstep via the `.open` class.
+*/
+#drawer-stack {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: row;
+  z-index: 30;
+  pointer-events: none;       /* gaps / empty container don't intercept clicks */
+}
+#drawer-stack > * { pointer-events: auto; }

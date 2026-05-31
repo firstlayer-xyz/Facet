@@ -53,7 +53,8 @@ export class AssistantPanel {
 
     this.panel = document.createElement('div');
     this.panel.id = 'assistant-panel';
-    this.panel.style.display = 'none';
+    // Visibility is controlled by the `.open` class via CSS; show()/hide()
+    // toggle it. No inline display style here.
 
     // Header
     const header = document.createElement('div');
@@ -135,7 +136,7 @@ export class AssistantPanel {
 
   show(): void {
     this.visible = true;
-    this.panel.style.display = 'flex';
+    this.panel.classList.add('open');
     this.registerEvents();
     this.input.focus();
     this.checkForCLIs();
@@ -185,7 +186,7 @@ export class AssistantPanel {
 
   hide(): void {
     this.visible = false;
-    this.panel.style.display = 'none';
+    this.panel.classList.remove('open');
     if (this.streaming) {
       CancelAssistant();
       this.finishStream();

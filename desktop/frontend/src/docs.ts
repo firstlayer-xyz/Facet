@@ -431,6 +431,8 @@ function highlightText(el: HTMLElement, term: string): void {
 
 export class DocsPanel {
   private el: HTMLElement | null = null;
+  // Container is the docs slot inside #drawer-stack — a permanent DOM
+  // home that never gets reparented across mode changes.
   private container: HTMLElement;
   private onClose: (() => void) | null;
   private currentView: DocsView = VIEW_GUIDES;
@@ -458,6 +460,7 @@ export class DocsPanel {
 
     const panel = document.createElement('div');
     panel.id = 'docs-panel';
+    panel.classList.add('open');
     this.el = panel;
 
     // Navigation tabs
@@ -555,7 +558,6 @@ export class DocsPanel {
     this.rerender();
 
     this.container.appendChild(panel);
-    this.container.classList.add('docs-open');
     search.focus();
   }
 
@@ -888,7 +890,6 @@ export class DocsPanel {
       this.searchEl = null;
       this.countEl = null;
       this.sideNavEl = null;
-      this.container.classList.remove('docs-open');
     }
   }
 

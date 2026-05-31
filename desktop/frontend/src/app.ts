@@ -1057,7 +1057,6 @@ async function openDocs(): Promise<void> {
     return [];
   });
   docsPanel.show(lastResult?.docIndex ?? [], guides);
-  viewer.setVisible(false);
   setDebugBarVisible(false);
 }
 
@@ -1066,7 +1065,6 @@ export async function toggleDocs() {
     await openDocs();
   } else {
     docsPanel.hide();
-    viewer.setVisible(true);
     if (debugMode && (lastResult?.debugSteps ?? []).length > 0) {
       setDebugBarVisible(true);
     }
