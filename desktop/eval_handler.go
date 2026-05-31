@@ -153,7 +153,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 		Declarations: checked.Declarations,
 		References:   checked.References,
 		EntryPoints:  entryPoints,
-		Symbols:      checked.Symbols,
+		Symbols:      checker.BuildSymbols(prog, req.Key),
 	}
 
 	// If errors or no entry, return check-only response

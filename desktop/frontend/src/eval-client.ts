@@ -5,6 +5,9 @@ import type { EntryPoint } from './function-preview';
 import type { BinaryMeshMeta, DebugStepData } from './mesh-decode';
 import type { PosEntry } from './viewer';
 
+/** The five kinds the checker emits — see pkg/fctlang/checker/symbols.go. */
+export type FacetSymbolKind = 'function' | 'method' | 'type' | 'field' | 'keyword';
+
 /**
  * One editor-visible identifier — a function, method, type, field, or
  * keyword. Symbols are the source of truth for completion, signature
@@ -15,7 +18,7 @@ import type { PosEntry } from './viewer';
  */
 export interface FacetSymbol {
   name: string;
-  kind: string;        // "function" | "method" | "type" | "field" | "keyword"
+  kind: FacetSymbolKind;
   signature?: string;
   doc?: string;
   /** Canonical library namespace ("" for stdlib/user/builtin/keyword). */

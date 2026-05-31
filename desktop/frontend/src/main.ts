@@ -253,8 +253,8 @@ async function init() {
 
   // First loaded tab initializes the editor
   const first = loadedTabs[0];
-  const editor = createEditor(monacoContainer, first.source, autoRun, async (name) => {
-    await openDocsToEntry(name);
+  const editor = createEditor(monacoContainer, first.source, autoRun, async (name, library) => {
+    await openDocsToEntry(name, library);
     docsBtn.classList.add('active');
     docsResizer.classList.add('open');
   }, (file, source, line, col) => {
