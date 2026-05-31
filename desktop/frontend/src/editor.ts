@@ -22,7 +22,7 @@ import 'monaco-editor/esm/vs/editor/contrib/comment/browser/comment';
 import 'monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHints';
 import { registerFacetLanguage } from './facet-language';
 import { registerThemes } from './themes';
-import { ListLibraries, ListLocalLibraries } from '../wailsjs/go/main/App';
+import { ListLibraries, ListLocalLibraries, ListLibraryModules } from '../wailsjs/go/main/App';
 import type { DocEntry } from './docs';
 import type { DeclLocation } from './eval-client';
 
@@ -817,7 +817,48 @@ export function createEditor(
 
       const typed = libMatch[1];
 
-      // Fetch installed libraries
+      // Range covers the text typed so far after the opening quote.
+      const startCol = position.column - typed.length;
+      const range = new monaco.Range(
+        position.lineNumber, startCol,
+        position.lineNumber, position.column,
+      );
+
+      // If the typed path is `host/user/repo/` (or any deeper subpath
+      // ending in a slash), the user is asking for what's *inside* that
+      // repo's tree. Look up modules via ListLibraryModules — the bare
+      // clone may already have them. This is the path that would have
+      // steered the user to `fasteners`, `gears`, etc. instead of
+      // landing on the bare `facetlibs@main` import that doesn't exist.
+      if (typed.endsWith('/')) {
+        const trimmed = typed.replace(/\/+$/, '');
+        // Strip any @ref the user already typed before the slash.
+        const repoID = trimmed.split('@')[0];
+        // ListLibraryModules only knows about `host/user/repo`. A deeper
+        // subpath has no module-listing endpoint — bail to empty.
+        const segments = repoID.split('/').filter(Boolean);
+        if (segments.length === 3) {
+          const modules = await ListLibraryModules(repoID).catch(
+            e => { console.warn('ListLibraryModules failed:', e); return [] as string[]; }
+          );
+          if (modules.length > 0) {
+            return {
+              suggestions: modules.map(m => ({
+                label: m,
+                kind: monaco.languages.CompletionItemKind.Folder,
+                insertText: m,
+                range: new monaco.Range(
+                  position.lineNumber, position.column,
+                  position.lineNumber, position.column,
+                ),
+              })),
+            };
+          }
+        }
+      }
+
+      // Otherwise the user is typing a repo path. Suggest from cached
+      // remote repos + local libs, matching whatever prefix was typed.
       const [remote, local] = await Promise.all([
         ListLibraries().catch(e => { console.warn('ListLibraries failed:', e); return []; }),
         ListLocalLibraries().catch(e => { console.warn('ListLocalLibraries failed:', e); return []; }),
@@ -832,13 +873,6 @@ export function createEditor(
       for (const lib of local) {
         paths.push(lib.id);
       }
-
-      // Range covers the text typed so far after the opening quote
-      const startCol = position.column - typed.length;
-      const range = new monaco.Range(
-        position.lineNumber, startCol,
-        position.lineNumber, position.column,
-      );
 
       const suggestions: monaco.languages.CompletionItem[] = paths
         .filter(p => p.toLowerCase().startsWith(typed.toLowerCase()))

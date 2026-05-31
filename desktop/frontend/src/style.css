@@ -519,6 +519,12 @@ canvas {
   font-family: 'JetBrains Mono', monospace;
   white-space: pre-wrap;
   letter-spacing: 0.02em;
+  /* Many UI surfaces in this app set user-select: none. The error bar
+     contains long error messages that users often need to copy
+     (especially library import errors with full URLs). */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .monaco-error-line {

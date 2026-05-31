@@ -697,7 +697,13 @@ func libPathToNamespace(rawPath string) string {
 	if lp.IsLocal {
 		return rawPath
 	}
-	ns := filepath.Join(lp.Host, lp.User, lp.Repo, lp.Ref)
+	// The namespace is the library's identity at the type level —
+	// host/user/repo[/subpath]. The ref (branch/tag/commit) is used by
+	// the loader for resolution but not as part of the namespace, so
+	// the editor's library-alias completion can match these against
+	// DocEntry.Library, which is also ref-free (see doc.go's
+	// BuildCachedLibDocEntries and BuildLibDocEntries).
+	ns := filepath.Join(lp.Host, lp.User, lp.Repo)
 	if lp.SubPath != "" {
 		ns = filepath.Join(ns, lp.SubPath)
 	}

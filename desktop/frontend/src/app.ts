@@ -392,13 +392,26 @@ function handleCheckOnly(_data: EvalResult, errors: SourceError[], fns: EntryPoi
     hideStats();
     const prefix = e.file ? `[${e.file}${e.line > 0 ? ':' + e.line : ''}] ` : '';
     showError(prefix + e.message);
+    // hasErrorSelection is true when the user mouse-up'd after dragging
+    // to select text inside the error bar — without this guard the
+    // onclick fires (mouseup IS the click), navigates to the source
+    // line, and the editor's focus shift wipes the selection before
+    // the user can copy. Treat the click as a no-op in that case.
+    const hasErrorSelection = (): boolean => {
+      const sel = window.getSelection();
+      return !!sel && sel.toString().length > 0 && errorDiv.contains(sel.anchorNode);
+    };
     if (e.line > 0 && !e.file) {
       errorDiv.style.cursor = 'pointer';
       editor.highlightError(e.line);
-      errorDiv.onclick = () => editor.revealLine(e.line, e.col || 1);
+      errorDiv.onclick = () => {
+        if (hasErrorSelection()) return;
+        editor.revealLine(e.line, e.col || 1);
+      };
     } else if (e.line > 0 && e.file) {
       errorDiv.style.cursor = 'pointer';
       errorDiv.onclick = () => {
+        if (hasErrorSelection()) return;
         ensureTab(e.file);
         switchToTab(e.file);
         editor.highlightError(e.line);

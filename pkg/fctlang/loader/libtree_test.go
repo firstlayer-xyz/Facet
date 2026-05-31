@@ -169,6 +169,37 @@ func TestVirtualLibTreeReadFile(t *testing.T) {
 	}
 }
 
+// TestListLibraryModules verifies the helper that powers the smarter
+// "no top-level <repo>.fct" error message: given a tree shaped like a
+// meta-collection of submodules (each in its own dir with a matching
+// .fct file), it returns the module names sorted.
+func TestListLibraryModules(t *testing.T) {
+	repo, sha := makeInMemoryRepo(t, map[string]string{
+		// Three valid library modules.
+		"fasteners/fasteners.fct":  "// fasteners",
+		"gears/gears.fct":          "// gears",
+		"polyhedra/polyhedra.fct":  "// polyhedra",
+		// Top-level .fct that's NOT a module (no matching dir) — should be ignored.
+		"README.fct":               "// readme",
+		// A directory with a non-matching .fct — should be ignored.
+		"misc/other.fct":           "// not a library module",
+		// Deeper nesting — should be ignored (only top-level modules).
+		"nested/deep/inner.fct":    "// deeper",
+	})
+	tree := &LibTree{repo: repo, sha: sha, origin: "github.com/t/r"}
+
+	got := listLibraryModules(tree)
+	want := []string{"fasteners", "gears", "polyhedra"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i, n := range want {
+		if got[i] != n {
+			t.Errorf("got[%d] = %q, want %q (full: %v)", i, got[i], n, got)
+		}
+	}
+}
+
 // TestVirtualLibTreeWalk verifies Walk iterates every regular file in the
 // tree with slash-separated tree-relative paths.
 func TestVirtualLibTreeWalk(t *testing.T) {
