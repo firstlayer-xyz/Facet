@@ -364,6 +364,11 @@ function syncTabsWithSources(data: EvalResult) {
 }
 
 function pushEditorData(data: EvalResult) {
+  // The eval request keyed on activeTab; the backend stamps
+  // DeclLocation.File="" for that source. Keep the editor's mainKey
+  // aligned so the references-map lookup normalises file paths
+  // correctly after a tab switch or new-tab creation.
+  editor.updateMainKey(activeTab);
   if (data.symbols) editor.updateSymbols(data.symbols);
   if (data.varTypes && Object.keys(data.varTypes).length > 0) editor.updateVarTypes(data.varTypes);
   if (data.declarations?.decls) editor.updateDeclarations(data.declarations.decls);
@@ -1091,9 +1096,9 @@ export async function toggleDocs() {
   return docsPanel.isVisible();
 }
 
-export async function openDocsToEntry(name: string): Promise<void> {
+export async function openDocsToEntry(name: string, library?: string): Promise<void> {
   await openDocs();
-  docsPanel.focusEntry(name);
+  docsPanel.focusEntry(name, library);
 }
 
 // ── State accessors for external UI (file tree, preview selector) ──────────
