@@ -13,19 +13,19 @@ test('docs panel opens in its own drawer, not inside #mini-preview, when fullcod
   mockedPage: page,
   setEvalHandler,
 }) => {
-  // Eval response must include `docIndex` so editor.docEntries gets
-  // populated — the right-click "Open Documentation" action looks up the
-  // clicked identifier in that list before calling onOpenDocs.
+  // Eval response must include `symbols` so editor.symbols gets
+  // populated — the right-click "Open Documentation" action looks up
+  // the clicked identifier in that table before calling onOpenDocs.
   await setEvalHandler(() => ({
     errors: [],
     entryPoints: [],
-    docIndex: [
+    symbols: [
       {
         name: 'foo',
         signature: 'foo()',
         doc: 'My foo function',
-        kind: 'fn',
-        library: 'main',
+        kind: 'function',
+        library: '',
       },
     ],
     posMap: [],

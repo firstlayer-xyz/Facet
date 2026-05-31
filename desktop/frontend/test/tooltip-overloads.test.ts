@@ -3,11 +3,10 @@ import { setEditorText, hoverAt } from './helpers/editor';
 
 // Regression test for: "hover works, but only shows one overload".
 //
-// The Go-side doc extractor emits one DocEntry per declaration, so an
-// overloaded function appears as N DocEntries with the same name+kind
-// and distinct signatures. editor.ts used to call docEntries.find()
-// once and render that single entry's signature. Now it collects all
-// matching entries and joins their signatures in the tooltip.
+// The checker emits one Symbol per declaration, so an overloaded
+// function appears as N Symbols with the same name+kind and distinct
+// signatures. The hover provider collects all of them and joins their
+// signatures into one tooltip body.
 test('Monaco hover shows all overloads of an identifier', async ({
   mockedPage: page,
   setEvalHandler,
@@ -23,12 +22,12 @@ test('Monaco hover shows all overloads of an identifier', async ({
   await setEvalHandler(() => ({
     errors: [],
     entryPoints: [],
-    docIndex: overloads.map(sig => ({
+    symbols: overloads.map(sig => ({
       name: 'cube',
       signature: sig,
       doc: 'Create a cube.',
       kind: 'function',
-      library: 'std',
+      library: '',
     })),
     posMap: [],
     references: {},

@@ -39,8 +39,8 @@ type DocEntry struct {
 	Section   string `json:"section,omitempty"` // source-level section, e.g. "3D Constructors"
 }
 
-// formatStructSignature reconstructs a human-readable signature from a StructDecl AST node.
-func formatStructSignature(sd *parser.StructDecl) string {
+// FormatStructSignature reconstructs a human-readable signature from a StructDecl AST node.
+func FormatStructSignature(sd *parser.StructDecl) string {
 	var b strings.Builder
 	b.WriteString("type ")
 	b.WriteString(sd.Name)
@@ -166,7 +166,7 @@ func extractDocEntries(src *parser.Source, library string) []DocEntry {
 		case *parser.StructDecl:
 			entries = append(entries, DocEntry{
 				Name:      d.Name,
-				Signature: formatStructSignature(d),
+				Signature: FormatStructSignature(d),
 				Doc:       parser.DocComment(d.Comments),
 				Kind:      "type",
 				Library:   library,

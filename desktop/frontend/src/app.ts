@@ -364,7 +364,7 @@ function syncTabsWithSources(data: EvalResult) {
 }
 
 function pushEditorData(data: EvalResult) {
-  if (data.docIndex) editor.updateDocIndex(data.docIndex);
+  if (data.symbols) editor.updateSymbols(data.symbols);
   if (data.varTypes && Object.keys(data.varTypes).length > 0) editor.updateVarTypes(data.varTypes);
   if (data.declarations?.decls) editor.updateDeclarations(data.declarations.decls);
   if (data.references) editor.updateReferences(data.references);
@@ -1068,9 +1068,9 @@ async function openDocs(): Promise<void> {
   // The Docs panel browses the FULL catalog (stdlib + all installed
   // libraries) regardless of whether the current source imports them —
   // that's how the user discovers libraries to import in the first
-  // place. The /eval response's docIndex is intentionally scoped to
-  // imported-only and is the wrong shape for browsing; use the
-  // dedicated GetDocCatalog binding instead.
+  // place. The /eval response's `symbols` table is scoped to what the
+  // loader actually resolved (the editor's source of truth) and would
+  // omit libraries the user is browsing; use GetDocCatalog instead.
   const [entries, guides] = await Promise.all([
     GetDocCatalog().catch(err => { reportError('GetDocCatalog', err); return []; }),
     GetDocGuides().catch(err => { reportError('GetDocGuides', err); return []; }),

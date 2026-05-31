@@ -23,8 +23,7 @@ import 'monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHint
 import { registerFacetLanguage } from './facet-language';
 import { registerThemes } from './themes';
 import { ListLibraries, ListLocalLibraries, ListLibraryModules } from '../wailsjs/go/main/App';
-import type { DocEntry } from './docs';
-import type { DeclLocation } from './eval-client';
+import type { DeclLocation, FacetSymbol } from './eval-client';
 
 // Monaco worker setup — only the base editor worker is needed
 self.MonacoEnvironment = {
@@ -196,7 +195,7 @@ export interface EditorHandle {
   setReadOnly(ro: boolean): void;
   setWordWrap(on: boolean): void;
   setTheme(name: string): void;
-  updateDocIndex(entries: DocEntry[]): void;
+  updateSymbols(symbols: FacetSymbol[]): void;
   updateVarTypes(types: Record<string, Record<string, string>>): void;
   setCurrentSource(sourceKey: string): void;
   updateDeclarations(decls: Record<string, DeclLocation>): void;
@@ -234,7 +233,7 @@ export function createEditor(
   onGoToFile?: (file: string, source: string, line: number, col: number) => void,
   initialFileKey?: string,
 ): EditorHandle {
-  let docEntries: DocEntry[] = [];
+  let symbols: FacetSymbol[] = [];
   let allVarTypes: Record<string, Record<string, string>> = {};
   let mainKey = initialFileKey || '';
   let currentSourceKey = mainKey;
@@ -363,10 +362,16 @@ export function createEditor(
         const wordText = word.word;
         const lineContent = ed.getModel()?.getLineContent(pos.lineNumber) ?? '';
         const charBefore = word.startColumn > 1 ? lineContent[word.startColumn - 2] : '';
-        const match = charBefore === '.'
-          ? (docEntries.find(e => e.name.endsWith('.' + wordText)) ?? docEntries.find(e => e.name === wordText))
-          : docEntries.find(e => e.name === wordText);
-        if (match) onOpenDocs(match.name);
+        // The Docs panel keys entries by DocEntry name shape:
+        // methods are "Receiver.Method", everything else is bare.
+        // Reconstruct that shape from the matched Symbol.
+        const matches = charBefore === '.'
+          ? symbols.filter(s => s.name === wordText && (s.receiver || s.library))
+          : symbols.filter(s => s.name === wordText && !s.receiver);
+        const sym = matches[0];
+        if (!sym) return;
+        const docName = sym.receiver ? `${sym.receiver}.${sym.name}` : sym.name;
+        onOpenDocs(docName);
       },
     });
   }
@@ -715,7 +720,77 @@ export function createEditor(
     }
   });
 
-  // Completion provider
+  // A dot-receiver resolves to either a library alias or a concrete
+  // type — completion, sig-help, and hover all need the same answer,
+  // so it lives in one helper. Returns null when the text doesn't
+  // resolve (treated as "no context" by callers).
+  type ReceiverContext =
+    | { kind: 'library'; namespace: string }
+    | { kind: 'type'; name: string };
+
+  function resolveReceiverContext(text: string): ReceiverContext | null {
+    const t = resolveChainType(text);
+    if (t) {
+      if (t.startsWith('Library:')) return { kind: 'library', namespace: t.slice('Library:'.length) };
+      return { kind: 'type', name: t };
+    }
+    // resolveChainType handles complex chains; the simple-identifier
+    // case (`T` is just a name) is covered by varTypes.
+    const m = text.match(/([A-Za-z_]\w*)\s*$/);
+    if (m) {
+      const v = (allVarTypes[currentSourceKey] ?? {})[m[1]];
+      if (v) {
+        if (v.startsWith('Library:')) return { kind: 'library', namespace: v.slice('Library:'.length) };
+        return { kind: 'type', name: v };
+      }
+    }
+    return null;
+  }
+
+  // findCallSymbols returns the symbols that match a call expression's
+  // function name. callText is what sits before the open paren (or
+  // before the dot for member access). All providers route call-site
+  // lookup through this so completion, signature help, hover, and
+  // param-name completion agree on identity.
+  function findCallSymbols(callText: string): FacetSymbol[] {
+    const dotIdx = callText.lastIndexOf('.');
+    if (dotIdx < 0) {
+      // Bare name — must be a top-level entry (no library, no receiver).
+      return symbols.filter(s => s.name === callText && !s.library && !s.receiver);
+    }
+    const receiverText = callText.slice(0, dotIdx);
+    const name = callText.slice(dotIdx + 1);
+    const ctx = resolveReceiverContext(receiverText);
+    if (ctx?.kind === 'library') {
+      return symbols.filter(s => s.name === name && s.library === ctx.namespace && !s.receiver);
+    }
+    if (ctx?.kind === 'type') {
+      return symbols.filter(s => s.name === name && s.receiver === ctx.name);
+    }
+    // No context — last-ditch by name so something shows rather than
+    // nothing. Better than silent on a transient checker miss.
+    return symbols.filter(s => s.name === name);
+  }
+
+  function symbolToCompletion(
+    s: FacetSymbol,
+    range: monaco.Range,
+  ): monaco.languages.CompletionItem {
+    return {
+      label: s.name,
+      kind: mapKindToCompletionItemKind(s.kind),
+      detail: s.signature || undefined,
+      documentation: s.doc || undefined,
+      insertText: s.name,
+      range,
+    };
+  }
+
+  // Completion provider — top-level (no dot) and dot-qualified.
+  // The data source is the checker's symbol table, filtered by
+  // (library, receiver). For dot completion the receiver is resolved
+  // by resolveReceiverContext, so the namespace match cannot disagree
+  // with the checker's view of which library the alias points at.
   monaco.languages.registerCompletionItemProvider('facet', {
     triggerCharacters: ['.'],
     provideCompletionItems(_model, position) {
@@ -723,83 +798,56 @@ export function createEditor(
       const lineContent = _model.getLineContent(position.lineNumber);
       const charBefore = word.startColumn > 1 ? lineContent[word.startColumn - 2] : '';
       const isDot = charBefore === '.';
+      const prefix = word.word.toLowerCase();
 
       const range = new monaco.Range(
         position.lineNumber, word.startColumn,
         position.lineNumber, word.endColumn,
       );
 
-      let suggestions: monaco.languages.CompletionItem[];
-
-      if (isDot) {
-        const prefix = word.word.toLowerCase();
-
-        // Extract receiver type before the dot — use resolveChainType for
-        // complex expressions (e.g. arr[0].x, foo().bar.) and fall back to
-        // a simple variable name lookup for the common case. When the dot
-        // starts a continuation line, grab the receiver from the preceding
-        // non-empty line.
-        const textBeforeDot = effectiveTextBefore(_model, position.lineNumber, word.startColumn - 1);
-        const receiverMatch = textBeforeDot.match(/([A-Za-z_]\w*)$/);
-        const receiverName = receiverMatch ? receiverMatch[1] : '';
-        const receiverType = resolveChainType(textBeforeDot) || (receiverName && (allVarTypes[currentSourceKey] ?? {})[receiverName]) || '';
-
-        if (receiverType.startsWith('Library:')) {
-          // Library namespace: show the library's exported functions and types
-          const libNs = receiverType.slice('Library:'.length);
-          suggestions = docEntries
-            .filter(e => e.library === libNs && !e.name.includes('.') && e.name.toLowerCase().startsWith(prefix))
-            .map(e => ({
-              label: e.name,
-              kind: mapKindToCompletionItemKind(e.kind),
-              detail: e.signature || undefined,
-              documentation: e.doc || undefined,
-              insertText: e.name,
-              range,
-            }));
-        } else {
-          const methodSuggestions = docEntries
-            .filter(e => {
-              const dotIdx = e.name.indexOf('.');
-              if (dotIdx < 0) return false;
-              if (!e.name.slice(dotIdx + 1).toLowerCase().startsWith(prefix)) return false;
-              // If we know the receiver type, filter to matching entries
-              if (receiverType) {
-                return e.name.slice(0, dotIdx) === receiverType;
-              }
-              return true;
-            })
-            .map(e => ({
-              label: e.name.slice(e.name.indexOf('.') + 1),
-              kind: mapKindToCompletionItemKind(e.kind),
-              detail: e.signature || undefined,
-              documentation: e.doc || undefined,
-              insertText: e.name.slice(e.name.indexOf('.') + 1),
-              range,
-            }));
-
-          // Deduplicate
-          const seen = new Set<string>();
-          suggestions = methodSuggestions.filter(s => {
-            const lbl = s.label as string;
-            if (seen.has(lbl)) return false;
-            seen.add(lbl);
-            return true;
-          });
-        }
-      } else {
-        suggestions = docEntries
-          .filter(e => !e.name.includes('.'))
-          .map(e => ({
-            label: e.name,
-            kind: mapKindToCompletionItemKind(e.kind),
-            detail: e.signature || undefined,
-            documentation: e.doc || undefined,
-            insertText: e.name,
-            range,
-          }));
+      if (!isDot) {
+        // Top-level: only entries that are in scope without a
+        // qualifier. Fields and methods need a receiver; library
+        // symbols need an alias.
+        const matches = symbols.filter(s =>
+          !s.library && !s.receiver && s.kind !== 'field' &&
+          s.name.toLowerCase().startsWith(prefix)
+        );
+        return { suggestions: matches.map(s => symbolToCompletion(s, range)) };
       }
 
+      // Dot-qualified. The receiver fragment may span the previous
+      // line when the dot starts a chain continuation.
+      const textBeforeDot = effectiveTextBefore(_model, position.lineNumber, word.startColumn - 1);
+      const ctx = resolveReceiverContext(textBeforeDot);
+
+      let matches: FacetSymbol[];
+      if (ctx?.kind === 'library') {
+        // Library exports: functions and types declared in that library.
+        matches = symbols.filter(s =>
+          s.library === ctx.namespace && !s.receiver &&
+          s.name.toLowerCase().startsWith(prefix)
+        );
+      } else if (ctx?.kind === 'type') {
+        // Instance access: methods and fields on the resolved type.
+        matches = symbols.filter(s =>
+          s.receiver === ctx.name &&
+          s.name.toLowerCase().startsWith(prefix)
+        );
+      } else {
+        matches = [];
+      }
+      // Same (name, kind) can appear in multiple overloads. Collapse
+      // for the suggestion list — sig-help shows the overload set
+      // once the user picks one.
+      const seen = new Set<string>();
+      const suggestions: monaco.languages.CompletionItem[] = [];
+      for (const s of matches) {
+        const key = s.name + '|' + s.kind;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        suggestions.push(symbolToCompletion(s, range));
+      }
       return { suggestions };
     },
   });
@@ -887,85 +935,72 @@ export function createEditor(
     },
   });
 
-  // Signature help (parameter hints) — shows active parameter when typing inside ()
+  // walkBackToCall scans backwards from `before` for the enclosing
+  // open paren of a function call, counting commas at depth 0 so
+  // signature help and param-name completion agree on what arg slot
+  // the cursor is in. Returns null when the cursor is not inside a
+  // call (e.g., inside an array literal).
+  function walkBackToCall(before: string): { parenStart: number; commas: number } | null {
+    let depth = 0;
+    let commas = 0;
+    for (let i = before.length - 1; i >= 0; i--) {
+      const ch = before[i];
+      if (ch === ')' || ch === ']') depth++;
+      else if (ch === '(' || ch === '[') {
+        if (depth > 0) { depth--; continue; }
+        if (ch === '(') return { parenStart: i, commas };
+        return null; // '[' at top level — not a function call
+      } else if (ch === ',' && depth === 0) commas++;
+    }
+    return null;
+  }
+
+  // Signature help — finds the call expression at the cursor, looks
+  // up its overloads through the symbol table, and renders all of
+  // them so the user can pick by signature.
   monaco.languages.registerSignatureHelpProvider('facet', {
     signatureHelpTriggerCharacters: ['(', ','],
     provideSignatureHelp(_model, position) {
       const lineContent = _model.getLineContent(position.lineNumber);
       const textBefore = lineContent.slice(0, position.column - 1);
 
-      // Walk backwards to find the matching open paren and count commas
-      let depth = 0;
-      let commas = 0;
-      let parenStart = -1;
-      for (let i = textBefore.length - 1; i >= 0; i--) {
-        const ch = textBefore[i];
-        if (ch === ')' || ch === ']') depth++;
-        else if (ch === '(' || ch === '[') {
-          if (depth > 0) { depth--; continue; }
-          if (ch === '(') { parenStart = i; break; }
-          break; // '[' at top level — not a function call
-        } else if (ch === ',' && depth === 0) commas++;
-      }
-      if (parenStart < 0) return null;
+      const call = walkBackToCall(textBefore);
+      if (!call) return null;
 
-      // Extract the function name before the paren
-      const before = textBefore.slice(0, parenStart);
+      const before = textBefore.slice(0, call.parenStart);
       const nameMatch = before.match(/([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)$/);
       if (!nameMatch) return null;
       const callName = nameMatch[1];
 
-      // Resolve which DocEntry name(s) apply: dotted form first, then bare.
-      const parts = callName.split('.');
-      const bareName = parts[parts.length - 1];
-      const lookupNames: string[] = [callName];
-      if (parts.length > 1) {
-        const receiverType = (allVarTypes[currentSourceKey] ?? {})[parts[0]] || parts[0];
-        lookupNames.push(receiverType + '.' + bareName);
-      }
-      lookupNames.push(bareName);
+      // Collect ALL overloads of the matched symbols. The checker
+      // emits one Symbol per declaration; dedup by signature so the
+      // popup doesn't show duplicates when the same function appears
+      // in multiple lookup paths.
+      const matches = findCallSymbols(callName).filter(s => s.signature);
+      if (matches.length === 0) return null;
 
-      // Collect ALL overloads — every DocEntry whose name matches one of
-      // the candidates and which has a signature. The Go-side doc
-      // extractor (pkg/fctlang/doc/doc.go) emits one DocEntry per
-      // declaration, so overloads arrive as N entries with the same
-      // name+kind and distinct signatures. Without collecting them, the
-      // signature popup would only ever show the first overload.
       const seenSigs = new Set<string>();
-      const overloadEntries: DocEntry[] = [];
-      for (const name of lookupNames) {
-        for (const e of docEntries) {
-          if (e.name !== name || !e.signature || seenSigs.has(e.signature)) continue;
-          seenSigs.add(e.signature);
-          overloadEntries.push(e);
-        }
-        if (overloadEntries.length > 0) break;  // found by this name; stop falling through
-      }
-      if (overloadEntries.length === 0) return null;
-
       const signatures: monaco.languages.SignatureInformation[] = [];
-      for (const entry of overloadEntries) {
-        const sigMatch = entry.signature.match(/\(([^)]*)\)/);
+      for (const s of matches) {
+        if (!s.signature || seenSigs.has(s.signature)) continue;
+        seenSigs.add(s.signature);
+        const sigMatch = s.signature.match(/\(([^)]*)\)/);
         if (!sigMatch) continue;
         const paramStr = sigMatch[1].trim();
         const params = paramStr ? paramStr.split(',').map(p => p.trim()) : [];
         signatures.push({
-          label: entry.signature,
-          documentation: entry.doc || '',
+          label: s.signature,
+          documentation: s.doc || '',
           parameters: params.map(p => ({ label: p, documentation: '' })),
         });
       }
       if (signatures.length === 0) return null;
 
-      // activeParameter is per-signature in Monaco; the same comma count
-      // applies to all, clamped to each signature's param length.
-      const activeParameter = Math.max(0, commas);
-
       return {
         value: {
           signatures,
           activeSignature: 0,
-          activeParameter,
+          activeParameter: Math.max(0, call.commas),
         },
         dispose() {},
       };
@@ -977,87 +1012,57 @@ export function createEditor(
   // suggest the parameter names with `name: ` insertion. Names already
   // used at the call site are filtered out. Triggers on `(` and `,` so
   // the popup appears automatically as the user opens or continues a
-  // call.
+  // call. Shares findCallSymbols with sig-help so both agree on which
+  // overloads contribute parameter names.
   monaco.languages.registerCompletionItemProvider('facet', {
     triggerCharacters: ['(', ','],
     provideCompletionItems(_model, position) {
       const lineContent = _model.getLineContent(position.lineNumber);
       const textBefore = lineContent.slice(0, position.column - 1);
 
-      // Walk backwards to find the enclosing `(` and count commas at
-      // depth 0, mirroring the signature help logic.
-      let depth = 0;
-      let parenStart = -1;
-      for (let i = textBefore.length - 1; i >= 0; i--) {
-        const ch = textBefore[i];
-        if (ch === ')' || ch === ']') depth++;
-        else if (ch === '(' || ch === '[') {
-          if (depth > 0) { depth--; continue; }
-          if (ch === '(') { parenStart = i; break; }
-          break;  // hit `[` at top level — not a function call
-        }
-      }
-      if (parenStart < 0) return { suggestions: [] };
+      const call = walkBackToCall(textBefore);
+      if (!call) return { suggestions: [] };
 
-      // We must be at the START of an argument slot — i.e. the previous
-      // non-whitespace char is `(` or `,`. If it's `:` or anything else,
-      // we're in expression context and should not suggest param names
-      // (the existing top-level completion provider handles that).
+      // We must be at the START of an argument slot — the previous
+      // non-whitespace char is `(` or `,`. Anything else means we're
+      // mid-expression and the top-level completion provider owns
+      // the popup.
       let cursor = textBefore.length - 1;
       while (cursor >= 0 && /\s/.test(textBefore[cursor])) cursor--;
-      // Also skip a partial word the user has started typing.
       while (cursor >= 0 && /\w/.test(textBefore[cursor])) cursor--;
       while (cursor >= 0 && /\s/.test(textBefore[cursor])) cursor--;
       const slotOpener = cursor >= 0 ? textBefore[cursor] : '';
       if (slotOpener !== '(' && slotOpener !== ',') return { suggestions: [] };
 
-      // Resolve the function name before `(`.
-      const before = textBefore.slice(0, parenStart);
+      const before = textBefore.slice(0, call.parenStart);
       const nameMatch = before.match(/([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)$/);
       if (!nameMatch) return { suggestions: [] };
       const callName = nameMatch[1];
 
-      const parts = callName.split('.');
-      const bareName = parts[parts.length - 1];
-      const lookupNames: string[] = [callName];
-      if (parts.length > 1) {
-        const receiverType = (allVarTypes[currentSourceKey] ?? {})[parts[0]] || parts[0];
-        lookupNames.push(receiverType + '.' + bareName);
-      }
-      lookupNames.push(bareName);
-
-      // Collect param names across ALL overloads of the resolved name(s),
-      // deduped. Each signature is parsed into a list of param specs
-      // like "Type name" or "name Type" — the param name is the trailing
-      // identifier in each spec.
+      // Collect param names across all matching overloads.
       const paramNames: string[] = [];
       const seenNames = new Set<string>();
-      for (const name of lookupNames) {
-        const entries = docEntries.filter(e => e.name === name && e.signature);
-        if (entries.length === 0) continue;
-        for (const e of entries) {
-          const sigMatch = e.signature.match(/\(([^)]*)\)/);
-          if (!sigMatch) continue;
-          const paramStr = sigMatch[1].trim();
-          if (!paramStr) continue;
-          for (const p of paramStr.split(',').map(s => s.trim())) {
-            // Last identifier in the param spec is the param name. Works
-            // for both "Type name" and "name Type" conventions.
-            const idMatch = p.match(/([A-Za-z_]\w*)\s*$/);
-            if (!idMatch) continue;
-            const pname = idMatch[1];
-            if (seenNames.has(pname)) continue;
-            seenNames.add(pname);
-            paramNames.push(pname);
-          }
+      for (const s of findCallSymbols(callName)) {
+        if (!s.signature) continue;
+        const sigMatch = s.signature.match(/\(([^)]*)\)/);
+        if (!sigMatch) continue;
+        const paramStr = sigMatch[1].trim();
+        if (!paramStr) continue;
+        for (const p of paramStr.split(',').map(x => x.trim())) {
+          // Last identifier in each param spec is the param name —
+          // works for "Type name" and "name Type" alike.
+          const idMatch = p.match(/([A-Za-z_]\w*)\s*$/);
+          if (!idMatch) continue;
+          const pname = idMatch[1];
+          if (seenNames.has(pname)) continue;
+          seenNames.add(pname);
+          paramNames.push(pname);
         }
-        break;  // matched at this lookup level — don't bleed into more general matches
       }
       if (paramNames.length === 0) return { suggestions: [] };
 
-      // Filter out param names already used at this call site. Scan
-      // between `parenStart` and the cursor for `name:` patterns.
-      const argsRegion = textBefore.slice(parenStart + 1);
+      // Filter out param names already used at this call site.
+      const argsRegion = textBefore.slice(call.parenStart + 1);
       const used = new Set<string>();
       for (const m of argsRegion.matchAll(/([A-Za-z_]\w*)\s*:/g)) {
         used.add(m[1]);
@@ -1085,82 +1090,95 @@ export function createEditor(
     },
   });
 
-  // Hover tooltips — show signature and doc for functions, methods, types, and keywords.
+  // Hover tooltips — show signature and doc for functions, methods,
+  // types, fields, and keywords.
   //
-  // Primary path: the checker's references map points at the exact declaration
-  // for the token under the cursor. We then find the matching DocEntry by
-  // looking up the same declaration in the declarations map and comparing
-  // positions — so Number-the-type and Number-the-function never get confused.
+  // The lookup uses the same (name, library, receiver) identity the
+  // completion provider uses: if the cursor is on a dotted reference,
+  // the receiver text resolves through resolveReceiverContext exactly
+  // as in completion; if it's a bare identifier, we prefer
+  // type/keyword entries so `x Number` doesn't surface the function.
   //
-  // Fallback path: if no reference exists at this position (typically because
-  // the cursor is on a keyword — keywords aren't AST nodes and aren't recorded
-  // in references), fall back to a by-name match preferring type/keyword
-  // entries so type annotations like `x Number` still show the type.
+  // For local bindings (params, vars) there is no Symbol, but the
+  // checker has stamped a reference whose returnType is the declared
+  // type. That feeds a synthesized tooltip so the user still sees a
+  // useful type annotation.
   monaco.languages.registerHoverProvider('facet', {
     provideHover(model, position) {
       const wordInfo = model.getWordAtPosition(position);
       if (!wordInfo) return null;
       const word = wordInfo.word;
 
-      const file = currentSourceKey === mainKey ? '' : currentSourceKey;
-      const key = `${file}:${position.lineNumber}:${wordInfo.startColumn}`;
-      const ref = references[key];
+      const lineContent = model.getLineContent(position.lineNumber);
+      const charBefore = wordInfo.startColumn > 1 ? lineContent[wordInfo.startColumn - 2] : '';
 
-      let entry: DocEntry | undefined;
-      if (ref) {
-        // Decl-identity match: find the DocEntry whose own declaration sits at
-        // the same (file, line, col) the reference points to.
-        const refFile = ref.file ?? '';
-        entry = docEntries.find(e => {
-          const decl = declarations[e.name];
-          return decl && decl.line === ref.line && decl.col === ref.col && (decl.file ?? '') === refFile;
-        });
+      // Find the matching symbol(s). After a dot, resolve the
+      // receiver and filter; otherwise prefer type/keyword over
+      // function so bare-name disambiguation does the right thing.
+      let matches: FacetSymbol[];
+      if (charBefore === '.') {
+        const receiverText = effectiveTextBefore(model, position.lineNumber, wordInfo.startColumn - 1);
+        const ctx = resolveReceiverContext(receiverText);
+        if (ctx?.kind === 'library') {
+          matches = symbols.filter(s => s.name === word && s.library === ctx.namespace && !s.receiver);
+        } else if (ctx?.kind === 'type') {
+          matches = symbols.filter(s => s.name === word && s.receiver === ctx.name);
+        } else {
+          matches = symbols.filter(s => s.name === word);
+        }
       } else {
-        // No reference — typically a keyword. Prefer type/keyword entries so
-        // hovering `Number` in `x Number` doesn't surface the function.
-        const matches = docEntries.filter(e => e.name === word);
-        entry = matches.find(e => e.kind === 'type' || e.kind === 'keyword')
-          ?? matches.find(e => e.kind === 'function')
-          ?? matches[0];
+        const byName = symbols.filter(s => s.name === word);
+        const preferred = byName.find(s => s.kind === 'type' || s.kind === 'keyword')
+          ?? byName.find(s => s.kind === 'function')
+          ?? byName[0];
+        // Keep the full overload set for the preferred name/kind so
+        // the popup can show every signature.
+        if (preferred) {
+          matches = byName.filter(s => s.kind === preferred.kind);
+        } else {
+          matches = [];
+        }
       }
 
-      // For local bindings (param, var, const, field access on a local) the
-      // checker has a ref but no DocEntry. Synthesize a minimal tooltip from
-      // the reference's ReturnType so the user still sees the declared type.
-      if (!entry && ref?.returnType) {
-        return {
-          range: new monaco.Range(
-            position.lineNumber, wordInfo.startColumn,
-            position.lineNumber, wordInfo.endColumn,
-          ),
-          contents: [{ value: '```facet\n' + word + ' ' + ref.returnType + '\n```' }],
-        };
+      // No symbol match — try the local-binding fallback via the
+      // checker's references map. Params, vars, and field accesses
+      // on local values land here.
+      if (matches.length === 0) {
+        const file = currentSourceKey === mainKey ? '' : currentSourceKey;
+        const refKey = `${file}:${position.lineNumber}:${wordInfo.startColumn}`;
+        const ref = references[refKey];
+        if (ref?.returnType) {
+          return {
+            range: new monaco.Range(
+              position.lineNumber, wordInfo.startColumn,
+              position.lineNumber, wordInfo.endColumn,
+            ),
+            contents: [{ value: '```facet\n' + word + ' ' + ref.returnType + '\n```' }],
+          };
+        }
+        return null;
       }
 
-      if (!entry) return null;
-
-      // Collect all overloads — same name + same kind as the resolved entry,
-      // deduped by signature. The Go side (extractDocEntries in
-      // pkg/fctlang/doc/doc.go) emits one DocEntry per declaration, so
-      // overloaded functions appear as N DocEntries with shared name/kind
-      // and distinct signatures. Without this, hover showed only the first.
+      // Collect overload signatures (deduped). Documentation comes
+      // from the first symbol that has one — overloads typically
+      // share a comment block.
       const overloads: string[] = [];
       const seenSigs = new Set<string>();
-      for (const e of docEntries) {
-        if (e.name !== entry.name || e.kind !== entry.kind) continue;
-        if (!e.signature || seenSigs.has(e.signature)) continue;
-        seenSigs.add(e.signature);
-        overloads.push(e.signature);
+      let docText = '';
+      for (const s of matches) {
+        if (s.signature && !seenSigs.has(s.signature)) {
+          seenSigs.add(s.signature);
+          overloads.push(s.signature);
+        }
+        if (!docText && s.doc) docText = s.doc;
       }
 
       const parts: string[] = [];
       if (overloads.length > 0) {
         parts.push('```facet\n' + overloads.join('\n') + '\n```');
-      } else if (entry.signature) {
-        parts.push('```facet\n' + entry.signature + '\n```');
       }
-      if (entry.doc) {
-        parts.push(entry.doc);
+      if (docText) {
+        parts.push(docText);
       }
       if (parts.length === 0) return null;
 
@@ -1286,8 +1304,8 @@ export function createEditor(
       monaco.editor.setTheme(name);
     },
 
-    updateDocIndex(entries: DocEntry[]) {
-      docEntries = entries;
+    updateSymbols(syms: FacetSymbol[]) {
+      symbols = syms;
     },
 
     updateVarTypes(types: Record<string, Record<string, string>>) {

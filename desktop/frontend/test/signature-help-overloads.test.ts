@@ -5,7 +5,7 @@ import { setEditorText } from './helpers/editor';
 // show only one overload because the registerSignatureHelpProvider in
 // src/editor.ts called docEntries.find() once and returned a single-
 // element `signatures` array. Monaco supports multiple signatures with
-// ↑/↓ navigation — we now return them all.
+// ↑/↓ navigation — we now return them all from the symbol table.
 test('signature help inside () shows all overloads of the called function', async ({
   mockedPage: page,
   setEvalHandler,
@@ -19,12 +19,12 @@ test('signature help inside () shows all overloads of the called function', asyn
   await setEvalHandler(() => ({
     errors: [],
     entryPoints: [],
-    docIndex: overloads.map(sig => ({
+    symbols: overloads.map(sig => ({
       name: 'cube',
       signature: sig,
       doc: 'Create a cube.',
       kind: 'function',
-      library: 'std',
+      library: '',
     })),
     posMap: [],
     references: {},
