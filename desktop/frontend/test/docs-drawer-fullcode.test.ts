@@ -1,5 +1,5 @@
 import { test, expect } from './harness';
-import { setEditorText, rightClickAt } from './helpers/editor';
+import { setEditorText } from './helpers/editor';
 
 // Regression test for: "right-click 'Open Documentation' opens inside the
 // floating mini-preview window when fullcode (View) mode is active."
