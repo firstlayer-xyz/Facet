@@ -555,7 +555,6 @@ export class DocsPanel {
     this.rerender();
 
     this.container.appendChild(panel);
-    this.container.classList.add('docs-open');
     search.focus();
   }
 
@@ -888,7 +887,6 @@ export class DocsPanel {
       this.searchEl = null;
       this.countEl = null;
       this.sideNavEl = null;
-      this.container.classList.remove('docs-open');
     }
   }
 

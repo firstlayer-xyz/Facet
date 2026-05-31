@@ -41,9 +41,16 @@ function enter() {
   viewportPanel.style.display = 'none';
   editorPanel.style.flex = '1';
 
-  // Lift assistant panel so it can float over the editor
+  // Lift assistant so it floats over the editor (it normally lives in
+  // viewportPanel, which is about to be hidden).
   const assistantEl = document.getElementById('assistant-panel');
   if (assistantEl) { app.appendChild(assistantEl); assistantEl.classList.add('fullcode-float'); }
+  // Docs already lives directly under #app, so no reparenting needed.
+  // It might or might not be present at this moment; mark the body so any
+  // future docs.show() call picks up the float style via CSS.
+  document.body.classList.add('fullcode-active');
+  const docsEl = document.getElementById('docs-panel');
+  if (docsEl) docsEl.classList.add('fullcode-float');
 
   // Create floating preview anchored to the bottom-right of the editor panel
   const preview = document.createElement('div');
@@ -117,9 +124,13 @@ function exit() {
   viewportPanel.insertBefore(canvasContainer, panelResizer);
   document.getElementById('mini-preview')?.remove();
 
-  // Return assistant panel to the viewport panel
+  // Return assistant to the viewport panel
   const assistantEl = document.getElementById('assistant-panel');
   if (assistantEl) { assistantEl.classList.remove('fullcode-float'); viewportPanel.insertBefore(assistantEl, panelResizer); }
+  // Docs lives under #app permanently — just drop the float style.
+  document.body.classList.remove('fullcode-active');
+  const docsEl = document.getElementById('docs-panel');
+  if (docsEl) docsEl.classList.remove('fullcode-float');
 
   // Restore layout
   divider.style.display = '';

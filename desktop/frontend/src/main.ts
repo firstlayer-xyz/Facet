@@ -112,7 +112,13 @@ async function handleDocsToggle() {
 let applyEvalStatus: ((state: 'idle' | 'ready' | 'error', ms?: number) => void) | undefined;
 
 // Docs panel
-const docsPanel = new DocsPanel(canvasContainer, handleDocsToggle);
+// Docs panel lives directly under #app as a top-level drawer. It used to
+// be a child of #canvas-container, which gets reparented into a floating
+// #mini-preview in fullcode (View) mode — that bug dragged docs into the
+// floating window. Anchoring it to #app keeps it independent of viewport
+// state in both normal and fullcode modes; fullcode.ts adds the
+// `.fullcode-float` class so it overlays the editor like the assistant.
+const docsPanel = new DocsPanel(app, handleDocsToggle);
 
 // Assistant panel
 let editorRef: EditorHandle | null = null;

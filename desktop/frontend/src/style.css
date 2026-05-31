@@ -1030,8 +1030,13 @@ canvas {
 #mini-preview #debug-bar,
 #mini-preview #compiling-overlay { display: none !important; }
 
-/* Full-code mode: side panels float over the right edge of the editor */
-#assistant-panel.fullcode-float {
+/* Full-code mode: side panels (assistant, docs) float over the right edge
+   of the editor. The assistant gets `.fullcode-float` added when fullcode
+   enters; docs gets it on enter and also via body.fullcode-active for any
+   docs opened AFTER fullcode is already active. */
+#assistant-panel.fullcode-float,
+#docs-panel.fullcode-float,
+body.fullcode-active #docs-panel {
   position: absolute;
   top: 0;
   right: 0;
@@ -1531,18 +1536,20 @@ canvas {
 
 
 /* Docs panel */
+/* Docs drawer — flex sibling of the canvas, opens on the right edge of
+   viewportPanel. Mirrors the assistant-panel layout pattern so docs and
+   the 3D viewer coexist instead of one replacing the other. In fullcode
+   mode, fullcode.ts lifts this element up and applies `.fullcode-float`
+   (see the rule near #assistant-panel.fullcode-float). */
 #docs-panel {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex-shrink: 0;
+  width: 480px;
   background: var(--ui-bg);
   overflow: hidden;
   padding: 0;
-  z-index: 20;
   display: flex;
   flex-direction: column;
+  border-left: 1px solid var(--ui-border);
 }
 
 .docs-search {
@@ -1747,9 +1754,8 @@ mark.search-highlight {
 }
 
 /* Hide 3D viewport controls when docs panel is open */
-#canvas-container.docs-open #hud-tools,
-#canvas-container.docs-open #viewpoint-bar,
-#canvas-container.docs-open #stats-bar { display: none; }
+/* (Previously hid HUD elements when docs was an overlay on canvas-container.
+   Docs is now a sibling drawer, so the HUD coexists with it.) */
 
 .docs-nav {
   display: flex;
@@ -2932,7 +2938,8 @@ mark.search-highlight {
 
 /* Hide preview selector in mini-preview and docs mode */
 #mini-preview #preview-selector { display: none !important; }
-#canvas-container.docs-open #preview-selector { display: none; }
+/* (Previously hid preview-selector when docs overlay covered the canvas.
+   Docs is now a sibling drawer; preview-selector stays visible.) */
 
 /* ── Function preview bar ─────────────────────────────────────────────────── */
 
