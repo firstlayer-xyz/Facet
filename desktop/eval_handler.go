@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"facet/pkg/fctlang/checker"
-	"facet/pkg/fctlang/doc"
 	"facet/pkg/fctlang/evaluator"
 	"facet/pkg/fctlang/loader"
 	"facet/pkg/fctlang/parser"
@@ -71,7 +70,11 @@ type evalResponseHeader struct {
 	Declarations *checker.DeclResult    `json:"declarations,omitempty"`
 	References   checker.References     `json:"references,omitempty"`
 	EntryPoints  []EntryPoint           `json:"entryPoints,omitempty"`
-	DocIndex     []doc.DocEntry         `json:"docIndex,omitempty"`
+	// Symbols is the editor symbol table the checker built for this
+	// program — the source of truth for completion, signature-help,
+	// and hover. Replaces the older docIndex (which was a parallel
+	// cache-walk that could drift from what the checker resolved).
+	Symbols []checker.Symbol `json:"symbols,omitempty"`
 
 	// Eval data
 	Mesh   *meshMeta            `json:"mesh,omitempty"`
@@ -137,30 +140,6 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 	// Build sources map for frontend
 	sources := buildSourcesMap(prog)
 
-	// Build doc index. The set of imports the checker resolved on this
-	// pass is what the editor can actually reach — scope the docIndex
-	// to those so the hover/completion/signature-help layers don't
-	// surface functions from non-imported libraries.
-	docText := ""
-	if docSrc := prog.Sources[req.Key]; docSrc != nil {
-		docText = docSrc.Text
-	}
-	// Normalise import paths to the namespace shape DocEntry.Library
-	// uses: `host/user/repo[/subpath]`, no `@ref`. The raw keys in
-	// prog.Imports carry the ref (e.g. "github.com/foo/bar/m@main"),
-	// which would never match the ref-free library names on doc
-	// entries — so the filter would drop every library entry and the
-	// editor's `T.<dot>` completion would have nothing to suggest.
-	importedLibs := make(map[string]bool, len(prog.Imports))
-	for importPath := range prog.Imports {
-		ns := loader.LibPathToNamespace(importPath)
-		if ns == "" {
-			continue
-		}
-		importedLibs[ns] = true
-	}
-	docIndex := buildDocIndex(docText, importedLibs)
-
 	// Build entry points
 	var entryPoints []EntryPoint
 	if checked.Prog.Sources != nil {
@@ -174,7 +153,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 		Declarations: checked.Declarations,
 		References:   checked.References,
 		EntryPoints:  entryPoints,
-		DocIndex:     docIndex,
+		Symbols:      checked.Symbols,
 	}
 
 	// If errors or no entry, return check-only response
@@ -378,56 +357,6 @@ func buildSourcesMap(prog loader.Program) map[string]SourceEntry {
 		sources[key] = SourceEntry{Text: src.Text, Kind: src.Kind, ImportPath: diskToImport[key]}
 	}
 	return sources
-}
-
-// collectLibDocEntries collects deduplicated doc entries from both user-local
-// libraries (filesystem) and git-cached virtualized libraries (bare clones).
-func collectLibDocEntries() []doc.DocEntry {
-	libDir, _ := libraryDir()
-	var entries []doc.DocEntry
-	seen := map[string]bool{}
-	collect := func(batch []doc.DocEntry) {
-		for _, e := range batch {
-			key := e.Name + "|" + e.Library
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			entries = append(entries, e)
-		}
-	}
-	collect(doc.BuildLibDocEntries(libDir))
-	collect(doc.BuildCachedLibDocEntries(loader.DefaultGitCacheDir()))
-	return entries
-}
-
-// buildDocIndex builds the documentation index scoped to what the current
-// source can actually reach: stdlib + the user's own declarations + every
-// library whose importPath appears in `importedLibs`. Non-imported libraries
-// are deliberately excluded — the editor uses this index for hover,
-// signature help, and completion, and surfacing functions the user can't
-// call would be noise.
-//
-// For the unscoped "browse everything" use case (the Docs panel, the AI
-// assistant catalog), use the (*App).GetDocCatalog Wails binding instead;
-// it returns stdlib + every installed/cached library regardless of imports.
-func buildDocIndex(sourceText string, importedLibs map[string]bool) []doc.DocEntry {
-	entries := doc.BuildDocIndex(sourceText, nil)
-	seen := make(map[string]bool)
-	for _, e := range entries {
-		seen[e.Name+"|"+e.Library] = true
-	}
-	for _, e := range collectLibDocEntries() {
-		if !importedLibs[e.Library] {
-			continue
-		}
-		key := e.Name + "|" + e.Library
-		if !seen[key] {
-			seen[key] = true
-			entries = append(entries, e)
-		}
-	}
-	return entries
 }
 
 // checkRequest is the JSON body of a POST /check request.

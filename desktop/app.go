@@ -463,9 +463,11 @@ type DocGuide struct {
 // imports them. Used by the Docs panel so a user can browse libraries
 // they might want to import.
 //
-// The per-eval /eval response carries a DIFFERENT, scoped docIndex used
-// by editor hover/completion/signature-help — see buildDocIndex in
-// eval_handler.go for why that scoping matters.
+// The per-eval /eval response carries a DIFFERENT, scoped symbol table
+// the editor's completion/signature-help/hover providers consume — see
+// checker.BuildSymbols. That path is driven by what the loader actually
+// resolved, not by walking the cache, so it cannot drift from the
+// checker's view of which libraries are in scope.
 func (a *App) GetDocCatalog() []doc.DocEntry {
 	entries := doc.BuildDocIndex("", nil)
 	seen := make(map[string]bool, len(entries))
@@ -480,6 +482,29 @@ func (a *App) GetDocCatalog() []doc.DocEntry {
 		seen[key] = true
 		entries = append(entries, e)
 	}
+	return entries
+}
+
+// collectLibDocEntries collects deduplicated doc entries from both
+// user-local libraries (filesystem) and git-cached virtualized
+// libraries (bare clones). Used by GetDocCatalog above to assemble
+// the Docs panel's "browse everything" view.
+func collectLibDocEntries() []doc.DocEntry {
+	libDir, _ := libraryDir()
+	var entries []doc.DocEntry
+	seen := map[string]bool{}
+	collect := func(batch []doc.DocEntry) {
+		for _, e := range batch {
+			key := e.Name + "|" + e.Library
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			entries = append(entries, e)
+		}
+	}
+	collect(doc.BuildLibDocEntries(libDir))
+	collect(doc.BuildCachedLibDocEntries(loader.DefaultGitCacheDir()))
 	return entries
 }
 

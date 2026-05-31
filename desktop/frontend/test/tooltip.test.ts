@@ -5,17 +5,17 @@ test('Monaco hover tooltip appears, hides, and reappears', async ({
   mockedPage: page,
   setEvalHandler,
 }) => {
-  // The hover provider in src/editor.ts pulls tooltip content from `docIndex`
-  // (function/keyword docs) plus `references` (token → declaration). The default
-  // eval-cube fixture has neither, so an unaugmented hover returns null and
-  // Monaco never shows the widget. Provide a minimal enriched response keyed
-  // off the literal source text in the request body.
+  // The hover provider in src/editor.ts pulls tooltip content from `symbols`
+  // (the checker's symbol table) plus `references` (token → declaration).
+  // The default eval-cube fixture has neither, so an unaugmented hover
+  // returns null and Monaco never shows the widget. Provide a minimal
+  // enriched response keyed off the literal source text in the request body.
   await setEvalHandler(() => ({
     errors: [],
     entryPoints: [
       { name: 'cube', signature: 'cube(size: Length) Solid', params: [], libPath: '', libVar: '', doc: 'A 10mm cube.' },
     ],
-    docIndex: [
+    symbols: [
       { name: 'cube', signature: 'cube(size: Length) Solid', doc: 'A 10mm cube.', kind: 'function', library: '' },
     ],
     // `cube` at line 1, col 1 (startColumn from Monaco's getWordAtPosition is

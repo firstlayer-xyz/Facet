@@ -2,9 +2,27 @@
 
 import { GetHTTPAuth } from '../wailsjs/go/main/App';
 import type { EntryPoint } from './function-preview';
-import type { DocEntry } from './docs';
 import type { BinaryMeshMeta, DebugStepData } from './mesh-decode';
 import type { PosEntry } from './viewer';
+
+/**
+ * One editor-visible identifier — a function, method, type, field, or
+ * keyword. Symbols are the source of truth for completion, signature
+ * help, and hover: every namespace string here is the checker's
+ * canonical library namespace, so qualified completion's
+ * `s.library === ns` filter cannot drift from the type info attached
+ * to a lib alias. Mirrors checker.Symbol on the Go side.
+ */
+export interface FacetSymbol {
+  name: string;
+  kind: string;        // "function" | "method" | "type" | "field" | "keyword"
+  signature?: string;
+  doc?: string;
+  /** Canonical library namespace ("" for stdlib/user/builtin/keyword). */
+  library?: string;
+  /** Receiver type for methods and fields; empty for top-level entries. */
+  receiver?: string;
+}
 
 let currentController: AbortController | null = null;
 
@@ -88,7 +106,7 @@ export interface EvalResult {
   /** References map: "file:line:col" of a referring token → declaration location. */
   references?: Record<string, DeclLocation>;
   entryPoints?: EntryPoint[];
-  docIndex?: DocEntry[];
+  symbols?: FacetSymbol[];
 
   // Eval data
   mesh?: BinaryMeshMeta;

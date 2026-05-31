@@ -41,7 +41,7 @@ test('switching tabs preserves each tab\'s entry-point selection without error',
         });
       }
     }
-    return { errors: [], entryPoints, docIndex: [], posMap: [] };
+    return { errors: [], entryPoints, symbols: [], posMap: [] };
   });
 
   await expect(page.locator('#editor-panel .monaco-editor').first()).toBeVisible({
