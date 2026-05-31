@@ -175,6 +175,21 @@ async function init() {
   applyUIPalette(_initPalette);
   viewer = new Viewer(canvasContainer, buildViewerAppearance(_initPalette, settings.appearance, settings.measurement));
 
+  // Right-edge drawers (docs + assistant + their resizers) are
+  // absolute overlays on top of the full-width canvas. Tell the viewer
+  // how many right-edge pixels are occluded so it re-centres the
+  // lookAt target in the *visible* portion of the canvas instead of
+  // the dead centre, which would land behind the drawer. The observer
+  // fires on every width change: drawer toggle, resize, or window
+  // resize that reflows the stack.
+  const updateRightInset = () => {
+    const rect = drawerStack.getBoundingClientRect();
+    viewer.setRightInset(rect.width);
+  };
+  new ResizeObserver(updateRightInset).observe(drawerStack);
+  // Initial sync — observer doesn't fire until next layout pass.
+  requestAnimationFrame(updateRightInset);
+
   // Gnomon — always-visible axis indicator bottom-left of viewport, drag to orbit
   const gnomon = new Gnomon(canvasContainer, (dTheta, dPhi) => viewer.orbitBy(dTheta, dPhi));
   viewer.onFrame((camera) => gnomon.update(camera));

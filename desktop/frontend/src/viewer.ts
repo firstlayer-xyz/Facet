@@ -108,6 +108,14 @@ export class Viewer {
   private container: HTMLElement;
   private userMeshes: THREE.Object3D[] = [];
   private posMap: PosEntry[] = [];
+
+  // Pixels at the right edge of the canvas that are covered by overlay
+  // drawers (docs panel, assistant panel, their resizers). Used by
+  // onResize to setViewOffset on both cameras so the lookAt target
+  // projects to the centre of the VISIBLE portion of the canvas
+  // instead of the centre of the full canvas — which would put the
+  // model behind the drawer. Updated by main.ts via setRightInset.
+  private rightInset = 0;
   private ambientLight: THREE.AmbientLight;
   private savedAmbientIntensity: number = 0.8;
   private grid: THREE.LineSegments;
@@ -1308,6 +1316,17 @@ export class Viewer {
     this.onResize();
   }
 
+  /** Report the pixel width of overlay drawers covering the right edge
+   *  of the canvas. The viewer shifts the camera projection so the
+   *  lookAt target appears centred in the visible region rather than
+   *  the full canvas. Call with 0 to clear the offset. */
+  setRightInset(px: number): void {
+    const clamped = Math.max(0, Math.floor(px));
+    if (this.rightInset === clamped) return;
+    this.rightInset = clamped;
+    this.onResize();
+  }
+
   /** Switch between 3D perspective mode and CAD drawing (orthographic) mode. */
   setDrawingMode(enabled: boolean): void {
     if (this.drawingMode === enabled) return;
@@ -1792,7 +1811,6 @@ export class Viewer {
     if (w === 0 || h === 0) return;
 
     this.perspCamera.aspect = w / h;
-    this.perspCamera.updateProjectionMatrix();
 
     // Keep ortho frustum aspect ratio in sync (drawing mode or free ortho projection)
     if (this.drawingMode || this.activeCamera === this.orthoCamera) {
@@ -1800,10 +1818,33 @@ export class Viewer {
       const halfH = this.orthoCamera.top;
       this.orthoCamera.left = -halfH * aspect;
       this.orthoCamera.right = halfH * aspect;
-      this.orthoCamera.updateProjectionMatrix();
     }
 
+    // Apply the visible-area offset to both cameras so a mode swap
+    // mid-pose preserves the framing. setViewOffset works by pretending
+    // the camera renders the rectangle (dw, 0, w, h) of a virtual
+    // (w+dw, h) frustum — the lookAt target sits at the virtual centre
+    // ((w+dw)/2, h/2) which lands at canvas x = (w-dw)/2, i.e. the
+    // middle of the visible portion to the left of the drawer.
+    const dw = Math.min(this.rightInset, Math.max(0, w - 1));
+    this.applyViewOffset(this.perspCamera, w, h, dw);
+    this.applyViewOffset(this.orthoCamera, w, h, dw);
+
     this.renderer.setSize(w, h);
+  }
+
+  private applyViewOffset(
+    cam: THREE.PerspectiveCamera | THREE.OrthographicCamera,
+    w: number,
+    h: number,
+    dw: number,
+  ): void {
+    if (dw > 0) {
+      cam.setViewOffset(w + dw, h, dw, 0, w, h);
+    } else {
+      cam.clearViewOffset();
+    }
+    cam.updateProjectionMatrix();
   }
 
   private applyKeyboardOrbit(): void {
