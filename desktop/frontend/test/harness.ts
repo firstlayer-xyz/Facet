@@ -50,16 +50,20 @@ export const test = base.extend<{ mockedPage: Page; setEvalHandler: (handler: Ev
       (window as any).go = { main: { App } };
 
       // Wails runtime stubs — covers all window.runtime methods the app calls.
-      // EventsOn in the Wails JS bridge delegates to EventsOnMultiple, so
-      // both must be present. EventsOff/EventsOffAll are used as cleanup in
-      // settings_debug.ts and must be present to avoid TypeError at teardown.
+      // EventsOff/EventsOffAll are used as cleanup in settings_debug.ts and
+      // must be present to avoid TypeError at teardown. The generated
+      // runtime.js wrappers reach into window.runtime[name], so any name the
+      // app actually imports needs an entry here.
       (window as any).runtime = {
+        EventsOn: () => {},
         EventsOnMultiple: () => {},
+        EventsOnce: () => {},
         EventsOff: () => {},
         EventsOffAll: () => {},
         ClipboardSetText: async () => {},
         ClipboardGetText: async () => '',
         WindowToggleMaximise: () => {},
+        BrowserOpenURL: () => {},
       };
     }, DEFAULT_FIXTURES);
 

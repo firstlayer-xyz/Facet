@@ -16,10 +16,14 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    // Build first so dist/ exists, then serve the built bundle. We use the
-    // production build (not vite dev) so what we test matches what Wails
-    // embeds into the desktop binary.
-    command: `npm run build && npx vite preview --port ${PREVIEW_PORT} --strictPort`,
+    // Use vite dev to serve the frontend. The earlier "build first" approach
+    // ran tsc against src/, which requires the Wails-generated wailsjs/
+    // bindings — and those are gitignored, only produced by `wails build`
+    // locally. CI has no Wails, so tsc-driven builds fail there. vite dev
+    // serves the same source with esbuild transformation, exercising the
+    // same code paths the tests care about (Monaco, app logic, layout) with
+    // no separate type-check step blocking the build.
+    command: `npx vite --port ${PREVIEW_PORT} --strictPort`,
     cwd: '..',
     port: PREVIEW_PORT,
     timeout: 120_000,
