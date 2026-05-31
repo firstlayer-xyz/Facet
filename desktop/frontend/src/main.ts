@@ -30,7 +30,7 @@ import {
   debugBtn, assistantBtn, exportBtn, slicerBtn, fullCodeBtn, errorDiv, tabBar,
   debugBar, debugPrevBtn, debugNextBtn, debugSlider, debugLabel, statsBar, compilingOverlay,
   debugRestartBtn, debugContinueBtn, debugStopBtn,
-  vpPane, vpPaneSummary, hiddenLinesBtn, panelResizer, previewSelector,
+  vpPane, vpPaneSummary, hiddenLinesBtn, panelResizer, docsResizer, previewSelector,
   previewFileBtn, previewFileMenu,
   measureBtn, extentsBtn, clearDimsBtn, hudTools,
 } from './toolbar';
@@ -106,19 +106,24 @@ function applyCurrentTheme(): void {
 async function handleDocsToggle() {
   const active = await toggleDocs();
   docsBtn.classList.toggle('active', active);
+  docsResizer.style.display = active ? 'block' : 'none';
 }
 
 // Status bar eval state — set inside initApp once the status elements exist
 let applyEvalStatus: ((state: 'idle' | 'ready' | 'error', ms?: number) => void) | undefined;
 
 // Docs panel
-// Docs panel lives directly under #app as a top-level drawer. It used to
-// be a child of #canvas-container, which gets reparented into a floating
-// #mini-preview in fullcode (View) mode — that bug dragged docs into the
-// floating window. Anchoring it to #app keeps it independent of viewport
-// state in both normal and fullcode modes; fullcode.ts adds the
-// `.fullcode-float` class so it overlays the editor like the assistant.
-const docsPanel = new DocsPanel(app, handleDocsToggle);
+// Docs panel container is resolved at show() time so the right parent
+// is picked for the current mode: viewportPanel in normal mode (flex
+// sibling of canvas + assistant, so the existing layout machinery
+// resizes them together), or #app in fullcode mode (where viewportPanel
+// is hidden). It used to be a child of #canvas-container — that broke
+// because fullcode reparents canvas into a floating #mini-preview, and
+// docs went along for the ride.
+const docsPanel = new DocsPanel(
+  () => document.body.classList.contains('fullcode-active') ? app : viewportPanel,
+  handleDocsToggle,
+);
 
 // Assistant panel
 let editorRef: EditorHandle | null = null;
@@ -258,6 +263,7 @@ async function init() {
   const editor = createEditor(monacoContainer, first.source, autoRun, async (name) => {
     await openDocsToEntry(name);
     docsBtn.classList.add('active');
+    docsResizer.style.display = 'block';
   }, (file, source, line, col) => {
     openLibraryFile(file, source, line, col);
   }, first.path);
@@ -808,10 +814,18 @@ divider.addEventListener('mousedown', (e) => {
 
 // Panel resizer drag logic (canvas ↔ right panel)
 let panelDragging = false;
+let docsDragging = false;
 
 panelResizer.addEventListener('mousedown', (e) => {
   e.preventDefault();
   panelDragging = true;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+});
+
+docsResizer.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  docsDragging = true;
   document.body.style.cursor = 'col-resize';
   document.body.style.userSelect = 'none';
 });
@@ -831,6 +845,17 @@ window.addEventListener('mousemove', (e) => {
     const activePanel = document.getElementById('assistant-panel');
     if (activePanel) activePanel.style.width = `${clamped}px`;
   }
+  if (docsDragging) {
+    // Docs drawer sits to the LEFT of the assistant (if open), so the
+    // drawer's right edge depends on whether the assistant is showing.
+    const docsEl = document.getElementById('docs-panel');
+    if (docsEl) {
+      const docsRect = docsEl.getBoundingClientRect();
+      const newWidth = docsRect.right - e.clientX;
+      const clamped = Math.min(Math.max(newWidth, 240), 900);
+      docsEl.style.width = `${clamped}px`;
+    }
+  }
 });
 
 window.addEventListener('mouseup', () => {
@@ -841,6 +866,11 @@ window.addEventListener('mouseup', () => {
   }
   if (panelDragging) {
     panelDragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+  if (docsDragging) {
+    docsDragging = false;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
   }

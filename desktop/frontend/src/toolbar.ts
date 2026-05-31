@@ -368,10 +368,18 @@ canvasContainer.appendChild(vpPane);
 canvasContainer.appendChild(statsBar);
 canvasContainer.appendChild(compilingOverlay);
 
-// Resizer between canvas and the right panels (params / assistant)
+// Resizer on the left edge of the assistant panel.
 export const panelResizer = document.createElement('div');
 panelResizer.id = 'panel-resizer';
 panelResizer.style.display = 'none';
 viewportPanel.appendChild(panelResizer);
+
+// Resizer on the left edge of the docs panel. Same shape as panelResizer
+// but dedicated to docs so the two drawers can be resized independently.
+// Visibility is toggled in main.ts when docs opens/closes.
+export const docsResizer = document.createElement('div');
+docsResizer.id = 'docs-resizer';
+docsResizer.style.display = 'none';
+viewportPanel.appendChild(docsResizer);
 
 export { app };

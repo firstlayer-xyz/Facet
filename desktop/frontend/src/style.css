@@ -451,14 +451,16 @@ body.macos-fullscreen #titlebar-drag {
   background: var(--ui-accent);
 }
 
-#panel-resizer {
+#panel-resizer,
+#docs-resizer {
   flex: 0 0 3px;
   background: var(--ui-border-hover);
   cursor: col-resize;
   z-index: 10;
 }
 
-#panel-resizer:hover {
+#panel-resizer:hover,
+#docs-resizer:hover {
   background: var(--ui-accent);
 }
 

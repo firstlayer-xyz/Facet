@@ -41,16 +41,24 @@ function enter() {
   viewportPanel.style.display = 'none';
   editorPanel.style.flex = '1';
 
-  // Lift assistant so it floats over the editor (it normally lives in
-  // viewportPanel, which is about to be hidden).
+  // Lift the side panels (assistant + docs + their resizers) over the
+  // editor. Both normally live in viewportPanel, which is about to be
+  // hidden. body.fullcode-active also tells DocsPanel's container
+  // resolver to render new opens directly into #app rather than the
+  // hidden viewportPanel.
+  document.body.classList.add('fullcode-active');
   const assistantEl = document.getElementById('assistant-panel');
   if (assistantEl) { app.appendChild(assistantEl); assistantEl.classList.add('fullcode-float'); }
-  // Docs already lives directly under #app, so no reparenting needed.
-  // It might or might not be present at this moment; mark the body so any
-  // future docs.show() call picks up the float style via CSS.
-  document.body.classList.add('fullcode-active');
   const docsEl = document.getElementById('docs-panel');
-  if (docsEl) docsEl.classList.add('fullcode-float');
+  if (docsEl) { app.appendChild(docsEl); docsEl.classList.add('fullcode-float'); }
+  // Resizers don't need a .fullcode-float class — they're positioned by
+  // their next-sibling drawer's left edge via the layout. But we still
+  // reparent them so they stay adjacent to their drawers when the
+  // drawers move.
+  const panelResizerEl = document.getElementById('panel-resizer');
+  if (panelResizerEl) app.appendChild(panelResizerEl);
+  const docsResizerEl = document.getElementById('docs-resizer');
+  if (docsResizerEl) app.appendChild(docsResizerEl);
 
   // Create floating preview anchored to the bottom-right of the editor panel
   const preview = document.createElement('div');
@@ -124,13 +132,17 @@ function exit() {
   viewportPanel.insertBefore(canvasContainer, panelResizer);
   document.getElementById('mini-preview')?.remove();
 
-  // Return assistant to the viewport panel
-  const assistantEl = document.getElementById('assistant-panel');
-  if (assistantEl) { assistantEl.classList.remove('fullcode-float'); viewportPanel.insertBefore(assistantEl, panelResizer); }
-  // Docs lives under #app permanently — just drop the float style.
+  // Return the side panels + their resizers to the viewport panel.
   document.body.classList.remove('fullcode-active');
+  const assistantEl = document.getElementById('assistant-panel');
+  if (assistantEl) { assistantEl.classList.remove('fullcode-float'); viewportPanel.appendChild(assistantEl); }
   const docsEl = document.getElementById('docs-panel');
-  if (docsEl) docsEl.classList.remove('fullcode-float');
+  if (docsEl) { docsEl.classList.remove('fullcode-float'); viewportPanel.appendChild(docsEl); }
+  // Reorder resizers and drawers back to: [canvas | docs-resizer | docs | panel-resizer | assistant]
+  const docsResizerEl = document.getElementById('docs-resizer');
+  if (docsResizerEl && docsEl) viewportPanel.insertBefore(docsResizerEl, docsEl);
+  if (assistantEl) viewportPanel.insertBefore(panelResizer, assistantEl);
+  else viewportPanel.appendChild(panelResizer);
 
   // Restore layout
   divider.style.display = '';
