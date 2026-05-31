@@ -1,0 +1,24 @@
+{
+  "value": {
+    "errors": [],
+    "entryPoints": [
+      {
+        "name": "cube",
+        "signature": "cube(size: Length) Solid",
+        "params": [
+          {
+            "name": "size",
+            "type": "Length",
+            "hasDefault": false,
+            "default": null
+          }
+        ],
+        "libPath": "",
+        "libVar": "",
+        "doc": "A 10mm cube."
+      }
+    ],
+    "docIndex": [],
+    "posMap": []
+  }
+}
