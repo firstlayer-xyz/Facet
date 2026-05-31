@@ -976,8 +976,24 @@ export function createEditor(
 
       if (!entry) return null;
 
+      // Collect all overloads — same name + same kind as the resolved entry,
+      // deduped by signature. The Go side (extractDocEntries in
+      // pkg/fctlang/doc/doc.go) emits one DocEntry per declaration, so
+      // overloaded functions appear as N DocEntries with shared name/kind
+      // and distinct signatures. Without this, hover showed only the first.
+      const overloads: string[] = [];
+      const seenSigs = new Set<string>();
+      for (const e of docEntries) {
+        if (e.name !== entry.name || e.kind !== entry.kind) continue;
+        if (!e.signature || seenSigs.has(e.signature)) continue;
+        seenSigs.add(e.signature);
+        overloads.push(e.signature);
+      }
+
       const parts: string[] = [];
-      if (entry.signature) {
+      if (overloads.length > 0) {
+        parts.push('```facet\n' + overloads.join('\n') + '\n```');
+      } else if (entry.signature) {
         parts.push('```facet\n' + entry.signature + '\n```');
       }
       if (entry.doc) {
