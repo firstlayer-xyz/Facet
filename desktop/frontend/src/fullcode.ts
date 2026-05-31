@@ -41,24 +41,9 @@ function enter() {
   viewportPanel.style.display = 'none';
   editorPanel.style.flex = '1';
 
-  // Lift the side panels (assistant + docs + their resizers) over the
-  // editor. Both normally live in viewportPanel, which is about to be
-  // hidden. body.fullcode-active also tells DocsPanel's container
-  // resolver to render new opens directly into #app rather than the
-  // hidden viewportPanel.
-  document.body.classList.add('fullcode-active');
-  const assistantEl = document.getElementById('assistant-panel');
-  if (assistantEl) { app.appendChild(assistantEl); assistantEl.classList.add('fullcode-float'); }
-  const docsEl = document.getElementById('docs-panel');
-  if (docsEl) { app.appendChild(docsEl); docsEl.classList.add('fullcode-float'); }
-  // Resizers don't need a .fullcode-float class — they're positioned by
-  // their next-sibling drawer's left edge via the layout. But we still
-  // reparent them so they stay adjacent to their drawers when the
-  // drawers move.
-  const panelResizerEl = document.getElementById('panel-resizer');
-  if (panelResizerEl) app.appendChild(panelResizerEl);
-  const docsResizerEl = document.getElementById('docs-resizer');
-  if (docsResizerEl) app.appendChild(docsResizerEl);
+  // Drawers (assistant, docs) live in #drawer-stack permanently — they
+  // overlay #app independently of the editor/viewport split, so fullcode
+  // doesn't need to touch them.
 
   // Create floating preview anchored to the bottom-right of the editor panel
   const preview = document.createElement('div');
@@ -121,28 +106,17 @@ function enter() {
 }
 
 function exit() {
-  const { viewer, editorPanel, viewportPanel, canvasContainer, divider, panelResizer, fullCodeBtn, autoRotateBtn } = deps;
+  const { viewer, editorPanel, viewportPanel, canvasContainer, divider, fullCodeBtn, autoRotateBtn } = deps;
   if (dragMove) { document.removeEventListener('mousemove', dragMove); dragMove = null; }
   if (dragUp) { document.removeEventListener('mouseup', dragUp); dragUp = null; }
 
   active = false;
   fullCodeBtn.classList.add('active');
 
-  // Move canvas back
-  viewportPanel.insertBefore(canvasContainer, panelResizer);
+  // Move canvas back into the viewport panel. Drawers stay in
+  // #drawer-stack — fullcode doesn't touch them.
+  viewportPanel.appendChild(canvasContainer);
   document.getElementById('mini-preview')?.remove();
-
-  // Return the side panels + their resizers to the viewport panel.
-  document.body.classList.remove('fullcode-active');
-  const assistantEl = document.getElementById('assistant-panel');
-  if (assistantEl) { assistantEl.classList.remove('fullcode-float'); viewportPanel.appendChild(assistantEl); }
-  const docsEl = document.getElementById('docs-panel');
-  if (docsEl) { docsEl.classList.remove('fullcode-float'); viewportPanel.appendChild(docsEl); }
-  // Reorder resizers and drawers back to: [canvas | docs-resizer | docs | panel-resizer | assistant]
-  const docsResizerEl = document.getElementById('docs-resizer');
-  if (docsResizerEl && docsEl) viewportPanel.insertBefore(docsResizerEl, docsEl);
-  if (assistantEl) viewportPanel.insertBefore(panelResizer, assistantEl);
-  else viewportPanel.appendChild(panelResizer);
 
   // Restore layout
   divider.style.display = '';

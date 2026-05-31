@@ -33,6 +33,7 @@ import {
   vpPane, vpPaneSummary, hiddenLinesBtn, panelResizer, docsResizer, previewSelector,
   previewFileBtn, previewFileMenu,
   measureBtn, extentsBtn, clearDimsBtn, hudTools,
+  drawerStack,
 } from './toolbar';
 import { FunctionPreview } from './function-preview';
 import type { EntryPoint } from './function-preview';
@@ -106,29 +107,21 @@ function applyCurrentTheme(): void {
 async function handleDocsToggle() {
   const active = await toggleDocs();
   docsBtn.classList.toggle('active', active);
-  docsResizer.style.display = active ? 'block' : 'none';
+  docsResizer.classList.toggle('open', active);
 }
 
 // Status bar eval state — set inside initApp once the status elements exist
 let applyEvalStatus: ((state: 'idle' | 'ready' | 'error', ms?: number) => void) | undefined;
 
-// Docs panel
-// Docs panel container is resolved at show() time so the right parent
-// is picked for the current mode: viewportPanel in normal mode (flex
-// sibling of canvas + assistant, so the existing layout machinery
-// resizes them together), or #app in fullcode mode (where viewportPanel
-// is hidden). It used to be a child of #canvas-container — that broke
-// because fullcode reparents canvas into a floating #mini-preview, and
-// docs went along for the ride.
-const docsPanel = new DocsPanel(
-  () => document.body.classList.contains('fullcode-active') ? app : viewportPanel,
-  handleDocsToggle,
-);
+// Docs panel renders into its drawer-stack slot. The slot is a stable
+// DOM home that never gets reparented across mode changes — fullcode
+// (the View toggle) doesn't touch it.
+const docsPanel = new DocsPanel(drawerStack, handleDocsToggle);
 
 // Assistant panel
 let editorRef: EditorHandle | null = null;
 const assistantPanel = new AssistantPanel(
-  viewportPanel,
+  drawerStack,
   () => editorRef?.getContent() ?? '',
   () => errorDiv.textContent ?? '',
   () => ({ path: getActiveTabValue(), readOnly: isActiveTabReadOnly() }),
@@ -263,7 +256,7 @@ async function init() {
   const editor = createEditor(monacoContainer, first.source, autoRun, async (name) => {
     await openDocsToEntry(name);
     docsBtn.classList.add('active');
-    docsResizer.style.display = 'block';
+    docsResizer.classList.add('open');
   }, (file, source, line, col) => {
     openLibraryFile(file, source, line, col);
   }, first.path);
@@ -672,12 +665,13 @@ function handleDebugToggle() {
 }
 debugBtn.addEventListener('click', handleDebugToggle);
 
-// Assistant toggle
+// Assistant toggle. AssistantPanel manages `.open` on its own panel;
+// the resizer's `.open` is in lockstep.
 assistantBtn.addEventListener('click', () => {
   assistantPanel.toggle();
   const assistantVisible = assistantPanel.isVisible();
   assistantBtn.classList.toggle('active', assistantVisible);
-  panelResizer.style.display = assistantVisible ? 'block' : 'none';
+  panelResizer.classList.toggle('open', assistantVisible);
 });
 
 // Docs toggle

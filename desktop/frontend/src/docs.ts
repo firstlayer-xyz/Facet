@@ -431,11 +431,9 @@ function highlightText(el: HTMLElement, term: string): void {
 
 export class DocsPanel {
   private el: HTMLElement | null = null;
-  // Container is either a fixed element or a resolver function called at
-  // each show() — the resolver form lets the caller pick a different DOM
-  // parent depending on app state (e.g. viewportPanel in normal mode,
-  // #app in fullcode mode where viewportPanel is hidden).
-  private container: HTMLElement | (() => HTMLElement);
+  // Container is the docs slot inside #drawer-stack — a permanent DOM
+  // home that never gets reparented across mode changes.
+  private container: HTMLElement;
   private onClose: (() => void) | null;
   private currentView: DocsView = VIEW_GUIDES;
   private guides: DocGuide[] = [];
@@ -448,13 +446,9 @@ export class DocsPanel {
   private sideNavOpen = true;
   private scrollCleanup: (() => void) | null = null;
 
-  constructor(container: HTMLElement | (() => HTMLElement), onClose?: () => void) {
+  constructor(container: HTMLElement, onClose?: () => void) {
     this.container = container;
     this.onClose = onClose ?? null;
-  }
-
-  private resolveContainer(): HTMLElement {
-    return typeof this.container === 'function' ? this.container() : this.container;
   }
 
   show(entries: DocEntry[], guides?: DocGuide[]): void {
@@ -466,6 +460,7 @@ export class DocsPanel {
 
     const panel = document.createElement('div');
     panel.id = 'docs-panel';
+    panel.classList.add('open');
     this.el = panel;
 
     // Navigation tabs
@@ -562,7 +557,7 @@ export class DocsPanel {
     search.addEventListener('input', () => this.rerender());
     this.rerender();
 
-    this.resolveContainer().appendChild(panel);
+    this.container.appendChild(panel);
     search.focus();
   }
 

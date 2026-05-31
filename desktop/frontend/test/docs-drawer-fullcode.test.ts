@@ -81,8 +81,8 @@ test('docs panel opens in its own drawer, not inside #mini-preview, when fullcod
   });
   expect(inMiniPreview).toBe(false);
 
-  // And it should be a direct child of #app while fullcode is active —
-  // matching the assistant-panel pattern (fullcode.ts moves both there).
+  // Docs always lives under #drawer-stack regardless of mode — fullcode no
+  // longer reparents drawers (they're overlay-positioned via the stack).
   const parentId = await docsPanel.evaluate(el => el.parentElement?.id);
-  expect(parentId).toBe('app');
+  expect(parentId).toBe('drawer-stack');
 });

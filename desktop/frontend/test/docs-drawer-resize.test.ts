@@ -53,6 +53,6 @@ test('docs drawer is resizable and coexists with the assistant', async ({
   // arrange them side-by-side instead of overlapping.
   const docsParentId = await docsPanel.evaluate(el => el.parentElement?.id);
   const assistantParentId = await assistantPanel.evaluate(el => el.parentElement?.id);
-  expect(docsParentId).toBe('viewport-panel');
-  expect(assistantParentId).toBe('viewport-panel');
+  expect(docsParentId).toBe('drawer-stack');
+  expect(assistantParentId).toBe('drawer-stack');
 });
