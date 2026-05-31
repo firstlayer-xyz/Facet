@@ -204,7 +204,7 @@ async function init() {
 
   initFullCode({
     viewer, editorPanel, viewportPanel, canvasContainer, divider,
-    panelResizer, app, fullCodeBtn, autoRotateBtn,
+    app, fullCodeBtn, autoRotateBtn,
   });
 
   // Restore saved tab state or load default tutorial

@@ -3,10 +3,10 @@ import { test, expect } from './harness';
 // Regression test for: "the drawer is not resizable. It also can't co-exist
 // with the AI assistant."
 //
-// Docs now lives in viewport-panel as a flex sibling of canvas + assistant,
-// with its own #docs-resizer handle on the left edge that can drag the
-// drawer's width. Opening docs and assistant together should leave both
-// drawers visible — they no longer overlap or fight for the same DOM slot.
+// Docs and assistant live in #drawer-stack as direct children. Each has
+// a left-edge resizer (#docs-resizer / #assistant-resizer) that drags
+// the drawer's width. CSS `order:` arranges them as docs (inside) →
+// assistant (outside) when both are open, regardless of insertion order.
 test('docs drawer is resizable and coexists with the assistant', async ({
   mockedPage: page,
 }) => {
@@ -48,9 +48,9 @@ test('docs drawer is resizable and coexists with the assistant', async ({
   await expect(assistantPanel).toBeVisible();
   await expect(docsPanel).toBeVisible();
 
-  // Both should be flex siblings of canvas-container inside #viewport-panel —
-  // confirms the structural fix that lets the existing layout machinery
-  // arrange them side-by-side instead of overlapping.
+  // Both should be direct children of #drawer-stack — confirms the
+  // structural fix that lets the overlay container arrange them
+  // side-by-side instead of competing with canvas for flex space.
   const docsParentId = await docsPanel.evaluate(el => el.parentElement?.id);
   const assistantParentId = await assistantPanel.evaluate(el => el.parentElement?.id);
   expect(docsParentId).toBe('drawer-stack');

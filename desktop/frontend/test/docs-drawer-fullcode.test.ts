@@ -51,17 +51,17 @@ test('docs panel opens in its own drawer, not inside #mini-preview, when fullcod
   await evalDone;
 
   // Toggle fullcode mode. The #fullcode-btn (label "VIEW") collapses the
-  // viewport, moves the canvas into a floating #mini-preview, and lifts
-  // side drawers (assistant, docs) to the top-level #app.
+  // viewport and moves the canvas into a floating #mini-preview. Drawers
+  // live in #drawer-stack permanently, so fullcode doesn't touch them.
   await page.locator('#fullcode-btn').click();
   await expect(page.locator('#mini-preview')).toBeVisible();
 
   // Trigger the same Monaco action the right-click "Open Documentation"
   // menu item invokes. Direct .trigger() bypasses context-menu rendering
-  // (which is flaky to drive from Playwright in fullcode mode — the
-  // overlay z-index interacts with .fullcode-float in ways that swallow
-  // clicks). The action callback in src/editor.ts is the same code path
-  // either way; this test isn't about menu rendering.
+  // (which is flaky to drive from Playwright in fullcode mode — overlay
+  // z-indexes interact in ways that swallow clicks). The action callback
+  // in src/editor.ts is the same code path either way; this test isn't
+  // about menu rendering.
   await page.evaluate(() => {
     const ed = (window as any).monaco.editor.getEditors()[0];
     ed.setPosition({ lineNumber: 2, column: 2 });

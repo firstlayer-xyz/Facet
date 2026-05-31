@@ -53,8 +53,8 @@ export class AssistantPanel {
 
     this.panel = document.createElement('div');
     this.panel.id = 'assistant-panel';
-    // Visibility is controlled by #assistant-slot.open via CSS — no inline
-    // display style here.
+    // Visibility is controlled by the `.open` class via CSS; show()/hide()
+    // toggle it. No inline display style here.
 
     // Header
     const header = document.createElement('div');

@@ -8,7 +8,6 @@ interface FullCodeDeps {
   viewportPanel: HTMLElement;
   canvasContainer: HTMLElement;
   divider: HTMLElement;
-  panelResizer: HTMLElement;
   app: HTMLElement;
   fullCodeBtn: HTMLElement;
   autoRotateBtn: HTMLElement;
