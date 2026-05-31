@@ -1,6 +1,6 @@
 // app.ts — Run/debug orchestration logic.
 
-import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
+import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocCatalog, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
 import type { EntryPoint } from './function-preview';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { Viewer } from './viewer';
@@ -1052,11 +1052,17 @@ export function toggleDebug() {
 
 async function openDocs(): Promise<void> {
   if (docsPanel.isVisible()) return;
-  const guides = await GetDocGuides().catch((err) => {
-    reportError('GetDocGuides', err);
-    return [];
-  });
-  docsPanel.show(lastResult?.docIndex ?? [], guides);
+  // The Docs panel browses the FULL catalog (stdlib + all installed
+  // libraries) regardless of whether the current source imports them —
+  // that's how the user discovers libraries to import in the first
+  // place. The /eval response's docIndex is intentionally scoped to
+  // imported-only and is the wrong shape for browsing; use the
+  // dedicated GetDocCatalog binding instead.
+  const [entries, guides] = await Promise.all([
+    GetDocCatalog().catch(err => { reportError('GetDocCatalog', err); return []; }),
+    GetDocGuides().catch(err => { reportError('GetDocGuides', err); return []; }),
+  ]);
+  docsPanel.show(entries, guides);
   setDebugBarVisible(false);
 }
 

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"facet/pkg/fctlang/doc"
 	"facet/pkg/fctlang/formatter"
 	"facet/pkg/fctlang/parser"
 	"facet/share/docs"
@@ -453,6 +454,32 @@ type DocGuide struct {
 	Title    string `json:"title"`
 	Slug     string `json:"slug"`
 	Markdown string `json:"markdown"`
+}
+
+// GetDocCatalog returns the full, unscoped documentation index:
+// stdlib + built-in types/keywords + every installed and cached library
+// the user has on disk, regardless of whether the current source
+// imports them. Used by the Docs panel so a user can browse libraries
+// they might want to import.
+//
+// The per-eval /eval response carries a DIFFERENT, scoped docIndex used
+// by editor hover/completion/signature-help — see buildDocIndex in
+// eval_handler.go for why that scoping matters.
+func (a *App) GetDocCatalog() []doc.DocEntry {
+	entries := doc.BuildDocIndex("", nil)
+	seen := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		seen[e.Name+"|"+e.Library] = true
+	}
+	for _, e := range collectLibDocEntries() {
+		key := e.Name + "|" + e.Library
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		entries = append(entries, e)
+	}
+	return entries
 }
 
 // GetDocGuides returns the embedded markdown guide documents.
