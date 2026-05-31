@@ -17,12 +17,6 @@ type Result struct {
 	InferredReturnTypes map[string]string // fn name → inferred return type display name
 	Declarations        *DeclResult
 	References          References `json:"references,omitempty"`
-	// Symbols is the editor symbol table — every name that is in scope
-	// for the program, tagged with its canonical library namespace and
-	// receiver type. The frontend's completion, signature-help, and
-	// hover providers all read from this single list, so the namespace
-	// matching can never disagree with the checker's varTypes.
-	Symbols []Symbol `json:"symbols,omitempty"`
 }
 
 // DeclLocation is the source position of a declaration.
@@ -65,7 +59,6 @@ func Check(prog loader.Program) *Result {
 		InferredReturnTypes: inferredRets,
 		Declarations:        c.declarations,
 		References:          c.references,
-		Symbols:             BuildSymbols(prog),
 	}
 }
 

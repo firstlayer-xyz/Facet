@@ -823,6 +823,7 @@ export class DocsPanel {
         const card = document.createElement('div');
         card.className = 'docs-entry';
         card.dataset.name = item.name;
+        card.dataset.library = item.library || '';
 
         const sig = document.createElement('pre');
         sig.className = 'docs-signature';
@@ -863,7 +864,7 @@ export class DocsPanel {
     }
   }
 
-  focusEntry(name: string): void {
+  focusEntry(name: string, library?: string): void {
     this.currentView = VIEW_API;
     this.currentGuide = null;
     if (this.searchEl) this.searchEl.value = '';
@@ -873,7 +874,14 @@ export class DocsPanel {
     this.rerender();
 
     if (!this.contentEl) return;
-    const target = this.contentEl.querySelector<HTMLElement>(`[data-name="${CSS.escape(name)}"]`);
+    // When the caller supplied a library, prefer that exact match so a
+    // stdlib `Cube` and a library `Cube` don't both render with the
+    // same data-name. Without a library, fall back to the first card
+    // with the matching name.
+    const nameSel = `[data-name="${CSS.escape(name)}"]`;
+    const target = (library !== undefined
+      ? this.contentEl.querySelector<HTMLElement>(`${nameSel}[data-library="${CSS.escape(library)}"]`)
+      : null) ?? this.contentEl.querySelector<HTMLElement>(nameSel);
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.add('docs-entry-focused');

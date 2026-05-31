@@ -32,12 +32,17 @@ type Symbol struct {
 	Receiver  string `json:"receiver,omitempty"`
 }
 
-// BuildSymbols extracts the editor symbol table from a loaded program.
+// BuildSymbols extracts the editor symbol table from a loaded program
+// for one active source. entryKey is the user-source key that owns the
+// editor's current cursor — symbols from OTHER user sources (open tabs
+// that aren't imported by the entry) are excluded so completion doesn't
+// suggest names that aren't actually in scope at the call site.
+//
 // Every library tag comes from loader.LibPathToNamespace applied to the
 // raw import path the loader resolved — the one source of truth shared
 // with the checker's varTypes. Built-in types and keywords are appended
 // so hover and completion find them without a separate code path.
-func BuildSymbols(prog loader.Program) []Symbol {
+func BuildSymbols(prog loader.Program, entryKey string) []Symbol {
 	var out []Symbol
 	seen := map[string]bool{}
 	add := func(s Symbol) {
@@ -83,13 +88,16 @@ func BuildSymbols(prog loader.Program) []Symbol {
 		}
 	}
 
-	// User source symbols — Library="", in scope unqualified.
-	for srcKey, src := range prog.Sources {
-		if srcKey == loader.StdlibPath || prog.IsLibrarySource(srcKey) {
-			continue
-		}
-		for _, sym := range extractSourceSymbols(src, "") {
-			add(sym)
+	// User source symbols — Library="", in scope unqualified. Only the
+	// entry source contributes: other open tabs are separate files
+	// whose declarations aren't reachable from the entry unless one
+	// imports the other via `lib`, and lib-imported ones are already
+	// covered by the prog.Imports walk above.
+	if entryKey != "" && entryKey != loader.StdlibPath && !prog.IsLibrarySource(entryKey) {
+		if src := prog.Sources[entryKey]; src != nil {
+			for _, sym := range extractSourceSymbols(src, "") {
+				add(sym)
+			}
 		}
 	}
 

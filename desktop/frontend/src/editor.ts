@@ -196,6 +196,7 @@ export interface EditorHandle {
   setWordWrap(on: boolean): void;
   setTheme(name: string): void;
   updateSymbols(symbols: FacetSymbol[]): void;
+  updateMainKey(key: string): void;
   updateVarTypes(types: Record<string, Record<string, string>>): void;
   setCurrentSource(sourceKey: string): void;
   updateDeclarations(decls: Record<string, DeclLocation>): void;
@@ -229,7 +230,7 @@ export function createEditor(
   parent: HTMLElement,
   initialDoc: string,
   onChange?: () => void,
-  onOpenDocs?: (name: string) => void,
+  onOpenDocs?: (name: string, library?: string) => void,
   onGoToFile?: (file: string, source: string, line: number, col: number) => void,
   initialFileKey?: string,
 ): EditorHandle {
@@ -357,21 +358,19 @@ export function createEditor(
       run(ed) {
         const pos = ed.getPosition();
         if (!pos) return;
-        const word = ed.getModel()?.getWordAtPosition(pos);
+        const model = ed.getModel();
+        if (!model) return;
+        const word = model.getWordAtPosition(pos);
         if (!word) return;
-        const wordText = word.word;
-        const lineContent = ed.getModel()?.getLineContent(pos.lineNumber) ?? '';
-        const charBefore = word.startColumn > 1 ? lineContent[word.startColumn - 2] : '';
-        // The Docs panel keys entries by DocEntry name shape:
-        // methods are "Receiver.Method", everything else is bare.
-        // Reconstruct that shape from the matched Symbol.
-        const matches = charBefore === '.'
-          ? symbols.filter(s => s.name === wordText && (s.receiver || s.library))
-          : symbols.filter(s => s.name === wordText && !s.receiver);
-        const sym = matches[0];
+        const matched = resolveSymbolAtCursor(model, pos, word);
+        const sym = matched[0];
         if (!sym) return;
+        // The Docs panel keys entries by DocEntry name shape: methods
+        // are "Receiver.Method"; everything else is bare. The library
+        // tag is passed alongside so the panel can disambiguate name
+        // collisions between stdlib and an imported library.
         const docName = sym.receiver ? `${sym.receiver}.${sym.name}` : sym.name;
-        onOpenDocs(docName);
+        onOpenDocs(docName, sym.library || undefined);
       },
     });
   }
@@ -381,6 +380,8 @@ export function createEditor(
   // starts with a `.` chain continuation), walk backwards to the previous
   // non-empty line and return its trimmed-right content instead — so callers
   // can resolve the receiver expression that lives on an earlier line.
+  // Comment-only lines are skipped so a `// foo` between expressions doesn't
+  // become a fake receiver.
   function effectiveTextBefore(
     model: monaco.editor.ITextModel,
     lineNumber: number,
@@ -390,9 +391,87 @@ export function createEditor(
     if (raw.trim().length > 0) return raw;
     for (let ln = lineNumber - 1; ln >= 1; ln--) {
       const prev = model.getLineContent(ln).trimEnd();
-      if (prev.length > 0) return prev;
+      if (prev.length === 0) continue;
+      if (prev.trimStart().startsWith('//')) continue;
+      return prev;
     }
     return raw;
+  }
+
+  // buildCodeMask marks the positions in `line` that are part of code
+  // (true) vs inside a string literal or line comment (false). Used by
+  // walkBackToCall so a `(`/`,`/`)` inside `"..."` or after `//` does
+  // not confuse the call-site detector.
+  function buildCodeMask(line: string): boolean[] {
+    const mask = new Array(line.length).fill(true);
+    let i = 0;
+    while (i < line.length) {
+      const ch = line[i];
+      if (ch === '/' && line[i + 1] === '/') {
+        for (let j = i; j < line.length; j++) mask[j] = false;
+        return mask;
+      }
+      if (ch === '"') {
+        mask[i] = false;
+        i++;
+        while (i < line.length) {
+          mask[i] = false;
+          if (line[i] === '\\' && i + 1 < line.length) {
+            mask[i + 1] = false;
+            i += 2;
+            continue;
+          }
+          if (line[i] === '"') { i++; break; }
+          i++;
+        }
+        continue;
+      }
+      i++;
+    }
+    return mask;
+  }
+
+  // splitParams splits a `(a Type, b Type = default, ...)`-body string
+  // into individual parameter specs. Naively splitting on `,` breaks any
+  // default value that itself contains a comma (e.g. `= Vec3(1, 2, 3)`),
+  // so this respects nested paren/bracket/brace depth.
+  function splitParams(paramStr: string): string[] {
+    const out: string[] = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < paramStr.length; i++) {
+      const ch = paramStr[i];
+      if (ch === '(' || ch === '[' || ch === '{') depth++;
+      else if (ch === ')' || ch === ']' || ch === '}') depth--;
+      else if (ch === ',' && depth === 0) {
+        const seg = paramStr.slice(start, i).trim();
+        if (seg) out.push(seg);
+        start = i + 1;
+      }
+    }
+    const last = paramStr.slice(start).trim();
+    if (last) out.push(last);
+    return out;
+  }
+
+  // extractParamBody returns the contents between the outer parens of a
+  // signature like `fn cube(size Length = 10 mm) Solid`. The naive
+  // `/\(([^)]*)\)/` regex stops at the first `)`, so any default value
+  // containing a paren cuts the param list short — this walks balanced
+  // parens to find the actual closer.
+  function extractParamBody(signature: string): string | null {
+    const open = signature.indexOf('(');
+    if (open < 0) return null;
+    let depth = 0;
+    for (let i = open; i < signature.length; i++) {
+      const ch = signature[i];
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        depth--;
+        if (depth === 0) return signature.slice(open + 1, i);
+      }
+    }
+    return null;
   }
 
   // resolveChainType returns the type of the expression represented by the
@@ -738,20 +817,42 @@ export function createEditor(
     // case (`T` is just a name) is covered by varTypes.
     const m = text.match(/([A-Za-z_]\w*)\s*$/);
     if (m) {
-      const v = (allVarTypes[currentSourceKey] ?? {})[m[1]];
+      const name = m[1];
+      const v = (allVarTypes[currentSourceKey] ?? {})[name];
       if (v) {
         if (v.startsWith('Library:')) return { kind: 'library', namespace: v.slice('Library:'.length) };
         return { kind: 'type', name: v };
       }
+      // The receiver text may be a TYPE name itself — `Solid.Move(...)`
+      // or `Vec3.Add(...)` constructor-style member access. There's no
+      // varTypes entry for a type-as-receiver, but the symbol table
+      // says it's a type, which is enough to filter methods by it.
+      if (symbols.some(s => s.name === name && s.kind === 'type')) {
+        return { kind: 'type', name };
+      }
     }
     return null;
+  }
+
+  // findReceiverMembers filters symbols by a (kind: 'library' | 'type')
+  // context. Used by every provider that needs the members of a dot
+  // receiver so the filter predicate cannot drift between them.
+  function findReceiverMembers(ctx: ReceiverContext): FacetSymbol[] {
+    if (ctx.kind === 'library') {
+      // Library exports: things declared in the library, no receiver.
+      return symbols.filter(s => s.library === ctx.namespace && !s.receiver);
+    }
+    // Instance members: methods and fields on the named type.
+    return symbols.filter(s => s.receiver === ctx.name);
   }
 
   // findCallSymbols returns the symbols that match a call expression's
   // function name. callText is what sits before the open paren (or
   // before the dot for member access). All providers route call-site
   // lookup through this so completion, signature help, hover, and
-  // param-name completion agree on identity.
+  // param-name completion agree on identity. When the receiver cannot
+  // resolve, returns empty — the noisy bare-name fallback would mix
+  // methods from arbitrary receivers into hint popups.
   function findCallSymbols(callText: string): FacetSymbol[] {
     const dotIdx = callText.lastIndexOf('.');
     if (dotIdx < 0) {
@@ -761,15 +862,43 @@ export function createEditor(
     const receiverText = callText.slice(0, dotIdx);
     const name = callText.slice(dotIdx + 1);
     const ctx = resolveReceiverContext(receiverText);
-    if (ctx?.kind === 'library') {
-      return symbols.filter(s => s.name === name && s.library === ctx.namespace && !s.receiver);
+    if (!ctx) return [];
+    return findReceiverMembers(ctx).filter(s => s.name === name);
+  }
+
+  // resolveSymbolAtCursor returns the symbols matching the token at the
+  // given position. Shared by hover and the Open Documentation action
+  // so they always agree on identity. After a dot, the receiver is
+  // resolved through resolveReceiverContext / findReceiverMembers;
+  // otherwise the in-scope (library === "") matches are preferred over
+  // library-imported ones so a user-defined name shadows an imported
+  // one with the same identifier.
+  function resolveSymbolAtCursor(
+    model: monaco.editor.ITextModel,
+    position: monaco.Position,
+    wordInfo: monaco.editor.IWordAtPosition,
+  ): FacetSymbol[] {
+    const word = wordInfo.word;
+    const lineContent = model.getLineContent(position.lineNumber);
+    const charBefore = wordInfo.startColumn > 1 ? lineContent[wordInfo.startColumn - 2] : '';
+
+    if (charBefore === '.') {
+      const receiverText = effectiveTextBefore(model, position.lineNumber, wordInfo.startColumn - 1);
+      const ctx = resolveReceiverContext(receiverText);
+      if (!ctx) return [];
+      return findReceiverMembers(ctx).filter(s => s.name === word);
     }
-    if (ctx?.kind === 'type') {
-      return symbols.filter(s => s.name === name && s.receiver === ctx.name);
-    }
-    // No context — last-ditch by name so something shows rather than
-    // nothing. Better than silent on a transient checker miss.
-    return symbols.filter(s => s.name === name);
+
+    const byName = symbols.filter(s => s.name === word);
+    const local = byName.filter(s => !s.library);
+    const pool = local.length > 0 ? local : byName;
+    const preferred = pool.find(s => s.kind === 'type' || s.kind === 'keyword')
+      ?? pool.find(s => s.kind === 'function')
+      ?? pool[0];
+    if (!preferred) return [];
+    // Keep the full overload set for the preferred name/kind so the
+    // caller can show every signature.
+    return pool.filter(s => s.kind === preferred.kind);
   }
 
   function symbolToCompletion(
@@ -821,22 +950,9 @@ export function createEditor(
       const textBeforeDot = effectiveTextBefore(_model, position.lineNumber, word.startColumn - 1);
       const ctx = resolveReceiverContext(textBeforeDot);
 
-      let matches: FacetSymbol[];
-      if (ctx?.kind === 'library') {
-        // Library exports: functions and types declared in that library.
-        matches = symbols.filter(s =>
-          s.library === ctx.namespace && !s.receiver &&
-          s.name.toLowerCase().startsWith(prefix)
-        );
-      } else if (ctx?.kind === 'type') {
-        // Instance access: methods and fields on the resolved type.
-        matches = symbols.filter(s =>
-          s.receiver === ctx.name &&
-          s.name.toLowerCase().startsWith(prefix)
-        );
-      } else {
-        matches = [];
-      }
+      const matches: FacetSymbol[] = ctx
+        ? findReceiverMembers(ctx).filter(s => s.name.toLowerCase().startsWith(prefix))
+        : [];
       // Same (name, kind) can appear in multiple overloads. Collapse
       // for the suggestion list — sig-help shows the overload set
       // once the user picks one.
@@ -939,11 +1055,15 @@ export function createEditor(
   // open paren of a function call, counting commas at depth 0 so
   // signature help and param-name completion agree on what arg slot
   // the cursor is in. Returns null when the cursor is not inside a
-  // call (e.g., inside an array literal).
+  // call (e.g., inside an array literal). String literals and line
+  // comments are skipped via buildCodeMask so a `(` in `"look (here"`
+  // doesn't get matched as the call's opener.
   function walkBackToCall(before: string): { parenStart: number; commas: number } | null {
+    const mask = buildCodeMask(before);
     let depth = 0;
     let commas = 0;
     for (let i = before.length - 1; i >= 0; i--) {
+      if (!mask[i]) continue;
       const ch = before[i];
       if (ch === ')' || ch === ']') depth++;
       else if (ch === '(' || ch === '[') {
@@ -973,21 +1093,22 @@ export function createEditor(
       const callName = nameMatch[1];
 
       // Collect ALL overloads of the matched symbols. The checker
-      // emits one Symbol per declaration; dedup by signature so the
-      // popup doesn't show duplicates when the same function appears
-      // in multiple lookup paths.
+      // emits one Symbol per declaration; dedup by (library, signature)
+      // so two libraries that happen to mirror the same shape don't
+      // silently collapse into one entry.
       const matches = findCallSymbols(callName).filter(s => s.signature);
       if (matches.length === 0) return null;
 
       const seenSigs = new Set<string>();
       const signatures: monaco.languages.SignatureInformation[] = [];
       for (const s of matches) {
-        if (!s.signature || seenSigs.has(s.signature)) continue;
-        seenSigs.add(s.signature);
-        const sigMatch = s.signature.match(/\(([^)]*)\)/);
-        if (!sigMatch) continue;
-        const paramStr = sigMatch[1].trim();
-        const params = paramStr ? paramStr.split(',').map(p => p.trim()) : [];
+        if (!s.signature) continue;
+        const key = (s.library || '') + '|' + s.signature;
+        if (seenSigs.has(key)) continue;
+        seenSigs.add(key);
+        const paramStr = extractParamBody(s.signature);
+        if (paramStr === null) continue;
+        const params = splitParams(paramStr);
         signatures.push({
           label: s.signature,
           documentation: s.doc || '',
@@ -1039,19 +1160,20 @@ export function createEditor(
       if (!nameMatch) return { suggestions: [] };
       const callName = nameMatch[1];
 
-      // Collect param names across all matching overloads.
+      // Collect param names across all matching overloads. Facet's
+      // FormatSignature on the Go side emits `name Type` (optionally
+      // followed by ` = default`), so the param name is the FIRST
+      // identifier in each spec. Splitting on `,` respects nested
+      // parens via splitParams so a default like `Vec3(1, 2, 3)`
+      // doesn't fragment.
       const paramNames: string[] = [];
       const seenNames = new Set<string>();
       for (const s of findCallSymbols(callName)) {
         if (!s.signature) continue;
-        const sigMatch = s.signature.match(/\(([^)]*)\)/);
-        if (!sigMatch) continue;
-        const paramStr = sigMatch[1].trim();
+        const paramStr = extractParamBody(s.signature);
         if (!paramStr) continue;
-        for (const p of paramStr.split(',').map(x => x.trim())) {
-          // Last identifier in each param spec is the param name —
-          // works for "Type name" and "name Type" alike.
-          const idMatch = p.match(/([A-Za-z_]\w*)\s*$/);
+        for (const p of splitParams(paramStr)) {
+          const idMatch = p.match(/^\s*([A-Za-z_]\w*)/);
           if (!idMatch) continue;
           const pname = idMatch[1];
           if (seenNames.has(pname)) continue;
@@ -1091,13 +1213,9 @@ export function createEditor(
   });
 
   // Hover tooltips — show signature and doc for functions, methods,
-  // types, fields, and keywords.
-  //
-  // The lookup uses the same (name, library, receiver) identity the
-  // completion provider uses: if the cursor is on a dotted reference,
-  // the receiver text resolves through resolveReceiverContext exactly
-  // as in completion; if it's a bare identifier, we prefer
-  // type/keyword entries so `x Number` doesn't surface the function.
+  // types, fields, and keywords. Identity resolution is shared with
+  // the Open Documentation action via resolveSymbolAtCursor, so the
+  // two cannot disagree about which symbol the cursor points at.
   //
   // For local bindings (params, vars) there is no Symbol, but the
   // checker has stamped a reference whose returnType is the declared
@@ -1109,36 +1227,7 @@ export function createEditor(
       if (!wordInfo) return null;
       const word = wordInfo.word;
 
-      const lineContent = model.getLineContent(position.lineNumber);
-      const charBefore = wordInfo.startColumn > 1 ? lineContent[wordInfo.startColumn - 2] : '';
-
-      // Find the matching symbol(s). After a dot, resolve the
-      // receiver and filter; otherwise prefer type/keyword over
-      // function so bare-name disambiguation does the right thing.
-      let matches: FacetSymbol[];
-      if (charBefore === '.') {
-        const receiverText = effectiveTextBefore(model, position.lineNumber, wordInfo.startColumn - 1);
-        const ctx = resolveReceiverContext(receiverText);
-        if (ctx?.kind === 'library') {
-          matches = symbols.filter(s => s.name === word && s.library === ctx.namespace && !s.receiver);
-        } else if (ctx?.kind === 'type') {
-          matches = symbols.filter(s => s.name === word && s.receiver === ctx.name);
-        } else {
-          matches = symbols.filter(s => s.name === word);
-        }
-      } else {
-        const byName = symbols.filter(s => s.name === word);
-        const preferred = byName.find(s => s.kind === 'type' || s.kind === 'keyword')
-          ?? byName.find(s => s.kind === 'function')
-          ?? byName[0];
-        // Keep the full overload set for the preferred name/kind so
-        // the popup can show every signature.
-        if (preferred) {
-          matches = byName.filter(s => s.kind === preferred.kind);
-        } else {
-          matches = [];
-        }
-      }
+      const matches = resolveSymbolAtCursor(model, position, wordInfo);
 
       // No symbol match — try the local-binding fallback via the
       // checker's references map. Params, vars, and field accesses
@@ -1159,16 +1248,20 @@ export function createEditor(
         return null;
       }
 
-      // Collect overload signatures (deduped). Documentation comes
-      // from the first symbol that has one — overloads typically
-      // share a comment block.
+      // Collect overload signatures (deduped per library so two libs
+      // exporting the same signature don't silently collapse).
+      // Documentation comes from the first symbol that has one —
+      // overloads typically share a comment block.
       const overloads: string[] = [];
       const seenSigs = new Set<string>();
       let docText = '';
       for (const s of matches) {
-        if (s.signature && !seenSigs.has(s.signature)) {
-          seenSigs.add(s.signature);
-          overloads.push(s.signature);
+        if (s.signature) {
+          const key = (s.library || '') + '|' + s.signature;
+          if (!seenSigs.has(key)) {
+            seenSigs.add(key);
+            overloads.push(s.signature);
+          }
         }
         if (!docText && s.doc) docText = s.doc;
       }
@@ -1305,7 +1398,19 @@ export function createEditor(
     },
 
     updateSymbols(syms: FacetSymbol[]) {
-      symbols = syms;
+      // Defensive: a malformed entry from the backend would corrupt
+      // every provider that filters by name. Drop anything missing a
+      // name rather than silently producing wrong suggestions.
+      symbols = Array.isArray(syms) ? syms.filter(s => typeof s?.name === 'string' && s.name.length > 0) : [];
+    },
+
+    updateMainKey(key: string) {
+      // The backend stamps DeclLocation.File="" for declarations in
+      // the eval entry source. The hover provider's references-map
+      // lookup normalises `currentSourceKey === mainKey` to "" so the
+      // key shape matches — if mainKey lags behind the entry that
+      // actually produced the references, the lookup misses.
+      mainKey = key;
     },
 
     updateVarTypes(types: Record<string, Record<string, string>>) {
