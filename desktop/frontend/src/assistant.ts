@@ -1,6 +1,38 @@
 import { EventsOn } from '../wailsjs/runtime/runtime';
-import { SendAssistantMessage, CancelAssistant, ClearAssistantHistory, PickImageFile, DetectAssistantCLIs }
+import { SendAssistantMessage, CancelAssistant, ClearAssistantHistory, PickImageFile, DetectAssistantCLIs, AnswerAssistantQuestion, DeliverViewportScreenshot }
   from '../wailsjs/go/main/App';
+
+interface AssistantQuestionOption {
+  label: string;
+  description?: string;
+}
+
+interface AssistantQuestion {
+  question: string;
+  header: string;
+  options: AssistantQuestionOption[];
+  multiSelect?: boolean;
+}
+
+interface AssistantQuestionPayload {
+  id: string;
+  questions: AssistantQuestion[];
+}
+
+interface AssistantScreenshotRequest {
+  id: string;
+}
+
+type AssistantTaskStatus = 'pending' | 'in_progress' | 'completed';
+
+interface AssistantTaskItem {
+  content: string;
+  status: AssistantTaskStatus;
+}
+
+interface AssistantTaskPlanPayload {
+  tasks: AssistantTaskItem[];
+}
 
 export class AssistantPanel {
   private container: HTMLElement;
@@ -33,6 +65,11 @@ export class AssistantPanel {
   private offReplaceCode: (() => void) | null = null;
   private offNewFile: (() => void) | null = null;
   private offThinking: (() => void) | null = null;
+  private offQuestion: (() => void) | null = null;
+  private offScreenshot: (() => void) | null = null;
+  private offTaskPlan: (() => void) | null = null;
+  private taskPlanDiv: HTMLElement | null = null;
+  private captureScreenshot: (() => string | null) | null = null;
 
   constructor(
     container: HTMLElement,
@@ -42,6 +79,7 @@ export class AssistantPanel {
     onApplyCode: (newCode: string, searchFor?: string) => void,
     onSetEditorSilent: (newCode: string) => void,
     onNewFile: (name: string, code: string) => void,
+    captureScreenshot?: () => string | null,
   ) {
     this.container = container;
     this.getEditorCode = getEditorCode;
@@ -50,6 +88,7 @@ export class AssistantPanel {
     this.onApplyCode = onApplyCode;
     this.onSetEditorSilent = onSetEditorSilent;
     this.onNewFile = onNewFile;
+    this.captureScreenshot = captureScreenshot ?? null;
 
     this.panel = document.createElement('div');
     this.panel.id = 'assistant-panel';
@@ -214,9 +253,48 @@ export class AssistantPanel {
     this.offError = EventsOn('assistant:error', (msg: string) => {
       this.showError(msg);
     });
-    // MCP tool-use indicator
+    // MCP tool-use indicator. Some tools have their own UI affordances
+    // (question card, task plan, screenshot flash) — suppress the
+    // generic indicator for those so we don't show a spurious
+    // "<tool_name>..." line before the real UI lands.
     this.offToolUse = EventsOn('assistant:tool-use', (toolName: string, callNum: number) => {
+      if (toolName === 'ask_user_question' || toolName === 'update_task_plan' || toolName === 'screenshot_viewport') return;
       this.showToolUseIndicator(toolName, callNum);
+    });
+    // ask_user_question MCP tool — render an interactive multiple-choice
+    // card. The backend blocks the model on a channel until the user
+    // submits, at which point AnswerAssistantQuestion routes the answer
+    // back as the tool's JSON result.
+    this.offQuestion = EventsOn('assistant:question', (payload: AssistantQuestionPayload) => {
+      this.showQuestion(payload);
+    });
+    // screenshot_viewport MCP tool — capture the live viewport and hand
+    // the PNG back to the blocked tool handler. captureScreenshot is
+    // optional (the test harness wires no viewer); fail explicitly so
+    // the model gets a clear tool error instead of hanging.
+    this.offScreenshot = EventsOn('assistant:screenshot-request', async (payload: AssistantScreenshotRequest) => {
+      if (!payload?.id) return;
+      if (!this.captureScreenshot) {
+        try { await DeliverViewportScreenshot(payload.id, '', 'no viewport available'); } catch {}
+        return;
+      }
+      let dataURL: string | null = null;
+      let err = '';
+      try {
+        dataURL = this.captureScreenshot();
+      } catch (e: any) {
+        err = e?.message || String(e);
+      }
+      try {
+        await DeliverViewportScreenshot(payload.id, dataURL ?? '', err || (dataURL ? '' : 'capture returned no data'));
+      } catch (e) {
+        console.warn('DeliverViewportScreenshot failed:', e);
+      }
+    });
+    // update_task_plan MCP tool — render or update the task list. One-way;
+    // each call REPLACES the rendered list (the model sends full state).
+    this.offTaskPlan = EventsOn('assistant:task-plan', (payload: AssistantTaskPlanPayload) => {
+      this.renderTaskPlan(payload?.tasks ?? []);
     });
     // MCP-driven code changes — update editor only, Go handles the build.
     // Reject if the active tab is read-only: the backend guards already
@@ -246,6 +324,9 @@ export class AssistantPanel {
     if (this.offReplaceCode) { this.offReplaceCode(); this.offReplaceCode = null; }
     if (this.offNewFile) { this.offNewFile(); this.offNewFile = null; }
     if (this.offThinking) { this.offThinking(); this.offThinking = null; }
+    if (this.offQuestion) { this.offQuestion(); this.offQuestion = null; }
+    if (this.offScreenshot) { this.offScreenshot(); this.offScreenshot = null; }
+    if (this.offTaskPlan) { this.offTaskPlan(); this.offTaskPlan = null; }
   }
 
   private async pickImage(): Promise<void> {
@@ -406,6 +487,250 @@ export class AssistantPanel {
       this.toolUseDiv.remove();
       this.toolUseDiv = null;
     }
+  }
+
+  // renderTaskPlan updates the task-list card in place. The model
+  // sends the FULL list each call, but we diff against the existing
+  // DOM rather than wipe-and-rebuild — recreating the card on every
+  // update causes a visible flicker, which read as "didn't update in
+  // real time" the first time around. Per-item icon/text/class
+  // changes are visually obvious thanks to the pulsing in_progress
+  // glyph in CSS, so the user can see exactly which step moved.
+  private renderTaskPlan(tasks: AssistantTaskItem[]): void {
+    if (tasks.length === 0) {
+      if (this.taskPlanDiv) {
+        this.taskPlanDiv.remove();
+        this.taskPlanDiv = null;
+      }
+      return;
+    }
+
+    let card = this.taskPlanDiv;
+    let list: HTMLOListElement;
+    if (!card || !card.parentElement) {
+      card = document.createElement('div');
+      card.className = 'assistant-task-plan';
+      const heading = document.createElement('div');
+      heading.className = 'assistant-task-plan-heading';
+      heading.textContent = 'Plan';
+      card.appendChild(heading);
+      list = document.createElement('ol');
+      list.className = 'assistant-task-list';
+      card.appendChild(list);
+      this.taskPlanDiv = card;
+      this.messagesDiv.appendChild(card);
+    } else {
+      list = card.querySelector('.assistant-task-list') as HTMLOListElement;
+    }
+
+    const icons: Record<AssistantTaskStatus, string> = {
+      pending: '○',
+      in_progress: '▸',
+      completed: '✓',
+    };
+
+    // Update or create rows in order. Any extras left over from a
+    // longer previous list get removed below.
+    const existing = list.querySelectorAll<HTMLElement>('.assistant-task');
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      let li = existing[i];
+      let icon: HTMLElement;
+      let txt: HTMLElement;
+      if (!li) {
+        li = document.createElement('li');
+        icon = document.createElement('span');
+        icon.className = 'assistant-task-icon';
+        txt = document.createElement('span');
+        txt.className = 'assistant-task-text';
+        li.appendChild(icon);
+        li.appendChild(txt);
+        list.appendChild(li);
+      } else {
+        icon = li.children[0] as HTMLElement;
+        txt = li.children[1] as HTMLElement;
+      }
+      const newClass = `assistant-task assistant-task-${t.status}`;
+      if (li.className !== newClass) li.className = newClass;
+      const newIcon = icons[t.status];
+      if (icon.textContent !== newIcon) icon.textContent = newIcon;
+      if (txt.textContent !== t.content) txt.textContent = t.content;
+    }
+    for (let i = tasks.length; i < existing.length; i++) {
+      existing[i].remove();
+    }
+    this.scrollToBottom();
+  }
+
+  // showQuestion renders an interactive multiple-choice card from the
+  // ask_user_question payload. Each question gets 2-4 options plus an
+  // automatic "Other" entry that reveals a free-text input. The model
+  // is blocked on a channel in the MCP layer; once Submit is clicked,
+  // AnswerAssistantQuestion routes the selections back as the tool's
+  // result and the card locks into a read-only summary.
+  private showQuestion(payload: AssistantQuestionPayload): void {
+    if (!payload?.questions?.length) return;
+    this.finalizeCurrentMessage();
+    this.removeToolUseIndicator();
+    this.removeThinking();
+
+    const card = document.createElement('div');
+    card.className = 'assistant-question-card';
+
+    // Per-question UI state. `selected` is a Set so multiSelect questions
+    // can toggle multiple labels; single-select questions just keep one.
+    const state = payload.questions.map(() => ({
+      selected: new Set<string>(),
+      otherText: '',
+      otherActive: false,
+    }));
+
+    const otherInputs: HTMLTextAreaElement[] = [];
+
+    payload.questions.forEach((q, qi) => {
+      const block = document.createElement('div');
+      block.className = 'assistant-question-block';
+
+      const headerRow = document.createElement('div');
+      headerRow.className = 'assistant-question-header';
+      if (q.header) {
+        const chip = document.createElement('span');
+        chip.className = 'assistant-question-chip';
+        chip.textContent = q.header;
+        headerRow.appendChild(chip);
+      }
+      const qText = document.createElement('span');
+      qText.className = 'assistant-question-text';
+      qText.textContent = q.question;
+      headerRow.appendChild(qText);
+      block.appendChild(headerRow);
+
+      const otherInput = document.createElement('textarea');
+      otherInput.className = 'assistant-question-other';
+      otherInput.placeholder = 'Your answer...';
+      otherInput.rows = 2;
+      otherInput.style.display = 'none';
+      otherInput.addEventListener('input', () => {
+        state[qi].otherText = otherInput.value;
+      });
+      otherInputs.push(otherInput);
+
+      const opts = document.createElement('div');
+      opts.className = 'assistant-question-options';
+      // Always append a synthetic "Other" so the user can supply free
+      // text even when none of the model's options fit. Matching the
+      // built-in AskUserQuestion convention.
+      const allOptions: AssistantQuestionOption[] = [
+        ...q.options,
+        { label: 'Other', description: 'Provide custom text' },
+      ];
+
+      allOptions.forEach((opt) => {
+        const optBtn = document.createElement('button');
+        optBtn.type = 'button';
+        optBtn.className = 'assistant-question-option';
+
+        const labelEl = document.createElement('div');
+        labelEl.className = 'assistant-question-option-label';
+        labelEl.textContent = opt.label;
+        optBtn.appendChild(labelEl);
+
+        if (opt.description) {
+          const descEl = document.createElement('div');
+          descEl.className = 'assistant-question-option-desc';
+          descEl.textContent = opt.description;
+          optBtn.appendChild(descEl);
+        }
+
+        optBtn.addEventListener('click', () => {
+          const isOther = opt.label === 'Other';
+          if (q.multiSelect) {
+            if (state[qi].selected.has(opt.label)) {
+              state[qi].selected.delete(opt.label);
+              optBtn.classList.remove('selected');
+            } else {
+              state[qi].selected.add(opt.label);
+              optBtn.classList.add('selected');
+            }
+          } else {
+            state[qi].selected.clear();
+            state[qi].selected.add(opt.label);
+            opts.querySelectorAll('.assistant-question-option').forEach(b => b.classList.remove('selected'));
+            optBtn.classList.add('selected');
+          }
+          if (isOther) {
+            state[qi].otherActive = state[qi].selected.has('Other');
+            otherInput.style.display = state[qi].otherActive ? 'block' : 'none';
+            if (state[qi].otherActive) otherInput.focus();
+          }
+        });
+
+        opts.appendChild(optBtn);
+      });
+
+      block.appendChild(opts);
+      block.appendChild(otherInput);
+      card.appendChild(block);
+    });
+
+    const footer = document.createElement('div');
+    footer.className = 'assistant-question-footer';
+    const errMsg = document.createElement('span');
+    errMsg.className = 'assistant-question-error';
+    footer.appendChild(errMsg);
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'assistant-question-submit';
+    submitBtn.textContent = 'Submit';
+    footer.appendChild(submitBtn);
+    card.appendChild(footer);
+
+    this.messagesDiv.appendChild(card);
+    this.scrollToBottom();
+
+    submitBtn.addEventListener('click', async () => {
+      // Validate: every question needs at least one selection, and
+      // "Other" requires non-empty text. Short-circuit on the first
+      // failure with an inline message; don't lock the card.
+      for (let qi = 0; qi < payload.questions.length; qi++) {
+        if (state[qi].selected.size === 0) {
+          errMsg.textContent = `Pick an option for: ${payload.questions[qi].header || payload.questions[qi].question}`;
+          return;
+        }
+        if (state[qi].selected.has('Other') && !state[qi].otherText.trim()) {
+          errMsg.textContent = `Type a custom answer for: ${payload.questions[qi].header || payload.questions[qi].question}`;
+          otherInputs[qi].focus();
+          return;
+        }
+      }
+      errMsg.textContent = '';
+
+      const answers: Record<string, string> = {};
+      const notes: Record<string, string> = {};
+      payload.questions.forEach((q, qi) => {
+        const sel = Array.from(state[qi].selected);
+        // Replace 'Other' with the user's free text in the answer
+        // string (so the model sees the actual choice), and stash the
+        // original text in notes for reference.
+        const finalLabels = sel.map(l => l === 'Other' ? state[qi].otherText.trim() : l);
+        answers[q.question] = finalLabels.join(', ');
+        if (state[qi].otherActive && state[qi].otherText.trim()) {
+          notes[q.question] = state[qi].otherText.trim();
+        }
+      });
+
+      // Lock the card and disable further input.
+      card.classList.add('answered');
+      card.querySelectorAll('button, textarea').forEach(el => (el as HTMLButtonElement | HTMLTextAreaElement).disabled = true);
+      submitBtn.textContent = 'Sent';
+      this.showThinking();
+
+      try {
+        await AnswerAssistantQuestion(payload.id, answers, notes);
+      } catch (err: any) {
+        this.showError(`Failed to send answer: ${err?.message || err}`);
+      }
+    });
   }
 
   private appendToken(token: string): void {

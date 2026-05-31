@@ -2597,6 +2597,202 @@ mark.search-highlight {
   font-style: normal;
 }
 
+/* ── ask_user_question interactive card ───────────────────────────── */
+.assistant-question-card {
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid var(--ui-border, #d0d0d0);
+  border-radius: 6px;
+  background: var(--ui-bg-soft, rgba(255, 255, 255, 0.04));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.assistant-question-card.answered {
+  opacity: 0.7;
+}
+.assistant-question-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.assistant-question-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.assistant-question-chip {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 15%, transparent);
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.assistant-question-text {
+  font-size: 13px;
+  color: var(--ui-text);
+  line-height: 1.4;
+}
+.assistant-question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.assistant-question-option {
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-border, #d0d0d0);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  transition: background 0.12s, border-color 0.12s;
+}
+.assistant-question-option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ui-accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent) 40%, var(--ui-border, #d0d0d0));
+}
+.assistant-question-option.selected {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 15%, transparent);
+}
+.assistant-question-option:disabled {
+  cursor: default;
+}
+.assistant-question-option-label {
+  font-weight: 500;
+}
+.assistant-question-option-desc {
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+.assistant-question-other {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--ui-border, #d0d0d0);
+  border-radius: 4px;
+  background: var(--ui-bg-soft, transparent);
+  color: var(--ui-text);
+  font-family: inherit;
+  font-size: 12px;
+  resize: vertical;
+  margin-top: 4px;
+}
+.assistant-question-other:focus {
+  outline: none;
+  border-color: var(--ui-accent);
+}
+.assistant-question-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+.assistant-question-error {
+  color: var(--ui-error, #c44);
+  font-size: 11px;
+}
+.assistant-question-submit {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  background: var(--ui-accent);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.assistant-question-submit:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.assistant-question-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ── update_task_plan checklist card ───────────────────────────────── */
+.assistant-task-plan {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border, #d0d0d0);
+  border-left: 3px solid var(--ui-accent);
+  border-radius: 6px;
+  background: var(--ui-bg-soft, rgba(255, 255, 255, 0.04));
+  font-size: 12px;
+}
+.assistant-task-plan-heading {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ui-text-muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.assistant-task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.assistant-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.4;
+}
+.assistant-task-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--ui-text-muted);
+}
+.assistant-task-text {
+  flex: 1;
+  color: var(--ui-text);
+}
+.assistant-task-pending .assistant-task-text {
+  color: var(--ui-text-muted);
+}
+.assistant-task-in_progress .assistant-task-icon,
+.assistant-task-in_progress .assistant-task-text {
+  color: var(--ui-accent);
+  font-weight: 500;
+}
+.assistant-task-in_progress .assistant-task-icon {
+  animation: assistant-task-pulse 1.4s ease-in-out infinite;
+}
+@keyframes assistant-task-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.assistant-task-icon,
+.assistant-task-text {
+  transition: color 0.18s ease-out;
+}
+.assistant-task-completed .assistant-task-icon {
+  color: var(--ui-success, #2a7e3b);
+}
+.assistant-task-completed .assistant-task-text {
+  color: var(--ui-text-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
 /* ── Kinetic Monolith: Additional Design System Rules ── */
 
 /* Settings inputs — focus states */

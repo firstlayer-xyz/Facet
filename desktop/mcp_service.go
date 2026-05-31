@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -217,6 +218,45 @@ type formatCodeInput struct {
 	Source string `json:"source,omitempty" jsonschema:"Source code to format. Omit to format the current editor code."`
 }
 
+// askUserQuestionInput mirrors the schema of Claude Code's built-in
+// AskUserQuestion tool so the model uses this one the same way: a list of
+// 1-4 self-contained questions, each with 2-4 mutually-exclusive options.
+// The tool handler returns the user's selections (one label per question,
+// or several when MultiSelect is true) as JSON.
+type askUserQuestionInput struct {
+	Questions []askQuestion `json:"questions" jsonschema:"List of 1-4 questions to ask the user. Each question is self-contained; do not assume the user remembers context from earlier ones."`
+}
+
+type askQuestion struct {
+	Question    string      `json:"question" jsonschema:"The full question text. End with a question mark."`
+	Header      string      `json:"header" jsonschema:"Very short label shown as a chip/tag (max ~12 characters), e.g. 'Auth method', 'Library', 'Approach'."`
+	Options     []askOption `json:"options" jsonschema:"2-4 distinct, mutually-exclusive options. No 'Other' — the UI adds it automatically so the user can supply free text."`
+	MultiSelect bool        `json:"multiSelect,omitempty" jsonschema:"Set true to let the user pick multiple options. Default false (single-select)."`
+}
+
+type askOption struct {
+	Label       string `json:"label" jsonschema:"Concise label shown on the option button (1-5 words)."`
+	Description string `json:"description,omitempty" jsonschema:"One-line explanation of what selecting this option means."`
+}
+
+// screenshotViewportInput is empty: the tool always captures the live
+// viewport. No camera angle, no resolution — the user picks the view;
+// the model just looks at what's on screen.
+type screenshotViewportInput struct{}
+
+// updateTaskPlanInput renders the model's working task list in the
+// assistant panel so the user can see step-by-step progress on a
+// multi-turn build. Pass the FULL list each call — the panel replaces
+// its state, it does not merge or append.
+type updateTaskPlanInput struct {
+	Tasks []taskItem `json:"tasks" jsonschema:"Full task list (replaces any previous list). One entry per discrete step the model intends to do; mark each with its current status."`
+}
+
+type taskItem struct {
+	Content string `json:"content" jsonschema:"Short imperative description of the step, e.g. 'Model the pawn base'."`
+	Status  string `json:"status" jsonschema:"One of: 'pending' (not started), 'in_progress' (current step), 'completed' (finished)."`
+}
+
 // HTTPAuth is the payload returned to the frontend so it can authenticate
 // requests to the localhost HTTP server.
 type HTTPAuth struct {
@@ -237,6 +277,41 @@ type MCPService struct {
 	port     int
 	token    string
 	eventCtx context.Context
+
+	// In-flight ask_user_question calls. Each tool invocation parks a
+	// goroutine on its channel until the frontend reports the answer via
+	// the AssistantAnswerQuestion Wails binding (which calls AnswerQuestion
+	// below). Keyed by a per-call ID emitted to the frontend in the
+	// assistant:question event payload — the frontend echoes it back on
+	// submit so we can route the answer to the right pending call.
+	questionsMu sync.Mutex
+	questions   map[string]chan questionAnswer
+
+	// In-flight screenshot_viewport calls. Same pattern as `questions`
+	// above: tool emits an assistant:screenshot-request event with an id,
+	// blocks on the channel, and the frontend echoes the captured PNG
+	// back via DeliverViewportScreenshot. Raw image bytes (not base64)
+	// land in the channel so the MCP layer can hand them straight to
+	// ImageContent, which re-encodes for the wire.
+	screenshotsMu sync.Mutex
+	screenshots   map[string]chan screenshotResult
+}
+
+// screenshotResult carries the captured viewport PNG (raw bytes) back
+// to the parked tool handler, or an error string if the capture failed
+// (e.g. WebGL context lost).
+type screenshotResult struct {
+	PNG []byte
+	Err string
+}
+
+// questionAnswer carries the user's selections (and any "Other" / notes
+// text) back from the frontend to the parked MCP tool handler. The shape
+// mirrors Claude Code's built-in AskUserQuestion tool so the model can
+// interpret the result without further training.
+type questionAnswer struct {
+	Answers map[string]string `json:"answers"`
+	Notes   map[string]string `json:"notes,omitempty"`
 }
 
 // NewMCPService creates a new MCP service. The HTTP server is not started
@@ -244,11 +319,75 @@ type MCPService struct {
 // on the EvalService so every /eval response updates the lastRun slot.
 func NewMCPService(eval *EvalService) *MCPService {
 	m := &MCPService{
-		eval:  eval,
-		state: newMCPState(),
+		eval:        eval,
+		state:       newMCPState(),
+		questions:   make(map[string]chan questionAnswer),
+		screenshots: make(map[string]chan screenshotResult),
 	}
 	eval.SetRunRecorder(m.RecordRun)
 	return m
+}
+
+// AnswerQuestion resolves the pending ask_user_question call identified by
+// id with the user's selections. Returns an error if no call is waiting
+// (the call may have been cancelled, already answered, or the id may be
+// bogus). Safe to call from any goroutine.
+func (m *MCPService) AnswerQuestion(id string, answers, notes map[string]string) error {
+	m.questionsMu.Lock()
+	ch, ok := m.questions[id]
+	m.questionsMu.Unlock()
+	if !ok {
+		return fmt.Errorf("no pending question with id %q", id)
+	}
+	// Non-blocking send: the channel is buffered with cap 1, and the tool
+	// handler removes itself from m.questions before any second send could
+	// race. A full channel means the answer arrived twice — drop the
+	// duplicate rather than deadlock.
+	select {
+	case ch <- questionAnswer{Answers: answers, Notes: notes}:
+		return nil
+	default:
+		return fmt.Errorf("question %q already answered", id)
+	}
+}
+
+// DeliverScreenshot resolves the pending screenshot_viewport call with
+// the captured PNG. dataURL may be either a raw base64 string or a
+// "data:image/png;base64,..." URL — both are normalised. Pass errMsg
+// non-empty (with png nil) to fail the tool when the frontend can't
+// capture.
+func (m *MCPService) DeliverScreenshot(id, dataURL, errMsg string) error {
+	m.screenshotsMu.Lock()
+	ch, ok := m.screenshots[id]
+	m.screenshotsMu.Unlock()
+	if !ok {
+		return fmt.Errorf("no pending screenshot with id %q", id)
+	}
+
+	var res screenshotResult
+	if errMsg != "" {
+		res.Err = errMsg
+	} else {
+		// Accept both "data:image/png;base64,..." and bare base64. The
+		// frontend's toDataURL produces the former; strip the prefix so
+		// the bytes we hand to ImageContent are the raw PNG.
+		raw := dataURL
+		if i := strings.Index(raw, ","); i >= 0 && strings.HasPrefix(raw, "data:") {
+			raw = raw[i+1:]
+		}
+		decoded, err := base64.StdEncoding.DecodeString(raw)
+		if err != nil {
+			return fmt.Errorf("decode screenshot for %q: %w", id, err)
+		}
+		res.PNG = decoded
+	}
+
+	select {
+	case ch <- res:
+		return nil
+	default:
+		return fmt.Errorf("screenshot %q already delivered", id)
+	}
 }
 
 // Endpoint returns the port and bearer token for the localhost HTTP server.
@@ -512,6 +651,145 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 		}
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: formatter.Format(src)}},
+		}, nil, nil
+	})
+
+	// --- Tool: ask_user_question ---
+	// Mirrors Claude Code's built-in AskUserQuestion. The built-in is
+	// auto-denied when the CLI runs with `-p` (no interactive TTY), so
+	// this tool gives the model a working alternative that surfaces the
+	// question in the assistant panel and blocks until the user answers.
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "ask_user_question",
+		Description: "Use this tool only when you are blocked on a decision that is genuinely the user's to make — one you cannot resolve from the request, the code, or sensible defaults. Each question gets 2-4 mutually-exclusive options; users will always be able to pick 'Other' to provide custom text. Set multiSelect=true when the options are not mutually exclusive. Returns JSON {answers, notes} keyed by the question text.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input askUserQuestionInput) (*mcp.CallToolResult, any, error) {
+		if len(input.Questions) == 0 {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "must supply at least one question"}},
+			}, nil, nil
+		}
+		if len(input.Questions) > 4 {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "max 4 questions per call"}},
+			}, nil, nil
+		}
+		id, err := generateToken()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate question id: %w", err)
+		}
+		// Buffered cap 1 so AnswerQuestion can send without coordinating
+		// with this goroutine's select. Removing the entry from m.questions
+		// before reading guarantees only one send ever lands.
+		ch := make(chan questionAnswer, 1)
+		m.questionsMu.Lock()
+		m.questions[id] = ch
+		m.questionsMu.Unlock()
+		defer func() {
+			m.questionsMu.Lock()
+			delete(m.questions, id)
+			m.questionsMu.Unlock()
+		}()
+
+		wailsRuntime.EventsEmit(m.eventCtx, "assistant:question", map[string]any{
+			"id":        id,
+			"questions": input.Questions,
+		})
+
+		select {
+		case ans := <-ch:
+			body, err := json.Marshal(ans)
+			if err != nil {
+				return nil, nil, fmt.Errorf("marshal answer: %w", err)
+			}
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: string(body)}},
+			}, nil, nil
+		case <-ctx.Done():
+			// Cancellation propagates up through the assistant stream;
+			// surface a brief tool error so the model knows the user
+			// didn't decide.
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "user cancelled before answering"}},
+			}, nil, nil
+		}
+	})
+
+	// --- Tool: screenshot_viewport ---
+	// Returns the live 3D viewport as a PNG so the model can SEE what
+	// the user has rendered. Same channel-block pattern as
+	// ask_user_question: emit an event, park on a buffered channel
+	// until the frontend echoes the captured PNG back via the
+	// DeliverViewportScreenshot Wails binding. The PNG bytes ride
+	// through ImageContent which encodes them base64 on the wire.
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "screenshot_viewport",
+		Description: "Capture the current 3D viewport as a PNG and return it as an image. Use this to verify how your edit actually looks (not just stats) — get_last_run tells you the bounding box and triangle count; this lets you SEE proportions, alignment, and obvious mistakes. Call after each meaningful edit, not constantly.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input screenshotViewportInput) (*mcp.CallToolResult, any, error) {
+		id, err := generateToken()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate screenshot id: %w", err)
+		}
+		ch := make(chan screenshotResult, 1)
+		m.screenshotsMu.Lock()
+		m.screenshots[id] = ch
+		m.screenshotsMu.Unlock()
+		defer func() {
+			m.screenshotsMu.Lock()
+			delete(m.screenshots, id)
+			m.screenshotsMu.Unlock()
+		}()
+
+		wailsRuntime.EventsEmit(m.eventCtx, "assistant:screenshot-request", map[string]any{"id": id})
+
+		select {
+		case res := <-ch:
+			if res.Err != "" {
+				return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{&mcp.TextContent{Text: "viewport capture failed: " + res.Err}},
+				}, nil, nil
+			}
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					&mcp.ImageContent{Data: res.PNG, MIMEType: "image/png"},
+				},
+			}, nil, nil
+		case <-ctx.Done():
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "screenshot cancelled before capture"}},
+			}, nil, nil
+		}
+	})
+
+	// --- Tool: update_task_plan ---
+	// One-way: the model posts its working task list and the assistant
+	// panel renders/updates a checklist. No channel block — the model
+	// can keep working immediately. Each call REPLACES the previous
+	// list; the model is expected to send the complete current state.
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update_task_plan",
+		Description: "Post or update a checklist of steps you intend to do, shown live to the user. Use for multi-step builds (3+ discrete steps) so the user can see progress. Each call REPLACES the list — send the full current state, not a delta. Statuses: 'pending', 'in_progress' (exactly one at a time), 'completed'. Don't use for single-step requests.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input updateTaskPlanInput) (*mcp.CallToolResult, any, error) {
+		// Mild validation: each item needs a status the frontend knows
+		// how to render. Unknown values would silently render as plain
+		// text — better to reject so the model fixes its call.
+		for i, t := range input.Tasks {
+			switch t.Status {
+			case "pending", "in_progress", "completed":
+			default:
+				return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("task %d has invalid status %q (want pending/in_progress/completed)", i, t.Status)}},
+				}, nil, nil
+			}
+		}
+		wailsRuntime.EventsEmit(m.eventCtx, "assistant:task-plan", map[string]any{"tasks": input.Tasks})
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("task plan updated (%d items)", len(input.Tasks))}},
 		}, nil, nil
 	})
 
