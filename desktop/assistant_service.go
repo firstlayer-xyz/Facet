@@ -305,7 +305,14 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 	// "exit status 1" message.
 	var streamErr string
 	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
+	// 64 MiB max line. Stream-json events bundle entire tool_result
+	// payloads, so a single line can grow with whatever the largest
+	// tool returns: screenshot_viewport hands back base64 PNGs that
+	// for a 4K canvas can land around 15-20 MiB; the 1 MiB default
+	// surfaced as "bufio.Scanner: token too long" and dropped the
+	// whole stream. 64 MiB covers any plausible canvas without an
+	// unbounded buffer.
+	scanner.Buffer(make([]byte, 0, 256*1024), 64*1024*1024)
 
 	for scanner.Scan() {
 		if ctx.Err() != nil {

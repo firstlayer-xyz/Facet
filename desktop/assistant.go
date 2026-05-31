@@ -245,6 +245,24 @@ func (a *App) ClearAssistantHistory() {
 	a.assistant.ClearHistory()
 }
 
+// AnswerAssistantQuestion routes a user's selections from the question
+// card back to the in-flight ask_user_question MCP tool call identified
+// by id. answers maps each question text to the chosen label; notes maps
+// each question to optional free-text (from the "Other" option or a
+// notes field). Returns an error if no call is waiting for that id.
+func (a *App) AnswerAssistantQuestion(id string, answers map[string]string, notes map[string]string) error {
+	return a.mcp.AnswerQuestion(id, answers, notes)
+}
+
+// DeliverViewportScreenshot delivers a captured viewport PNG back to
+// the parked screenshot_viewport MCP tool call. dataURL is the canvas
+// toDataURL output ("data:image/png;base64,..."); pass errMsg
+// non-empty (with dataURL empty) to fail the tool when the frontend
+// could not capture the frame.
+func (a *App) DeliverViewportScreenshot(id, dataURL, errMsg string) error {
+	return a.mcp.DeliverScreenshot(id, dataURL, errMsg)
+}
+
 // curatedExamples lists the example filenames included in the AI system prompt.
 // Selected for broad feature coverage: text/extrusion, constrained vars,
 // CSG composition, symmetry/mirroring, mesh manipulation, and procedural generation.

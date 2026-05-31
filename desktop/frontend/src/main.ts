@@ -147,6 +147,10 @@ const assistantPanel = new AssistantPanel(
   (name: string, code: string) => {
     assistantCreateFile(name, code).catch(err => showError(err));
   },
+  // Viewport capture for the screenshot_viewport MCP tool. The viewer
+  // already runs WebGL with preserveDrawingBuffer; toDataURL is safe to
+  // call any time without an extra render pass.
+  () => viewer.captureScreenshot(),
 );
 
 // Async init — loadSettings reads from Go backend
