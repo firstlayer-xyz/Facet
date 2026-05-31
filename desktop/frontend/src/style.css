@@ -3236,3 +3236,21 @@ mark.search-highlight {
   font-family: 'JetBrains Mono', monospace;
   font-style: italic;
 }
+
+/* ── Drawer stack ───────────────────────────────────────────────────────
+   Right-edge overlay for the docs + assistant drawers. Absolute-positioned
+   so it doesn't share horizontal space budget with editor/canvas. Drawers
+   live inside this container as flex children; resizers live alongside
+   their drawers and toggle in lockstep via the `.open` class.
+*/
+#drawer-stack {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: row;
+  z-index: 30;
+  pointer-events: none;       /* gaps / empty container don't intercept clicks */
+}
+#drawer-stack > * { pointer-events: auto; }

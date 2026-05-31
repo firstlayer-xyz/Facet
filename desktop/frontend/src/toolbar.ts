@@ -382,4 +382,12 @@ docsResizer.id = 'docs-resizer';
 docsResizer.style.display = 'none';
 viewportPanel.appendChild(docsResizer);
 
+// Top-level overlay container for the right-edge drawers (docs + assistant).
+// Lives directly under #app so it overlays editor + canvas via absolute
+// position rather than competing with them for horizontal flex space.
+// Drawers are permanent children — `.open` class toggles visibility.
+export const drawerStack = document.createElement('div');
+drawerStack.id = 'drawer-stack';
+app.appendChild(drawerStack);
+
 export { app };
