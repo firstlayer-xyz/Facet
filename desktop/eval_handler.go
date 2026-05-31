@@ -145,9 +145,19 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 	if docSrc := prog.Sources[req.Key]; docSrc != nil {
 		docText = docSrc.Text
 	}
+	// Normalise import paths to the namespace shape DocEntry.Library
+	// uses: `host/user/repo[/subpath]`, no `@ref`. The raw keys in
+	// prog.Imports carry the ref (e.g. "github.com/foo/bar/m@main"),
+	// which would never match the ref-free library names on doc
+	// entries — so the filter would drop every library entry and the
+	// editor's `T.<dot>` completion would have nothing to suggest.
 	importedLibs := make(map[string]bool, len(prog.Imports))
 	for importPath := range prog.Imports {
-		importedLibs[importPath] = true
+		ns := loader.LibPathToNamespace(importPath)
+		if ns == "" {
+			continue
+		}
+		importedLibs[ns] = true
 	}
 	docIndex := buildDocIndex(docText, importedLibs)
 

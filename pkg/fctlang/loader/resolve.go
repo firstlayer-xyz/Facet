@@ -47,6 +47,33 @@ func NewProgram() Program {
 // Std returns the standard library source, or nil if not set.
 func (p Program) Std() *parser.Source { return p.Sources[StdlibPath] }
 
+// LibPathToNamespace maps a raw `lib "..."` import path to the
+// canonical namespace string that identifies the library at the type
+// and documentation level: `host/user/repo[/subpath]` for remote refs,
+// or the raw path for local libraries.
+//
+// The `@ref` portion is *intentionally* dropped — it controls which
+// tree the loader resolves to, but it isn't part of the library's
+// identity. Both the checker (when typing a `var T = lib "..."`
+// binding) and the doc layer use this shape so the editor's
+// completion can match `Library:<namespace>` against
+// `DocEntry.Library`. Returns the raw path on a parse failure or for
+// local libraries.
+func LibPathToNamespace(rawPath string) string {
+	lp, err := ParseLibPath(rawPath)
+	if err != nil {
+		return rawPath
+	}
+	if lp.IsLocal {
+		return rawPath
+	}
+	ns := lp.Host + "/" + lp.User + "/" + lp.Repo
+	if lp.SubPath != "" {
+		ns = ns + "/" + strings.Trim(lp.SubPath, "/")
+	}
+	return ns
+}
+
 // Resolve maps an import path to its Sources key.
 // If the import path is already a canonical key, returns it unchanged.
 func (p Program) Resolve(importPath string) string {

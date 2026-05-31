@@ -2,7 +2,6 @@ package checker
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -689,23 +688,10 @@ func (c *checker) qualifyStructType(parentQualified, typeName string) string {
 	return ""
 }
 
+// libPathToNamespace forwards to loader.LibPathToNamespace, which owns
+// the canonical mapping. Both this package and the desktop /eval handler
+// use that shared definition so the editor sees one consistent namespace
+// for library-alias completion lookups.
 func libPathToNamespace(rawPath string) string {
-	lp, err := loader.ParseLibPath(rawPath)
-	if err != nil {
-		return rawPath
-	}
-	if lp.IsLocal {
-		return rawPath
-	}
-	// The namespace is the library's identity at the type level —
-	// host/user/repo[/subpath]. The ref (branch/tag/commit) is used by
-	// the loader for resolution but not as part of the namespace, so
-	// the editor's library-alias completion can match these against
-	// DocEntry.Library, which is also ref-free (see doc.go's
-	// BuildCachedLibDocEntries and BuildLibDocEntries).
-	ns := filepath.Join(lp.Host, lp.User, lp.Repo)
-	if lp.SubPath != "" {
-		ns = filepath.Join(ns, lp.SubPath)
-	}
-	return ns
+	return loader.LibPathToNamespace(rawPath)
 }
