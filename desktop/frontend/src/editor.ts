@@ -22,7 +22,7 @@ import 'monaco-editor/esm/vs/editor/contrib/comment/browser/comment';
 import 'monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHints';
 import { registerFacetLanguage } from './facet-language';
 import { registerThemes } from './themes';
-import { ListLibraries, ListLocalLibraries } from '../wailsjs/go/main/App';
+import { ListLibraries, ListLocalLibraries, ListLibraryModules } from '../wailsjs/go/main/App';
 import type { DocEntry } from './docs';
 import type { DeclLocation } from './eval-client';
 
@@ -817,7 +817,48 @@ export function createEditor(
 
       const typed = libMatch[1];
 
-      // Fetch installed libraries
+      // Range covers the text typed so far after the opening quote.
+      const startCol = position.column - typed.length;
+      const range = new monaco.Range(
+        position.lineNumber, startCol,
+        position.lineNumber, position.column,
+      );
+
+      // If the typed path is `host/user/repo/` (or any deeper subpath
+      // ending in a slash), the user is asking for what's *inside* that
+      // repo's tree. Look up modules via ListLibraryModules — the bare
+      // clone may already have them. This is the path that would have
+      // steered the user to `fasteners`, `gears`, etc. instead of
+      // landing on the bare `facetlibs@main` import that doesn't exist.
+      if (typed.endsWith('/')) {
+        const trimmed = typed.replace(/\/+$/, '');
+        // Strip any @ref the user already typed before the slash.
+        const repoID = trimmed.split('@')[0];
+        // ListLibraryModules only knows about `host/user/repo`. A deeper
+        // subpath has no module-listing endpoint — bail to empty.
+        const segments = repoID.split('/').filter(Boolean);
+        if (segments.length === 3) {
+          const modules = await ListLibraryModules(repoID).catch(
+            e => { console.warn('ListLibraryModules failed:', e); return [] as string[]; }
+          );
+          if (modules.length > 0) {
+            return {
+              suggestions: modules.map(m => ({
+                label: m,
+                kind: monaco.languages.CompletionItemKind.Folder,
+                insertText: m,
+                range: new monaco.Range(
+                  position.lineNumber, position.column,
+                  position.lineNumber, position.column,
+                ),
+              })),
+            };
+          }
+        }
+      }
+
+      // Otherwise the user is typing a repo path. Suggest from cached
+      // remote repos + local libs, matching whatever prefix was typed.
       const [remote, local] = await Promise.all([
         ListLibraries().catch(e => { console.warn('ListLibraries failed:', e); return []; }),
         ListLocalLibraries().catch(e => { console.warn('ListLocalLibraries failed:', e); return []; }),
@@ -832,13 +873,6 @@ export function createEditor(
       for (const lib of local) {
         paths.push(lib.id);
       }
-
-      // Range covers the text typed so far after the opening quote
-      const startCol = position.column - typed.length;
-      const range = new monaco.Range(
-        position.lineNumber, startCol,
-        position.lineNumber, position.column,
-      );
 
       const suggestions: monaco.languages.CompletionItem[] = paths
         .filter(p => p.toLowerCase().startsWith(typed.toLowerCase()))
@@ -881,44 +915,173 @@ export function createEditor(
       if (!nameMatch) return null;
       const callName = nameMatch[1];
 
-      // Look up in doc entries — try dotted name first, then bare name
+      // Resolve which DocEntry name(s) apply: dotted form first, then bare.
       const parts = callName.split('.');
       const bareName = parts[parts.length - 1];
-      let entry = docEntries.find(e => e.name === callName && e.signature);
-      if (!entry && parts.length > 1) {
-        // Try receiver lookup: T.Func → look for Type.Func using varTypes
+      const lookupNames: string[] = [callName];
+      if (parts.length > 1) {
         const receiverType = (allVarTypes[currentSourceKey] ?? {})[parts[0]] || parts[0];
-        entry = docEntries.find(e => e.name === receiverType + '.' + bareName && e.signature);
+        lookupNames.push(receiverType + '.' + bareName);
       }
-      if (!entry) {
-        entry = docEntries.find(e => e.name === bareName && e.signature);
+      lookupNames.push(bareName);
+
+      // Collect ALL overloads — every DocEntry whose name matches one of
+      // the candidates and which has a signature. The Go-side doc
+      // extractor (pkg/fctlang/doc/doc.go) emits one DocEntry per
+      // declaration, so overloads arrive as N entries with the same
+      // name+kind and distinct signatures. Without collecting them, the
+      // signature popup would only ever show the first overload.
+      const seenSigs = new Set<string>();
+      const overloadEntries: DocEntry[] = [];
+      for (const name of lookupNames) {
+        for (const e of docEntries) {
+          if (e.name !== name || !e.signature || seenSigs.has(e.signature)) continue;
+          seenSigs.add(e.signature);
+          overloadEntries.push(e);
+        }
+        if (overloadEntries.length > 0) break;  // found by this name; stop falling through
       }
-      if (!entry || !entry.signature) return null;
+      if (overloadEntries.length === 0) return null;
 
-      // Parse signature: "fn Name(Type param, ...) ReturnType" or "fn Name(param, ...)"
-      const sigMatch = entry.signature.match(/\(([^)]*)\)/);
-      if (!sigMatch) return null;
-      const paramStr = sigMatch[1].trim();
-      if (!paramStr) return null;
+      const signatures: monaco.languages.SignatureInformation[] = [];
+      for (const entry of overloadEntries) {
+        const sigMatch = entry.signature.match(/\(([^)]*)\)/);
+        if (!sigMatch) continue;
+        const paramStr = sigMatch[1].trim();
+        const params = paramStr ? paramStr.split(',').map(p => p.trim()) : [];
+        signatures.push({
+          label: entry.signature,
+          documentation: entry.doc || '',
+          parameters: params.map(p => ({ label: p, documentation: '' })),
+        });
+      }
+      if (signatures.length === 0) return null;
 
-      const params = paramStr.split(',').map(p => p.trim());
-      const parameters: monaco.languages.ParameterInformation[] = params.map(p => ({
-        label: p,
-        documentation: '',
-      }));
+      // activeParameter is per-signature in Monaco; the same comma count
+      // applies to all, clamped to each signature's param length.
+      const activeParameter = Math.max(0, commas);
 
       return {
         value: {
-          signatures: [{
-            label: entry.signature,
-            documentation: entry.doc || '',
-            parameters,
-          }],
+          signatures,
           activeSignature: 0,
-          activeParameter: Math.min(commas, parameters.length - 1),
+          activeParameter,
         },
         dispose() {},
       };
+    },
+  });
+
+  // Parameter-name completion. Facet requires named arguments at call
+  // sites, so when the cursor is inside `(...)` of a function call we
+  // suggest the parameter names with `name: ` insertion. Names already
+  // used at the call site are filtered out. Triggers on `(` and `,` so
+  // the popup appears automatically as the user opens or continues a
+  // call.
+  monaco.languages.registerCompletionItemProvider('facet', {
+    triggerCharacters: ['(', ','],
+    provideCompletionItems(_model, position) {
+      const lineContent = _model.getLineContent(position.lineNumber);
+      const textBefore = lineContent.slice(0, position.column - 1);
+
+      // Walk backwards to find the enclosing `(` and count commas at
+      // depth 0, mirroring the signature help logic.
+      let depth = 0;
+      let parenStart = -1;
+      for (let i = textBefore.length - 1; i >= 0; i--) {
+        const ch = textBefore[i];
+        if (ch === ')' || ch === ']') depth++;
+        else if (ch === '(' || ch === '[') {
+          if (depth > 0) { depth--; continue; }
+          if (ch === '(') { parenStart = i; break; }
+          break;  // hit `[` at top level — not a function call
+        }
+      }
+      if (parenStart < 0) return { suggestions: [] };
+
+      // We must be at the START of an argument slot — i.e. the previous
+      // non-whitespace char is `(` or `,`. If it's `:` or anything else,
+      // we're in expression context and should not suggest param names
+      // (the existing top-level completion provider handles that).
+      let cursor = textBefore.length - 1;
+      while (cursor >= 0 && /\s/.test(textBefore[cursor])) cursor--;
+      // Also skip a partial word the user has started typing.
+      while (cursor >= 0 && /\w/.test(textBefore[cursor])) cursor--;
+      while (cursor >= 0 && /\s/.test(textBefore[cursor])) cursor--;
+      const slotOpener = cursor >= 0 ? textBefore[cursor] : '';
+      if (slotOpener !== '(' && slotOpener !== ',') return { suggestions: [] };
+
+      // Resolve the function name before `(`.
+      const before = textBefore.slice(0, parenStart);
+      const nameMatch = before.match(/([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)$/);
+      if (!nameMatch) return { suggestions: [] };
+      const callName = nameMatch[1];
+
+      const parts = callName.split('.');
+      const bareName = parts[parts.length - 1];
+      const lookupNames: string[] = [callName];
+      if (parts.length > 1) {
+        const receiverType = (allVarTypes[currentSourceKey] ?? {})[parts[0]] || parts[0];
+        lookupNames.push(receiverType + '.' + bareName);
+      }
+      lookupNames.push(bareName);
+
+      // Collect param names across ALL overloads of the resolved name(s),
+      // deduped. Each signature is parsed into a list of param specs
+      // like "Type name" or "name Type" — the param name is the trailing
+      // identifier in each spec.
+      const paramNames: string[] = [];
+      const seenNames = new Set<string>();
+      for (const name of lookupNames) {
+        const entries = docEntries.filter(e => e.name === name && e.signature);
+        if (entries.length === 0) continue;
+        for (const e of entries) {
+          const sigMatch = e.signature.match(/\(([^)]*)\)/);
+          if (!sigMatch) continue;
+          const paramStr = sigMatch[1].trim();
+          if (!paramStr) continue;
+          for (const p of paramStr.split(',').map(s => s.trim())) {
+            // Last identifier in the param spec is the param name. Works
+            // for both "Type name" and "name Type" conventions.
+            const idMatch = p.match(/([A-Za-z_]\w*)\s*$/);
+            if (!idMatch) continue;
+            const pname = idMatch[1];
+            if (seenNames.has(pname)) continue;
+            seenNames.add(pname);
+            paramNames.push(pname);
+          }
+        }
+        break;  // matched at this lookup level — don't bleed into more general matches
+      }
+      if (paramNames.length === 0) return { suggestions: [] };
+
+      // Filter out param names already used at this call site. Scan
+      // between `parenStart` and the cursor for `name:` patterns.
+      const argsRegion = textBefore.slice(parenStart + 1);
+      const used = new Set<string>();
+      for (const m of argsRegion.matchAll(/([A-Za-z_]\w*)\s*:/g)) {
+        used.add(m[1]);
+      }
+      const available = paramNames.filter(n => !used.has(n));
+      if (available.length === 0) return { suggestions: [] };
+
+      const word = _model.getWordUntilPosition(position);
+      const range = new monaco.Range(
+        position.lineNumber, word.startColumn,
+        position.lineNumber, word.endColumn,
+      );
+
+      const suggestions: monaco.languages.CompletionItem[] = available.map(name => ({
+        label: name + ':',
+        kind: monaco.languages.CompletionItemKind.Property,
+        insertText: name + ': ',
+        // High sort priority so param names come before random top-level
+        // names. Monaco sorts ascending lexicographically.
+        sortText: '0_' + name,
+        range,
+      }));
+
+      return { suggestions };
     },
   });
 

@@ -137,12 +137,29 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 	// Build sources map for frontend
 	sources := buildSourcesMap(prog)
 
-	// Build doc index
+	// Build doc index. The set of imports the checker resolved on this
+	// pass is what the editor can actually reach — scope the docIndex
+	// to those so the hover/completion/signature-help layers don't
+	// surface functions from non-imported libraries.
 	docText := ""
 	if docSrc := prog.Sources[req.Key]; docSrc != nil {
 		docText = docSrc.Text
 	}
-	docIndex := buildDocIndex(docText)
+	// Normalise import paths to the namespace shape DocEntry.Library
+	// uses: `host/user/repo[/subpath]`, no `@ref`. The raw keys in
+	// prog.Imports carry the ref (e.g. "github.com/foo/bar/m@main"),
+	// which would never match the ref-free library names on doc
+	// entries — so the filter would drop every library entry and the
+	// editor's `T.<dot>` completion would have nothing to suggest.
+	importedLibs := make(map[string]bool, len(prog.Imports))
+	for importPath := range prog.Imports {
+		ns := loader.LibPathToNamespace(importPath)
+		if ns == "" {
+			continue
+		}
+		importedLibs[ns] = true
+	}
+	docIndex := buildDocIndex(docText, importedLibs)
 
 	// Build entry points
 	var entryPoints []EntryPoint
@@ -384,14 +401,26 @@ func collectLibDocEntries() []doc.DocEntry {
 	return entries
 }
 
-// buildDocIndex builds the documentation index from the primary source and library directories.
-func buildDocIndex(sourceText string) []doc.DocEntry {
+// buildDocIndex builds the documentation index scoped to what the current
+// source can actually reach: stdlib + the user's own declarations + every
+// library whose importPath appears in `importedLibs`. Non-imported libraries
+// are deliberately excluded — the editor uses this index for hover,
+// signature help, and completion, and surfacing functions the user can't
+// call would be noise.
+//
+// For the unscoped "browse everything" use case (the Docs panel, the AI
+// assistant catalog), use the (*App).GetDocCatalog Wails binding instead;
+// it returns stdlib + every installed/cached library regardless of imports.
+func buildDocIndex(sourceText string, importedLibs map[string]bool) []doc.DocEntry {
 	entries := doc.BuildDocIndex(sourceText, nil)
 	seen := make(map[string]bool)
 	for _, e := range entries {
 		seen[e.Name+"|"+e.Library] = true
 	}
 	for _, e := range collectLibDocEntries() {
+		if !importedLibs[e.Library] {
+			continue
+		}
 		key := e.Name + "|" + e.Library
 		if !seen[key] {
 			seen[key] = true

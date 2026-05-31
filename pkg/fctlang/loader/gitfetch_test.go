@@ -4,6 +4,33 @@ import (
 	"testing"
 )
 
+// TestLibPathToNamespace pins the canonical namespace shape that both
+// the checker (for `var T = lib "..."` typing) and the desktop /eval
+// handler (for scoping the docIndex) rely on. The ref must be dropped;
+// the subpath must be preserved. Local libraries pass through as-is.
+func TestLibPathToNamespace(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want string
+	}{
+		{"github.com/firstlayer-xyz/facetlibs@main", "github.com/firstlayer-xyz/facetlibs"},
+		{"github.com/firstlayer-xyz/facetlibs/fasteners@main", "github.com/firstlayer-xyz/facetlibs/fasteners"},
+		{"github.com/firstlayer-xyz/facetlibs/fasteners@3af7741", "github.com/firstlayer-xyz/facetlibs/fasteners"},
+		{"github.com/firstlayer-xyz/facetlibs/fasteners@v1.2.3", "github.com/firstlayer-xyz/facetlibs/fasteners"},
+		// No ref — still drop nothing because there's nothing to drop.
+		{"github.com/firstlayer-xyz/facetlibs/fasteners", "github.com/firstlayer-xyz/facetlibs/fasteners"},
+		// Local libraries pass through unchanged (no @ref or host structure).
+		{"mylib", "mylib"},
+		{"facet/gears@v1", "facet/gears@v1"}, // looks remote but lacks a host segment → local
+	}
+	for _, c := range cases {
+		got := LibPathToNamespace(c.raw)
+		if got != c.want {
+			t.Errorf("LibPathToNamespace(%q) = %q, want %q", c.raw, got, c.want)
+		}
+	}
+}
+
 func TestParseLibPathLocal(t *testing.T) {
 	lp, err := ParseLibPath("facet/gears@v1")
 	if err != nil {

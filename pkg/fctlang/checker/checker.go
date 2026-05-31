@@ -2,7 +2,6 @@ package checker
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -689,17 +688,10 @@ func (c *checker) qualifyStructType(parentQualified, typeName string) string {
 	return ""
 }
 
+// libPathToNamespace forwards to loader.LibPathToNamespace, which owns
+// the canonical mapping. Both this package and the desktop /eval handler
+// use that shared definition so the editor sees one consistent namespace
+// for library-alias completion lookups.
 func libPathToNamespace(rawPath string) string {
-	lp, err := loader.ParseLibPath(rawPath)
-	if err != nil {
-		return rawPath
-	}
-	if lp.IsLocal {
-		return rawPath
-	}
-	ns := filepath.Join(lp.Host, lp.User, lp.Repo, lp.Ref)
-	if lp.SubPath != "" {
-		ns = filepath.Join(ns, lp.SubPath)
-	}
-	return ns
+	return loader.LibPathToNamespace(rawPath)
 }

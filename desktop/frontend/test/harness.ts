@@ -16,6 +16,7 @@ const DEFAULT_FIXTURES: Record<string, unknown> = {
   ListLibraries: [],
   ListLocalLibraries: [],
   DetectSlicers: [],
+  GetDocCatalog: [],
   GetDocGuides: [],
   GetExample: '',
   GetMemoryLimit: 0,

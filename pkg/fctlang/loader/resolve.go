@@ -4,9 +4,11 @@ import (
 	"context"
 	"facet/pkg/fctlang/parser"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +46,33 @@ func NewProgram() Program {
 
 // Std returns the standard library source, or nil if not set.
 func (p Program) Std() *parser.Source { return p.Sources[StdlibPath] }
+
+// LibPathToNamespace maps a raw `lib "..."` import path to the
+// canonical namespace string that identifies the library at the type
+// and documentation level: `host/user/repo[/subpath]` for remote refs,
+// or the raw path for local libraries.
+//
+// The `@ref` portion is *intentionally* dropped — it controls which
+// tree the loader resolves to, but it isn't part of the library's
+// identity. Both the checker (when typing a `var T = lib "..."`
+// binding) and the doc layer use this shape so the editor's
+// completion can match `Library:<namespace>` against
+// `DocEntry.Library`. Returns the raw path on a parse failure or for
+// local libraries.
+func LibPathToNamespace(rawPath string) string {
+	lp, err := ParseLibPath(rawPath)
+	if err != nil {
+		return rawPath
+	}
+	if lp.IsLocal {
+		return rawPath
+	}
+	ns := lp.Host + "/" + lp.User + "/" + lp.Repo
+	if lp.SubPath != "" {
+		ns = ns + "/" + strings.Trim(lp.SubPath, "/")
+	}
+	return ns
+}
 
 // Resolve maps an import path to its Sources key.
 // If the import path is already a canonical key, returns it unchanged.
@@ -554,6 +583,30 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 	}
 	data, err := tree.ReadFile(subPath)
 	if err != nil {
+		// Common case: the user imported a bare repo path
+		// ("github.com/user/repo@ref") for a repo that's actually a
+		// meta-collection of modules in subdirectories — no top-level
+		// <repo>.fct exists. Walk the tree to enumerate available
+		// module names so the error can name them. Limited to the
+		// bare-path case (subDir == "") because that's where the
+		// failure mode is opaque; with a subdir the user already
+		// scoped to a directory that simply doesn't contain the file.
+		if subDir == "" {
+			if modules := listLibraryModules(tree); len(modules) > 0 {
+				return nil, fmt.Errorf(
+					"remote lib %q: no top-level %s — did you mean one of: %s? "+
+						"(append /<module> to the lib path, e.g. \"%s/%s%s\")",
+					rawPath, subPath, strings.Join(modules, ", "),
+					strings.SplitN(rawPath, "@", 2)[0], modules[0],
+					func() string {
+						if i := strings.Index(rawPath, "@"); i >= 0 {
+							return rawPath[i:]
+						}
+						return ""
+					}(),
+				)
+			}
+		}
 		return nil, fmt.Errorf("remote lib %q: %w", rawPath, err)
 	}
 	key := tree.SourceKey(subPath)
@@ -568,6 +621,71 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 		subDir:  subDir,
 		fctFile: key,
 	}, nil
+}
+
+// ListCachedRepoModules returns the names of top-level library modules
+// (directories `<name>/` containing `<name>.fct`) in a cached bare
+// clone identified by `repoID` of the form `host/user/repo`. Offline
+// only — does not fetch. Empty result if the repo isn't cached or
+// has no top-level module folders. Used by the editor's `lib "..."`
+// completion to suggest subpaths after the user types the repo URL
+// and a trailing slash.
+func ListCachedRepoModules(gitCacheDir, repoID string) []string {
+	parts := strings.SplitN(strings.Trim(repoID, "/"), "/", 3)
+	if len(parts) != 3 {
+		return nil
+	}
+	sharedDir := filepath.Join(gitCacheDir, parts[0], parts[1], parts[2], sharedRepoName)
+	repo, err := openCachedRepo(NativeCache(), sharedDir)
+	if err != nil {
+		return nil
+	}
+	sha, err := resolveRepoHead(repo)
+	if err != nil {
+		return nil
+	}
+	tree := &LibTree{repo: repo, sha: sha, origin: repoID}
+	return listLibraryModules(tree)
+}
+
+// listLibraryModules walks a tree and returns names of top-level library
+// modules — directories `<name>/` that contain `<name>.fct`. Used to
+// build an actionable error when a user imports a repo's bare path
+// for a repo that's a meta-collection of submodules instead of a
+// single library. Sorted, deduplicated, and capped to keep error
+// messages readable. Best-effort: any Walk error returns nil.
+func listLibraryModules(tree *LibTree) []string {
+	seen := make(map[string]bool)
+	_ = tree.Walk(func(subPath string, _ io.Reader) error {
+		// Match top-level `name/name.fct`.
+		parts := strings.Split(subPath, "/")
+		if len(parts) != 2 {
+			return nil
+		}
+		dir, file := parts[0], parts[1]
+		if !strings.HasSuffix(file, ".fct") {
+			return nil
+		}
+		base := strings.TrimSuffix(file, ".fct")
+		if base != dir {
+			return nil
+		}
+		seen[dir] = true
+		return nil
+	})
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	const maxModules = 12
+	if len(out) > maxModules {
+		out = out[:maxModules]
+	}
+	return out
 }
 
 // loadFromOverride loads a library from a user-specified working tree. Used

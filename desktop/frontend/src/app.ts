@@ -1,6 +1,6 @@
 // app.ts — Run/debug orchestration logic.
 
-import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
+import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocCatalog, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
 import type { EntryPoint } from './function-preview';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { Viewer } from './viewer';
@@ -392,13 +392,26 @@ function handleCheckOnly(_data: EvalResult, errors: SourceError[], fns: EntryPoi
     hideStats();
     const prefix = e.file ? `[${e.file}${e.line > 0 ? ':' + e.line : ''}] ` : '';
     showError(prefix + e.message);
+    // hasErrorSelection is true when the user mouse-up'd after dragging
+    // to select text inside the error bar — without this guard the
+    // onclick fires (mouseup IS the click), navigates to the source
+    // line, and the editor's focus shift wipes the selection before
+    // the user can copy. Treat the click as a no-op in that case.
+    const hasErrorSelection = (): boolean => {
+      const sel = window.getSelection();
+      return !!sel && sel.toString().length > 0 && errorDiv.contains(sel.anchorNode);
+    };
     if (e.line > 0 && !e.file) {
       errorDiv.style.cursor = 'pointer';
       editor.highlightError(e.line);
-      errorDiv.onclick = () => editor.revealLine(e.line, e.col || 1);
+      errorDiv.onclick = () => {
+        if (hasErrorSelection()) return;
+        editor.revealLine(e.line, e.col || 1);
+      };
     } else if (e.line > 0 && e.file) {
       errorDiv.style.cursor = 'pointer';
       errorDiv.onclick = () => {
+        if (hasErrorSelection()) return;
         ensureTab(e.file);
         switchToTab(e.file);
         editor.highlightError(e.line);
@@ -1052,11 +1065,17 @@ export function toggleDebug() {
 
 async function openDocs(): Promise<void> {
   if (docsPanel.isVisible()) return;
-  const guides = await GetDocGuides().catch((err) => {
-    reportError('GetDocGuides', err);
-    return [];
-  });
-  docsPanel.show(lastResult?.docIndex ?? [], guides);
+  // The Docs panel browses the FULL catalog (stdlib + all installed
+  // libraries) regardless of whether the current source imports them —
+  // that's how the user discovers libraries to import in the first
+  // place. The /eval response's docIndex is intentionally scoped to
+  // imported-only and is the wrong shape for browsing; use the
+  // dedicated GetDocCatalog binding instead.
+  const [entries, guides] = await Promise.all([
+    GetDocCatalog().catch(err => { reportError('GetDocCatalog', err); return []; }),
+    GetDocGuides().catch(err => { reportError('GetDocGuides', err); return []; }),
+  ]);
+  docsPanel.show(entries, guides);
   setDebugBarVisible(false);
 }
 
