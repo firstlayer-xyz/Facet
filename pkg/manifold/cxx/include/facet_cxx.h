@@ -288,8 +288,14 @@ void facet_merge_extract_expanded_mesh(
 // Renders text string to a CrossSection using FreeType. Writes empty
 // CrossSection if text is empty or font fails to load. Sets out->ptr to NULL
 // on failure (caller should check).
+//
+// halign: "left" (default — text starts at x=0), "center", "right".
+// valign: "baseline" (default — y=0 is the baseline), "top" (y=0 is at
+//   ascender), "center" (y=0 is mid-cap-height), "bottom" (y=0 is at
+//   descender bottom). Empty string means default.
 void facet_text_to_cross_section(
-    const char* font_path, const char* text, double size_mm, FacetSketchRet* out);
+    const char* font_path, const char* text, double size_mm,
+    const char* halign, const char* valign, FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
 // Callback operations

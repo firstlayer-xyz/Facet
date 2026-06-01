@@ -397,8 +397,8 @@ func (e *evaluator) builtinLoadMesh(args []value) (value, error) {
 // ---------------------------------------------------------------------------
 
 func (e *evaluator) builtinNewText(args []value) (value, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return nil, fmt.Errorf("_text() expects 2 or 3 arguments, got %d", len(args))
+	if len(args) != 5 {
+		return nil, fmt.Errorf("_text() expects 5 arguments (text, size, font, halign, valign), got %d", len(args))
 	}
 	text, err := requireString("_text", 1, args[0])
 	if err != nil {
@@ -408,12 +408,17 @@ func (e *evaluator) builtinNewText(args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
-	fontPath := ""
-	if len(args) == 3 {
-		fontPath, err = requireString("_text", 3, args[2])
-		if err != nil {
-			return nil, err
-		}
+	fontPath, err := requireString("_text", 3, args[2])
+	if err != nil {
+		return nil, err
+	}
+	halign, err := requireString("_text", 4, args[3])
+	if err != nil {
+		return nil, err
+	}
+	valign, err := requireString("_text", 5, args[4])
+	if err != nil {
+		return nil, err
 	}
 	if fontPath == "" {
 		fontPath = manifold.DefaultFontPath()
@@ -424,7 +429,7 @@ func (e *evaluator) builtinNewText(args []value) (value, error) {
 		}
 		fontPath = filepath.Join(cwd, fontPath)
 	}
-	return manifold.CreateText(fontPath, text, size)
+	return manifold.CreateText(fontPath, text, size, halign, valign)
 }
 
 // ---------------------------------------------------------------------------

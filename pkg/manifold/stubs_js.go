@@ -84,7 +84,7 @@ func buildDisplayMesh(verts []float32, indices []uint32, faceGroups []uint32) *D
 }
 
 // Text stub.
-func CreateText(fontPath, text string, sizeMM float64) (*Sketch, error) {
+func CreateText(fontPath, text string, sizeMM float64, halign, valign string) (*Sketch, error) {
 	return nil, fmt.Errorf("CreateText: not implemented in WASM mode")
 }
 
