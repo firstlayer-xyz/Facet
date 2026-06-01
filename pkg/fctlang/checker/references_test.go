@@ -47,7 +47,7 @@ func TestReferenceForLocalVar(t *testing.T) {
     return x
 }`
 	res := checkSourceResult(t, src)
-	got, ok := res.References[":3:12"]
+	got, ok := res.References[testMainKey+":3:12"]
 	if !ok {
 		t.Fatalf("no reference for x at :3:12; map=%v", res.References)
 	}
@@ -60,7 +60,7 @@ func TestReferenceForGlobalConst(t *testing.T) {
 	src := `const K = 42
 fn Main() Number { return K }`
 	res := checkSourceResult(t, src)
-	got, ok := res.References[":2:27"]
+	got, ok := res.References[testMainKey+":2:27"]
 	if !ok {
 		t.Fatalf("no reference for K at :2:27; map=%v", res.References)
 	}
@@ -76,7 +76,7 @@ func TestReferenceForFunctionParam(t *testing.T) {
 	src := `fn Double(n Number) Number { return n * 2 }
 fn Main() Number { return Double(n: 3) }`
 	res := checkSourceResult(t, src)
-	got, ok := res.References[":1:37"]
+	got, ok := res.References[testMainKey+":1:37"]
 	if !ok {
 		t.Fatalf("no reference for n; map=%v", res.References)
 	}
@@ -93,7 +93,7 @@ func TestReferenceForCall(t *testing.T) {
 fn Main() Number { return Helper() }`
 	res := checkSourceResult(t, src)
 	// "return Helper()" on line 2 — Helper at col 27.
-	got, ok := res.References[":2:27"]
+	got, ok := res.References[testMainKey+":2:27"]
 	if !ok {
 		t.Fatalf("no reference for Helper(); map=%v", res.References)
 	}
@@ -110,12 +110,12 @@ func TestReferenceForStdlibCall(t *testing.T) {
 	src := `fn Main() Solid { return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}) }`
 	res := checkSourceResult(t, src)
 	// "return Cube(" — Cube at col 26.
-	got, ok := res.References[":1:26"]
+	got, ok := res.References[testMainKey+":1:26"]
 	if !ok {
 		t.Fatalf("no reference for Cube(); map=%v", res.References)
 	}
-	if got.File == "" {
-		t.Error("expected File to point at stdlib source, got empty")
+	if got.File != "::std" {
+		t.Error("expected File to be the stdlib path, got empty")
 	}
 	if got.Kind != "fn" {
 		t.Errorf("Kind = %q, want fn", got.Kind)
@@ -133,15 +133,15 @@ func TestReferenceForMethodCall(t *testing.T) {
 }`
 	res := checkSourceResult(t, src)
 	// "    return c.Move(" — `M` of Move is at col 14 on line 3.
-	got, ok := res.References[":3:14"]
+	got, ok := res.References[testMainKey+":3:14"]
 	if !ok {
 		t.Fatalf("no reference for .Move; map=%v", res.References)
 	}
 	if got.Kind != "fn" {
 		t.Errorf("Kind = %q, want fn", got.Kind)
 	}
-	if got.File == "" {
-		t.Error("expected File to point at stdlib source for Move, got empty")
+	if got.File != "::std" {
+		t.Errorf("expected File=%q for Move, got %q", "::std", got.File)
 	}
 }
 
@@ -159,7 +159,7 @@ func TestReferenceForMultilineMethodCall(t *testing.T) {
 }`
 	res := checkSourceResult(t, src)
 	// Line 4: "        .Move(" — 8 spaces, then ".", then `M` at col 10.
-	got, ok := res.References[":4:10"]
+	got, ok := res.References[testMainKey+":4:10"]
 	if !ok {
 		t.Fatalf("no reference for .Move on continuation line; map=%v", res.References)
 	}
@@ -176,7 +176,7 @@ fn Main() Number {
 }`
 	res := checkSourceResult(t, src)
 	// "    return p.x" — `x` at col 14 on line 4. VERIFY by counting.
-	got, ok := res.References[":4:14"]
+	got, ok := res.References[testMainKey+":4:14"]
 	if !ok {
 		t.Fatalf("no reference for .x; map=%v", res.References)
 	}
@@ -194,7 +194,7 @@ func TestReferenceForNamedArg(t *testing.T) {
 fn Main() Number { return Double(n: 3) }`
 	res := checkSourceResult(t, src)
 	// "fn Main() Number { return Double(" is 33 chars, so `n` is at col 34.
-	got, ok := res.References[":2:34"]
+	got, ok := res.References[testMainKey+":2:34"]
 	if !ok {
 		t.Fatalf("no reference for named arg n; map=%v", res.References)
 	}
@@ -219,15 +219,15 @@ func TestReferenceForNamedArgInMethodCall(t *testing.T) {
 }`
 	res := checkSourceResult(t, src)
 	// "    return c.Move(" is 18 chars, so `x` is at col 19 on line 3.
-	got, ok := res.References[":3:19"]
+	got, ok := res.References[testMainKey+":3:19"]
 	if !ok {
 		t.Fatalf("no reference for method-call named arg x; map=%v", res.References)
 	}
 	if got.Kind != "param" {
 		t.Errorf("Kind = %q, want param", got.Kind)
 	}
-	if got.File == "" {
-		t.Error("expected File to point at stdlib source for Move's x param, got empty")
+	if got.File != "::std" {
+		t.Errorf("expected File=%q for Move's x param, got %q", "::std", got.File)
 	}
 }
 
@@ -236,7 +236,7 @@ func TestReferenceForStructLit(t *testing.T) {
 fn Main() P { return P{x: 1, y: 2} }`
 	res := checkSourceResult(t, src)
 	// "return P{...}" — P at line 2, col 22. VERIFY.
-	got, ok := res.References[":2:22"]
+	got, ok := res.References[testMainKey+":2:22"]
 	if !ok {
 		t.Fatalf("no reference for struct lit type P; map=%v", res.References)
 	}
@@ -248,7 +248,7 @@ fn Main() P { return P{x: 1, y: 2} }`
 		t.Errorf("type target = %+v, want line 1, col 1", got)
 	}
 	// "x: 1" — x at line 2, col 24. VERIFY.
-	xRef, ok := res.References[":2:24"]
+	xRef, ok := res.References[testMainKey+":2:24"]
 	if !ok {
 		t.Fatalf("no reference for field init x; map=%v", res.References)
 	}

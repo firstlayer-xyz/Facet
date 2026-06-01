@@ -65,16 +65,17 @@ test('hover on a local variable shows synthesized type from references map', asy
   mockedPage: page,
   setEvalHandler,
 }) => {
-  await setEvalHandler(() => ({
+  await setEvalHandler(body => ({
     errors: [],
     entryPoints: [],
     symbols: [],
     references: {
-      // Token `x` at line 2, col 1.
-      ':2:1': { line: 1, col: 5, file: '', kind: 'var', returnType: 'Length' },
+      // References are keyed by the full source path the backend
+      // stamps on every DeclLocation — same as the request's `key`.
+      [`${body.key}:2:1`]: { line: 1, col: 5, file: body.key, kind: 'var', returnType: 'Length' },
     },
     declarations: {
-      decls: { x: { line: 1, col: 5, file: '', kind: 'var', returnType: 'Length' } },
+      decls: { x: { line: 1, col: 5, file: body.key, kind: 'var', returnType: 'Length' } },
     },
     posMap: [],
   }));

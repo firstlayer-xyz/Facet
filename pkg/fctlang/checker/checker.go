@@ -486,7 +486,6 @@ type checker struct {
 	errors                []parser.SourceError
 	varTypes              VarTypeMap
 	references            References
-	mainSrcKey            string // primary (non-library, non-stdlib) source key; "" if none
 	currentSrcKey         string
 	libVarToPath          map[string]string // lib variable name → lib path in prog
 	inferredReturns       map[string]typeInfo
@@ -538,19 +537,6 @@ func initChecker(prog loader.Program) *checker {
 		for _, sd := range src.StructDecls() {
 			c.structSrcKey[sd] = srcKey
 		}
-	}
-	// Compute the primary source key once — the one source that isn't stdlib
-	// and isn't imported as a library. addRef uses this to normalize positions
-	// in the main file to DeclLocation.File == "" (see references.go).
-	for srcKey := range prog.Sources {
-		if srcKey == loader.StdlibPath {
-			continue
-		}
-		if prog.IsLibrarySource(srcKey) {
-			continue
-		}
-		c.mainSrcKey = srcKey
-		break
 	}
 	if stdSrc := prog.Std(); stdSrc != nil {
 		for _, fn := range stdSrc.Functions() {

@@ -20,17 +20,6 @@ func refKey(file string, pos parser.Pos) string {
 	return fmt.Sprintf("%s:%d:%d", file, pos.Line, pos.Col)
 }
 
-// normalizeFile returns the DeclLocation.File value for a source key: the
-// empty string for the main source, the key itself otherwise. Single-sources
-// the "main file is empty string" convention shared by addRef,
-// fileForFunction, and fileForStruct.
-func (c *checker) normalizeFile(srcKey string) string {
-	if srcKey == c.mainSrcKey {
-		return ""
-	}
-	return srcKey
-}
-
 // addRef records a reference at `pos` in the current source pointing at `target`.
 // Skips calls with a zero position — many synthesized subexpressions carry
 // Line == 0 and have nothing to link to.
@@ -38,19 +27,19 @@ func (c *checker) addRef(pos parser.Pos, target DeclLocation) {
 	if pos.Line == 0 {
 		return
 	}
-	c.references[refKey(c.normalizeFile(c.currentSrcKey), pos)] = target
+	c.references[refKey(c.currentSrcKey, pos)] = target
 }
 
-// fileForFunction returns the DeclLocation.File value for fn — empty for the
-// main source, the source key (stdlib/library path) otherwise.
+// fileForFunction returns the source key in which fn was declared.
+// All sources — user, stdlib, library — produce the same shape so the
+// frontend can index references by file path without a sentinel.
 func (c *checker) fileForFunction(fn *parser.Function) string {
-	return c.normalizeFile(c.funcSrcKey[fn])
+	return c.funcSrcKey[fn]
 }
 
-// fileForStruct returns the DeclLocation.File value for sd — empty for the
-// main source, the source key (stdlib/library path) otherwise.
+// fileForStruct returns the source key in which sd was declared.
 func (c *checker) fileForStruct(sd *parser.StructDecl) string {
-	return c.normalizeFile(c.structSrcKey[sd])
+	return c.structSrcKey[sd]
 }
 
 // globalDecl looks up a top-level declaration by name from the precomputed
