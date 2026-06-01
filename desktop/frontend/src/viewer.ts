@@ -1069,6 +1069,45 @@ export class Viewer {
     }
   }
 
+  /**
+   * Load a fresh eval result. Owns the full sequence:
+   *   clearMeshes → loadDecodedMesh → setPosMap → centerOnBed → fitToView.
+   * Callers used to drive these five calls imperatively from app.ts —
+   * forgetting one in a new code path left the viewer in a partial
+   * state. Now the viewer is the only place this sequence is spelled
+   * out, and the order can't accidentally drift.
+   *
+   * Pass `decoded: null` for a no-mesh result (check-only / empty);
+   * the viewer wipes its state without trying to load anything.
+   */
+  applyEvalResult(
+    decoded: DecodedMesh | null,
+    posMap: PosEntry[],
+    opts?: { excludeFiles?: Set<string>; autofit?: boolean },
+  ): void {
+    this.clearMeshes();
+    if (decoded) {
+      this.loadDecodedMesh(decoded);
+    }
+    this.setPosMap(posMap, opts?.excludeFiles);
+    if (decoded && (opts?.autofit ?? true)) {
+      this.centerOnBed();
+      this.fitToView();
+    }
+  }
+
+  /**
+   * Wipe all eval-derived state: meshes, pos map, highlights. Used
+   * when no tab is open or when the user toggles out of debug.
+   * Camera position is preserved so the next load doesn't yank
+   * the view.
+   */
+  reset(): void {
+    this.clearMeshes();
+    this.setPosMap([]);
+    this.clearHighlight();
+  }
+
   /** Center all user meshes on the bed. Bed-plane axes are centered; the "up" axis min is at 0. */
   centerOnBed(): void {
     if (this.userMeshes.length === 0) return;
