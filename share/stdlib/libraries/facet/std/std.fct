@@ -483,15 +483,23 @@ fn Arc3d(center Vec3, r Length, startAngle, endAngle Angle, segments Number) []V
 # ---------------------------------------------------------------------------
 # 2D text sketch using the built-in Hack font, or a custom `.ttf`/`.otf` `font` path.
 # `s` is the cap height in mm. Extrude to make 3D lettering.
+#
+# `halign`: "left" (default — text starts at x=0), "center", or "right".
+# `valign`: "baseline" (default — y=0 sits on the baseline), "top" (y=0 at
+# ascender top), "center" (y=0 at vertical midpoint), or "bottom" (y=0 at
+# descender bottom).
 # ```
 # fn Main() { Text("HELLO", 8 mm).Extrude(2 mm) }
+# fn Main() { Text("HI", 8 mm, halign: "center", valign: "center").Extrude(2 mm) }
 # ```
 fn Text(
     text String,
     s Length,
     font String = "",
+    halign String = "left",
+    valign String = "baseline",
 ) Sketch {
-    return _text(text, s, font)
+    return _text(text, s, font, halign, valign)
 }
 
 # ---------------------------------------------------------------------------
