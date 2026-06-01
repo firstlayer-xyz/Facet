@@ -1298,8 +1298,9 @@ fn Sketch.Extrude(
     return _extrude(self, z, slices, twist, taperX, taperY)
 }
 
-# Revolves a sketch around the Y axis. Move the sketch away from Y first for a torus.
-# Optional `a` limits the arc (default 360°).
+# Revolves a sketch around the Z axis (the world's up axis). The sketch's X
+# becomes the radius; its Y becomes the height along Z. Move the sketch away
+# from x = 0 first for a torus. Optional `a` limits the arc (default 360°).
 fn Sketch.Revolve(
     a Angle = 360 deg,
 ) Solid {
