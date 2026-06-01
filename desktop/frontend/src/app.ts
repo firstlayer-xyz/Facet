@@ -248,6 +248,29 @@ function setSpinner(active: boolean) {
 export function setEditor(ed: EditorHandle) {
   editor = ed;
 
+  // The editor's symbol table / types / declarations / references /
+  // sources track whatever the latest eval produced. Subscribing here
+  // means a single evalStore.set(data) automatically replaces every
+  // dependent piece in the editor — handleHTTPResult no longer has to
+  // remember which updateXxx calls to fire after each eval. Null
+  // results (debug exit, last tab closed) leave the existing data in
+  // place rather than clearing it, so hover/completion stay populated
+  // on the editor until the next real result lands.
+  evalStore.subscribe(() => {
+    const r = evalStore.current();
+    if (!r) return;
+    if (r.symbols) editor.updateSymbols(r.symbols);
+    if (r.varTypes && Object.keys(r.varTypes).length > 0) editor.updateVarTypes(r.varTypes);
+    if (r.declarations?.decls) editor.updateDeclarations(r.declarations.decls);
+    if (r.references) editor.updateReferences(r.references);
+    if (r.sources) {
+      const textSources: Record<string, string> = {};
+      for (const [k, v] of Object.entries(r.sources)) textSources[k] = v.text;
+      editor.updateFileSources(textSources);
+      onSourceChangeCb?.(editor.getContent());
+    }
+  });
+
   // Sync breakpoints when the editor shifts line numbers due to code edits
   ed.onBreakpointChange((file, lines) => {
     breakpoints.set(file, lines);
@@ -355,21 +378,6 @@ function syncTabsWithSources(data: EvalResult) {
     }
   }
   if (tabsClosed) renderTabs();
-}
-
-function pushEditorData(data: EvalResult) {
-  if (data.symbols) editor.updateSymbols(data.symbols);
-  if (data.varTypes && Object.keys(data.varTypes).length > 0) editor.updateVarTypes(data.varTypes);
-  if (data.declarations?.decls) editor.updateDeclarations(data.declarations.decls);
-  if (data.references) editor.updateReferences(data.references);
-  if (data.sources) {
-    const textSources: Record<string, string> = {};
-    for (const [k, v] of Object.entries(data.sources)) {
-      textSources[k] = v.text;
-    }
-    editor.updateFileSources(textSources);
-    onSourceChangeCb?.(editor.getContent());
-  }
 }
 
 function handleCheckOnly(_data: EvalResult, errors: SourceError[], fns: EntryPoint[]) {
@@ -812,9 +820,11 @@ function handleHTTPResult(resp: EvalResponse) {
   const errors = data.errors ?? [];
   if (errors.length > 0) editor.setMarkers(errors);
 
+  // The editor's evalStore.subscribe (wired in setEditor) reacts to
+  // this set() — symbols / varTypes / declarations / references /
+  // sources all sync without an explicit push from here.
   evalStore.set(data);
   syncTabsWithSources(data);
-  pushEditorData(data);
   renderTabs(); // refresh tab icons (star, book, lock) from updated source kinds
 
   const fns = data.entryPoints ?? [];
