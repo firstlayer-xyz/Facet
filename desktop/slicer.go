@@ -68,6 +68,16 @@ var slicerDefs = []slicerDef{
 		LinuxBin: "photon-workshop",
 		WinExe:   `Anycubic\Anycubic Photon Workshop\Anycubic Photon Workshop.exe`,
 	},
+	{
+		// QIDI Studio is QIDI Tech's slicer, an OrcaSlicer / BambuStudio
+		// derivative for their X-CF Pro / Q1 Pro / Plus4 series. Same
+		// install conventions as the other Orca forks.
+		Name:     "QIDIStudio",
+		ID:       "qidi",
+		MacApp:   "QIDIStudio",
+		LinuxBin: "qidi-studio",
+		WinExe:   `QIDIStudio\QIDIStudio.exe`,
+	},
 }
 
 // findMacApp searches /Applications and ~/Applications recursively for name.app.
