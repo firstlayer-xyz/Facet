@@ -5,6 +5,7 @@ import { Gnomon } from './gnomon';
 import { GetDefaultSource, GetExample, DetectSlicers, SetAssistantConfig, CreateLocalLibrary, CreateLibraryFolder, ListLibraryFolders, OpenRecentFile, OpenLibraryDir } from '../wailsjs/go/main/App';
 import { ClipboardSetText, ClipboardGetText, WindowToggleMaximise } from '../wailsjs/runtime/runtime';
 import { on } from './events';
+import { tabStore } from './tabs';
 import { loadSettings, saveSettings, createSettingsPanel, SettingsCorruptError } from './settings';
 
 // macOS fullscreen detection — traffic lights disappear in fullscreen so reduce titlebar inset
@@ -49,7 +50,7 @@ import {
   switchToTab, closeActiveTab,
   getSources, getActiveTabValue, isActiveTabReadOnly, assistantCreateFile, getActiveLabel, addRestoredTab, renderTabs,
   isDebugStepping,
-  setOnTabChange, setOnSourceChange, setOnDebugFilesChange, setOnDebugExit, setOnEntryPoints,
+  setOnSourceChange, setOnDebugFilesChange, setOnDebugExit, setOnEntryPoints,
   setEntryOverrides, refreshEditorUI, showError,
 } from './app';
 import { resolveThemePalette, resolveUiTheme, resolveEditorTheme, applyUIPalette } from './themes';
@@ -497,7 +498,7 @@ async function init() {
 
   setOnSourceChange(() => updatePreviewLabel(getActiveTabValue()));
 
-  setOnTabChange((tab) => {
+  tabStore.onActiveChange((tab) => {
     if (isDebugStepping()) return; // don't re-eval while navigating debug steps
     previewMenuDirty = true;
     const picked = pickEntryPoint(tab, currentEntryPoints);

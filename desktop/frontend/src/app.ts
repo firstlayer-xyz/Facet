@@ -97,8 +97,9 @@ function isDirty(): boolean {
 // evalStore.set(). Direct `lastResult` references were removed when
 // the store was introduced.
 
-// Callbacks for external UI components
-let onTabChangeCb: ((tab: string) => void) | null = null;
+// Callbacks for external UI components.
+// onTabChange went away — subscribe to tabStore.onActiveChange()
+// directly from main.ts instead.
 let onSourceChangeCb: ((source: string) => void) | null = null;
 let onDebugFilesChangeCb: (() => void) | null = null;
 let onDebugExitCb: (() => void) | null = null;
@@ -628,8 +629,9 @@ async function closeTab(file: string) {
     // found for the active tab.
     run();
   }
-  // Notify file tree / preview of the tab change
-  onTabChangeCb?.(tabStore.active());
+  // TabStore.onActiveChange subscribers (in main.ts) fire on the
+  // setActive call in the switchToTab branch above — no manual
+  // notification needed here.
 }
 
 export function switchToTab(file: string) {
@@ -676,8 +678,8 @@ export function switchToTab(file: string) {
     }
   }
 
-  // Notify external UI (file tree, preview selector) of the tab change
-  onTabChangeCb?.(tabStore.active());
+  // tabStore.setActive above wakes tabStore.onActiveChange listeners
+  // — file tree / preview selector subscribe from main.ts.
 }
 
 export function showDebugStepPrev() {
@@ -1136,7 +1138,6 @@ export async function assistantCreateFile(name: string, source: string): Promise
 
 export function isDebugStepping(): boolean { return debugStepping; }
 
-export function setOnTabChange(cb: (tab: string) => void) { onTabChangeCb = cb; }
 export function setOnSourceChange(cb: (source: string) => void) { onSourceChangeCb = cb; }
 export function setOnDebugFilesChange(cb: () => void) { onDebugFilesChangeCb = cb; }
 export function setOnDebugExit(cb: () => void) { onDebugExitCb = cb; }
