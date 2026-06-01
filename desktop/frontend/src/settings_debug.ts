@@ -1,5 +1,5 @@
 import { GetLogDir, GetStderrLog, RevealInFileManager } from '../wailsjs/go/main/App';
-import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
+import { on } from './events';
 import { styleButton, type SettingsPageContext, type PageResult } from './settings_ui';
 
 export function buildDebugPage(_ctx: SettingsPageContext): PageResult {
@@ -47,12 +47,12 @@ export function buildDebugPage(_ctx: SettingsPageContext): PageResult {
     logArea.value += line;
     logArea.scrollTop = logArea.scrollHeight;
   };
-  EventsOn('log:stderr', handler);
+  const off = on('log:stderr', handler);
 
   page.appendChild(logArea);
 
   return {
     el: page,
-    cleanup: () => { EventsOff('log:stderr'); },
+    cleanup: () => { off(); },
   };
 }

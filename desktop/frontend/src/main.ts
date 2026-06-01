@@ -3,7 +3,8 @@ import { createEditor, EditorHandle } from './editor';
 import { Viewer } from './viewer';
 import { Gnomon } from './gnomon';
 import { GetDefaultSource, GetExample, DetectSlicers, SetAssistantConfig, CreateLocalLibrary, CreateLibraryFolder, ListLibraryFolders, OpenRecentFile, OpenLibraryDir } from '../wailsjs/go/main/App';
-import { EventsOn, ClipboardSetText, ClipboardGetText, WindowToggleMaximise } from '../wailsjs/runtime/runtime';
+import { ClipboardSetText, ClipboardGetText, WindowToggleMaximise } from '../wailsjs/runtime/runtime';
+import { on } from './events';
 import { loadSettings, saveSettings, createSettingsPanel, SettingsCorruptError } from './settings';
 
 // macOS fullscreen detection — traffic lights disappear in fullscreen so reduce titlebar inset
@@ -607,10 +608,10 @@ headTrackBtn.addEventListener('click', async () => {
 });
 
 // Native menu event listeners
-EventsOn('menu:new', () => newFile());
-EventsOn('menu:open', () => openFile());
-EventsOn('menu:open-recent', (path: string) => openRecentFile(path));
-EventsOn('menu:open-demo', async (name: string) => {
+on('menu:new', () => newFile());
+on('menu:open', () => openFile());
+on('menu:open-recent', (path: string) => openRecentFile(path));
+on('menu:open-demo', async (name: string) => {
   try {
     const source = await GetExample(name);
     openExample(source, name);
@@ -618,7 +619,7 @@ EventsOn('menu:open-demo', async (name: string) => {
     console.error('Failed to load example:', err);
   }
 });
-EventsOn('menu:open-library', async (dir: string) => {
+on('menu:open-library', async (dir: string) => {
   try {
     const result = await OpenLibraryDir(dir);
     openExample(result.source, result.path);
@@ -626,7 +627,7 @@ EventsOn('menu:open-library', async (dir: string) => {
     console.error('Failed to open library:', err);
   }
 });
-EventsOn('menu:new-library', async () => {
+on('menu:new-library', async () => {
   let folders: string[];
   try { folders = await ListLibraryFolders(); } catch { folders = []; }
   if (!folders) folders = [];
@@ -650,28 +651,28 @@ EventsOn('menu:new-library', async () => {
     alert('Could not create library: ' + (err?.message ?? String(err)));
   }
 });
-EventsOn('menu:close-tab', () => closeActiveTab());
-EventsOn('menu:save', () => saveFile());
-EventsOn('menu:save-as', () => saveFileAs());
-EventsOn('menu:export', (format: string) => exportMesh(format));
+on('menu:close-tab', () => closeActiveTab());
+on('menu:save', () => saveFile());
+on('menu:save-as', () => saveFileAs());
+on('menu:export', (format: string) => exportMesh(format));
 
 // Run menu
-EventsOn('menu:run', () => toggleRun());
-EventsOn('menu:debug', handleDebugToggle);
+on('menu:run', () => toggleRun());
+on('menu:debug', handleDebugToggle);
 
 // View menu
-EventsOn('menu:fullcode', toggleFullCode);
-EventsOn('menu:toggle-grid', () => viewer.toggleGrid());
-EventsOn('menu:toggle-axes', () => viewer.toggleAxes());
-EventsOn('menu:docs', handleDocsToggle);
+on('menu:fullcode', toggleFullCode);
+on('menu:toggle-grid', () => viewer.toggleGrid());
+on('menu:toggle-axes', () => viewer.toggleAxes());
+on('menu:docs', handleDocsToggle);
 
 // Model menu
-EventsOn('menu:assistant', () => assistantBtn.click());
-EventsOn('menu:slicer', () => slicerBtn.click());
-EventsOn('menu:slicer-id', (id: string) => sendToSlicer(id));
+on('menu:assistant', () => assistantBtn.click());
+on('menu:slicer', () => slicerBtn.click());
+on('menu:slicer-id', (id: string) => sendToSlicer(id));
 
 // Window menu
-EventsOn('menu:settings', () => settingsBtn.click());
+on('menu:settings', () => settingsBtn.click());
 
 // Manual run / stop button (in preview selector)
 runBtn.addEventListener('click', toggleRun);
