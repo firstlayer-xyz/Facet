@@ -126,10 +126,16 @@ func extractMesh(m *C.ManifoldPtr) *Mesh {
 // Face-color helpers
 // ---------------------------------------------------------------------------
 
-// colorFromFaceInfo converts a FaceInfo int32 color to a hex string.
+// colorFromFaceInfo converts a FaceInfo color+alpha into a hex string.
+// Emits "#RRGGBB" when alpha is 0 (default) or 255 (explicitly opaque),
+// and "#RRGGBBAA" when alpha is anything else. Downstream consumers
+// (renderer + meshio) both accept either form.
 func colorFromFaceInfo(fi FaceInfo) string {
 	c := fi.Color
-	return fmt.Sprintf("#%02X%02X%02X", (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF)
+	if fi.Alpha == 0 || fi.Alpha == 0xFF {
+		return fmt.Sprintf("#%02X%02X%02X", (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF)
+	}
+	return fmt.Sprintf("#%02X%02X%02X%02X", (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF, fi.Alpha)
 }
 
 // buildFaceColorMap constructs a faceID→hex color map from a slice of face IDs

@@ -569,8 +569,8 @@ func init() {
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
 		}
-		if len(args) != 4 {
-			return nil, fmt.Errorf("%s() expects 3 arguments (r, g, b), got %d", name, len(args)-1)
+		if len(args) != 5 {
+			return nil, fmt.Errorf("%s() expects 4 arguments (r, g, b, a), got %d", name, len(args)-1)
 		}
 		rv, err := requireNumber(name, 1, args[1])
 		if err != nil {
@@ -584,7 +584,11 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		return r.SetColor(rv, g, b), nil
+		a, err := requireNumber(name, 4, args[4])
+		if err != nil {
+			return nil, err
+		}
+		return r.SetColor(rv, g, b, a), nil
 	}
 
 	builtinRegistry["_color_hex"] = func(e *evaluator, args []value) (value, error) {
@@ -600,11 +604,11 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		rv, g, b, err := parseHexColor(hex)
+		rv, g, b, a, err := parseHexColorRGBA(hex)
 		if err != nil {
 			return nil, fmt.Errorf("%s(): %w", name, err)
 		}
-		return r.SetColor(rv, g, b), nil
+		return r.SetColor(rv, g, b, a), nil
 	}
 
 	builtinRegistry["_polymesh"] = func(e *evaluator, args []value) (value, error) {
