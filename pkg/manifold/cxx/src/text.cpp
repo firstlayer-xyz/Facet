@@ -10,6 +10,8 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
+#include <cmath>
 #include <vector>
 #include <string>
 
@@ -102,10 +104,37 @@ static bool linearize_contour(FT_Outline* outline, int contour_start, int contou
   return out.size() >= 3;
 }
 
+// Compute the horizontal translation that realigns a [0, width] run to
+// match the requested halign anchor. "" or "left" → 0 (no shift);
+// "center" → -width/2; "right" → -width. Returns NAN on unknown input
+// so the caller can surface a hard error instead of silently mis-aligning.
+static double halign_offset(const char* halign, double width) {
+  if (!halign || halign[0] == '\0') return 0.0;
+  if (strcmp(halign, "left") == 0) return 0.0;
+  if (strcmp(halign, "center") == 0) return -width * 0.5;
+  if (strcmp(halign, "right") == 0) return -width;
+  return std::numeric_limits<double>::quiet_NaN();
+}
+
+// Compute the vertical translation that realigns a baseline-at-0 run
+// (ascender>0, descender<0) to the requested valign anchor. "" or
+// "baseline" → 0 (no shift); "top" puts y=0 at ascender top; "bottom"
+// puts y=0 at descender bottom; "center" puts y=0 at the (ascender+
+// descender)/2 line. NAN on unknown input.
+static double valign_offset(const char* valign, double ascender, double descender) {
+  if (!valign || valign[0] == '\0') return 0.0;
+  if (strcmp(valign, "baseline") == 0) return 0.0;
+  if (strcmp(valign, "top") == 0) return -ascender;
+  if (strcmp(valign, "bottom") == 0) return -descender;
+  if (strcmp(valign, "center") == 0) return -(ascender + descender) * 0.5;
+  return std::numeric_limits<double>::quiet_NaN();
+}
+
 extern "C" {
 
 void facet_text_to_cross_section(
-    const char* font_path, const char* text, double size_mm, FacetSketchRet* out) {
+    const char* font_path, const char* text, double size_mm,
+    const char* halign, const char* valign, FacetSketchRet* out) {
 
   if (!text || text[0] == '\0') {
     wrap_cs(new CrossSection(), out);
@@ -129,6 +158,8 @@ void facet_text_to_cross_section(
 
   double unitsPerEM = (double)face->units_per_EM;
   double scale = size_mm / unitsPerEM;
+  double ascender = (double)face->ascender * scale;
+  double descender = (double)face->descender * scale;
   int steps = 8;
 
   // Decode UTF-8 text into Unicode code points
@@ -192,7 +223,21 @@ void facet_text_to_cross_section(
     return;
   }
 
-  wrap_cs(new CrossSection(CrossSection(allPolys, CrossSection::FillRule::EvenOdd)), out);
+  double dx = halign_offset(halign, advanceX);
+  double dy = valign_offset(valign, ascender, descender);
+  if (std::isnan(dx) || std::isnan(dy)) {
+    // Unknown halign/valign string — signal failure so the Go side
+    // can return a clear error instead of silently mis-aligning.
+    out->ptr = nullptr;
+    out->size = 0;
+    return;
+  }
+
+  CrossSection cs(allPolys, CrossSection::FillRule::EvenOdd);
+  if (dx != 0.0 || dy != 0.0) {
+    cs = cs.Translate({dx, dy});
+  }
+  wrap_cs(new CrossSection(std::move(cs)), out);
 }
 
 }  // extern "C"
@@ -204,7 +249,8 @@ void facet_text_to_cross_section(
 extern "C" {
 
 void facet_text_to_cross_section(
-    const char* /*font_path*/, const char* /*text*/, double /*size_mm*/, FacetSketchRet* out) {
+    const char* /*font_path*/, const char* /*text*/, double /*size_mm*/,
+    const char* /*halign*/, const char* /*valign*/, FacetSketchRet* out) {
   wrap_cs(new CrossSection(), out);
 }
 

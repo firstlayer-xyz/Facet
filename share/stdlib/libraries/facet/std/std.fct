@@ -443,7 +443,14 @@ fn &(a, b Sketch) Sketch {
 
 # 2D polygon from an array of Vec2 vertices (minimum 3). Points connect in order; closes automatically.
 fn Polygon(points []Vec2) Sketch {
-    return _polygon(points)
+    return _polygon(points, [])
+}
+
+# 2D polygon with holes: an outer outline plus zero or more inner outlines that are cut out.
+# Each hole must be a ring of at least 3 Vec2 points. Winding direction is irrelevant —
+# any ring nested in another flips fill (even-odd rule), so nested rings produce solid islands.
+fn Polygon(points []Vec2, holes [][]Vec2) Sketch {
+    return _polygon(points, holes)
 }
 
 # ---------------------------------------------------------------------------
@@ -476,15 +483,23 @@ fn Arc3d(center Vec3, r Length, startAngle, endAngle Angle, segments Number) []V
 # ---------------------------------------------------------------------------
 # 2D text sketch using the built-in Hack font, or a custom `.ttf`/`.otf` `font` path.
 # `s` is the cap height in mm. Extrude to make 3D lettering.
+#
+# `halign`: "left" (default — text starts at x=0), "center", or "right".
+# `valign`: "baseline" (default — y=0 sits on the baseline), "top" (y=0 at
+# ascender top), "center" (y=0 at vertical midpoint), or "bottom" (y=0 at
+# descender bottom).
 # ```
 # fn Main() { Text("HELLO", 8 mm).Extrude(2 mm) }
+# fn Main() { Text("HI", 8 mm, halign: "center", valign: "center").Extrude(2 mm) }
 # ```
 fn Text(
     text String,
     s Length,
     font String = "",
+    halign String = "left",
+    valign String = "baseline",
 ) Sketch {
-    return _text(text, s, font)
+    return _text(text, s, font, halign, valign)
 }
 
 # ---------------------------------------------------------------------------
@@ -1298,12 +1313,16 @@ fn Sketch.Extrude(
     return _extrude(self, z, slices, twist, taperX, taperY)
 }
 
-# Revolves a sketch around the Y axis. Move the sketch away from Y first for a torus.
-# Optional `a` limits the arc (default 360°).
+# Revolves a sketch around the Z axis (the world's up axis). The sketch's X
+# becomes the radius; its Y becomes the height along Z. Move the sketch away
+# from x = 0 first for a torus. Optional `a` limits the arc (default 360°);
+# optional `segments` overrides the auto-chosen circumferential resolution
+# (0 = use manifold's default formula).
 fn Sketch.Revolve(
     a Angle = 360 deg,
+    segments Number = 0,
 ) Solid {
-    return _revolve(self, a)
+    return _revolve(self, a, segments)
 }
 
 # Sweeps the sketch along a 3D path using a rotation-minimizing frame.
@@ -1800,8 +1819,10 @@ fn Solid.Warp(f fn(Vec3) Vec3) Solid {
 }
 
 # Sets a uniform color on all faces. Survives booleans via originalID tracking.
+# Alpha < 1 renders the affected faces translucent in the viewer and round-trips
+# in 3MF export as "#RRGGBBAA".
 fn Solid.Color(c Color) Solid {
-    return _color(self, c.r, c.g, c.b)
+    return _color(self, c.r, c.g, c.b, c.a)
 }
 
 fn Solid.Color(hex String) Solid {
@@ -1814,7 +1835,7 @@ fn Solid.Color(
     b Number = 0,
     a Number = 1,
 ) Solid {
-    return _color(self, r, g, b)
+    return _color(self, r, g, b, a)
 }
 
 # Creates a solid from a signed-distance-field (SDF). The SDF returns negative inside, positive outside.

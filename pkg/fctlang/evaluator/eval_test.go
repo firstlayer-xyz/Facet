@@ -528,6 +528,69 @@ fn Main() {
 	}
 }
 
+// TestEvalPolygonWithHoles end-to-ends the Polygon(points, holes) stdlib
+// overload: a 10x10 outer square with a 2x2 hole has area 96; extruding
+// 1mm gives a solid with volume 96.
+func TestEvalPolygonWithHoles(t *testing.T) {
+	src := `
+fn Main() Solid {
+    var outer = [
+        Vec2{x: 0 mm, y: 0 mm},
+        Vec2{x: 10 mm, y: 0 mm},
+        Vec2{x: 10 mm, y: 10 mm},
+        Vec2{x: 0 mm, y: 10 mm},
+    ];
+    var hole = [
+        Vec2{x: 4 mm, y: 4 mm},
+        Vec2{x: 6 mm, y: 4 mm},
+        Vec2{x: 6 mm, y: 6 mm},
+        Vec2{x: 4 mm, y: 6 mm},
+    ];
+    return Polygon(points: outer, holes: [hole]).Extrude(z: 1 mm);
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil || len(mesh.Vertices) == 0 {
+		t.Fatal("expected a non-empty mesh from polygon-with-holes extrude")
+	}
+}
+
+// TestEvalSolidColorWithAlpha end-to-ends Color → Solid.Color → backend
+// FaceInfo: the alpha component should reach FaceMap rather than being
+// silently truncated to RGB.
+func TestEvalSolidColorWithAlpha(t *testing.T) {
+	src := `
+fn Main() Solid {
+    return Cube(s: 10 mm).Color(c: Color(r: 1, g: 0, b: 0, a: 0.5));
+}
+`
+	prog := parseTestProg(t, src)
+	result, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	if len(result.Solids) == 0 {
+		t.Fatal("expected at least one solid")
+	}
+	for _, sol := range result.Solids {
+		if len(sol.FaceMap) == 0 {
+			t.Error("expected non-empty FaceMap on colored cube")
+		}
+		for id, fi := range sol.FaceMap {
+			if fi.Alpha != 128 {
+				t.Errorf("face %d: expected Alpha=128 (0.5), got %d", id, fi.Alpha)
+			}
+			if fi.Color != 0xFF0000 {
+				t.Errorf("face %d: expected Color=0xFF0000, got 0x%06X", id, fi.Color)
+			}
+		}
+	}
+}
+
 func TestEvalOptionalParam(t *testing.T) {
 	src := `
 fn Box(size Length, height Length = 5 mm) Solid {

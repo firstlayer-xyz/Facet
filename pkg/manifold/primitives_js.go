@@ -48,33 +48,40 @@ func CreateCircle(radius float64, segments int) *Sketch {
 	return newSketch(id)
 }
 
-func CreatePolygon(points []Point2D) (*Sketch, error) {
-	n := len(points)
-	if n < 3 {
-		return nil, fmt.Errorf("Polygon requires at least 3 points, got %d", n)
+func CreatePolygon(outer []Point2D, holes [][]Point2D) (*Sketch, error) {
+	if len(outer) < 3 {
+		return nil, fmt.Errorf("Polygon outline requires at least 3 points, got %d", len(outer))
 	}
-	var area2 float64
-	for i := 0; i < n; i++ {
-		j := (i + 1) % n
-		area2 += points[i].X*points[j].Y - points[j].X*points[i].Y
-	}
-	flat := make([]interface{}, n*2)
-	if area2 < 0 {
-		for i, p := range points {
-			dst := n - 1 - i
-			flat[dst*2] = p.X
-			flat[dst*2+1] = p.Y
-		}
-	} else {
-		for i, p := range points {
-			flat[i*2] = p.X
-			flat[i*2+1] = p.Y
+	for i, h := range holes {
+		if len(h) < 3 {
+			return nil, fmt.Errorf("Polygon hole %d requires at least 3 points, got %d", i, len(h))
 		}
 	}
-	arr := js.Global().Get("Float64Array").New(n * 2)
-	for i, v := range flat {
-		arr.SetIndex(i, v)
+
+	totalPoints := len(outer)
+	for _, h := range holes {
+		totalPoints += len(h)
 	}
-	id := js.Global().Call("_mf_polygon", arr, n).Int()
+	coords := js.Global().Get("Float64Array").New(totalPoints * 2)
+	idx := 0
+	for _, p := range outer {
+		coords.SetIndex(idx*2, p.X)
+		coords.SetIndex(idx*2+1, p.Y)
+		idx++
+	}
+	for _, h := range holes {
+		for _, p := range h {
+			coords.SetIndex(idx*2, p.X)
+			coords.SetIndex(idx*2+1, p.Y)
+			idx++
+		}
+	}
+
+	holeSizes := js.Global().Get("Uint32Array").New(len(holes))
+	for i, h := range holes {
+		holeSizes.SetIndex(i, len(h))
+	}
+
+	id := js.Global().Call("_mf_polygon", coords, len(outer), holeSizes).Int()
 	return newSketch(id), nil
 }

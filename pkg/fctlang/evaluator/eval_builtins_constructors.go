@@ -154,26 +154,52 @@ func makePtVecStruct3(typeName string, x, y, z float64) *structVal {
 	}
 }
 
-func (e *evaluator) builtinNewPolygon(args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_polygon() expects 1 argument, got %d", len(args))
-	}
-	arr, ok := args[0].(array)
-	if !ok {
-		return nil, fmt.Errorf("_polygon() argument 1 must be an Array of Vec2, got %s", typeName(args[0]))
-	}
+// vec2RingFromArray converts an array of Vec2 values into []manifold.Point2D,
+// returning context-rich errors that name the failing ring and element.
+func vec2RingFromArray(arr array, ringDesc string) ([]manifold.Point2D, error) {
 	if len(arr.elems) < 3 {
-		return nil, fmt.Errorf("_polygon() requires at least 3 points, got %d", len(arr.elems))
+		return nil, fmt.Errorf("%s requires at least 3 points, got %d", ringDesc, len(arr.elems))
 	}
-	points := make([]manifold.Point2D, len(arr.elems))
+	out := make([]manifold.Point2D, len(arr.elems))
 	for i, elem := range arr.elems {
 		x, y, ok := extractVec2(elem)
 		if !ok {
-			return nil, fmt.Errorf("_polygon() element %d must be a Vec2, got %s", i+1, typeName(elem))
+			return nil, fmt.Errorf("%s element %d must be a Vec2, got %s", ringDesc, i+1, typeName(elem))
 		}
-		points[i] = manifold.Point2D{X: x, Y: y}
+		out[i] = manifold.Point2D{X: x, Y: y}
 	}
-	result, err := manifold.CreatePolygon(points)
+	return out, nil
+}
+
+func (e *evaluator) builtinNewPolygon(args []value) (value, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("_polygon() expects 2 arguments (points, holes), got %d", len(args))
+	}
+	outerArr, ok := args[0].(array)
+	if !ok {
+		return nil, fmt.Errorf("_polygon() argument 1 must be an Array of Vec2, got %s", typeName(args[0]))
+	}
+	holesArr, ok := args[1].(array)
+	if !ok {
+		return nil, fmt.Errorf("_polygon() argument 2 must be an Array of Array of Vec2, got %s", typeName(args[1]))
+	}
+	outer, err := vec2RingFromArray(outerArr, "_polygon() outline")
+	if err != nil {
+		return nil, err
+	}
+	holes := make([][]manifold.Point2D, len(holesArr.elems))
+	for i, elem := range holesArr.elems {
+		holeArr, ok := elem.(array)
+		if !ok {
+			return nil, fmt.Errorf("_polygon() hole %d must be an Array of Vec2, got %s", i+1, typeName(elem))
+		}
+		ring, err := vec2RingFromArray(holeArr, fmt.Sprintf("_polygon() hole %d", i+1))
+		if err != nil {
+			return nil, err
+		}
+		holes[i] = ring
+	}
+	result, err := manifold.CreatePolygon(outer, holes)
 	if err != nil {
 		return nil, err
 	}
@@ -371,8 +397,8 @@ func (e *evaluator) builtinLoadMesh(args []value) (value, error) {
 // ---------------------------------------------------------------------------
 
 func (e *evaluator) builtinNewText(args []value) (value, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return nil, fmt.Errorf("_text() expects 2 or 3 arguments, got %d", len(args))
+	if len(args) != 5 {
+		return nil, fmt.Errorf("_text() expects 5 arguments (text, size, font, halign, valign), got %d", len(args))
 	}
 	text, err := requireString("_text", 1, args[0])
 	if err != nil {
@@ -382,12 +408,17 @@ func (e *evaluator) builtinNewText(args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
-	fontPath := ""
-	if len(args) == 3 {
-		fontPath, err = requireString("_text", 3, args[2])
-		if err != nil {
-			return nil, err
-		}
+	fontPath, err := requireString("_text", 3, args[2])
+	if err != nil {
+		return nil, err
+	}
+	halign, err := requireString("_text", 4, args[3])
+	if err != nil {
+		return nil, err
+	}
+	valign, err := requireString("_text", 5, args[4])
+	if err != nil {
+		return nil, err
 	}
 	if fontPath == "" {
 		fontPath = manifold.DefaultFontPath()
@@ -398,7 +429,7 @@ func (e *evaluator) builtinNewText(args []value) (value, error) {
 		}
 		fontPath = filepath.Join(cwd, fontPath)
 	}
-	return manifold.CreateText(fontPath, text, size)
+	return manifold.CreateText(fontPath, text, size, halign, valign)
 }
 
 // ---------------------------------------------------------------------------

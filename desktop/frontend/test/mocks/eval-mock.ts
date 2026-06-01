@@ -12,22 +12,38 @@ export type EvalRequestBody = {
   debug?: boolean;
 };
 
-export type EvalHandler = (body: EvalRequestBody) => unknown;
+/**
+ * Eval mock handler return shape. Plain object = header-only response
+ * (the common case for tests that only need the metadata). To inject
+ * a binary mesh payload — anything that the frontend's mesh-decode
+ * machinery needs to do real work — return `{ header, binary }`. The
+ * binary is appended after the framed JSON header, matching the
+ * wire format the eval-client expects.
+ */
+export type EvalHandlerResult =
+  | Record<string, unknown>
+  | { header: Record<string, unknown>; binary: Buffer | Uint8Array };
 
-export function loadFixture(name: string): unknown {
+export type EvalHandler = (body: EvalRequestBody) => EvalHandlerResult;
+
+export function loadFixture(name: string): Record<string, unknown> {
   const raw = fs.readFileSync(path.join(FIXTURE_DIR, `${name}.json`), 'utf8');
-  return JSON.parse(raw).value;
+  return JSON.parse(raw).value as Record<string, unknown>;
 }
 
-// Frames a JS object into the [4-byte LE length][JSON UTF-8] wire format the
-// app's eval-client expects. Matches the parsing at eval-client.ts:136-138.
-function frameResponse(obj: unknown): Buffer {
-  const headerJSON = JSON.stringify(obj);
+// Frames a JS object plus optional binary into the
+// [4-byte LE length][JSON UTF-8][binary] wire format the eval-client
+// expects. Matches the parsing at eval-client.ts:136-138.
+function frameResponse(header: unknown, binary?: Buffer | Uint8Array): Buffer {
+  const headerJSON = JSON.stringify(header);
   const headerBytes = new TextEncoder().encode(headerJSON);
-  const buf = new ArrayBuffer(4 + headerBytes.length);
+  const binLen = binary ? binary.length : 0;
+  const buf = new ArrayBuffer(4 + headerBytes.length + binLen);
   const view = new DataView(buf);
   view.setUint32(0, headerBytes.length, true);
-  new Uint8Array(buf, 4).set(headerBytes);
+  const u8 = new Uint8Array(buf);
+  u8.set(headerBytes, 4);
+  if (binary) u8.set(binary, 4 + headerBytes.length);
   return Buffer.from(buf);
 }
 
@@ -56,14 +72,26 @@ export async function installEvalRoute(page: Page, handler: EvalHandler): Promis
       return;
     }
     const body = req.postDataJSON() as EvalRequestBody;
-    const result = handler(body) as Record<string, unknown>;
-    if (body.entry && !result.mesh && !result.debugFinal) {
-      result.mesh = EMPTY_MESH_META;
+    const raw = handler(body);
+    // Distinguish framed (header + binary) from header-only by the
+    // presence of a `header` key. Tests that need to inject mesh
+    // bytes return { header, binary }; everything else returns the
+    // header directly.
+    let header: Record<string, unknown>;
+    let binary: Buffer | Uint8Array | undefined;
+    if (raw && typeof raw === 'object' && 'header' in raw && 'binary' in raw) {
+      header = (raw as { header: Record<string, unknown> }).header;
+      binary = (raw as { binary: Buffer | Uint8Array }).binary;
+    } else {
+      header = raw as Record<string, unknown>;
+    }
+    if (body.entry && !header.mesh && !header.debugFinal) {
+      header.mesh = EMPTY_MESH_META;
     }
     await route.fulfill({
       status: 200,
       contentType: 'application/octet-stream',
-      body: frameResponse(result),
+      body: frameResponse(header, binary),
     });
   });
 }

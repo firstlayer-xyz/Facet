@@ -90,14 +90,8 @@ type DisplayMesh struct {
 	EdgeCount     int    // number of edge line segments
 }
 
-// NoColor is the sentinel value for FaceInfo.Color indicating no color is assigned.
-const NoColor uint32 = 0xFFFFFFFF
-
-// FaceInfo holds per-face metadata keyed by Manifold originalID.
-// Color is 0xRRGGBB; NoColor (0xFFFFFFFF) means no color assigned.
-type FaceInfo struct {
-	Color uint32
-}
+// FaceInfo, NoColor, and clamp01 live in face_color.go (no build tag) so
+// both the native and wasm builds share the same definition.
 
 // Solid wraps a C ManifoldPtr pointer for use in boolean operations.
 type Solid struct {
@@ -166,12 +160,14 @@ func (s *Solid) withFaceMap() map[uint32]FaceInfo {
 	return m
 }
 
-// SetColor sets a uniform RGB color on all vertices.
+// SetColor sets a uniform RGBA color on all faces. Alpha 1 is fully opaque.
 // Face IDs are auto-assigned by C at creation time; no new IDs are created here.
-func (s *Solid) SetColor(r, g, b float64) *Solid {
+func (s *Solid) SetColor(r, g, b, a float64) *Solid {
 	color := uint32(int(r*255+0.5)<<16 | int(g*255+0.5)<<8 | int(b*255+0.5))
+	alpha := uint8(clamp01(a)*255 + 0.5)
 	for id, fi := range s.FaceMap {
 		fi.Color = color
+		fi.Alpha = alpha
 		s.FaceMap[id] = fi
 	}
 	return s

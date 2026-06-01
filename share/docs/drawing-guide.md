@@ -326,7 +326,7 @@ var h = bb.Height()    # 10 mm
 Once you have a sketch, there are four ways to turn it into a 3D solid:
 
 - **Extrude** — push the sketch straight up along Z. See the User's Guide for basic and twisted/tapered extrusions.
-- **Revolve** — spin the sketch around the Y axis. The sketch must sit to the right of the Y axis.
+- **Revolve** — spin the sketch around the Z axis. The sketch's X becomes the radius (must be ≥ 0); its Y becomes the height along Z.
 - **Sweep** — extrude along a 3D path of `Vec3` values.
 - **Loft** — blend between multiple sketches at different heights.
 

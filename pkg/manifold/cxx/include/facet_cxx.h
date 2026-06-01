@@ -66,7 +66,15 @@ void facet_square(double x, double y, FacetSketchRet* out);
 // result so its bbox starts at (0,0) — matching cube/sphere/cylinder
 // convention and avoiding a separate Go-side Translate cgo call.
 void facet_circle(double radius, int segments, FacetSketchRet* out);
-void facet_polygon(double* xy_pairs, size_t n_points, FacetSketchRet* out);
+// Polygon with optional holes: outer outline plus N inner outlines.
+// Holes are concatenated into `holes_xy_pairs`; `hole_sizes[i]` is the
+// point count for the i-th hole. Uses FillRule::EvenOdd so the caller
+// doesn't need to manage winding direction — any ring nested in another
+// flips fill. n_holes=0 reduces to a plain polygon.
+void facet_polygon(
+  const double* outer_xy_pairs, size_t outer_n,
+  const double* holes_xy_pairs, const size_t* hole_sizes, size_t n_holes,
+  FacetSketchRet* out);
 void facet_cs_empty(FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
@@ -280,8 +288,14 @@ void facet_merge_extract_expanded_mesh(
 // Renders text string to a CrossSection using FreeType. Writes empty
 // CrossSection if text is empty or font fails to load. Sets out->ptr to NULL
 // on failure (caller should check).
+//
+// halign: "left" (default — text starts at x=0), "center", "right".
+// valign: "baseline" (default — y=0 is the baseline), "top" (y=0 is at
+//   ascender), "center" (y=0 is mid-cap-height), "bottom" (y=0 is at
+//   descender bottom). Empty string means default.
 void facet_text_to_cross_section(
-    const char* font_path, const char* text, double size_mm, FacetSketchRet* out);
+    const char* font_path, const char* text, double size_mm,
+    const char* halign, const char* valign, FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
 // Callback operations

@@ -291,7 +291,7 @@ fn Main() {
 
 ### Revolve
 
-Spin a 2D Sketch around the Y axis:
+Spin a 2D Sketch around the Z axis. The sketch's X becomes the radius (must be ≥ 0); its Y becomes the height along Z:
 
 ```
 fn Main() {
@@ -1069,12 +1069,12 @@ solid.Mirror(x: 1, y: 0, z: 0, offset: 0 mm)
 
 The sketch extrudes upward from Z=0. If you need the solid to start at a different Z, translate after extruding.
 
-### `Revolve` rotates around the Y axis
+### `Revolve` rotates around the Z axis
 
-Sketch profiles for `Revolve` must sit to the **right of the Y axis** (`x > 0`):
+The sketch's X is the radius and must be `≥ 0`; its Y becomes the height along Z. Move the sketch away from `x = 0` first for a torus:
 
 ```
-# Correct torus — sketch offset from Y axis:
+# Correct torus — sketch offset along X:
 Circle(r: 3 mm).Move(x: 10 mm, y: 0 mm).Revolve()
 ```
 

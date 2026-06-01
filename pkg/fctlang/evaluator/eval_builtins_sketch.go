@@ -92,18 +92,26 @@ func init() {
 		if !ok {
 			return nil, fmt.Errorf("%s: expected Sketch, got %s", name, typeName(args[0]))
 		}
-		if len(args) > 2 {
-			return nil, fmt.Errorf("%s() expects 0 or 1 arguments, got %d", name, len(args)-1)
+		if len(args) > 3 {
+			return nil, fmt.Errorf("%s() expects 0 to 2 arguments, got %d", name, len(args)-1)
 		}
 		degrees := 360.0
-		if len(args) == 2 {
+		segments := 0
+		if len(args) >= 2 {
 			var err error
 			degrees, err = requireAngle(name, 1, args[1])
 			if err != nil {
 				return nil, err
 			}
 		}
-		return pf.Revolve(0, degrees)
+		if len(args) == 3 {
+			n, err := requireNumber(name, 2, args[2])
+			if err != nil {
+				return nil, err
+			}
+			segments = int(n)
+		}
+		return pf.Revolve(segments, degrees)
 	}
 
 	builtinRegistry["_sweep"] = func(e *evaluator, args []value) (value, error) {

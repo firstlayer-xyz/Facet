@@ -1,38 +1,14 @@
-import { EventsOn } from '../wailsjs/runtime/runtime';
+import { on } from './events';
+import type {
+  AssistantQuestionOption,
+  AssistantQuestionPayload,
+  AssistantScreenshotRequest,
+  AssistantTaskItem,
+  AssistantTaskPlanPayload,
+  AssistantTaskStatus,
+} from './events';
 import { SendAssistantMessage, CancelAssistant, ClearAssistantHistory, PickImageFile, DetectAssistantCLIs, AnswerAssistantQuestion, DeliverViewportScreenshot }
   from '../wailsjs/go/main/App';
-
-interface AssistantQuestionOption {
-  label: string;
-  description?: string;
-}
-
-interface AssistantQuestion {
-  question: string;
-  header: string;
-  options: AssistantQuestionOption[];
-  multiSelect?: boolean;
-}
-
-interface AssistantQuestionPayload {
-  id: string;
-  questions: AssistantQuestion[];
-}
-
-interface AssistantScreenshotRequest {
-  id: string;
-}
-
-type AssistantTaskStatus = 'pending' | 'in_progress' | 'completed';
-
-interface AssistantTaskItem {
-  content: string;
-  status: AssistantTaskStatus;
-}
-
-interface AssistantTaskPlanPayload {
-  tasks: AssistantTaskItem[];
-}
 
 export class AssistantPanel {
   private container: HTMLElement;
@@ -244,20 +220,20 @@ export class AssistantPanel {
 
   private registerEvents(): void {
     if (this.offToken) return;
-    this.offToken = EventsOn('assistant:token', (token: string) => {
+    this.offToken = on('assistant:token', (token: string) => {
       this.appendToken(token);
     });
-    this.offDone = EventsOn('assistant:done', () => {
+    this.offDone = on('assistant:done', () => {
       this.finishStream();
     });
-    this.offError = EventsOn('assistant:error', (msg: string) => {
+    this.offError = on('assistant:error', (msg: string) => {
       this.showError(msg);
     });
     // MCP tool-use indicator. Some tools have their own UI affordances
     // (question card, task plan, screenshot flash) — suppress the
     // generic indicator for those so we don't show a spurious
     // "<tool_name>..." line before the real UI lands.
-    this.offToolUse = EventsOn('assistant:tool-use', (toolName: string, callNum: number) => {
+    this.offToolUse = on('assistant:tool-use', (toolName: string, callNum: number) => {
       if (toolName === 'ask_user_question' || toolName === 'update_task_plan' || toolName === 'screenshot_viewport') return;
       this.showToolUseIndicator(toolName, callNum);
     });
@@ -265,14 +241,14 @@ export class AssistantPanel {
     // card. The backend blocks the model on a channel until the user
     // submits, at which point AnswerAssistantQuestion routes the answer
     // back as the tool's JSON result.
-    this.offQuestion = EventsOn('assistant:question', (payload: AssistantQuestionPayload) => {
+    this.offQuestion = on('assistant:question', (payload: AssistantQuestionPayload) => {
       this.showQuestion(payload);
     });
     // screenshot_viewport MCP tool — capture the live viewport and hand
     // the PNG back to the blocked tool handler. captureScreenshot is
     // optional (the test harness wires no viewer); fail explicitly so
     // the model gets a clear tool error instead of hanging.
-    this.offScreenshot = EventsOn('assistant:screenshot-request', async (payload: AssistantScreenshotRequest) => {
+    this.offScreenshot = on('assistant:screenshot-request', async (payload: AssistantScreenshotRequest) => {
       if (!payload?.id) return;
       if (!this.captureScreenshot) {
         try { await DeliverViewportScreenshot(payload.id, '', 'no viewport available'); } catch {}
@@ -293,7 +269,7 @@ export class AssistantPanel {
     });
     // update_task_plan MCP tool — render or update the task list. One-way;
     // each call REPLACES the rendered list (the model sends full state).
-    this.offTaskPlan = EventsOn('assistant:task-plan', (payload: AssistantTaskPlanPayload) => {
+    this.offTaskPlan = on('assistant:task-plan', (payload: AssistantTaskPlanPayload) => {
       this.renderTaskPlan(payload?.tasks ?? []);
     });
     // MCP-driven code changes — update editor only, Go handles the build.
@@ -301,17 +277,17 @@ export class AssistantPanel {
     // refuse read-only edits, but the event could be delivered out-of-band
     // (e.g. user switched to a read-only tab mid-run). Silent-overwrite of
     // a read-only file would corrupt its in-memory view.
-    this.offReplaceCode = EventsOn('assistant:replace-code', (code: string) => {
+    this.offReplaceCode = on('assistant:replace-code', (code: string) => {
       if (this.getActiveTab().readOnly) return;
       this.onSetEditorSilent(code);
     });
     // MCP new_file tool — create a fresh editable tab with the given source.
-    this.offNewFile = EventsOn('assistant:new-file', (payload: { name: string; code: string }) => {
+    this.offNewFile = on('assistant:new-file', (payload: { name: string; code: string }) => {
       if (!payload) return;
       this.onNewFile(payload.name ?? 'Untitled', payload.code ?? '');
     });
     // Thinking indicator — shown after tool results, before next assistant message
-    this.offThinking = EventsOn('assistant:thinking', (callNum: number) => {
+    this.offThinking = on('assistant:thinking', (callNum: number) => {
       this.showThinkingIndicator(callNum);
     });
   }

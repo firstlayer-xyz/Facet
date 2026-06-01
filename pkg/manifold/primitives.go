@@ -86,36 +86,59 @@ func CreateCircle(radius float64, segments int) *Sketch {
 	return newSketch(ret)
 }
 
-// CreatePolygon creates a 2D sketch from a slice of points.
-func CreatePolygon(points []Point2D) (*Sketch, error) {
-	n := len(points)
-	if n < 3 {
-		return nil, fmt.Errorf("Polygon requires at least 3 points, got %d", n)
+// CreatePolygon creates a 2D sketch from an outer outline plus zero or
+// more inner outlines (holes). The C++ side uses EvenOdd fill — every
+// nested ring flips fill — so winding direction is irrelevant. Each
+// ring must have at least 3 points. Pass `nil` holes for a plain polygon.
+func CreatePolygon(outer []Point2D, holes [][]Point2D) (*Sketch, error) {
+	if len(outer) < 3 {
+		return nil, fmt.Errorf("Polygon outline requires at least 3 points, got %d", len(outer))
 	}
-	// Ensure CCW winding (positive signed area) so extrusion normals face +Z.
-	// Shoelace formula: positive = CCW, negative = CW.
-	var area2 float64
-	for i := 0; i < n; i++ {
-		j := (i + 1) % n
-		area2 += points[i].X*points[j].Y - points[j].X*points[i].Y
-	}
-	// Copy into the C-bound coords buffer, reversing order if the caller's
-	// polygon is CW.  We do NOT mutate the caller's slice — CreatePolygon is
-	// an input and must not have surprising side effects on reused buffers.
-	coords := make([]C.double, n*2)
-	if area2 < 0 {
-		for i, p := range points {
-			dst := n - 1 - i
-			coords[dst*2] = C.double(p.X)
-			coords[dst*2+1] = C.double(p.Y)
-		}
-	} else {
-		for i, p := range points {
-			coords[i*2] = C.double(p.X)
-			coords[i*2+1] = C.double(p.Y)
+	for i, h := range holes {
+		if len(h) < 3 {
+			return nil, fmt.Errorf("Polygon hole %d requires at least 3 points, got %d", i, len(h))
 		}
 	}
+
+	outerCoords := make([]C.double, len(outer)*2)
+	for i, p := range outer {
+		outerCoords[i*2] = C.double(p.X)
+		outerCoords[i*2+1] = C.double(p.Y)
+	}
+
+	// Concatenate all hole coords into one flat buffer; remember each
+	// hole's point count so the C side can slice the buffer back out.
+	totalHolePoints := 0
+	for _, h := range holes {
+		totalHolePoints += len(h)
+	}
+	var (
+		holesCoords []C.double
+		holeSizes   []C.size_t
+		holesPtr    *C.double
+		sizesPtr    *C.size_t
+	)
+	if totalHolePoints > 0 {
+		holesCoords = make([]C.double, totalHolePoints*2)
+		holeSizes = make([]C.size_t, len(holes))
+		idx := 0
+		for hi, h := range holes {
+			holeSizes[hi] = C.size_t(len(h))
+			for _, p := range h {
+				holesCoords[idx*2] = C.double(p.X)
+				holesCoords[idx*2+1] = C.double(p.Y)
+				idx++
+			}
+		}
+		holesPtr = &holesCoords[0]
+		sizesPtr = &holeSizes[0]
+	}
+
 	var ret C.FacetSketchRet
-	C.facet_polygon(&coords[0], C.size_t(n), &ret)
+	C.facet_polygon(
+		&outerCoords[0], C.size_t(len(outer)),
+		holesPtr, sizesPtr, C.size_t(len(holes)),
+		&ret,
+	)
 	return newSketch(ret), nil
 }
