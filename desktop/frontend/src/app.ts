@@ -426,7 +426,17 @@ function handleCheckOnly(_data: EvalResult, errors: SourceError[], fns: EntryPoi
   if (picked) {
     tabStore.setPickedEntry(tabStore.active(), picked);
     runViaHTTP(); // re-run with the picked entry point
+    return;
   }
+  // Reached when the eval landed with neither errors nor a runnable
+  // entry — the active file has no entry function (fresh scratch,
+  // types-only library, just-closed-the-last-tab auto-scratch). Reset
+  // the viewer so a stale mesh from a previous file doesn't keep
+  // rendering in an empty context. The errors-present branch above
+  // intentionally keeps the previous mesh so the user can still see
+  // their last good render while fixing the syntax problem.
+  viewer.reset();
+  hideStats();
 }
 
 
