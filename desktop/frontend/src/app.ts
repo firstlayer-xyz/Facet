@@ -64,6 +64,7 @@ const validBreakpointLines = new Map<string, Set<number>>();
 // an absent tab the same way the prior in-file map did.
 import { tabStore } from './tabs';
 import type { TabState } from './tabs';
+import { evalStore } from './eval-store';
 
 /** Get a tab, creating an empty one if absent. */
 function getTab(key: string): TabState {
@@ -84,15 +85,17 @@ function removeTab(key: string) {
 }
 
 function isReadOnly(path: string): boolean {
-  return isReadOnlyKind(lastResult?.sources?.[path]?.kind ?? SOURCE_USER);
+  return isReadOnlyKind(evalStore.current()?.sources?.[path]?.kind ?? SOURCE_USER);
 }
 
 function isDirty(): boolean {
   return tabStore.activeState()?.dirty ?? false;
 }
 
-// Cached result from last run:result event
-let lastResult: EvalResult | null = null;
+// The latest eval result lives in EvalStore (./eval-store.ts).
+// app.ts reads it via evalStore.current() and writes via
+// evalStore.set(). Direct `lastResult` references were removed when
+// the store was introduced.
 
 // Callbacks for external UI components
 let onTabChangeCb: ((tab: string) => void) | null = null;
@@ -142,7 +145,7 @@ function markClean() {
   }
 }
 function persistOpenTabs() {
-  const sources = lastResult?.sources ?? {};
+  const sources = evalStore.current()?.sources ?? {};
   // Save cursor for active tab before persisting
   const active = tabStore.active();
   if (active) {
@@ -252,7 +255,7 @@ export function setEditor(ed: EditorHandle) {
 
   // Jump to first debug step at the clicked line
   ed.onJumpToLine((file, line) => {
-    const steps = lastResult?.debugSteps ?? [];
+    const steps = evalStore.current()?.debugSteps ?? [];
     const idx = steps.findIndex(s => (s.file || debugEntryTab) === file && s.line === line);
     if (idx >= 0) showDebugStep(idx);
   });
@@ -455,7 +458,7 @@ export function renderTabs() {
     tab.className = 'tab' + (tabStore.isActive(path) ? ' active' : '');
     tab.title = path;
 
-    const sourceKind = lastResult?.sources?.[path]?.kind ?? SOURCE_USER;
+    const sourceKind = evalStore.current()?.sources?.[path]?.kind ?? SOURCE_USER;
     if (sourceKind === SOURCE_EXAMPLE) {
       // Example — star icon
       const star = document.createElement('span');
@@ -599,7 +602,7 @@ async function closeTab(file: string) {
     hideStats();
     debugFinalMesh = null;
     debugEntryTab = '';
-    lastResult = null;
+    evalStore.set(null);
     onDebugExitCb?.();
   }
 
@@ -633,7 +636,7 @@ export function switchToTab(file: string) {
   editor.setCurrentSource(file);
 
   // Switch editor model — source comes from sources map or editor's own model cache
-  const source = lastResult?.sources?.[file]?.text ?? '';
+  const source = evalStore.current()?.sources?.[file]?.text ?? '';
   editor.switchModel(file, source);
   editor.setReadOnly(isReadOnly(file));
 
@@ -646,15 +649,16 @@ export function switchToTab(file: string) {
   renderTabs();
 
   // Update declarations from cached data so Go to Declaration works
-  if (lastResult?.declarations?.decls) {
-    editor.updateDeclarations(lastResult.declarations.decls);
+  const cached = evalStore.current();
+  if (cached?.declarations?.decls) {
+    editor.updateDeclarations(cached.declarations.decls);
   }
-  if (lastResult?.references) {
-    editor.updateReferences(lastResult.references);
+  if (cached?.references) {
+    editor.updateReferences(cached.references);
   }
 
   // Re-highlight current debug step line if it belongs to this tab
-  const steps = lastResult?.debugSteps ?? [];
+  const steps = evalStore.current()?.debugSteps ?? [];
   if (steps.length > 0 && debugStepIndex < steps.length) {
     const step = steps[debugStepIndex];
     if ((step.file ?? '') === tabStore.active() && step.line > 0) {
@@ -677,7 +681,7 @@ export function showDebugStepNext() {
 }
 
 export async function showDebugStep(index: number) {
-  const debugSteps = lastResult?.debugSteps ?? [];
+  const debugSteps = evalStore.current()?.debugSteps ?? [];
   if (index < 0 || index >= debugSteps.length) return;
   debugStepIndex = index;
   debugSlider.value = String(index);
@@ -713,7 +717,7 @@ export async function showDebugStep(index: number) {
 
 /** Navigate to the next step that hits a breakpoint, or jump to the last step if none. */
 export function continueDebug() {
-  const steps = lastResult?.debugSteps ?? [];
+  const steps = evalStore.current()?.debugSteps ?? [];
   const hasBreakpoints = [...breakpoints.values()].some(s => s.size > 0);
   if (!hasBreakpoints) {
     showDebugStep(steps.length - 1);
@@ -808,7 +812,7 @@ function handleHTTPResult(resp: EvalResponse) {
   const errors = data.errors ?? [];
   if (errors.length > 0) editor.setMarkers(errors);
 
-  lastResult = data;
+  evalStore.set(data);
   syncTabsWithSources(data);
   pushEditorData(data);
   renderTabs(); // refresh tab icons (star, book, lock) from updated source kinds
@@ -968,10 +972,12 @@ async function doSave(forceDialog: boolean) {
     addTab(path, { path, dirty: false, cursor: tab.cursor, label: tabLabel(path), pickedEntry: null, entryOverrides: {} });
     tabStore.setActive(path);
   }
+  // Patch the cached source text so subsequent reads see the saved
+  // version without waiting for the next eval to refresh it.
   const finalActive = tabStore.active();
-  if (lastResult?.sources?.[finalActive]) {
-    lastResult.sources[finalActive].text = source;
-  }
+  const cached = evalStore.current();
+  const cachedSource = cached?.sources?.[finalActive];
+  if (cachedSource) cachedSource.text = source;
   markClean();
   updateWindowTitle();
   renderTabs();
@@ -1047,7 +1053,7 @@ export function toggleDebug() {
       viewer.centerOnBed();
       viewer.fitToView();
     }
-    lastResult = null;
+    evalStore.set(null);
     debugFinalMesh = null;
 
     // Jump back to the tab that had the entry point
@@ -1080,7 +1086,7 @@ export async function toggleDocs() {
     await openDocs();
   } else {
     docsPanel.hide();
-    if (debugMode && (lastResult?.debugSteps ?? []).length > 0) {
+    if (debugMode && (evalStore.current()?.debugSteps ?? []).length > 0) {
       setDebugBarVisible(true);
     }
   }
@@ -1094,7 +1100,7 @@ export async function openDocsToEntry(name: string, library?: string): Promise<v
 
 // ── State accessors for external UI (file tree, preview selector) ──────────
 
-export function getSources(): Record<string, SourceEntry> { return lastResult?.sources ?? {}; }
+export function getSources(): Record<string, SourceEntry> { return evalStore.current()?.sources ?? {}; }
 export function getActiveTabValue(): string { return tabStore.active(); }
 export function isActiveTabReadOnly(): boolean { return isReadOnly(tabStore.active()); }
 export function getActiveLabel(): string {
@@ -1135,7 +1141,7 @@ export function setEntryOverrides(overrides: Record<string, unknown>) {
 /** Open a library tab without navigating to a specific line.
  *  file may be an import path or disk path. If import path, resolves to disk path. */
 export function openLibraryTab(file: string, source: string) {
-  const sources = lastResult?.sources ?? {};
+  const sources = evalStore.current()?.sources ?? {};
   // If file is an import path (e.g. "facet/gears"), resolve to disk path
   if (!sources[file]) {
     for (const [diskPath, entry] of Object.entries(sources)) {
