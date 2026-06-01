@@ -157,16 +157,12 @@ jobs:
         run: |
           set -e
           cd site
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            echo "Tag deploy: replacing root files, preserving preview/"
-            find . -mindepth 1 -maxdepth 1 ! -name preview ! -name .git -exec rm -rf {} +
-            cp -r ../bundle/. .
-          else
-            echo "Main deploy: replacing only preview/"
-            rm -rf preview
-            mkdir preview
-            cp -r ../bundle/. preview/
-          fi
+          echo "Deploying web bundle to site root (${GITHUB_REF_NAME})"
+          # One app at the root, tracking main. Wipe everything except git
+          # internals, then publish the bundle. This also clears the obsolete
+          # client-server index.html, wasm.html, and the redundant preview/.
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r ../bundle/. .
           git config user.email "actions@github.com"
           git config user.name "github-actions"
           git add -A
