@@ -364,11 +364,6 @@ function syncTabsWithSources(data: EvalResult) {
 }
 
 function pushEditorData(data: EvalResult) {
-  // The eval request keyed on activeTab; the backend stamps
-  // DeclLocation.File="" for that source. Keep the editor's mainKey
-  // aligned so the references-map lookup normalises file paths
-  // correctly after a tab switch or new-tab creation.
-  editor.updateMainKey(activeTab);
   if (data.symbols) editor.updateSymbols(data.symbols);
   if (data.varTypes && Object.keys(data.varTypes).length > 0) editor.updateVarTypes(data.varTypes);
   if (data.declarations?.decls) editor.updateDeclarations(data.declarations.decls);
@@ -581,12 +576,18 @@ async function closeTab(file: string) {
   // cancelEval check below is unreachable and the in-flight eval leaks.
   const wasActive = activeTab === file;
   if (wasActive) {
-    // Switch to another open tab
+    // The editor must always have a non-disposed model to display.
+    // Switch to another open tab if there is one; otherwise create
+    // an empty scratch tab and switch to that before disposing.
+    // disposeModel below will throw if called while the editor is
+    // still showing this file's model.
     const remaining = tabOrder.filter(k => k !== file);
     if (remaining.length > 0) {
       switchToTab(remaining[0]);
     } else {
-      activeTab = '';
+      const scratch = await CreateScratchFile('Untitled');
+      addTab(scratch, { path: scratch, dirty: false, cursor: null, label: tabLabel(scratch), pickedEntry: null });
+      switchToTab(scratch);
     }
   }
   // Cancel any in-flight eval if the active tab is being closed

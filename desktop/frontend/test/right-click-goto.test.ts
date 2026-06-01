@@ -1,14 +1,9 @@
 import { test, expect } from './harness';
 import { setEditorText, rightClickAt } from './helpers/editor';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 
-const definitionFoo = JSON.parse(
-  fs.readFileSync(
-    path.join(__dirname, 'mocks/fixtures/definition-foo.json'),
-    'utf8'
-  )
-).value;
+// Declaration target shared across the handler and the post-action assertion.
+const declLine = 1;
+const declCol = 4;
 
 test('right-click "Go to Declaration" jumps to the mocked declaration', async ({
   mockedPage: page,
@@ -17,8 +12,20 @@ test('right-click "Go to Declaration" jumps to the mocked declaration', async ({
   // The Facet editor's goto path (src/editor.ts findDecl) reads the
   // `references` map populated by the eval response — it does NOT issue a
   // separate fetch. Returning a references entry keyed on the call site is
-  // enough to drive the "Go to Declaration" action menu item.
-  await setEvalHandler(() => definitionFoo);
+  // enough to drive the "Go to Declaration" action menu item. The key shape
+  // is "<srcKey>:line:col" — same source key the request carries.
+  await setEvalHandler(body => ({
+    errors: [],
+    entryPoints: [],
+    symbols: [],
+    posMap: [],
+    declarations: {
+      decls: { foo: { line: declLine, col: declCol, file: body.key, kind: 'fn', returnType: 'Solid' } },
+    },
+    references: {
+      [`${body.key}:2:1`]: { line: declLine, col: declCol, file: body.key, kind: 'fn', returnType: 'Solid' },
+    },
+  }));
 
   await page.goto('/');
   await expect(page.locator('#editor-panel .monaco-editor').first()).toBeVisible({
@@ -51,8 +58,5 @@ test('right-click "Go to Declaration" jumps to the mocked declaration', async ({
     const ed = (window as any).monaco.editor.getEditors()[0];
     const pos = ed.getPosition();
     return { lineNumber: pos.lineNumber, column: pos.column };
-  })).toEqual({
-    lineNumber: definitionFoo.references[':2:1'].line,
-    column: definitionFoo.references[':2:1'].col,
-  });
+  })).toEqual({ lineNumber: declLine, column: declCol });
 });

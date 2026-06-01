@@ -10,7 +10,7 @@ test('Monaco hover tooltip appears, hides, and reappears', async ({
   // The default eval-cube fixture has neither, so an unaugmented hover
   // returns null and Monaco never shows the widget. Provide a minimal
   // enriched response keyed off the literal source text in the request body.
-  await setEvalHandler(() => ({
+  await setEvalHandler(body => ({
     errors: [],
     entryPoints: [
       { name: 'cube', signature: 'cube(size: Length) Solid', params: [], libPath: '', libVar: '', doc: 'A 10mm cube.' },
@@ -18,13 +18,13 @@ test('Monaco hover tooltip appears, hides, and reappears', async ({
     symbols: [
       { name: 'cube', signature: 'cube(size: Length) Solid', doc: 'A 10mm cube.', kind: 'function', library: '' },
     ],
-    // `cube` at line 1, col 1 (startColumn from Monaco's getWordAtPosition is
-    // 1-based). References key format is "file:line:col"; empty file = main.
+    // References are keyed by "<srcKey>:line:col" using the actual
+    // request key (the active tab). Tabs are peers — no "" sentinel.
     references: {
-      ':1:1': { line: 1, col: 1, file: '', kind: 'fn', returnType: 'Solid' },
+      [`${body.key}:1:1`]: { line: 1, col: 1, file: body.key, kind: 'fn', returnType: 'Solid' },
     },
     declarations: {
-      decls: { cube: { line: 1, col: 1, file: '', kind: 'fn', returnType: 'Solid' } },
+      decls: { cube: { line: 1, col: 1, file: body.key, kind: 'fn', returnType: 'Solid' } },
     },
     posMap: [],
   }));

@@ -196,7 +196,6 @@ export interface EditorHandle {
   setWordWrap(on: boolean): void;
   setTheme(name: string): void;
   updateSymbols(symbols: FacetSymbol[]): void;
-  updateMainKey(key: string): void;
   updateVarTypes(types: Record<string, Record<string, string>>): void;
   setCurrentSource(sourceKey: string): void;
   updateDeclarations(decls: Record<string, DeclLocation>): void;
@@ -236,12 +235,16 @@ export function createEditor(
 ): EditorHandle {
   let symbols: FacetSymbol[] = [];
   let allVarTypes: Record<string, Record<string, string>> = {};
-  let mainKey = initialFileKey || '';
-  let currentSourceKey = mainKey;
+  // currentSourceKey is the tab the editor is currently displaying.
+  // All references-map and varTypes lookups key directly off this; the
+  // backend stamps the same source-key shape so no normalization is
+  // needed. Tabs are peers — there is no privileged "main".
+  let currentSourceKey = initialFileKey || '';
   let declarations: Record<string, DeclLocation> = {};
-  // references maps "file:line:col" of a referring token to the declaration it
-  // resolves to. Built by the checker on the backend, refreshed on every eval.
-  // Used by findDecl (goto-definition) and the hover provider.
+  // references maps "<srcKey>:line:col" of a referring token to the
+  // declaration it resolves to. Built by the checker on the backend,
+  // refreshed on every eval. Used by findDecl (goto-definition) and
+  // the hover provider.
   let references: Record<string, DeclLocation> = {};
   let fileSources: Record<string, string> = {};
   let suppressChange = false;
@@ -254,11 +257,11 @@ export function createEditor(
   let onJumpToLineCb: ((file: string, line: number) => void) | null = null;
 
   const models = new Map<string, monaco.editor.ITextModel>();
-  const mainModel = monaco.editor.createModel(initialDoc, 'facet');
-  models.set(mainKey, mainModel);
+  const initialModel = monaco.editor.createModel(initialDoc, 'facet');
+  models.set(currentSourceKey, initialModel);
 
   const ed = monaco.editor.create(parent, {
-    model: mainModel,
+    model: initialModel,
     theme: 'facet-orange-light',
     automaticLayout: true,
     minimap: { enabled: false },
@@ -575,8 +578,7 @@ export function createEditor(
     const word = mdl.getWordAtPosition(pos);
     if (!word) return null;
 
-    const file = currentSourceKey === mainKey ? '' : currentSourceKey;
-    const key = `${file}:${pos.lineNumber}:${word.startColumn}`;
+    const key = `${currentSourceKey}:${pos.lineNumber}:${word.startColumn}`;
     return references[key] ?? null;
   }
 
@@ -1233,8 +1235,7 @@ export function createEditor(
       // checker's references map. Params, vars, and field accesses
       // on local values land here.
       if (matches.length === 0) {
-        const file = currentSourceKey === mainKey ? '' : currentSourceKey;
-        const refKey = `${file}:${position.lineNumber}:${wordInfo.startColumn}`;
+        const refKey = `${currentSourceKey}:${position.lineNumber}:${wordInfo.startColumn}`;
         const ref = references[refKey];
         if (ref?.returnType) {
           return {
@@ -1309,9 +1310,8 @@ export function createEditor(
     setMarkers(errors: CheckError[]) {
       const m = ed.getModel()!;
       const lineCount = m.getLineCount();
-      const activeFile = currentSourceKey === mainKey ? '' : currentSourceKey;
       const markers: monaco.editor.IMarkerData[] = errors
-        .filter(e => e.line > 0 && e.line <= lineCount && (e.file ?? '') === activeFile)
+        .filter(e => e.line > 0 && e.line <= lineCount && (e.file ?? '') === currentSourceKey)
         .map(e => {
           const lineLength = m.getLineLength(e.line);
           const startCol = e.col > 0 ? e.col : 1;
@@ -1377,9 +1377,13 @@ export function createEditor(
     disposeModel(fileKey: string) {
       const m = models.get(fileKey);
       if (!m) return;
+      // The caller must switch the editor to another model before
+      // calling this — disposing the displayed model leaves the
+      // editor on a disposed handle. Throwing surfaces the caller bug
+      // immediately instead of letting the editor enter a broken
+      // state that crashes later from somewhere unrelated.
       if (ed.getModel() === m) {
-        const main = models.get(mainKey);
-        if (main) ed.setModel(main);
+        throw new Error(`disposeModel(${fileKey}): cannot dispose the displayed model; switchModel first`);
       }
       m.dispose();
       models.delete(fileKey);
@@ -1398,19 +1402,7 @@ export function createEditor(
     },
 
     updateSymbols(syms: FacetSymbol[]) {
-      // Defensive: a malformed entry from the backend would corrupt
-      // every provider that filters by name. Drop anything missing a
-      // name rather than silently producing wrong suggestions.
-      symbols = Array.isArray(syms) ? syms.filter(s => typeof s?.name === 'string' && s.name.length > 0) : [];
-    },
-
-    updateMainKey(key: string) {
-      // The backend stamps DeclLocation.File="" for declarations in
-      // the eval entry source. The hover provider's references-map
-      // lookup normalises `currentSourceKey === mainKey` to "" so the
-      // key shape matches — if mainKey lags behind the entry that
-      // actually produced the references, the lookup misses.
-      mainKey = key;
+      symbols = syms;
     },
 
     updateVarTypes(types: Record<string, Record<string, string>>) {
