@@ -472,12 +472,6 @@ func clampByte(f float64) int {
 	return v
 }
 
-// parseHexColor parses "#RGB" or "#RRGGBB" to float64 r, g, b in 0-1.
-func parseHexColor(s string) (float64, float64, float64, error) {
-	r, g, b, _, err := parseHexColorRGBA(s)
-	return r, g, b, err
-}
-
 // parseHexColorRGBA parses "#RGB", "#RRGGBB", or "#RRGGBBAA" to float64 r, g, b, a in 0-1.
 func parseHexColorRGBA(s string) (float64, float64, float64, float64, error) {
 	s = strings.TrimPrefix(s, "#")

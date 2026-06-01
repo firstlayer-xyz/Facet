@@ -1819,8 +1819,10 @@ fn Solid.Warp(f fn(Vec3) Vec3) Solid {
 }
 
 # Sets a uniform color on all faces. Survives booleans via originalID tracking.
+# Alpha < 1 renders the affected faces translucent in the viewer and round-trips
+# in 3MF export as "#RRGGBBAA".
 fn Solid.Color(c Color) Solid {
-    return _color(self, c.r, c.g, c.b)
+    return _color(self, c.r, c.g, c.b, c.a)
 }
 
 fn Solid.Color(hex String) Solid {
@@ -1833,7 +1835,7 @@ fn Solid.Color(
     b Number = 0,
     a Number = 1,
 ) Solid {
-    return _color(self, r, g, b)
+    return _color(self, r, g, b, a)
 }
 
 # Creates a solid from a signed-distance-field (SDF). The SDF returns negative inside, positive outside.
