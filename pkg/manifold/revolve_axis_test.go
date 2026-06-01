@@ -64,3 +64,32 @@ func TestRevolveAxis(t *testing.T) {
 
 	t.Logf("Revolve axis (empirical): %s", axialAxis)
 }
+
+// TestRevolveSegmentsControlsResolution pins the stdlib Sketch.Revolve
+// `segments` parameter contract: a low segment count produces a coarser
+// polyhedron than the default auto-resolution. Without this guard,
+// silently dropping the parameter from _revolve (as the stdlib once
+// did) would leave revolves stuck at the default resolution with no
+// way for callers to override.
+func TestRevolveSegmentsControlsResolution(t *testing.T) {
+	build := func(segments int) int {
+		sk := CreateSquare(1, 4).Translate(5, 0)
+		sol, err := sk.Revolve(segments, 360)
+		if err != nil {
+			t.Fatalf("Revolve(segments=%d): %v", segments, err)
+		}
+		// Use the display mesh's vertex count as a proxy for resolution;
+		// more circumferential segments = more vertices around the
+		// revolve.
+		return sol.ToDisplayMesh().VertexCount
+	}
+
+	coarse := build(8)
+	defaultRes := build(0) // 0 = let manifold pick (high-res default)
+
+	t.Logf("vertex count: segments=8 → %d, segments=0 (default) → %d", coarse, defaultRes)
+
+	if coarse >= defaultRes {
+		t.Errorf("expected segments=8 to produce fewer vertices than the default; got %d ≥ %d", coarse, defaultRes)
+	}
+}

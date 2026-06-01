@@ -1300,11 +1300,14 @@ fn Sketch.Extrude(
 
 # Revolves a sketch around the Z axis (the world's up axis). The sketch's X
 # becomes the radius; its Y becomes the height along Z. Move the sketch away
-# from x = 0 first for a torus. Optional `a` limits the arc (default 360°).
+# from x = 0 first for a torus. Optional `a` limits the arc (default 360°);
+# optional `segments` overrides the auto-chosen circumferential resolution
+# (0 = use manifold's default formula).
 fn Sketch.Revolve(
     a Angle = 360 deg,
+    segments Number = 0,
 ) Solid {
-    return _revolve(self, a)
+    return _revolve(self, a, segments)
 }
 
 # Sweeps the sketch along a 3D path using a rotation-minimizing frame.
