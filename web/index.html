@@ -335,10 +335,24 @@ function setupBridge() {
   // ── 2D Primitives ─────────────────────────────────────────────────────────
   globalThis._mf_square = (x, y)      => (M._facet_square(x, y, SKETCH_RET),    sketchPtr());
   globalThis._mf_circle = (r, segs)   => (M._facet_circle(r, segs, SKETCH_RET), sketchPtr());
-  globalThis._mf_polygon = (f64arr, n) => {
-    const ptr = copyTypedArrayToHeap(f64arr);
-    M._facet_polygon(ptr, n, SKETCH_RET);
-    M._free(ptr);
+  // f64arr: flat [outer xy…, hole0 xy…, hole1 xy…, …]; outerN = point count
+  // for the outer outline; holeSizesArr = Uint32Array of per-hole point counts
+  // (may be empty for a plain polygon).
+  globalThis._mf_polygon = (f64arr, outerN, holeSizesArr) => {
+    const coordsPtr = copyTypedArrayToHeap(f64arr);
+    const nHoles = holeSizesArr.length;
+    const outerByteOff = outerN * 2 * 8; // 2 doubles per point, 8 bytes each
+    const holesPtr = nHoles > 0 ? coordsPtr + outerByteOff : 0;
+    let sizesPtr = 0;
+    if (nHoles > 0) {
+      sizesPtr = M._malloc(nHoles * 4); // size_t is 32-bit in wasm32
+      for (let i = 0; i < nHoles; i++) {
+        M.HEAPU32[(sizesPtr >>> 2) + i] = holeSizesArr[i];
+      }
+    }
+    M._facet_polygon(coordsPtr, outerN, holesPtr, sizesPtr, nHoles, SKETCH_RET);
+    if (sizesPtr) M._free(sizesPtr);
+    M._free(coordsPtr);
     return sketchPtr();
   };
 

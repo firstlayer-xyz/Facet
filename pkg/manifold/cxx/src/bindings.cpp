@@ -92,12 +92,33 @@ void facet_circle(double radius, int segments, FacetSketchRet* out) {
   wrap_cs(new CrossSection(std::move(c)), out);
 }
 
-void facet_polygon(double* xy_pairs, size_t n_points, FacetSketchRet* out) {
-  SimplePolygon poly(n_points);
-  for (size_t i = 0; i < n_points; i++) {
-    poly[i] = {xy_pairs[i * 2], xy_pairs[i * 2 + 1]};
+void facet_polygon(
+  const double* outer_xy_pairs, size_t outer_n,
+  const double* holes_xy_pairs, const size_t* hole_sizes, size_t n_holes,
+  FacetSketchRet* out) {
+  Polygons polygons;
+  polygons.reserve(1 + n_holes);
+
+  SimplePolygon outer(outer_n);
+  for (size_t i = 0; i < outer_n; i++) {
+    outer[i] = {outer_xy_pairs[i * 2], outer_xy_pairs[i * 2 + 1]};
   }
-  wrap_cs(new CrossSection(CrossSection({poly}, CrossSection::FillRule::Positive)), out);
+  polygons.push_back(std::move(outer));
+
+  size_t off = 0;
+  for (size_t h = 0; h < n_holes; h++) {
+    size_t hn = hole_sizes[h];
+    SimplePolygon hole(hn);
+    for (size_t i = 0; i < hn; i++) {
+      hole[i] = {holes_xy_pairs[(off + i) * 2], holes_xy_pairs[(off + i) * 2 + 1]};
+    }
+    polygons.push_back(std::move(hole));
+    off += hn;
+  }
+  // EvenOdd: nested rings alternate fill regardless of winding direction.
+  // Lets callers pass rings in any orientation; works the same for the
+  // n_holes=0 plain-polygon case.
+  wrap_cs(new CrossSection(CrossSection(std::move(polygons), CrossSection::FillRule::EvenOdd)), out);
 }
 
 void facet_cs_empty(FacetSketchRet* out) {
