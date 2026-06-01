@@ -2,7 +2,7 @@
 
 import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocCatalog, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
 import type { EntryPoint } from './function-preview';
-import { EventsOn } from '../wailsjs/runtime/runtime';
+import { on } from './events';
 import { Viewer } from './viewer';
 import type { DecodedMesh, DebugStepData } from './viewer';
 import type { EditorHandle } from './editor';
@@ -242,7 +242,7 @@ export function initApp(deps: AppDeps) {
   onDebugBarChangeCb = deps.onDebugBarChange ?? null;
 
   // Persist tabs when app is about to close
-  EventsOn('app:before-close', () => persistOpenTabs());
+  on('app:before-close', () => persistOpenTabs());
 
 }
 
