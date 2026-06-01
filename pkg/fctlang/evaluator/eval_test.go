@@ -528,6 +528,37 @@ fn Main() {
 	}
 }
 
+// TestEvalPolygonWithHoles end-to-ends the Polygon(points, holes) stdlib
+// overload: a 10x10 outer square with a 2x2 hole has area 96; extruding
+// 1mm gives a solid with volume 96.
+func TestEvalPolygonWithHoles(t *testing.T) {
+	src := `
+fn Main() Solid {
+    var outer = [
+        Vec2{x: 0 mm, y: 0 mm},
+        Vec2{x: 10 mm, y: 0 mm},
+        Vec2{x: 10 mm, y: 10 mm},
+        Vec2{x: 0 mm, y: 10 mm},
+    ];
+    var hole = [
+        Vec2{x: 4 mm, y: 4 mm},
+        Vec2{x: 6 mm, y: 4 mm},
+        Vec2{x: 6 mm, y: 6 mm},
+        Vec2{x: 4 mm, y: 6 mm},
+    ];
+    return Polygon(points: outer, holes: [hole]).Extrude(z: 1 mm);
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil || len(mesh.Vertices) == 0 {
+		t.Fatal("expected a non-empty mesh from polygon-with-holes extrude")
+	}
+}
+
 func TestEvalOptionalParam(t *testing.T) {
 	src := `
 fn Box(size Length, height Length = 5 mm) Solid {

@@ -389,7 +389,7 @@ type builtinSig struct {
 var builtinSigs = map[string]builtinSig{
 	"_cube":   {params: []typeInfo{simple(typeLength), simple(typeLength), simple(typeLength)}, ret: simple(typeSolid)},
 	"_square": {params: []typeInfo{simple(typeLength), simple(typeLength)}, ret: simple(typeSketch)},
-	"_polygon":  {params: []typeInfo{arrayOf(structTI("Vec2"))}, ret: simple(typeSketch)},
+	"_polygon": {params: []typeInfo{arrayOf(structTI("Vec2")), arrayOf(arrayOf(structTI("Vec2")))}, ret: simple(typeSketch)},
 	"_hull":         {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
 	"_union":        {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
 	"_difference":   {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},

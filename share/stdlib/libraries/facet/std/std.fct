@@ -443,7 +443,14 @@ fn &(a, b Sketch) Sketch {
 
 # 2D polygon from an array of Vec2 vertices (minimum 3). Points connect in order; closes automatically.
 fn Polygon(points []Vec2) Sketch {
-    return _polygon(points)
+    return _polygon(points, [])
+}
+
+# 2D polygon with holes: an outer outline plus zero or more inner outlines that are cut out.
+# Each hole must be a ring of at least 3 Vec2 points. Winding direction is irrelevant —
+# any ring nested in another flips fill (even-odd rule), so nested rings produce solid islands.
+fn Polygon(points []Vec2, holes [][]Vec2) Sketch {
+    return _polygon(points, holes)
 }
 
 # ---------------------------------------------------------------------------
