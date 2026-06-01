@@ -244,9 +244,9 @@ func TestReferencesRoundTrip_BoltAndNut(t *testing.T) {
 	// satisfied by the named-arg refs (count/depth/angle) that also live on
 	// line 14 and also point at library params, which would silently hide a
 	// regression of the method-call ref itself (the original motivating bug).
-	got, ok := res.References[":14:10"]
+	got, ok := res.References[testMainKey+":14:10"]
 	if !ok {
-		t.Fatalf("no reference recorded for .Knurl at :14:10; refs=%v", res.References)
+		t.Fatalf("no reference recorded for .Knurl at %s:14:10; refs=%v", testMainKey, res.References)
 	}
 	if got.Kind != "fn" {
 		t.Errorf("Knurl ref Kind = %q, want fn", got.Kind)
