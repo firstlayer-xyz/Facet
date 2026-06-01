@@ -595,8 +595,7 @@ async function closeTab(file: string) {
     debugMode = false;
     setDebugBarVisible(false);
     editor.clearDebugLine();
-    viewer.clearMeshes();
-    viewer.setPosMap([]);
+    viewer.reset();
     hideStats();
     debugFinalMesh = null;
     debugEntryTab = '';
@@ -608,8 +607,7 @@ async function closeTab(file: string) {
 
   // Clear viewport if no tabs remain
   if (tabStore.size() === 0) {
-    viewer.clearMeshes();
-    viewer.setPosMap([]);
+    viewer.reset();
     hideStats();
     clearError();
     setDebugBarVisible(false);
@@ -835,20 +833,14 @@ function handleHTTPResult(resp: EvalResponse) {
 
 function handleEvalHTTPResult(data: EvalResult, binary: ArrayBuffer) {
   setDebugBarVisible(false);
-  viewer.clearMeshes();
-  if (data.mesh) {
-    const decoded = decodeBinaryMesh(binary, data.mesh);
-    viewer.loadDecodedMesh(decoded);
-  }
   const excludeFiles = new Set<string>();
   if (data.sources) {
     for (const [path, entry] of Object.entries(data.sources)) {
       if (entry.kind === SOURCE_STDLIB) excludeFiles.add(path);
     }
   }
-  viewer.setPosMap(data.posMap ?? [], excludeFiles);
-  viewer.centerOnBed();
-  viewer.fitToView();
+  const decoded = data.mesh ? decodeBinaryMesh(binary, data.mesh) : null;
+  viewer.applyEvalResult(decoded, data.posMap ?? [], { excludeFiles });
   if (data.stats && data.time !== undefined) showStats(data.stats, data.time);
 }
 
