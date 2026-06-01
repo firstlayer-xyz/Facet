@@ -190,6 +190,25 @@ class TabStore {
     return () => { this._listeners.delete(cb); };
   }
 
+  /**
+   * Subscribe to active-tab transitions only. Callback receives the
+   * new active key (or '' when no tab is active). Filters out
+   * mutations that don't move active — dirty toggles, picked-entry
+   * updates, label changes — so consumers that only care about
+   * "what's showing now" don't wake on every store mutation.
+   */
+  onActiveChange(cb: (active: string) => void): () => void {
+    let prev = this._active;
+    const adapter = () => {
+      const cur = this._active;
+      if (cur !== prev) {
+        prev = cur;
+        cb(cur);
+      }
+    };
+    return this.subscribe(adapter);
+  }
+
   private notify(): void {
     for (const cb of this._listeners) cb();
   }
