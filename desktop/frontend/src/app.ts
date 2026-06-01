@@ -69,7 +69,7 @@ import type { TabState } from './tabs';
 function getTab(key: string): TabState {
   const existing = tabStore.get(key);
   if (existing) return existing;
-  const t: TabState = { path: key, dirty: false, cursor: null, label: tabLabel(key), pickedEntry: null };
+  const t: TabState = { path: key, dirty: false, cursor: null, label: tabLabel(key), pickedEntry: null, entryOverrides: {} };
   tabStore.add(t);
   return t;
 }
@@ -103,13 +103,13 @@ let onDebugExitCb: (() => void) | null = null;
 let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } | null) | null = null;
 
 
-// Entry point overrides (slider values for constrained function params).
-// The entry point name itself is NOT stored here — it flows through function
-// parameters to Run()/Debug(), so it's impossible to eval without one.
-let entryOverrides: Record<string, any> = {};
+// Entry-point overrides (slider values for constrained function params)
+// live on each tab — see TabState.entryOverrides. setEntryOverrides
+// below routes writes to the active tab; reads pull from
+// tabStore.activeState() at eval time.
 /** Set the file path on startup (no discard prompt, no re-persist). */
 export function setInitialFile(path: string, label?: string, readOnly?: boolean) {
-  addTab(path, { path, dirty: false, cursor: null, label: label || tabLabel(path), pickedEntry: null });
+  addTab(path, { path, dirty: false, cursor: null, label: label || tabLabel(path), pickedEntry: null, entryOverrides: {} });
   tabStore.setActive(path);
   editor.setCurrentSource(path);
   editor.setReadOnly(readOnly ?? isReadOnly(path));
@@ -120,7 +120,7 @@ export function setInitialFile(path: string, label?: string, readOnly?: boolean)
 /** Register a tab restored from saved state without switching the editor or triggering a run.
  *  The Monaco model should already be pre-created via editor.switchModel(). */
 export function addRestoredTab(path: string, cursor: { lineNumber: number; column: number } | null) {
-  addTab(path, { path, dirty: false, cursor, label: tabLabel(path), pickedEntry: null });
+  addTab(path, { path, dirty: false, cursor, label: tabLabel(path), pickedEntry: null, entryOverrides: {} });
 }
 
 function anyDirty(): boolean {
@@ -580,7 +580,7 @@ async function closeTab(file: string) {
       switchToTab(remaining[0]);
     } else {
       const scratch = await CreateScratchFile('Untitled');
-      addTab(scratch, { path: scratch, dirty: false, cursor: null, label: tabLabel(scratch), pickedEntry: null });
+      addTab(scratch, { path: scratch, dirty: false, cursor: null, label: tabLabel(scratch), pickedEntry: null, entryOverrides: {} });
       switchToTab(scratch);
     }
   }
@@ -784,7 +784,7 @@ async function runViaHTTP() {
       sources,
       key: active,
       entry: picked?.name,
-      overrides: entryOverrides,
+      overrides: tabStore.activeState()?.entryOverrides ?? {},
       debug: debugMode,
     });
     resp.header.time = (performance.now() - t0) / 1000;
@@ -905,7 +905,7 @@ function openTab(key: string, source: string, label?: string, readOnly?: boolean
     switchToTab(key);
     return;
   }
-  addTab(key, { path: key, dirty: false, cursor: null, label: label || tabLabel(key), pickedEntry: null });
+  addTab(key, { path: key, dirty: false, cursor: null, label: label || tabLabel(key), pickedEntry: null, entryOverrides: {} });
   tabStore.setActive(key);
   editor.setCurrentSource(key);
   editor.switchModel(key, source);
@@ -965,7 +965,7 @@ async function doSave(forceDialog: boolean) {
     editor.setCurrentSource(path);
     editor.disposeModel(oldKey);
     removeTab(oldKey);
-    addTab(path, { path, dirty: false, cursor: tab.cursor, label: tabLabel(path), pickedEntry: null });
+    addTab(path, { path, dirty: false, cursor: tab.cursor, label: tabLabel(path), pickedEntry: null, entryOverrides: {} });
     tabStore.setActive(path);
   }
   const finalActive = tabStore.active();
@@ -1002,12 +1002,12 @@ function clearError() {
 }
 
 function currentEvalParams() {
-  const picked = tabStore.activeState()?.pickedEntry;
+  const state = tabStore.activeState();
   return {
     sources: editor.getAllSources(),
     key: tabStore.active(),
-    entry: picked?.name ?? '',
-    overrides: entryOverrides,
+    entry: state?.pickedEntry?.name ?? '',
+    overrides: state?.entryOverrides ?? {},
   };
 }
 
@@ -1125,7 +1125,10 @@ export function setOnSourceChange(cb: (source: string) => void) { onSourceChange
 export function setOnDebugFilesChange(cb: () => void) { onDebugFilesChangeCb = cb; }
 export function setOnDebugExit(cb: () => void) { onDebugExitCb = cb; }
 export function setOnEntryPoints(cb: (fns: EntryPoint[]) => { name: string; libPath: string } | null) { onEntryPointsCb = cb; }
-export function setEntryOverrides(overrides: Record<string, any>) { entryOverrides = overrides; }
+export function setEntryOverrides(overrides: Record<string, unknown>) {
+  const active = tabStore.active();
+  if (active) tabStore.setEntryOverrides(active, overrides);
+}
 
 
 

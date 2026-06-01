@@ -15,6 +15,12 @@ export interface TabState {
   cursor: { lineNumber: number; column: number } | null;
   label: string;
   pickedEntry: { name: string; libPath: string } | null;
+  /**
+   * Function-preview slider values for this tab's picked entry point.
+   * Lives on the tab so switching away and back restores the sliders
+   * you left rather than the last value any tab happened to set.
+   */
+  entryOverrides: Record<string, unknown>;
 }
 
 type Listener = () => void;
@@ -144,6 +150,18 @@ class TabStore {
     // re-render the tab bar on every keystroke. Subscribers that
     // need cursor changes can read getCursorPosition() from the
     // editor directly.
+  }
+
+  /**
+   * Replace the entry-override slider values for `path`. Stored
+   * per-tab so each tab keeps its own picked-function sliders across
+   * tab switches. Doesn't notify — overrides change on every slider
+   * tick during dragging, and re-rendering the tab bar on every tick
+   * burns frames. Run/eval reads the latest value via activeState().
+   */
+  setEntryOverrides(path: string, overrides: Record<string, unknown>): void {
+    const t = this._tabs[path];
+    if (t) t.entryOverrides = overrides;
   }
 
   setPickedEntry(path: string, entry: TabState['pickedEntry']): void {
