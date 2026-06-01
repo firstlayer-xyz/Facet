@@ -30,7 +30,8 @@ func (p *Sketch) Extrude(height float64, slices int, twist, scaleX, scaleY float
 	return s, nil
 }
 
-// Revolve revolves a sketch around the Y axis.
+// Revolve revolves a sketch around the Z axis. The sketch's X becomes the
+// radius (must be ≥ 0); its Y becomes the height along Z.
 func (p *Sketch) Revolve(segments int, degrees float64) (*Solid, error) {
 	var ret C.FacetSolidRet
 	C.facet_revolve(p.ptr, C.int(segments), C.double(degrees), &ret)
