@@ -176,6 +176,12 @@ async function init() {
   applyUIPalette(_initPalette);
   viewer = new Viewer(canvasContainer, buildViewerAppearance(_initPalette, settings.appearance, settings.measurement));
 
+  // Test hook: expose the viewer to page-context scripts. Same
+  // rationale as window.monaco in editor.ts — Playwright tests can
+  // assert viewer state (mesh count, etc) without poking private
+  // fields. Single property reference, code is in the bundle anyway.
+  (window as unknown as { viewer: Viewer }).viewer = viewer;
+
   // Right-edge drawers (docs + assistant + their resizers) are
   // absolute overlays on top of the full-width canvas. Tell the viewer
   // how many right-edge pixels are occluded so it re-centres the

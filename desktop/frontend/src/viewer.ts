@@ -1316,6 +1316,16 @@ export class Viewer {
     this.onResize();
   }
 
+  /**
+   * Test hook: number of user meshes currently attached to the scene.
+   * Wails-mocked integration tests assert this becomes non-zero after
+   * an eval response with mesh data lands — catches regressions in
+   * the decode/load pipeline that would render an empty viewport.
+   */
+  meshCount(): number {
+    return this.userMeshes.length;
+  }
+
   /** Report the pixel width of overlay drawers covering the right edge
    *  of the canvas. The viewer shifts the camera projection so the
    *  lookAt target appears centred in the visible region rather than
