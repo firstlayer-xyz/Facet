@@ -59,35 +59,28 @@ let debugStepIndex = 0;
 // Breakpoint state — keyed by file path, values are line numbers
 const breakpoints = new Map<string, Set<number>>();
 const validBreakpointLines = new Map<string, Set<number>>();
-interface TabState {
-  path: string;       // resolved filesystem path
-  dirty: boolean;
-  cursor: { lineNumber: number; column: number } | null;
-  label: string;
-  pickedEntry: { name: string; libPath: string } | null;
-}
-let tabs: Record<string, TabState> = {};
-let tabOrder: string[] = []; // explicit ordering for drag reorder
-let activeTab = '';
+// Tab state lives in TabStore (see ./tabs.ts). Helper wrappers below
+// keep the per-call-site call patterns short — `getTab` materialises
+// an absent tab the same way the prior in-file map did.
+import { tabStore } from './tabs';
+import type { TabState } from './tabs';
 
-/** Get or create a tab. Use `ensureTab` when you only need the side effect. */
+/** Get a tab, creating an empty one if absent. */
 function getTab(key: string): TabState {
-  if (!tabs[key]) {
-    tabs[key] = { path: key, dirty: false, cursor: null, label: tabLabel(key), pickedEntry: null };
-    if (!tabOrder.includes(key)) tabOrder.push(key);
-  }
-  return tabs[key];
+  const existing = tabStore.get(key);
+  if (existing) return existing;
+  const t: TabState = { path: key, dirty: false, cursor: null, label: tabLabel(key), pickedEntry: null };
+  tabStore.add(t);
+  return t;
 }
 const ensureTab = getTab;
 
-function addTab(key: string, state: TabState) {
-  tabs[key] = state;
-  if (!tabOrder.includes(key)) tabOrder.push(key);
+function addTab(_key: string, state: TabState) {
+  tabStore.add(state);
 }
 
 function removeTab(key: string) {
-  delete tabs[key];
-  tabOrder = tabOrder.filter(k => k !== key);
+  tabStore.remove(key);
 }
 
 function isReadOnly(path: string): boolean {
@@ -95,7 +88,7 @@ function isReadOnly(path: string): boolean {
 }
 
 function isDirty(): boolean {
-  return tabs[activeTab]?.dirty ?? false;
+  return tabStore.activeState()?.dirty ?? false;
 }
 
 // Cached result from last run:result event
@@ -117,7 +110,7 @@ let entryOverrides: Record<string, any> = {};
 /** Set the file path on startup (no discard prompt, no re-persist). */
 export function setInitialFile(path: string, label?: string, readOnly?: boolean) {
   addTab(path, { path, dirty: false, cursor: null, label: label || tabLabel(path), pickedEntry: null });
-  activeTab = path;
+  tabStore.setActive(path);
   editor.setCurrentSource(path);
   editor.setReadOnly(readOnly ?? isReadOnly(path));
   updateWindowTitle();
@@ -131,21 +124,19 @@ export function addRestoredTab(path: string, cursor: { lineNumber: number; colum
 }
 
 function anyDirty(): boolean {
-  return Object.values(tabs).some(t => t.dirty);
+  return tabStore.anyDirty();
 }
 
 function markDirty() {
-  const tab = tabs[activeTab];
-  if (tab && !tab.dirty) {
-    tab.dirty = true;
+  const active = tabStore.active();
+  if (active && tabStore.markDirty(active)) {
     updateWindowTitle();
     SetDirtyState(true);
   }
 }
 function markClean() {
-  const tab = tabs[activeTab];
-  if (tab && tab.dirty) {
-    tab.dirty = false;
+  const active = tabStore.active();
+  if (active && tabStore.markClean(active)) {
     updateWindowTitle();
     SetDirtyState(anyDirty());
   }
@@ -153,24 +144,24 @@ function markClean() {
 function persistOpenTabs() {
   const sources = lastResult?.sources ?? {};
   // Save cursor for active tab before persisting
-  if (activeTab && tabs[activeTab]) {
-    tabs[activeTab].cursor = editor.getCursorPosition();
+  const active = tabStore.active();
+  if (active) {
+    tabStore.setCursor(active, editor.getCursorPosition());
   }
   // Persist all tabs except stdlib (kind=1) and cached libs (kind=3)
   const savedTabs: SavedTab[] = [];
-  for (const path of tabOrder) {
-    const tab = tabs[path];
-    if (!tab) continue;
-    const kind = sources[path]?.kind ?? SOURCE_USER;
+  for (const tab of tabStore.ordered()) {
+    const kind = sources[tab.path]?.kind ?? SOURCE_USER;
     if (isEphemeralKind(kind)) continue;
     savedTabs.push({ path: tab.path, label: tab.label, cursor: tab.cursor });
   }
-  patchSettings({ savedTabs, activeTab });
+  patchSettings({ savedTabs, activeTab: tabStore.active() });
 }
 
 function updateWindowTitle() {
-  const tab = tabs[activeTab];
-  const name = tab ? tab.label || tabLabel(activeTab) : 'Untitled';
+  const active = tabStore.active();
+  const tab = tabStore.activeState();
+  const name = tab ? tab.label || tabLabel(active) : 'Untitled';
   const prefix = isDirty() ? '\u25cf ' : '';
   SetWindowTitle(`${prefix}${name} \u2014 Facet`);
   syncTitlebarFilename(name, isDirty());
@@ -272,7 +263,7 @@ export function setEditor(ed: EditorHandle) {
     if (highlightMode !== 'mouse') return;
     if (highlightRAF) cancelAnimationFrame(highlightRAF);
     highlightRAF = requestAnimationFrame(() => {
-      viewer.highlightAtPos(activeTab, line, col);
+      viewer.highlightAtPos(tabStore.active(), line, col);
     });
   });
   editor.onMouseLeave(() => {
@@ -284,7 +275,7 @@ export function setEditor(ed: EditorHandle) {
     if (highlightMode !== 'cursor') return;
     if (highlightRAF) cancelAnimationFrame(highlightRAF);
     highlightRAF = requestAnimationFrame(() => {
-      viewer.highlightAtPos(activeTab, line, col);
+      viewer.highlightAtPos(tabStore.active(), line, col);
     });
   });
 }
@@ -352,8 +343,8 @@ function setDebugBarVisible(visible: boolean) {
 function syncTabsWithSources(data: EvalResult) {
   if (!data.sources) return;
   let tabsClosed = false;
-  for (const path of Object.keys(tabs)) {
-    if (path === activeTab) continue;
+  for (const path of tabStore.order()) {
+    if (tabStore.isActive(path)) continue;
     if (!data.sources[path]) {
       editor.disposeModel(path);
       removeTab(path);
@@ -421,7 +412,7 @@ function handleCheckOnly(_data: EvalResult, errors: SourceError[], fns: EntryPoi
     return;
   }
   if (picked) {
-    getTab(activeTab).pickedEntry = picked;
+    tabStore.setPickedEntry(tabStore.active(), picked);
     runViaHTTP(); // re-run with the picked entry point
   }
 }
@@ -443,7 +434,7 @@ export function renderTabs() {
   onDebugFilesChangeCb?.();
   persistOpenTabs();
   tabBar.innerHTML = '';
-  const openTabs = tabOrder;
+  const openTabs = tabStore.order();
 
   const leftArrow = document.createElement('button');
   leftArrow.className = 'tab-arrow';
@@ -461,7 +452,7 @@ export function renderTabs() {
 
   for (const path of openTabs) {
     const tab = document.createElement('div');
-    tab.className = 'tab' + (activeTab === path ? ' active' : '');
+    tab.className = 'tab' + (tabStore.isActive(path) ? ' active' : '');
     tab.title = path;
 
     const sourceKind = lastResult?.sources?.[path]?.kind ?? SOURCE_USER;
@@ -536,11 +527,13 @@ export function renderTabs() {
       tab.classList.remove('drag-over');
       const draggedPath = e.dataTransfer!.getData('text/plain');
       if (draggedPath === path) return;
-      const fromIdx = tabOrder.indexOf(draggedPath);
-      const toIdx = tabOrder.indexOf(path);
+      const current = [...tabStore.order()];
+      const fromIdx = current.indexOf(draggedPath);
+      const toIdx = current.indexOf(path);
       if (fromIdx < 0 || toIdx < 0) return;
-      tabOrder.splice(fromIdx, 1);
-      tabOrder.splice(toIdx, 0, draggedPath);
+      current.splice(fromIdx, 1);
+      current.splice(toIdx, 0, draggedPath);
+      tabStore.setOrder(current);
       renderTabs();
     });
 
@@ -572,16 +565,17 @@ async function closeTab(file: string) {
     const ok = await ConfirmDiscard();
     if (!ok) return;
   }
-  // Capture this BEFORE switchToTab reassigns activeTab — otherwise the
-  // cancelEval check below is unreachable and the in-flight eval leaks.
-  const wasActive = activeTab === file;
+  // Capture this BEFORE switchToTab reassigns the active tab —
+  // otherwise the cancelEval check below is unreachable and the
+  // in-flight eval leaks.
+  const wasActive = tabStore.isActive(file);
   if (wasActive) {
     // The editor must always have a non-disposed model to display.
     // Switch to another open tab if there is one; otherwise create
     // an empty scratch tab and switch to that before disposing.
     // disposeModel below will throw if called while the editor is
     // still showing this file's model.
-    const remaining = tabOrder.filter(k => k !== file);
+    const remaining = tabStore.order().filter(k => k !== file);
     if (remaining.length > 0) {
       switchToTab(remaining[0]);
     } else {
@@ -613,7 +607,7 @@ async function closeTab(file: string) {
   renderTabs();
 
   // Clear viewport if no tabs remain
-  if (Object.keys(tabs).length === 0) {
+  if (tabStore.size() === 0) {
     viewer.clearMeshes();
     viewer.setPosMap([]);
     hideStats();
@@ -626,17 +620,18 @@ async function closeTab(file: string) {
     run();
   }
   // Notify file tree / preview of the tab change
-  onTabChangeCb?.(activeTab);
+  onTabChangeCb?.(tabStore.active());
 }
 
 export function switchToTab(file: string) {
-  if (file === activeTab) return;
+  if (tabStore.isActive(file)) return;
   if (debugMode && !debugStepping) return;
 
   // Save cursor position for the tab we're leaving
-  getTab(activeTab).cursor = editor.getCursorPosition();
+  const prev = tabStore.active();
+  if (prev) tabStore.setCursor(prev, editor.getCursorPosition());
 
-  activeTab = file;
+  tabStore.setActive(file);
   editor.setCurrentSource(file);
 
   // Switch editor model — source comes from sources map or editor's own model cache
@@ -664,7 +659,7 @@ export function switchToTab(file: string) {
   const steps = lastResult?.debugSteps ?? [];
   if (steps.length > 0 && debugStepIndex < steps.length) {
     const step = steps[debugStepIndex];
-    if ((step.file ?? '') === activeTab && step.line > 0) {
+    if ((step.file ?? '') === tabStore.active() && step.line > 0) {
       editor.highlightDebugLine(step.line);
     } else {
       editor.clearDebugLine();
@@ -672,7 +667,7 @@ export function switchToTab(file: string) {
   }
 
   // Notify external UI (file tree, preview selector) of the tab change
-  onTabChangeCb?.(activeTab);
+  onTabChangeCb?.(tabStore.active());
 }
 
 export function showDebugStepPrev() {
@@ -705,7 +700,7 @@ export async function showDebugStep(index: number) {
   viewer.fitToView();
 
   const stepFile = debugSteps[index].file ?? '';
-  if (stepFile && stepFile !== activeTab) {
+  if (stepFile && stepFile !== tabStore.active()) {
     debugStepping = true;
     switchToTab(stepFile);
     debugStepping = false;
@@ -741,7 +736,7 @@ export function continueDebug() {
 /** Trigger evaluation with the given entry point. */
 export function reeval(entry: string, libPath?: string) {
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
-  getTab(activeTab).pickedEntry = { name: entry, libPath: libPath || '' };
+  tabStore.setPickedEntry(tabStore.active(), { name: entry, libPath: libPath || '' });
   runViaHTTP();
 }
 
@@ -782,13 +777,14 @@ export function refreshEditorUI() {
 
 async function runViaHTTP() {
   const sources = editor.getAllSources();
-  const picked = tabs[activeTab]?.pickedEntry ?? null;
+  const active = tabStore.active();
+  const picked = tabStore.activeState()?.pickedEntry ?? null;
   setRunState('running');
   const t0 = performance.now();
   try {
     const resp = await evalRequest({
       sources,
-      key: activeTab,
+      key: active,
       entry: picked?.name,
       overrides: entryOverrides,
       debug: debugMode,
@@ -828,7 +824,7 @@ function handleHTTPResult(resp: EvalResponse) {
   }
 
   const newPicked = onEntryPointsCb?.(fns);
-  if (newPicked) getTab(activeTab).pickedEntry = newPicked;
+  if (newPicked) tabStore.setPickedEntry(tabStore.active(), newPicked);
 
   if (data.debugSteps) {
     handleDebugHTTPResult(data, resp.binary);
@@ -913,12 +909,12 @@ function handleDebugHTTPResult(data: EvalResult, binary: ArrayBuffer) {
 
 /** Open a tab with the given key and source, switching to it if already open. */
 function openTab(key: string, source: string, label?: string, readOnly?: boolean) {
-  if (tabs[key]) {
+  if (tabStore.has(key)) {
     switchToTab(key);
     return;
   }
   addTab(key, { path: key, dirty: false, cursor: null, label: label || tabLabel(key), pickedEntry: null });
-  activeTab = key;
+  tabStore.setActive(key);
   editor.setCurrentSource(key);
   editor.switchModel(key, source);
   editor.setReadOnly(readOnly ?? isReadOnly(key));
@@ -940,7 +936,7 @@ export async function openFile() {
 }
 
 export async function openRecentFile(path: string) {
-  if (tabs[path]) { switchToTab(path); return; }
+  if (tabStore.has(path)) { switchToTab(path); return; }
   let result: Record<string, string>;
   try {
     result = await OpenRecentFile(path);
@@ -952,7 +948,7 @@ export async function openRecentFile(path: string) {
 }
 
 async function formatSource(source: string): Promise<string> {
-  if (!formatOnSave || isReadOnly(activeTab)) return source;
+  if (!formatOnSave || isReadOnly(tabStore.active())) return source;
   try {
     return await FormatCode(source);
   } catch (e) {
@@ -965,22 +961,24 @@ async function formatSource(source: string): Promise<string> {
 async function doSave(forceDialog: boolean) {
   const source = await formatSource(editor.getContent());
   editor.setContentSilent(source);
-  const tab = getTab(activeTab);
+  const active = tabStore.active();
+  const tab = getTab(active);
   const savePath = forceDialog ? '' : (await IsScratchFile(tab.path) ? '' : tab.path);
   const path = await SaveFile(source, savePath);
   if (!path) return;
   if (path !== tab.path) {
-    const oldKey = activeTab;
+    const oldKey = active;
     // Create a model under the new path and switch to it before disposing the old one
     editor.switchModel(path, source);
     editor.setCurrentSource(path);
     editor.disposeModel(oldKey);
     removeTab(oldKey);
     addTab(path, { path, dirty: false, cursor: tab.cursor, label: tabLabel(path), pickedEntry: null });
-    activeTab = path;
+    tabStore.setActive(path);
   }
-  if (lastResult?.sources?.[activeTab]) {
-    lastResult.sources[activeTab].text = source;
+  const finalActive = tabStore.active();
+  if (lastResult?.sources?.[finalActive]) {
+    lastResult.sources[finalActive].text = source;
   }
   markClean();
   updateWindowTitle();
@@ -1012,10 +1010,10 @@ function clearError() {
 }
 
 function currentEvalParams() {
-  const picked = tabs[activeTab]?.pickedEntry;
+  const picked = tabStore.activeState()?.pickedEntry;
   return {
     sources: editor.getAllSources(),
-    key: activeTab,
+    key: tabStore.active(),
     entry: picked?.name ?? '',
     overrides: entryOverrides,
   };
@@ -1042,7 +1040,7 @@ export async function sendToSlicer(id: string) {
 export function toggleDebug() {
   debugMode = !debugMode;
   if (debugMode) {
-    debugEntryTab = activeTab;
+    debugEntryTab = tabStore.active();
     editor.setBreakpointMode(true);
   } else {
     editor.setBreakpointMode(false);
@@ -1061,7 +1059,7 @@ export function toggleDebug() {
     debugFinalMesh = null;
 
     // Jump back to the tab that had the entry point
-    if (debugEntryTab && debugEntryTab !== activeTab && tabs[debugEntryTab]) {
+    if (debugEntryTab && !tabStore.isActive(debugEntryTab) && tabStore.has(debugEntryTab)) {
       switchToTab(debugEntryTab);
     }
     debugEntryTab = '';
@@ -1105,11 +1103,12 @@ export async function openDocsToEntry(name: string, library?: string): Promise<v
 // ── State accessors for external UI (file tree, preview selector) ──────────
 
 export function getSources(): Record<string, SourceEntry> { return lastResult?.sources ?? {}; }
-export function getActiveTabValue(): string { return activeTab; }
-export function isActiveTabReadOnly(): boolean { return isReadOnly(activeTab); }
+export function getActiveTabValue(): string { return tabStore.active(); }
+export function isActiveTabReadOnly(): boolean { return isReadOnly(tabStore.active()); }
 export function getActiveLabel(): string {
-  const tab = tabs[activeTab];
-  return tab ? tab.label || tabLabel(activeTab) : 'Untitled';
+  const active = tabStore.active();
+  const tab = tabStore.activeState();
+  return tab ? tab.label || tabLabel(active) : 'Untitled';
 }
 
 /**
@@ -1166,5 +1165,6 @@ export function openLibraryFile(file: string, source: string, line: number, col:
 }
 
 export function closeActiveTab() {
-  if (activeTab) closeTab(activeTab);
+  const active = tabStore.active();
+  if (active) closeTab(active);
 }
