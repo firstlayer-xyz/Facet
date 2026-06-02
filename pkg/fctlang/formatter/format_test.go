@@ -536,6 +536,83 @@ return (1 / 2)
 }
 `,
 		},
+		{
+			name: "ternary",
+			input: `fn Main() {
+return a > 0 ? 1 : 2
+}
+`,
+			want: `fn Main() {
+    return a > 0 ? 1 : 2
+}
+`,
+		},
+		{
+			name: "nested ternary right-associative",
+			input: `fn Main() {
+return a ? 1 : b ? 2 : 3
+}
+`,
+			want: `fn Main() {
+    return a ? 1 : b ? 2 : 3
+}
+`,
+		},
+		{
+			name: "ternary inside binary needs parens",
+			input: `fn Main() {
+return 1 + (a ? 2 : 3)
+}
+`,
+			want: `fn Main() {
+    return 1 + (a ? 2 : 3)
+}
+`,
+		},
+		{
+			name: "nil literal",
+			input: `fn Lookup() Number? {
+return nil
+}
+`,
+			want: `fn Lookup() Number? {
+    return nil
+}
+`,
+		},
+		{
+			name: "null-coalesce binds tighter than or",
+			input: `fn Main() {
+return a || x ?? 0
+}
+`,
+			want: `fn Main() {
+    return a || x ?? 0
+}
+`,
+		},
+		{
+			name: "optional field access",
+			input: `fn Main() {
+return p?.x
+}
+`,
+			want: `fn Main() {
+    return p?.x
+}
+`,
+		},
+		{
+			name: "optional method call",
+			input: `fn Main() {
+return p?.Norm()
+}
+`,
+			want: `fn Main() {
+    return p?.Norm()
+}
+`,
+		},
 	}
 
 	for _, tc := range tests {
