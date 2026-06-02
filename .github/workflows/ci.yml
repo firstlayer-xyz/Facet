@@ -118,7 +118,7 @@ jobs:
           CXX: zig c++
 
       - name: Build Facet
-        run: cd desktop && ~/go/bin/wails build
+        run: make build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
@@ -448,7 +448,7 @@ jobs:
 
       - name: Build Facet
         shell: bash
-        run: cd desktop && ~/go/bin/wails build
+        run: make build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           CC: zig cc
@@ -513,7 +513,7 @@ jobs:
         # No -platform, no MACOSX_DEPLOYMENT_TARGET, no CGO_LDFLAGS dance.
         # macos-14 is arm64 native; the prior cross-compile machinery
         # existed for x86 self-hosted hardware and is no longer needed.
-        run: cd desktop && ~/go/bin/wails build
+        run: make build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
