@@ -292,6 +292,9 @@ type MethodCallExpr struct {
 	Method   string
 	Args     []Expr
 	Pos      Pos
+	// Optional is true for `opt?.Method(args)` (optional chaining).
+	// Same short-circuit + result-wrapping rules as FieldAccessExpr.
+	Optional bool
 }
 
 func (*MethodCallExpr) exprNode() {}
@@ -484,8 +487,14 @@ type NilLit struct {
 func (*NilLit) exprNode() {}
 
 // IfStmt represents an if/else-if/else statement.
+//
+// If BindVar is non-empty, the form is `if var NAME = Cond { ... }`:
+// Cond must evaluate to an Optional. If it is Some(v), NAME is bound to v
+// (with the inner type, not the Optional type) inside Then; otherwise Else
+// runs. ElseIfs are unchanged and don't carry their own bindings.
 type IfStmt struct {
 	Cond     Expr
+	BindVar  string // non-empty for `if var NAME = Cond`; empty for regular if
 	Then     []Stmt
 	ElseIfs  []*ElseIfClause
 	Else     []Stmt // nil if no else
@@ -581,6 +590,11 @@ type FieldAccessExpr struct {
 	Receiver Expr
 	Field    string
 	Pos      Pos
+	// Optional is true for `opt?.field` (optional chaining). When set, the
+	// receiver must be T? and the result type is the field's type wrapped
+	// in `?`. If the receiver is None, the evaluator short-circuits and
+	// returns None instead of dereferencing.
+	Optional bool
 }
 
 func (*FieldAccessExpr) exprNode() {}

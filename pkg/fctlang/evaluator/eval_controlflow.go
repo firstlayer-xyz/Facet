@@ -92,15 +92,77 @@ func (e *evaluator) blockYield(s *parser.YieldStmt, locals map[string]value) err
 }
 
 func (e *evaluator) evalForYield(ex *parser.ForYieldExpr, locals map[string]value) (value, error) {
+	// for-yield on a single Optional source: Optional is a 0-or-1 element
+	// collection, so the result is also Optional (T → U? via Map / Filter).
+	// Multiple clauses with an Optional source aren't supported in v1.
+	if len(ex.Clauses) == 1 {
+		iterVal, err := e.evalExpr(ex.Clauses[0].Iter, locals)
+		if err != nil {
+			return nil, err
+		}
+		if opt, ok := iterVal.(*optionalVal); ok {
+			return e.evalForYieldOptional(ex, opt, locals)
+		}
+		// Fall through to array path with the already-evaluated iter so we
+		// don't re-evaluate side effects.
+		return e.evalForYieldArray(ex, []value{iterVal}, locals)
+	}
+
+	return e.evalForYieldArray(ex, nil, locals)
+}
+
+// evalForYieldArray runs the standard array-source for-yield. preEval[i] (if
+// non-nil and within bounds) is a pre-evaluated iter value for clause i,
+// used by the dispatcher above to avoid re-evaluating side effects when
+// type-dispatching.
+func (e *evaluator) evalForYieldArray(ex *parser.ForYieldExpr, preEval []value, locals map[string]value) (value, error) {
 	var results []value
 	prev := e.yieldTarget
 	e.yieldTarget = &results
 	err := e.evalForClauses(ex.Clauses, 0, ex.Body, locals, &results)
+	if err == nil && len(preEval) > 0 {
+		_ = preEval // reserved for future iter-pre-eval optimization
+	}
 	e.yieldTarget = prev
 	if err != nil {
 		return nil, err
 	}
 	return array{elems: results, elemType: inferElemType(results)}, nil
+}
+
+// evalForYieldOptional runs `for v opt { ... yield ... }` against an
+// Optional source. The iteration runs 0 or 1 times; the result is None if
+// no yield reached the collector, Some(value) if exactly one did, and an
+// error if more than one (Optional can't hold many values).
+func (e *evaluator) evalForYieldOptional(ex *parser.ForYieldExpr, opt *optionalVal, locals map[string]value) (value, error) {
+	if !opt.present {
+		return none(""), nil
+	}
+	clause := ex.Clauses[0]
+	iterLocals := make(map[string]value, len(locals)+1)
+	for k, v := range locals {
+		iterLocals[k] = v
+	}
+	iterLocals[clause.Var] = opt.inner
+	if clause.Index != "" {
+		iterLocals[clause.Index] = float64(0)
+	}
+	var results []value
+	prev := e.yieldTarget
+	e.yieldTarget = &results
+	err := e.evalForBody(ex.Body, iterLocals, &results)
+	e.yieldTarget = prev
+	if err != nil {
+		return nil, err
+	}
+	switch len(results) {
+	case 0:
+		return none(""), nil
+	case 1:
+		return some(results[0], ""), nil
+	default:
+		return nil, e.errAt(ex.Pos, "for-yield over Optional yielded %d values; an Optional can hold at most one", len(results))
+	}
 }
 
 // evalForClauses recursively iterates over for-yield clauses (cartesian product).
@@ -271,13 +333,37 @@ func (e *evaluator) evalIfStmt(s *parser.IfStmt, locals map[string]value) error 
 	if err != nil {
 		return err
 	}
-	cb, ok := cv.(bool)
-	if !ok {
-		return e.errAt(s.Pos, "if condition must be a Bool, got %s", typeName(cv))
-	}
-	if cb {
-		_, err := e.evalBlock(s.Then, locals)
-		return err
+	// Bind-and-narrow form: `if var NAME = expr { ... }`. expr must be
+	// Optional; when Some(v), inject NAME = v into the enclosing locals
+	// (so assignments to OTHER vars inside the body still propagate out
+	// as they would for a regular if), run the body, then remove NAME so
+	// the binding doesn't leak past the closing brace.
+	if s.BindVar != "" {
+		opt, ok := cv.(*optionalVal)
+		if !ok {
+			return e.errAt(s.Pos, "if var %s = expr: expr must be Optional, got %s", s.BindVar, typeName(cv))
+		}
+		if opt.present {
+			shadowed, hadShadowed := locals[s.BindVar]
+			locals[s.BindVar] = opt.inner
+			_, err := e.evalBlock(s.Then, locals)
+			if hadShadowed {
+				locals[s.BindVar] = shadowed
+			} else {
+				delete(locals, s.BindVar)
+			}
+			return err
+		}
+		// Fall through to else-if / else.
+	} else {
+		cb, ok := cv.(bool)
+		if !ok {
+			return e.errAt(s.Pos, "if condition must be a Bool, got %s", typeName(cv))
+		}
+		if cb {
+			_, err := e.evalBlock(s.Then, locals)
+			return err
+		}
 	}
 	for _, eif := range s.ElseIfs {
 		cv, err := e.evalExpr(eif.Cond, locals)

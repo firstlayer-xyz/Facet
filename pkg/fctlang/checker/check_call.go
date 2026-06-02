@@ -466,20 +466,38 @@ func (c *checker) resolveReturnType(fn *parser.Function) typeInfo {
 		}
 		return unknown()
 	}
-	// "var" return type → caller resolves from var group
-	if fn.ReturnType == "var" {
+	return c.resolveTypeString(fn.ReturnType)
+}
+
+// resolveTypeString turns a type string into a typeInfo, applying struct
+// lookup so user-defined types like Vec3 resolve correctly. Also handles
+// the postfix `?` by recursively resolving the inner type and wrapping.
+func (c *checker) resolveTypeString(name string) typeInfo {
+	if name == "var" {
 		return simple(typeVar)
 	}
-	if fn.ReturnType == "[]var" {
+	if name == "[]var" {
 		return arrayOf(simple(typeVar))
 	}
-	ti := typeFromNameStr(fn.ReturnType)
+	if parser.IsOptionalType(name) {
+		inner := c.resolveTypeString(parser.OptionalInner(name))
+		return optionalOf(inner)
+	}
+	ti := typeFromNameStr(name)
 	if ti.ft != typeUnknown {
+		// typeFromNameStr returned a known shape; if it's an array whose
+		// element type is unknown, attempt struct lookup on the element.
+		if ti.ft == typeArray && ti.elem != nil && ti.elem.ft == typeUnknown {
+			elemStr := name[2:]
+			if _, ok := c.structDecls[elemStr]; ok {
+				return arrayOf(structTI(elemStr))
+			}
+		}
 		return ti
 	}
 	// Check for struct type
-	if _, ok := c.structDecls[fn.ReturnType]; ok {
-		return structTI(fn.ReturnType)
+	if _, ok := c.structDecls[name]; ok {
+		return structTI(name)
 	}
 	return unknown()
 }
@@ -530,6 +548,33 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 		return unknown()
 	}
 
+	// Optional chaining: `opt?.Method(args)`. Unwrap the receiver to its
+	// inner T, dispatch the method on T, then wrap the result in `?`.
+	// Short-circuit semantics at runtime — if opt is None, the whole
+	// chain is None and the call never executes.
+	if mc.Optional {
+		if recvType.ft != typeOptional {
+			c.addError(mc.Pos, fmt.Sprintf("?. operator requires an Optional receiver, got %s", recvType.displayName()))
+			return unknown()
+		}
+		inner := unknown()
+		if recvType.inner != nil {
+			inner = *recvType.inner
+		}
+		ret := c.checkMethodOnRecvType(mc, env, inner, argTypes)
+		if ret.ft == typeUnknown {
+			return unknown()
+		}
+		return optionalOf(ret)
+	}
+
+	return c.checkMethodOnRecvType(mc, env, recvType, argTypes)
+}
+
+// checkMethodOnRecvType is the post-receiver-resolved body of checkMethodCall.
+// Split out so optional-chaining (`opt?.Method`) can invoke it with the
+// unwrapped inner type without re-running inferExpr on the receiver.
+func (c *checker) checkMethodOnRecvType(mc *parser.MethodCallExpr, env *typeEnv, recvType typeInfo, argTypes []typeInfo) typeInfo {
 	// Optional methods — language-level, dispatched before any user method
 	// lookup so callers always get the same semantics regardless of any
 	// stdlib changes.

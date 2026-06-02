@@ -10,9 +10,9 @@ func (p *parser) parseExpr() (Expr, error) {
 	return p.parseOrExpr()
 }
 
-// parseOrExpr → andExpr { "||" andExpr }
+// parseOrExpr → nullCoalesceExpr { "||" nullCoalesceExpr }
 func (p *parser) parseOrExpr() (Expr, error) {
-	left, err := p.parseAndExpr()
+	left, err := p.parseNullCoalesceExpr()
 	if err != nil {
 		return nil, err
 	}
@@ -21,11 +21,33 @@ func (p *parser) parseOrExpr() (Expr, error) {
 		if err := p.next(); err != nil {
 			return nil, err
 		}
-		right, err := p.parseAndExpr()
+		right, err := p.parseNullCoalesceExpr()
 		if err != nil {
 			return nil, err
 		}
 		left = &BinaryExpr{Op: "||", Left: left, Right: right, Pos: Pos{line, col}}
+	}
+	return left, nil
+}
+
+// parseNullCoalesceExpr → andExpr { "??" andExpr }
+// `??` binds tighter than `||` so `cond || opt ?? default` parses as
+// `cond || (opt ?? default)` — the natural reading.
+func (p *parser) parseNullCoalesceExpr() (Expr, error) {
+	left, err := p.parseAndExpr()
+	if err != nil {
+		return nil, err
+	}
+	for p.cur.Type == TokenQuestionQuestion {
+		line, col := p.cur.Line, p.cur.Col
+		if err := p.next(); err != nil {
+			return nil, err
+		}
+		right, err := p.parseAndExpr()
+		if err != nil {
+			return nil, err
+		}
+		left = &BinaryExpr{Op: "??", Left: left, Right: right, Pos: Pos{line, col}}
 	}
 	return left, nil
 }
@@ -195,7 +217,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	for p.cur.Type == TokenDot || p.cur.Type == TokenLBracket || p.isUnitSuffix() {
+	for p.cur.Type == TokenDot || p.cur.Type == TokenQuestionDot || p.cur.Type == TokenLBracket || p.isUnitSuffix() {
 		// Unit suffix: 5 mm, (1/2) mm, Foo() deg
 		if p.isUnitSuffix() {
 			line, col := p.cur.Line, p.cur.Col
@@ -266,7 +288,12 @@ func (p *parser) parsePostfix() (Expr, error) {
 			expr = &IndexExpr{Receiver: expr, Index: index, Pos: Pos{line, col}}
 			continue
 		}
-		if err := p.next(); err != nil { // consume '.'
+		// `.` (regular) vs `?.` (optional chaining). Both consume the
+		// dot/question-dot then expect an identifier; the only difference
+		// is the Optional flag set on the resulting AST node so the
+		// checker/evaluator can apply short-circuit semantics.
+		optional := p.cur.Type == TokenQuestionDot
+		if err := p.next(); err != nil { // consume '.' or '?.'
 			return nil, err
 		}
 		methodLine, methodCol := p.cur.Line, p.cur.Col
@@ -276,7 +303,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 		}
 		// Field access: no '(' after .IDENT
 		if p.cur.Type != TokenLParen {
-			expr = &FieldAccessExpr{Receiver: expr, Field: method.Text, Pos: Pos{methodLine, methodCol}}
+			expr = &FieldAccessExpr{Receiver: expr, Field: method.Text, Pos: Pos{methodLine, methodCol}, Optional: optional}
 			continue
 		}
 		if _, err := p.expect(TokenLParen); err != nil {
@@ -289,7 +316,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 		if _, err := p.expect(TokenRParen); err != nil {
 			return nil, err
 		}
-		expr = &MethodCallExpr{Receiver: expr, Method: method.Text, Args: args, Pos: Pos{methodLine, methodCol}}
+		expr = &MethodCallExpr{Receiver: expr, Method: method.Text, Args: args, Pos: Pos{methodLine, methodCol}, Optional: optional}
 	}
 	// Check for qualified struct literal: T.Thread { field: val }
 	// Pos points at T (start of the whole expression) for diagnostics;

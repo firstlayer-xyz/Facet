@@ -40,6 +40,35 @@ func (c *checker) inferBinaryOp(ex *parser.BinaryExpr, env *typeEnv) typeInfo {
 		return c.inferComparison(ex, left, right)
 	}
 
+	// Nullish coalescing: `opt ?? fallback` — left must be T?, fallback
+	// must be compatible with the inner T (or itself T?, in which case
+	// the chain stays optional). Result is T (when fallback is definite)
+	// or T? (when fallback is itself optional).
+	if op == "??" {
+		if left.ft != typeOptional {
+			c.addError(ex.Pos, fmt.Sprintf("operator ??: left operand must be Optional, got %s", left.displayName()))
+			return unknown()
+		}
+		inner := unknown()
+		if left.inner != nil {
+			inner = *left.inner
+		}
+		// Fallback may be definite T (result is T) or another T? (result is T?).
+		if right.ft == typeOptional {
+			if inner.ft != typeUnknown && right.inner != nil && right.inner.ft != typeUnknown &&
+				!c.typeCompatible(inner, *right.inner) {
+				c.addError(ex.Pos, fmt.Sprintf("operator ??: fallback %s does not match Optional inner type %s",
+					right.displayName(), inner.displayName()))
+			}
+			return left
+		}
+		if inner.ft != typeUnknown && right.ft != typeUnknown && !c.typeCompatible(inner, right) {
+			c.addError(ex.Pos, fmt.Sprintf("operator ??: fallback must be %s, got %s",
+				inner.displayName(), right.displayName()))
+		}
+		return inner
+	}
+
 	// Array concatenation / append — preserve element type
 	if left.ft == typeArray && op == "+" {
 		if right.ft == typeArray {

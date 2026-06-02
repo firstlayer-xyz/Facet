@@ -150,10 +150,49 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		}
 	}
 
+	// Optional chaining: `opt?.Method(args)`. None short-circuits to None;
+	// Some(v) unwraps the receiver to v and falls through to the normal
+	// dispatch below. The result will be wrapped back into Some at the
+	// bottom of this function (see chainOptionalWrap).
+	chainOptionalWrap := false
+	if mc.Optional {
+		opt, ok := receiver.(*optionalVal)
+		if !ok {
+			return nil, e.errAt(mc.Pos, "?. operator requires an Optional receiver, got %s", typeName(receiver))
+		}
+		if !opt.present {
+			return none(""), nil
+		}
+		receiver = opt.inner
+		chainOptionalWrap = true
+	}
+
 	// Optional methods — language-level, handled before any stdlib lookup.
 	if opt, ok := receiver.(*optionalVal); ok {
 		return e.evalOptionalMethod(mc, opt, argMap)
 	}
+
+	// dispatch is the original method-lookup body; result is wrapped if
+	// we entered via `?.` so the surrounding type stays Optional.
+	result, dispatchErr := e.dispatchMethodCall(mc, receiver, argMap, stdlibCall)
+	if dispatchErr != nil {
+		return nil, dispatchErr
+	}
+	if chainOptionalWrap {
+		return some(result, ""), nil
+	}
+	return result, nil
+}
+
+// dispatchMethodCall is the post-Optional-handling body of evalMethodCall.
+// Split out so the optional-chaining path can fall through after unwrapping
+// the receiver, then wrap the result back into Some on the way out.
+func (e *evaluator) dispatchMethodCall(
+	mc *parser.MethodCallExpr,
+	receiver value,
+	argMap map[string]value,
+	stdlibCall func(receiver value) func(fn *parser.Function, args map[string]value) (value, error),
+) (value, error) {
 
 	switch r := receiver.(type) {
 	case *manifold.Solid:

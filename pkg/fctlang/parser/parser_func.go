@@ -109,6 +109,13 @@ func (p *parser) parseTypeStr() (string, error) {
 		}
 		return t + "?", nil
 	}
+	// A `??` token at type position is the nested-optional spelling
+	// (the lexer prefers the longest match, so `Number??` tokenizes as
+	// `Number` + `??` rather than `Number` + `?` + `?`). Report the same
+	// error as the explicit two-? case.
+	if p.cur.Type == TokenQuestionQuestion {
+		return "", p.errorf("nested optional %q?? is not allowed — Optional is a single layer", t)
+	}
 	return t, nil
 }
 
