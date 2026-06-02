@@ -361,6 +361,15 @@ Vec2 and Vec3 arithmetic (`+`, `-`, `*`, `/`, unary `-`) is defined in the stdli
 - `??` — nullish coalescing. `opt ?? fallback` returns the inner value if `opt` is Some, else evaluates and returns `fallback`. Short-circuits like `&&`/`||`.
 - `?.` — optional chaining (postfix on a field/method access). `opt?.field` short-circuits to None if `opt` is absent, else accesses `.field` on the inner value and wraps the result in `?`.
 
+### Conditional (Ternary)
+
+`cond ? a : b` — C-style conditional expression. `cond` must be Bool; `a` and `b` must produce compatible types; the result is that unified type. Only the chosen arm is evaluated. Right-associative: `a ? b : c ? d : e` parses as `a ? b : (c ? d : e)`.
+
+```
+var size = big ? 20 mm : 5 mm
+return color != nil ? color : Color(hex: "#FFFFFF")
+```
+
 ### Unary
 
 `-` (negate `Number`, `Length`, `Angle`), `!` (negate `Bool`).
@@ -375,6 +384,7 @@ Vec2 and Vec3 arithmetic (`+`, `-`, `*`, `/`, unary `-`) is defined in the stdli
 6. Logical AND (`&&`)
 7. Nullish coalescing (`??`) — binds tighter than `||`, so `a || opt ?? d` parses as `a || (opt ?? d)`
 8. Logical OR (`||`)
+9. Ternary (`? :`) — looser than `||`, so `a || b ? c : d` parses as `(a || b) ? c : d`
 
 ## Expressions
 

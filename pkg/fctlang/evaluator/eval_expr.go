@@ -21,6 +21,20 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 		// will narrow it via funcReturn / param coercion.
 		return none(""), nil
 
+	case *parser.TernaryExpr:
+		cv, err := e.evalExpr(ex.Cond, locals)
+		if err != nil {
+			return nil, err
+		}
+		cb, ok := cv.(bool)
+		if !ok {
+			return nil, e.errAt(ex.Pos, "ternary condition must be Bool, got %s", typeName(cv))
+		}
+		if cb {
+			return e.evalExpr(ex.Then, locals)
+		}
+		return e.evalExpr(ex.Else, locals)
+
 	case *parser.IdentExpr:
 		v, ok := locals[ex.Name]
 		if !ok {

@@ -1,13 +1,44 @@
 package parser
 
-// parseExpr → orExpr
+// parseExpr → ternaryExpr
 func (p *parser) parseExpr() (Expr, error) {
 	p.depth++
 	if p.depth > maxParseDepth {
 		return nil, p.errorf("expression too deeply nested (limit %d)", maxParseDepth)
 	}
 	defer func() { p.depth-- }()
-	return p.parseOrExpr()
+	return p.parseTernaryExpr()
+}
+
+// parseTernaryExpr → orExpr [ "?" expr ":" expr ]
+// The conditional expression `cond ? a : b`. cond must be Bool, both arms
+// must produce compatible types. Right-associative: `a ? b : c ? d : e`
+// parses as `a ? b : (c ? d : e)`. Each arm is parsed via parseTernaryExpr
+// so a nested ternary can re-enter on the right.
+func (p *parser) parseTernaryExpr() (Expr, error) {
+	cond, err := p.parseOrExpr()
+	if err != nil {
+		return nil, err
+	}
+	if p.cur.Type != TokenQuestion {
+		return cond, nil
+	}
+	line, col := p.cur.Line, p.cur.Col
+	if err := p.next(); err != nil { // consume '?'
+		return nil, err
+	}
+	thenExpr, err := p.parseTernaryExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenColon); err != nil {
+		return nil, err
+	}
+	elseExpr, err := p.parseTernaryExpr()
+	if err != nil {
+		return nil, err
+	}
+	return &TernaryExpr{Cond: cond, Then: thenExpr, Else: elseExpr, Pos: Pos{line, col}}, nil
 }
 
 // parseOrExpr → nullCoalesceExpr { "||" nullCoalesceExpr }

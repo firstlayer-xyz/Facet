@@ -51,6 +51,28 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 		// the inner type is unknown — the wild Optional widens to any T?.
 		return wildOptional()
 
+	case *parser.TernaryExpr:
+		condType := c.inferExpr(ex.Cond, env)
+		if condType.ft != typeUnknown && condType.ft != typeBool {
+			c.addError(ex.Pos, fmt.Sprintf("ternary condition must be Bool, got %s", condType.displayName()))
+		}
+		thenType := c.inferExpr(ex.Then, env)
+		elseType := c.inferExpr(ex.Else, env)
+		// Unify arm types. typeUnknown defers to the other side so partial
+		// info still flows. Mismatches report against the else position
+		// (the second arm — matches how the user reads left to right).
+		if thenType.ft == typeUnknown {
+			return elseType
+		}
+		if elseType.ft == typeUnknown {
+			return thenType
+		}
+		if !c.typeCompatible(thenType, elseType) && !c.typeCompatible(elseType, thenType) {
+			c.addError(ex.Pos, fmt.Sprintf("ternary arms must agree on type: then-arm is %s, else-arm is %s",
+				thenType.displayName(), elseType.displayName()))
+		}
+		return thenType
+
 	case *parser.StringLit:
 		return simple(typeString)
 
