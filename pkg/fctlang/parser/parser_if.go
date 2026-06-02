@@ -1,10 +1,29 @@
 package parser
 
 // parseIfStmt → "if" expr "{" body "}" { "else" "if" expr "{" body "}" } [ "else" "{" body "}" ]
+//
+// Also recognises the bind-and-narrow form `if var NAME = expr { body }`:
+// when the token after `if` is `var`, a single `var NAME = expr` binding is
+// parsed in place of the cond. The expr must be Optional; the body runs
+// only when it is Some, with NAME bound to the inner value.
 func (p *parser) parseIfStmt() (*IfStmt, error) {
 	ifLine, ifCol := p.cur.Line, p.cur.Col
 	if _, err := p.expect(TokenIf); err != nil {
 		return nil, err
+	}
+	var bindVar string
+	if p.cur.Type == TokenVar {
+		if err := p.next(); err != nil { // consume 'var'
+			return nil, err
+		}
+		nameTok, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		bindVar = nameTok.Text
+		if _, err := p.expect(TokenEquals); err != nil {
+			return nil, err
+		}
 	}
 	cond, err := p.parseExpr()
 	if err != nil {
@@ -21,7 +40,7 @@ func (p *parser) parseIfStmt() (*IfStmt, error) {
 		return nil, err
 	}
 
-	ifStmt := &IfStmt{Cond: cond, Then: thenBody, Pos: Pos{ifLine, ifCol}}
+	ifStmt := &IfStmt{Cond: cond, BindVar: bindVar, Then: thenBody, Pos: Pos{ifLine, ifCol}}
 
 	// Parse else-if and else clauses
 	for p.cur.Type == TokenElse {

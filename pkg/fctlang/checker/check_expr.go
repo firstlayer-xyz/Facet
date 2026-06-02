@@ -235,10 +235,26 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 	case *parser.ForYieldExpr:
 		childEnv := env.child()
 		var yieldType typeInfo
+		// Detect Optional source: a single-clause `for v opt { ... }` yields
+		// a U? (Optional collection of 0-or-1 element). Mirrors the eval-time
+		// dispatch in evalForYield.
+		iterIsOptional := false
 		for _, clause := range ex.Clauses {
 			iterType := c.inferExpr(clause.Iter, env)
+			if iterType.ft == typeOptional && len(ex.Clauses) == 1 {
+				iterIsOptional = true
+				if clause.Index != "" {
+					childEnv.bind(clause.Index, simple(typeNumber), clause.Pos, "var")
+				}
+				if iterType.inner != nil {
+					childEnv.bind(clause.Var, *iterType.inner, clause.Pos, "var")
+				} else {
+					childEnv.bind(clause.Var, unknown(), clause.Pos, "var")
+				}
+				continue
+			}
 			if iterType.ft != typeUnknown && iterType.ft != typeArray {
-				c.addError(ex.Pos, fmt.Sprintf("for-yield: expected Array to iterate over, got %s", iterType.displayName()))
+				c.addError(ex.Pos, fmt.Sprintf("for-yield: expected Array or Optional to iterate over, got %s", iterType.displayName()))
 			}
 			// TODO: ForClause lacks per-variable positions; using the clause
 			// Pos conflates Var and Index. Add Var.Pos / Index.Pos to the AST
@@ -264,6 +280,12 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 				// Walk other stmts for side-effect checking
 				c.checkStmts([]parser.Stmt{stmt}, childEnv)
 			}
+		}
+		if iterIsOptional {
+			if yieldType.ft != typeUnknown {
+				return optionalOf(yieldType)
+			}
+			return wildOptional()
 		}
 		if yieldType.ft != typeUnknown {
 			return arrayOf(yieldType)
@@ -404,6 +426,25 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 		if recvType.ft == typeUnknown {
 			return unknown()
 		}
+		// Optional chaining: `opt?.field`. Unwrap T?, look up field on T,
+		// wrap result in `?`. Short-circuit semantics at runtime.
+		if ex.Optional {
+			if recvType.ft != typeOptional {
+				c.addError(ex.Pos, fmt.Sprintf("?. operator requires an Optional receiver, got %s", recvType.displayName()))
+				return unknown()
+			}
+			inner := unknown()
+			if recvType.inner != nil {
+				inner = *recvType.inner
+			}
+			// Re-run field lookup with the inner type by recursing through
+			// a synthetic FieldAccess on the inner type.
+			fieldType := c.lookupFieldType(inner, ex.Field, ex.Pos)
+			if fieldType.ft == typeUnknown {
+				return unknown()
+			}
+			return optionalOf(fieldType)
+		}
 		if recvType.ft != typeStruct {
 			c.addError(ex.Pos, fmt.Sprintf("cannot access field %q on %s", ex.Field, recvType.displayName()))
 			return unknown()
@@ -461,6 +502,34 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 	default:
 		return unknown()
 	}
+}
+
+// lookupFieldType resolves a struct field's type given the struct's
+// typeInfo. Reports a checker error on missing fields. Used by both the
+// plain `.field` access and the optional-chaining `?.field` access.
+func (c *checker) lookupFieldType(recvType typeInfo, fieldName string, pos parser.Pos) typeInfo {
+	if recvType.ft == typeUnknown {
+		return unknown()
+	}
+	if recvType.ft != typeStruct {
+		c.addError(pos, fmt.Sprintf("cannot access field %q on %s", fieldName, recvType.displayName()))
+		return unknown()
+	}
+	structName := recvType.structName
+	if structName == "" {
+		return unknown()
+	}
+	decl, ok := c.structDecls[structName]
+	if !ok {
+		return unknown()
+	}
+	for _, f := range decl.Fields {
+		if f.Name == fieldName {
+			return c.resolveTypeStr(structName, f.Type)
+		}
+	}
+	c.addError(pos, fmt.Sprintf("struct %s has no field %q", bareStructName(structName), fieldName))
+	return unknown()
 }
 
 // resolveTypeStr resolves a type string in the context of a struct type.

@@ -148,6 +148,16 @@ func (c *checker) collectReturnTypes(stmts []parser.Stmt, env *typeEnv) []typeIn
 			c.inferExpr(s.Value, env)
 		case *parser.IfStmt:
 			branchEnv := env.child()
+			// For the `if var NAME = expr` bind form, expose NAME in the
+			// then-branch with the inner type so `return NAME` resolves.
+			if s.BindVar != "" {
+				condType := c.inferExpr(s.Cond, env)
+				inner := unknown()
+				if condType.inner != nil {
+					inner = *condType.inner
+				}
+				branchEnv.bind(s.BindVar, inner, s.Pos, "var")
+			}
 			types = append(types, c.collectReturnTypes(s.Then, branchEnv)...)
 			for _, eif := range s.ElseIfs {
 				eifEnv := env.child()
@@ -307,12 +317,28 @@ func (c *checker) checkStmts(stmts []parser.Stmt, env *typeEnv) typeInfo {
 }
 
 // checkIfStmt validates an if statement's condition and branches.
+//
+// For the bind-and-narrow form `if var NAME = expr { ... }`, the cond
+// must be Optional; NAME is bound to the inner type inside the then-branch.
 func (c *checker) checkIfStmt(s *parser.IfStmt, env *typeEnv) {
 	condType := c.inferExpr(s.Cond, env)
-	if condType.ft != typeUnknown && condType.ft != typeBool {
-		c.addError(s.Pos, fmt.Sprintf("if condition must be a Bool, got %s", condType.displayName()))
+	if s.BindVar != "" {
+		if condType.ft != typeUnknown && condType.ft != typeOptional {
+			c.addError(s.Pos, fmt.Sprintf("if var %s = expr: expr must be Optional, got %s", s.BindVar, condType.displayName()))
+		}
+		inner := unknown()
+		if condType.inner != nil {
+			inner = *condType.inner
+		}
+		thenEnv := env.child()
+		thenEnv.bind(s.BindVar, inner, s.Pos, "var")
+		c.checkStmts(s.Then, thenEnv)
+	} else {
+		if condType.ft != typeUnknown && condType.ft != typeBool {
+			c.addError(s.Pos, fmt.Sprintf("if condition must be a Bool, got %s", condType.displayName()))
+		}
+		c.checkStmts(s.Then, env.child())
 	}
-	c.checkStmts(s.Then, env.child())
 	for _, eif := range s.ElseIfs {
 		eifCond := c.inferExpr(eif.Cond, env)
 		if eifCond.ft != typeUnknown && eifCond.ft != typeBool {
