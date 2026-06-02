@@ -39,13 +39,13 @@ if [ ! -f "$MANIFOLD_DIR/CMakeLists.txt" ]; then
 fi
 
 # --- Build Manifold (wasm static lib) ---
-# MANIFOLD_PAR=ON enables Manifold's TBB-backed parallel algorithms. Combined
-# with -pthread on the consumer side this gives us multi-core booleans /
-# decompose / hull in the browser, but requires the page to run in a
-# cross-origin isolated context (COOP: same-origin + COEP: require-corp)
-# so SharedArrayBuffer is available to the worker pool.
-MANIFOLD_BUILD_DIR="$MANIFOLD_DIR/build-wasm-mt"
-echo "Building manifold for wasm (multithreaded)..."
+# MANIFOLD_PAR=OFF builds Manifold's serial algorithms. The web target is
+# single-threaded on purpose: a multithreaded build needs SharedArrayBuffer,
+# which requires a cross-origin-isolated context (COOP: same-origin + COEP:
+# require-corp). Static hosting (GitHub Pages) cannot send those headers, so
+# we stay single-threaded here.
+MANIFOLD_BUILD_DIR="$MANIFOLD_DIR/build-wasm"
+echo "Building manifold for wasm (single-threaded)..."
 mkdir -p "$MANIFOLD_BUILD_DIR" && cd "$MANIFOLD_BUILD_DIR"
 emcmake cmake "$MANIFOLD_DIR" \
   -G Ninja \
@@ -58,8 +58,7 @@ emcmake cmake "$MANIFOLD_DIR" \
   -DMANIFOLD_EXPORT=OFF \
   -DMANIFOLD_DOWNLOADS=ON \
   -DMANIFOLD_JSBIND=OFF \
-  -DMANIFOLD_PAR=ON \
-  -DMANIFOLD_USE_BUILTIN_TBB=ON
+  -DMANIFOLD_PAR=OFF
 emmake ninja -j "$JOBS"
 
 # --- Link facet_cxx as a wasm module ---
@@ -76,20 +75,6 @@ LIBS=(
   "$MANIFOLD_BUILD_DIR/src/libmanifold.a"
   "$MANIFOLD_BUILD_DIR/_deps/clipper2-build/libClipper2.a"
 )
-
-# Manifold's bundled TBB drops static archives under build-*/clang_*_release/.
-# Layout varies a bit across TBB versions, so discover them by glob.
-TBB_LIBS=()
-while IFS= read -r f; do TBB_LIBS+=("$f"); done < <(
-  find "$MANIFOLD_BUILD_DIR" -name 'libtbb*.a' 2>/dev/null
-)
-if [ ${#TBB_LIBS[@]} -eq 0 ]; then
-  echo "error: no libtbb*.a archives found under $MANIFOLD_BUILD_DIR." 1>&2
-  echo "       Manifold's MANIFOLD_USE_BUILTIN_TBB build may have failed." 1>&2
-  exit 1
-fi
-LIBS+=("${TBB_LIBS[@]}")
-echo "Linking ${#TBB_LIBS[@]} TBB archives: ${TBB_LIBS[*]}"
 
 # Exported C functions: read from facet_cxx.h with a regex over the
 # `<type> facet_<name>(...)` declarations, prepend the underscore Emscripten
@@ -113,14 +98,12 @@ emcc \
   -Oz \
   -flto \
   -fexceptions \
-  -pthread \
   -sALLOW_MEMORY_GROWTH=1 \
   -sMAXIMUM_MEMORY=4294967296 \
   -sINITIAL_MEMORY=32MB \
-  -sPTHREAD_POOL_SIZE=4 \
   -sMODULARIZE=1 \
   -sEXPORT_NAME=createFacetCxx \
-  -sENVIRONMENT=web,worker,node \
+  -sENVIRONMENT=web,node \
   -sFILESYSTEM=0 \
   -sIGNORE_MISSING_MAIN=1 \
   -sEXPORTED_FUNCTIONS="$EXPORTS" \
@@ -134,7 +117,6 @@ wasm-opt -Oz \
   --enable-sign-ext \
   --enable-nontrapping-float-to-int \
   --enable-mutable-globals \
-  --enable-threads \
   --strip-debug --strip-producers \
   -o "$OUT_DIR/facet_cxx.wasm" "$OUT_DIR/facet_cxx.wasm"
 

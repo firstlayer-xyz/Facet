@@ -10,7 +10,6 @@ const URL = process.env.FACET_WEB_URL || 'http://localhost:8000/';
 async function runTest(name, body, chromium) {
   const browser = await chromium.launch({
     headless: true,
-    args: ['--enable-features=SharedArrayBuffer'],
   });
   const context = await browser.newContext();
   const page = await context.newPage();

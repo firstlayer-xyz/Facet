@@ -52,8 +52,8 @@ wasm: go-toolchain wasm-cxx
 		echo "(skipped copy to $(FACET_WEB) — directory does not exist)"; \
 	fi
 
-# Dev server for web/. Sends Cross-Origin-Opener-Policy + Cross-Origin-Embedder-Policy
-# headers so SharedArrayBuffer (and pthread-based wasm) work in the browser.
+# Dev server for web/. Plain static server (single-threaded wasm needs no
+# SharedArrayBuffer), mirroring how GitHub Pages serves the bundle.
 serve-web: go-toolchain
 	$(GO) run scripts/serve-web.go
 
