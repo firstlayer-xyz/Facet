@@ -41,7 +41,12 @@ func (p *parser) isStructLitStart() bool {
 
 // parseStructLit → "{" IDENT ":" expr { "," IDENT ":" expr } "}"
 // All fields must use named syntax (field: value).
-func (p *parser) parseStructLit(typeName string, line, col int) (Expr, error) {
+//
+// exprStart is the start of the whole literal expression (used as Pos for
+// diagnostics). typeNamePos is the position of the type-name token itself;
+// for unqualified `Thread{...}` it equals exprStart, but for qualified
+// `T.Thread{...}` it points at `Thread`, not at `T`.
+func (p *parser) parseStructLit(typeName string, exprStart, typeNamePos Pos) (Expr, error) {
 	if _, err := p.expect(TokenLBrace); err != nil {
 		return nil, err
 	}
@@ -85,7 +90,7 @@ func (p *parser) parseStructLit(typeName string, line, col int) (Expr, error) {
 	if _, err := p.expect(TokenRBrace); err != nil {
 		return nil, err
 	}
-	return &StructLitExpr{TypeName: typeName, Fields: fields, Pos: Pos{line, col}}, nil
+	return &StructLitExpr{TypeName: typeName, Fields: fields, Pos: exprStart, TypeNamePos: typeNamePos}, nil
 }
 
 // isTypedArrayStart peeks ahead to check if the current position begins a
@@ -153,10 +158,12 @@ func (p *parser) parseTypedArrayLit(typeName string, line, col int) (Expr, error
 			var elem Expr
 			var err error
 			if p.cur.Type == TokenLBrace {
-				// Bare { ... } → struct literal of the array's element type
-				eLine, eCol := p.cur.Line, p.cur.Col
+				// Bare { ... } → struct literal of the array's element type.
+				// No type-name token in source for this element; TypeNamePos
+				// is the same as Pos (the `{`).
+				bracePos := Pos{p.cur.Line, p.cur.Col}
 				if p.isStructLitStart() || p.isEmptyBrace() {
-					elem, err = p.parseStructLit(typeName, eLine, eCol)
+					elem, err = p.parseStructLit(typeName, bracePos, bracePos)
 				} else {
 					// Fallback: parse as normal expression (block)
 					elem, err = p.parseExpr()

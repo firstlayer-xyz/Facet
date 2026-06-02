@@ -67,7 +67,8 @@ func (p *parser) parsePrimary() (Expr, error) {
 		// Disambiguate by peeking ahead for the IDENT : pattern or empty {}.
 		if p.cur.Type == TokenLBrace {
 			if p.isStructLitStart() || p.isEmptyBrace() {
-				return p.parseStructLit(name, nameLine, nameCol)
+				namePos := Pos{nameLine, nameCol}
+				return p.parseStructLit(name, namePos, namePos)
 			}
 		}
 		return &IdentExpr{Name: name, Pos: Pos{nameLine, nameCol}}, nil
@@ -89,10 +90,11 @@ func (p *parser) parsePrimary() (Expr, error) {
 	}
 
 	// Anonymous struct literal: "{ IDENT : expr, ... }"
+	// No type name in source; both positions are the `{`.
 	if p.cur.Type == TokenLBrace {
 		if p.isStructLitStart() {
-			line, col := p.cur.Line, p.cur.Col
-			return p.parseStructLit("", line, col)
+			bracePos := Pos{p.cur.Line, p.cur.Col}
+			return p.parseStructLit("", bracePos, bracePos)
 		}
 		return nil, p.errorf("unexpected '{'")
 	}

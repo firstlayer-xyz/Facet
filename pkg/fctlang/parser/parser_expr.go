@@ -292,12 +292,15 @@ func (p *parser) parsePostfix() (Expr, error) {
 		expr = &MethodCallExpr{Receiver: expr, Method: method.Text, Args: args, Pos: Pos{methodLine, methodCol}}
 	}
 	// Check for qualified struct literal: T.Thread { field: val }
+	// Pos points at T (start of the whole expression) for diagnostics;
+	// TypeNamePos points at Thread (the field token after the dot) so
+	// references resolve there.
 	if p.cur.Type == TokenLBrace {
 		if fa, ok := expr.(*FieldAccessExpr); ok {
 			if id, ok := fa.Receiver.(*IdentExpr); ok {
 				qualName := id.Name + "." + fa.Field
 				if p.isStructLitStart() || p.isEmptyBrace() {
-					return p.parseStructLit(qualName, id.Pos.Line, id.Pos.Col)
+					return p.parseStructLit(qualName, id.Pos, fa.Pos)
 				}
 			}
 		}

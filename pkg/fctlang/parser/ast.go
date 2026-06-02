@@ -550,7 +550,12 @@ type StructField struct {
 type StructLitExpr struct {
 	TypeName string
 	Fields   []*StructFieldInit
-	Pos      Pos
+	Pos      Pos // start of the whole expression (e.g. T in `T.Thread{...}`)
+	// TypeNamePos points at the type-name token itself — `Thread` in
+	// `T.Thread{...}`, or the same as Pos for unqualified literals. Used
+	// by the checker so go-to-definition on `Thread` resolves to the type
+	// declaration rather than to the library variable T.
+	TypeNamePos Pos
 }
 
 func (*StructLitExpr) exprNode() {}
