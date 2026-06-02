@@ -91,3 +91,42 @@ func TestEvalIfVarBindSkipsWhenAbsent(t *testing.T) {
     if var v = maybe() { x = v * 2 };`,
 		`x == 7`)
 }
+
+// TestEvalIfVarBindFallsThroughToElse pairs the bind form with an else
+// branch and verifies the else runs when the Optional is None.
+func TestEvalIfVarBindFallsThroughToElse(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t, `
+    var maybe = fn() Number? { return nil };
+    var x = 0;
+    if var v = maybe() { x = v } else { x = 42 };`,
+		`x == 42`)
+}
+
+// TestEvalOptionalChainMethodPresent exercises the Some path through
+// dispatchMethodCall: receiver unwrapped, method dispatched on the inner
+// value, result re-wrapped as Some.
+func TestEvalOptionalChainMethodPresent(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t, `
+    var s = fn() String? { return "hello" };
+    var contains = s()?.Contains(substr: "ell") ?? false;`,
+		`contains == true`)
+}
+
+// TestEvalForYieldOptionalMultiYieldErrors confirms the runtime guard:
+// an Optional can hold at most one value, so a body that yields twice
+// during the single Some iteration is a hard error rather than silently
+// taking the first or last.
+func TestEvalForYieldOptionalMultiYieldErrors(t *testing.T) {
+	src := `
+fn Main() Solid {
+    var maybe = fn() Number? { return 5 };
+    var bad = for n maybe() { yield n; yield n * 2 };
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})
+}
+`
+	prog := parseTestProg(t, src)
+	_, err := Eval(t.Context(), prog, testMainKey, nil, "Main")
+	if err == nil {
+		t.Fatal("expected error from for-yield over Optional with two yields")
+	}
+}
