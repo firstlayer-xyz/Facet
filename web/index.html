@@ -97,6 +97,16 @@
       color: #888;
       text-align: right;
     }
+    .param-text, .param-select {
+      width: 100%;
+      background: #2a2a2a;
+      color: #e0e0e0;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      padding: 5px 8px;
+      font-size: 13px;
+    }
+    .param-check { accent-color: #3a7bd5; width: 15px; height: 15px; }
     #stats-section {
       padding: 10px 14px;
       border-top: 1px solid #2d2d2d;
@@ -257,6 +267,7 @@ function setupBridge() {
   globalThis._mf_union        = (a, b) => (M._facet_union(a, b, SOLID_RET),        solidPtr());
   globalThis._mf_difference   = (a, b) => (M._facet_difference(a, b, SOLID_RET),   solidPtr());
   globalThis._mf_intersection = (a, b) => (M._facet_intersection(a, b, SOLID_RET), solidPtr());
+  globalThis._mf_insert       = (a, b) => (M._facet_insert(a, b, SOLID_RET),       solidPtr());
   globalThis._mf_decompose = id => {
     // facet_decompose returns an int (component count) and writes a
     // FacetSolidRet[] (one per component) through *out_components. We extract
@@ -703,56 +714,103 @@ function rebuildParams() {
   if (!ep) return;
 
   for (const p of ep.params) {
-    const defaultVal = p.default ?? 0;
-    let min = defaultVal * 0.1, max = defaultVal * 5, step = null;
-
-    if (p.constraint) {
-      if (p.constraint.kind === 'range') {
-        if (p.constraint.min != null) min = p.constraint.min;
-        if (p.constraint.max != null) max = p.constraint.max;
-        if (p.constraint.step != null) step = p.constraint.step;
-      } else if (p.constraint.kind === 'enum') {
-        // Render enum as select — skip slider for now, use default
-        paramValues[p.name] = defaultVal;
-        continue;
-      }
-    }
-    if (min >= max) { min = 0; max = defaultVal * 2 || 100; }
-    if (!step) step = (max - min) / 200;
-
-    paramValues[p.name] = defaultVal;
+    const def = p.default;
+    paramValues[p.name] = def;
 
     const row = document.createElement('div');
     row.className = 'param-row';
     const unit = p.unit ? `<span class="param-unit"> ${p.unit}</span>` : '';
-    const valEl = document.createElement('div');
-    valEl.className = 'param-value';
-    valEl.id = `pv-${p.name}`;
-    valEl.textContent = formatParamValue(defaultVal, p.unit);
-
-    const slider = document.createElement('input');
-    slider.type = 'range';
-    slider.className = 'param-slider';
-    slider.min   = min;
-    slider.max   = max;
-    slider.step  = step;
-    slider.value = defaultVal;
-
-    slider.addEventListener('input', () => {
-      const v = parseFloat(slider.value);
-      paramValues[p.name] = v;
-      valEl.textContent = formatParamValue(v, p.unit);
-      scheduleEval();
-    });
-
     row.innerHTML = `<div class="param-name">${p.name}${unit}</div>`;
-    row.appendChild(slider);
-    row.appendChild(valEl);
+
+    // Choose a control by constraint/type. Enum → dropdown; then by the
+    // default's JS type: boolean → checkbox, string → text, number → slider.
+    // Anything else (e.g. a Vec) shows read-only so it never crashes.
+    if (p.constraint && p.constraint.kind === 'enum') {
+      row.appendChild(makeEnumControl(p));
+    } else if (typeof def === 'boolean') {
+      row.appendChild(makeBoolControl(p));
+    } else if (typeof def === 'string') {
+      row.appendChild(makeStringControl(p));
+    } else if (typeof def === 'number') {
+      makeNumberControl(p, row);
+    } else {
+      const ro = document.createElement('div');
+      ro.className = 'param-value';
+      ro.textContent = JSON.stringify(def);
+      row.appendChild(ro);
+    }
     paramsList.appendChild(row);
   }
 }
 
+function makeNumberControl(p, row) {
+  const def = p.default;
+  let min = def * 0.1, max = def * 5, step = null;
+  if (p.constraint && p.constraint.kind === 'range') {
+    if (p.constraint.min != null) min = p.constraint.min;
+    if (p.constraint.max != null) max = p.constraint.max;
+    if (p.constraint.step != null) step = p.constraint.step;
+  }
+  if (min >= max) { min = 0; max = def * 2 || 100; }
+  if (!step) step = (max - min) / 200;
+
+  const valEl = document.createElement('div');
+  valEl.className = 'param-value';
+  valEl.textContent = formatParamValue(def, p.unit);
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.className = 'param-slider';
+  slider.min = min; slider.max = max; slider.step = step; slider.value = def;
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    paramValues[p.name] = v;
+    valEl.textContent = formatParamValue(v, p.unit);
+    scheduleEval();
+  });
+  row.appendChild(slider);
+  row.appendChild(valEl);
+}
+
+function makeStringControl(p) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'param-text';
+  input.value = p.default;
+  input.addEventListener('input', () => { paramValues[p.name] = input.value; scheduleEval(); });
+  return input;
+}
+
+function makeBoolControl(p) {
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.className = 'param-check';
+  input.checked = !!p.default;
+  input.addEventListener('change', () => { paramValues[p.name] = input.checked; scheduleEval(); });
+  return input;
+}
+
+function makeEnumControl(p) {
+  const sel = document.createElement('select');
+  sel.className = 'param-select';
+  const values = (p.constraint && p.constraint.values) || [];
+  for (const val of values) {
+    const o = document.createElement('option');
+    o.value = String(val); o.textContent = String(val);
+    if (val === p.default) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.addEventListener('change', () => {
+    // Preserve the original typed value (enum entries may be numbers).
+    const picked = values.find(v => String(v) === sel.value);
+    paramValues[p.name] = picked !== undefined ? picked : sel.value;
+    scheduleEval();
+  });
+  return sel;
+}
+
 function formatParamValue(v, unit) {
+  if (typeof v !== 'number') return unit ? `${v} ${unit}` : String(v);
   const s = Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(1);
   return unit ? `${s} ${unit}` : s;
 }
