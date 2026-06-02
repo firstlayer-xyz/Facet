@@ -194,6 +194,97 @@ func TestValidateLibPathTraversal(t *testing.T) {
 	}
 }
 
+// TestParseLibPathRefVariants pins parsing across the three @ref shapes
+// the user is allowed to write — branch, semver tag, and commit SHA —
+// to guard against future regressions when changing the parser.
+func TestParseLibPathRefVariants(t *testing.T) {
+	cases := []struct {
+		raw     string
+		wantRef string
+	}{
+		{"github.com/firstlayer-xyz/facetlibs@main", "main"},
+		{"github.com/firstlayer-xyz/facetlibs@v1.0", "v1.0"},
+		{"github.com/firstlayer-xyz/facetlibs@v1.2.3", "v1.2.3"},
+		{"github.com/firstlayer-xyz/facetlibs@release/1.0", "release/1.0"},
+		{"github.com/firstlayer-xyz/facetlibs@abc1234", "abc1234"},
+		// 40-char full SHA
+		{"github.com/firstlayer-xyz/facetlibs@a1b2c3d4e5f6789012345678901234567890abcd", "a1b2c3d4e5f6789012345678901234567890abcd"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			lp, err := ParseLibPath(tc.raw)
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if lp.Ref != tc.wantRef {
+				t.Errorf("Ref = %q, want %q", lp.Ref, tc.wantRef)
+			}
+			if lp.RepoID() != "github.com/firstlayer-xyz/facetlibs" {
+				t.Errorf("RepoID = %q, want stable cross-ref value", lp.RepoID())
+			}
+		})
+	}
+}
+
+// TestParseLibPathRefIdentityAcrossSameRepo pins the contract that
+// different refs of the same repo share a stable RepoID — that's what
+// the loader uses to share an on-disk clone — while keeping distinct
+// Ref values so each pin resolves to its own commit.
+func TestParseLibPathRefIdentityAcrossSameRepo(t *testing.T) {
+	refs := []string{"main", "v1.0", "v2.3.4", "abc1234", "release/2.0"}
+	var lps []*LibPath
+	for _, r := range refs {
+		lp, err := ParseLibPath("github.com/firstlayer-xyz/facetlibs@" + r)
+		if err != nil {
+			t.Fatalf("parse @%s: %v", r, err)
+		}
+		lps = append(lps, lp)
+	}
+	// All share the same RepoID (so the loader can de-dup the on-disk clone)
+	for i := 1; i < len(lps); i++ {
+		if lps[i].RepoID() != lps[0].RepoID() {
+			t.Errorf("RepoID drift at @%s: got %q, want %q", refs[i], lps[i].RepoID(), lps[0].RepoID())
+		}
+	}
+	// But each carries its own Ref distinct from all others.
+	seen := map[string]bool{}
+	for i, lp := range lps {
+		if seen[lp.Ref] {
+			t.Errorf("@%s: Ref %q collides with an earlier entry", refs[i], lp.Ref)
+		}
+		seen[lp.Ref] = true
+	}
+}
+
+// TestParseLibPathRefMutabilityClassification verifies each ref shape
+// flows into the right isImmutableRef bucket. Branches and semver tags
+// are mutable (can move); only commit SHAs are immutable. Wrong
+// classification would let stale caches serve the wrong code.
+func TestParseLibPathRefMutabilityClassification(t *testing.T) {
+	cases := []struct {
+		raw           string
+		wantImmutable bool
+	}{
+		{"github.com/x/lib@main", false},
+		{"github.com/x/lib@v1.0", false},     // semver tags are mutable: a maintainer can re-point them
+		{"github.com/x/lib@release/1.0", false},
+		{"github.com/x/lib@abc1234", true},   // 7-char SHA prefix is immutable
+		{"github.com/x/lib@a1b2c3d4e5f6789012345678901234567890abcd", true}, // full SHA
+	}
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			lp, err := ParseLibPath(tc.raw)
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			got := isImmutableRef(lp.Ref)
+			if got != tc.wantImmutable {
+				t.Errorf("isImmutableRef(%q) = %v, want %v", lp.Ref, got, tc.wantImmutable)
+			}
+		})
+	}
+}
+
 func TestIsImmutableRef(t *testing.T) {
 	immutable := []string{
 		"abc1234",

@@ -995,6 +995,49 @@ fn Main() {
 	}
 }
 
+// TestEvalConstraintReassignViolatesRange pins the runtime enforcement
+// of constraints on re-assignment: a `var x = 10 where [0:100]` binding
+// rejects `x = 200` at the assignment site (not just at the declaration
+// or at the parameter-override boundary). The wiring lives in
+// reassignVar at eval_stmt_dispatch.go:208-213 — it re-runs
+// validateConstraint when the existing binding is constrainedVal.
+func TestEvalConstraintReassignViolatesRange(t *testing.T) {
+	src := `
+fn Main() {
+    var x = 10 where [0:100];
+    x = 200;
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+}
+`
+	prog := parseTestProg(t, src)
+	_, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
+	if err == nil {
+		t.Fatal("expected constraint-violation error on in-body reassignment")
+	}
+	if !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("expected 'out of range' error, got: %v", err)
+	}
+}
+
+// TestEvalConstraintReassignWithinRange confirms the happy path:
+// reassigning to a value INSIDE the range succeeds. Without this pair
+// the violation test could pass trivially if reassignment errored for
+// any reason.
+func TestEvalConstraintReassignWithinRange(t *testing.T) {
+	src := `
+fn Main() {
+    var x = 10 where [0:100];
+    x = 80;
+    return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm});
+}
+`
+	prog := parseTestProg(t, src)
+	_, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
+	if err != nil {
+		t.Fatalf("in-range reassignment should succeed, got: %v", err)
+	}
+}
+
 func TestEvalConstraintUnitRange(t *testing.T) {
 	src := `
 var w = 10 mm where [1:100] mm;
