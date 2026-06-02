@@ -1224,8 +1224,8 @@ fn Sketch.Scale(
     return _scale(self, x, y, around.x, around.y)
 }
 
-# Reflects a sketch across the axis `(x, y)` at `offset` from the origin.
-# Unspecified components default to zero, so `.Mirror(x: 1)` reflects across the X axis at the origin.
+# Reflects a sketch across a line whose normal is `(x, y)` at `offset` from the origin.
+# Unspecified components default to zero, so `.Mirror(x: 1)` reflects across the Y axis (X coords flip).
 fn Sketch.Mirror(
     x Number = 0,
     y Number = 0,

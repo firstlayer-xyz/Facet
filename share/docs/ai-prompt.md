@@ -56,7 +56,7 @@ Use the feedback to verify correctness:
 
 ### Use symmetry to reduce complexity and ensure consistency
 
-- **Bilateral symmetry**: Build one half, mirror it: `var half = ...; return half + half.MirrorX(0 mm)`
+- **Bilateral symmetry**: Build one half, mirror it: `var half = ...; return half + half.Mirror(x: 1, offset: 0 mm)` (the `(x, y, z)` argument is the normal of the mirror plane)
 - **Radial symmetry**: Build one segment, use CircularPattern: `spoke.CircularPattern(6)`
 - **Linear repetition**: Build one unit, use LinearPattern.
 
@@ -88,13 +88,13 @@ Orient geometry so features build upward. Don't compromise shape, just be mindfu
 
 Position parts relative to each other instead of computing coordinates manually:
 
-- **StackOn**: Place on top of another solid: `cap.StackOn(with: base)`. Optional `nudge` for gap/overlap.
+- **StackOnTop / StackOnBottom / StackOnLeft / StackOnRight / StackOnFront / StackOnBack**: Place flush against another solid on the named face: `cap.StackOnTop(with: base)`. Optional `nudge` for gap/overlap. There is no bare `StackOn` — pick the direction.
 - **AlignCenter**: Center one solid over another on any combination of axes: `boss.AlignCenter(with: base, z: false)`. `x`/`y`/`z` default true — set any to false to skip that axis. Optional `nudgeX`/`nudgeY`/`nudgeZ` offsets applied after alignment. Also accepts `pos: Vec3` for absolute positioning.
 - **AlignLeft / Right / Front / Back / Bottom / Top**: Flush-align a face: `flange.AlignLeft(with: body)`. Optional `nudge` offsets outward.
 
 Chain them to build assemblies:
 ```
-var column = Cylinder(r: 8 mm, h: 30 mm).StackOn(with: base)
+var column = Cylinder(r: 8 mm, h: 30 mm).StackOnTop(with: base)
 var flange = Cube(x: 10 mm, y: 60 mm, z: 30 mm)
     .AlignLeft(with: body)
     .AlignBottom(with: body)

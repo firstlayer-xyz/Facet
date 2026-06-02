@@ -131,7 +131,7 @@ Facet uses a **Z-up** right-handed coordinate system:
 
 Key conventions:
 
-- `Rotate`, `Scale`, and `Mirror` always require an explicit pivot or offset — there is no implicit default
+- `Rotate`, `Scale`, and `Mirror` default to the world origin / a zero offset when their pivot/offset arg is omitted
 - For primitive-specific axis/origin conventions (e.g. where `Cube` or `Cylinder` sits relative to the origin, which axis `Extrude` / `Revolve` / `CircularPattern` use), see the **Stdlib API Reference** section below — it is auto-generated from the stdlib source so it is always current
 
 ## Types
@@ -165,7 +165,7 @@ A number followed by a distance unit. All lengths are stored as millimeters inte
 
 **Common units:** `mm`, `cm`, `m`, `km`, `um` (micron), `in`, `ft`, `yd`, `mi`, `thou`. Many more supported (metric prefixes, historical, astronomical, fun units). All stored as mm internally.
 
-**Unit precedence:** Unit suffixes bind as postfix (tighter than all binary operators). `2 * 3 mm` means `2 * (3 mm)` = `6 mm`. `2 mm * 3 mm` = `Number` (Length × Length gives a dimensionless area ratio).
+**Unit precedence:** Unit suffixes bind as postfix (tighter than all binary operators). `2 * 3 mm` means `2 * (3 mm)` = `6 mm`. `Length × Length` is rejected at compile time — there is no Area type — so use `Length / Number` and friends to keep dimensions consistent.
 
 ### Angle Literals
 
@@ -262,10 +262,8 @@ Constrained parameters on entry point functions appear as interactive controls i
 | `Length - Length` | `Length` | Subtraction |
 | `Length * Number` | `Length` | Scaling |
 | `Number * Length` | `Length` | Scaling |
-| `Length * Length` | `Number` | Area (dimensionless) |
 | `Length / Number` | `Length` | Division |
 | `Length / Length` | `Number` | Ratio |
-| `Length % Length` | `Length` | Modulo |
 | `Number op Number` | `Number` | All arithmetic ops |
 | `Angle + Angle` | `Angle` | Addition |
 | `Angle - Angle` | `Angle` | Subtraction |

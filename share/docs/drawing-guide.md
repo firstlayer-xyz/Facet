@@ -184,11 +184,11 @@ Square(x: 10 mm, y: 5 mm).Rotate(a: 45 deg, around: Vec2{x: 0 mm, y: 0 mm})
 Circle(r: 10 mm).Scale(x: 2, y: 1, around: Vec2{x: 0 mm, y: 0 mm})    # ellipse
 ```
 
-**Mirror** — mirror across an axis with an offset:
+**Mirror** — reflect across a line whose normal is `(x, y)`:
 
 ```
-# Mirror across the Y axis
-Square(x: 10 mm, y: 10 mm).Move(x: 5 mm, y: 0 mm).MirrorX(offset: 0 mm)
+# Mirror across the Y axis — `.Mirror(x: 1)` says "flip about a line whose normal is X"
+Square(x: 10 mm, y: 10 mm).Move(x: 5 mm, y: 0 mm).Mirror(x: 1, offset: 0 mm)
 ```
 
 **Chaining** — transformations compose left to right:
@@ -317,8 +317,8 @@ var a = Circle(r: 10 mm).Area()    # ~314.16 mm^2
 
 ```
 var bb = Square(x: 20 mm, y: 10 mm).Bounds()
-var w = bb.Width()     # 20 mm
-var h = bb.Height()    # 10 mm
+var w = bb.Width()     # 20 mm (X extent)
+var d = bb.Depth()     # 10 mm (Y extent — sketches are flat, so .Height() is 0)
 ```
 
 ## From Sketch to Solid
