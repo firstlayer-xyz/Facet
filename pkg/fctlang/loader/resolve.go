@@ -187,6 +187,15 @@ type Options struct {
 	GitCacheDir   string            // default: DefaultGitCacheDir()
 	InstalledLibs map[string]string // libID → local dir overrides
 	Cache         *Cache            // backing storage for the bare-clone cache; nil = NativeCache()
+
+	// RemoteFetch, when non-nil, replaces the go-git bare clone for remote
+	// libraries with on-demand HTTP fetches. It resolves a tree-relative
+	// subPath (e.g. "fasteners/fasteners.fct") within the given lib's repo to
+	// file bytes. This exists for the browser/wasm build, where go-git's git
+	// smart-HTTP clone is blocked by CORS: the wasm build supplies a fetcher
+	// that maps github.com libs to a CORS-friendly mirror (jsDelivr). Native
+	// builds leave this nil and clone as before.
+	RemoteFetch func(lp *LibPath, subPath string) ([]byte, error)
 }
 
 // ResolveLibraries walks all LibExpr nodes in prog[key] (and transitively in
@@ -205,6 +214,7 @@ func ResolveLibraries(ctx context.Context, prog Program, key string, libDir stri
 		r.gitCacheDir = opts.GitCacheDir
 		r.installedLibs = opts.InstalledLibs
 		r.cache = opts.Cache
+		r.remoteFetch = opts.RemoteFetch
 	}
 	if r.gitCacheDir == "" {
 		r.gitCacheDir = DefaultGitCacheDir()
@@ -230,6 +240,7 @@ type resolver struct {
 	gitCacheDir   string
 	installedLibs map[string]string
 	cache         *Cache                  // bare-clone storage backend (defaults to NativeCache)
+	remoteFetch   func(lp *LibPath, subPath string) ([]byte, error) // non-nil = HTTP-fetch remote libs (wasm); nil = git clone
 	prog          Program                 // output program (shared across recursion)
 	visited       map[string]*resolvedLib // within-invocation dedup (keyed by import path)
 	stack         map[string]bool         // cycle detection (keyed by import path)
@@ -349,7 +360,9 @@ func buildChildCtx(rl *resolvedLib) parentCtx {
 	if rl.tree == nil {
 		return parentCtx{}
 	}
-	if rl.tree.IsVirtual() {
+	// Virtual (git) and HTTP (jsDelivr) trees both resolve relative imports by
+	// reading sibling paths through the same tree.
+	if rl.tree.IsVirtual() || rl.tree.IsHTTP() {
 		return parentCtx{tree: rl.tree, subDir: rl.subDir}
 	}
 	// Physical: dir is the lib's on-disk directory; root is the lib's
@@ -560,7 +573,8 @@ func (r *resolver) loadLocalLib(rawPath string) (*resolvedLib, error) {
 // loadRemoteLib resolves a remote library (e.g., "github.com/user/repo@tag").
 // Resolution order:
 //  1. installedLibs overrides (library authors working against a local copy)
-//  2. Virtual tree backed by the shared bare clone (read via go-git)
+//  2. RemoteFetch hook (browser/wasm: HTTP fetch via a CORS-friendly mirror)
+//  3. Virtual tree backed by the shared bare clone (read via go-git)
 func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, error) {
 	if r.installedLibs != nil {
 		if overrideDir, ok := r.installedLibs[lp.RepoID()]; ok {
@@ -568,7 +582,18 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 		}
 	}
 
-	tree, err := ensureLib(r.ctx, r.cache, r.gitCacheDir, lp, false /*forceFetch*/)
+	var tree *LibTree
+	var err error
+	if r.remoteFetch != nil {
+		// Browser/wasm path: no git clone (CORS-blocked). Back the tree with
+		// on-demand HTTP fetches; relative imports read through the same tree.
+		lpCopy := *lp
+		tree = HTTPTree(&lpCopy, func(subPath string) ([]byte, error) {
+			return r.remoteFetch(&lpCopy, subPath)
+		})
+	} else {
+		tree, err = ensureLib(r.ctx, r.cache, r.gitCacheDir, lp, false /*forceFetch*/)
+	}
 	if err != nil {
 		return nil, err
 	}
