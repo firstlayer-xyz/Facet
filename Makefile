@@ -2,9 +2,14 @@ GO_TOOLCHAIN := $(CURDIR)/.go-toolchain
 GO := $(GO_TOOLCHAIN)/bin/go
 export GOROOT := $(GO_TOOLCHAIN)
 export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
-WAILS := $(HOME)/go/bin/wails
 
-.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go
+# Pin the Wails CLI to match go.mod's require, so `make dev` / `make build`
+# never silently use whatever a contributor happens to have in ~/go/bin/wails.
+# Installed into the project-local Go toolchain dir alongside `go`.
+WAILS_VERSION := v2.12.0
+WAILS := $(GO_TOOLCHAIN)/bin/wails
+
+.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
 
 all: manifold build
 
@@ -12,16 +17,29 @@ go-toolchain: $(GO)
 $(GO):
 	bash scripts/setup-go.sh
 
+# wails-cli installs the pinned Wails build tool into the project's local
+# toolchain. The marker file lets make skip the install when the binary is
+# already current; delete .go-toolchain/bin/wails (or `make clean`) to force
+# a reinstall.
+#
+# GOBIN must be set explicitly: `go install` ignores GOROOT and otherwise
+# defaults to $GOPATH/bin (~/go/bin), which is exactly the location we are
+# trying to avoid depending on.
+wails-cli: $(WAILS)
+$(WAILS): go-toolchain
+	@echo "installing wails@$(WAILS_VERSION) into $(WAILS)..."
+	GOBIN=$(GO_TOOLCHAIN)/bin $(GO) install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
+
 manifold:
 	bash scripts/build-manifold.sh $(TARGET)
 
-dev: go-toolchain manifold
+dev: go-toolchain manifold wails-cli
 	cd desktop && $(WAILS) dev
 
 run: build
-	open desktop/build/bin/facet.app
+	open desktop/build/bin/Facet.app
 
-build: go-toolchain manifold
+build: go-toolchain manifold wails-cli
 	cd desktop && $(WAILS) build
 
 cli: go-toolchain manifold
