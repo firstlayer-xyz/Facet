@@ -188,7 +188,7 @@ Rotation is specified in degrees per axis, with an explicit pivot point (applied
 Cube(x: 20 mm, y: 10 mm, z: 5 mm).Rotate(x: 0 deg, y: 0 deg, z: 45 deg, around: Vec3{})   # 45 degrees around Z
 ```
 
-`Rotate`, `Scale`, and `Mirror` always require an explicit pivot or offset — there is no implicit default.
+`Rotate`, `Scale`, and `Mirror` default to the world origin (or zero offset for `Mirror`) when their pivot/offset argument is omitted, so `.Rotate(z: 45 deg)` and `.Mirror(x: 1)` are valid one-liners.
 
 ### Scale
 
@@ -276,7 +276,7 @@ fn Main() {
 
 ### Twisted and Tapered Extrusion
 
-The advanced form: `Extrude(height, slices, twist, scaleX, scaleY)`:
+The advanced form: `Extrude(z, slices, twist, taperX, taperY)`:
 
 ```
 fn Main() {
@@ -287,7 +287,7 @@ fn Main() {
 
 - `slices` — number of cross-section layers (more = smoother twist)
 - `twist` — total rotation from bottom to top
-- `scaleX`, `scaleY` — scale factors at the top (1 = no taper)
+- `taperX`, `taperY` — scale factors at the top (1 = no taper)
 
 ### Revolve
 
@@ -419,7 +419,7 @@ var nums = [1, 2, 3]                        # inferred as []Number
 var first = sizes[0]                        # 5 mm (0-indexed)
 var last = sizes[-1]                        # 20 mm (negative = from end)
 var sub = sizes[1:3]                        # [10 mm, 15 mm] (slice)
-var count = Size(a: sizes)                  # 4
+var count = Size(of: sizes)                 # 4
 ```
 
 If elements have mixed types, you'll get an error — use explicit typed arrays:
@@ -584,7 +584,7 @@ fn Main() {
     return Cylinder(r: 5 mm, h: 30 mm)
         .Refine(n: 3)
         .Warp(f: fn(v Vec3) Vec3 {
-            var angle = Number(a: v.z) * 3 deg
+            var angle = Number(from: v.z) * 3 deg
             return Vec3{
                 x: v.x * Cos(a: angle) - v.y * Sin(a: angle),
                 y: v.x * Sin(a: angle) + v.y * Cos(a: angle),
@@ -604,9 +604,9 @@ fn Main() {
     return LevelSet(
         f: fn(v Vec3) Number {
             # Sphere SDF of radius 15mm
-            var x = Number(a: v.x)
-            var y = Number(a: v.y)
-            var z = Number(a: v.z)
+            var x = Number(from: v.x)
+            var y = Number(from: v.y)
+            var z = Number(from: v.z)
             return Sqrt(n: x*x + y*y + z*z) - 15
         },
         bounds: bounds,
@@ -810,8 +810,8 @@ Place a solid on top of another, centered in X/Y. The bottom face of `self` land
 ```
 fn Main() {
     var base   = Cube(s: Vec3{x: 40 mm, y: 40 mm, z: 10 mm})
-    var column = Cylinder(r: 8 mm, h: 30 mm).StackOn(with: base)
-    var cap    = Sphere(r: 10 mm).StackOn(with: column)
+    var column = Cylinder(r: 8 mm, h: 30 mm).StackOnTop(with: base)
+    var cap    = Sphere(r: 10 mm).StackOnTop(with: column)
     return base + column + cap
 }
 ```
@@ -819,7 +819,7 @@ fn Main() {
 An optional `nudge` creates a gap or overlap:
 
 ```
-var lid = Cube(x: 42 mm, y: 42 mm, z: 3 mm).StackOn(with: base, nudge: -1 mm)   # 1 mm press-fit overlap
+var lid = Cube(x: 42 mm, y: 42 mm, z: 3 mm).StackOnTop(with: base, nudge: -1 mm)   # 1 mm press-fit overlap
 ```
 
 ### AlignCenter
@@ -829,7 +829,7 @@ Center one solid relative to another on any combination of axes. By default all 
 ```
 fn Main() {
     var base  = Cube(x: 60 mm, y: 40 mm, z: 8 mm)
-    var boss  = Cylinder(r: 5 mm, h: 12 mm).AlignCenter(with: base, z: false).StackOn(with: base)
+    var boss  = Cylinder(r: 5 mm, h: 12 mm).AlignCenter(with: base, z: false).StackOnTop(with: base)
     var hole  = Cylinder(r: 3 mm, h: 25 mm).AlignCenter(with: base, z: false)
     return base + boss - hole
 }
@@ -841,7 +841,7 @@ fn Main() {
 # Place the boss 10 mm to the right of center
 var boss = Cylinder(r: 5 mm, h: 12 mm)
     .AlignCenter(with: base, z: false, nudgeX: 10 mm)
-    .StackOn(with: base)
+    .StackOnTop(with: base)
 ```
 
 You can also align to an absolute position instead of another solid:
@@ -940,7 +940,7 @@ The imported mesh becomes a Solid that you can transform and combine with other 
 | `Floor(n: Number)` -> `Number` | Floor |
 | `Ceil(n: Number)` -> `Number` | Ceiling |
 | `Round(n: Number)` -> `Number` | Round to nearest |
-| `Lerp(a:, b:, t: Number)` -> same | Linear interpolation (Number, Length, Angle) |
+| `Lerp(from:, to:, t: Number)` -> same | Linear interpolation (Number, Length, Angle) |
 
 Constants: `PI`, `TAU` (2 * PI), `E` (Euler's number). Declare constants with `const`.
 
@@ -1055,14 +1055,15 @@ var a = 350 deg + 20 deg;   # 370 deg, not 10 deg
 var b = 24 * 360 deg;       # 8640 deg — intentional for thread twist
 ```
 
-### `Mirror`, `Rotate`, and `Scale` always require a pivot
+### `Mirror`, `Rotate`, and `Scale` default to the world origin
 
-`Rotate`, `Scale`, and `Mirror` always require an explicit pivot or offset argument — there is no implicit default. Use `Vec3{}` for rotations and scales around the origin:
+`Rotate` and `Scale` take an optional `around: Vec3` pivot that defaults to the world origin. `Mirror` takes an optional `offset: Length` that defaults to `0 mm`. Pass the pivot only when you need it elsewhere — `self.Bounds().Center()` for the bbox center, an explicit `Vec3{...}` for a fixed point.
 
 ```
-solid.Rotate(x: 0 deg, y: 0 deg, z: 45 deg, around: Vec3{})
-solid.Scale(x: 2, y: 1, z: 1, around: Vec3{})
-solid.Mirror(x: 1, y: 0, z: 0, offset: 0 mm)
+solid.Rotate(z: 45 deg)                                 # around the world Z axis
+solid.Rotate(z: 45 deg, around: self.Bounds().Center()) # around the solid's own centre
+solid.Scale(v: 2.0)                                     # uniform, around the origin
+solid.Mirror(x: 1)                                      # mirror across the YZ plane
 ```
 
 ### `Extrude` always goes in +Z

@@ -109,11 +109,12 @@ func (p *Sketch) Scale(x, y, px, py float64) (*Sketch, error) {
 	return newSketch(ret), nil
 }
 
-// Mirror mirrors a sketch across the axis (ax, ay) at signed distance offset
-// from the world origin. The axis is normalized in C.
+// Mirror reflects a sketch across a line whose normal is (ax, ay) at
+// signed distance offset from the world origin. So Mirror(1, 0, 0)
+// flips across the Y axis (X coords negate). The normal is normalized in C.
 func (p *Sketch) Mirror(ax, ay, offset float64) (*Sketch, error) {
 	if ax == 0 && ay == 0 {
-		return nil, fmt.Errorf("Mirror: axis vector has zero length")
+		return nil, fmt.Errorf("Mirror: normal vector has zero length")
 	}
 	var ret C.FacetSketchRet
 	C.facet_cs_mirror_at(p.ptr, C.double(ax), C.double(ay), C.double(offset), &ret)

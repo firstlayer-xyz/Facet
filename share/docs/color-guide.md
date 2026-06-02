@@ -24,7 +24,7 @@ Each `.Color()` call marks the entire solid with that color. To create multi-col
 fn Main() {
     var base = Cube(x: 20 mm, y: 20 mm, z: 5 mm).Color(hex: "#333333")
     var knob = Cylinder(r: 3 mm, h: 8 mm)
-        .MoveZ(z: 5 mm)
+        .Move(z: 5 mm)
         .Color(hex: "#FF0000")
     return base + knob
 }
