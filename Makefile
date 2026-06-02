@@ -4,7 +4,7 @@ export GOROOT := $(GO_TOOLCHAIN)
 export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
 WAILS := $(HOME)/go/bin/wails
 
-.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop
+.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go
 
 all: manifold build
 
@@ -65,6 +65,21 @@ check-shims: go-toolchain
 
 test: go-toolchain manifold
 	CGO_ENABLED=1 $(GO) test ./pkg/fctlang/... ./pkg/manifold/...
+
+# Tests for the desktop (Wails app) Go package — the Go-side counterpart to
+# `test-desktop` (which runs the frontend Playwright suite). Separate from
+# `test` because the package does `//go:embed all:frontend/dist`, so it only
+# compiles once the frontend has been built — which also needs the generated
+# wailsjs bindings. We build the frontend (real bindings + vite, no app
+# packaging) only when dist is absent, so this runs fast after a `make build`
+# or in CI right after `wails build`, but still works from a clean checkout.
+test-desktop-go: go-toolchain manifold
+	@if [ ! -d desktop/frontend/dist ] || [ -z "$$(ls -A desktop/frontend/dist 2>/dev/null)" ]; then \
+		echo "frontend/dist missing — building frontend for the embed..."; \
+		( cd desktop && $(WAILS) generate module ); \
+		( cd desktop/frontend && npm ci && npm run build ); \
+	fi
+	CGO_ENABLED=1 $(GO) test ./desktop/...
 
 test-race: go-toolchain manifold
 	CGO_ENABLED=1 $(GO) test -race ./pkg/fctlang/... ./pkg/manifold/...

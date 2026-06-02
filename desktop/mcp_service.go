@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -218,6 +219,61 @@ type formatCodeInput struct {
 	Source string `json:"source,omitempty" jsonschema:"Source code to format. Omit to format the current editor code."`
 }
 
+// requestPermissionInput is the payload the Claude CLI sends to the tool named
+// by --permission-prompt-tool whenever a tool use is not pre-approved.
+// CONTRACT (verified against claude 2.1.x): the CLI sends the proposed tool
+// name and its input object, and expects back a single text content block
+// whose text is JSON {"behavior":"allow","updatedInput":...} or
+// {"behavior":"deny","message":...}. Extra fields (tool_use_id,
+// permission_suggestions) are ignored.
+type requestPermissionInput struct {
+	ToolName string         `json:"tool_name"`
+	Input    map[string]any `json:"input"`
+}
+
+// permissionSummary renders a one-line human description of a pending tool use
+// for the Allow/Deny card.
+func permissionSummary(toolName string, input map[string]any) string {
+	switch toolName {
+	case "WebSearch":
+		if q, ok := input["query"].(string); ok {
+			return "Search the web for: " + q
+		}
+		return "Search the web"
+	case "WebFetch":
+		if u, ok := input["url"].(string); ok {
+			return "Fetch web page: " + u
+		}
+		return "Fetch a web page"
+	case "Bash":
+		if c, ok := input["command"].(string); ok {
+			return "Run shell command: " + c
+		}
+		return "Run a shell command"
+	default:
+		return "Use tool: " + toolName
+	}
+}
+
+// permissionRememberKey returns the session-remember key for a tool use. For
+// network tools it includes the target host so "remember" is scoped per site;
+// otherwise it is the tool name.
+func permissionRememberKey(toolName string, input map[string]any) string {
+	if toolName == "WebFetch" {
+		if u, ok := input["url"].(string); ok {
+			if parsed, err := url.Parse(u); err == nil && parsed.Host != "" {
+				return "WebFetch:" + parsed.Host
+			}
+		}
+	}
+	return toolName
+}
+
+// fetchURLInput is the argument to the fetch_url tool.
+type fetchURLInput struct {
+	URL string `json:"url" jsonschema:"The absolute http(s) URL to fetch."`
+}
+
 // askUserQuestionInput mirrors the schema of Claude Code's built-in
 // AskUserQuestion tool so the model uses this one the same way: a list of
 // 1-4 self-contained questions, each with 2-4 mutually-exclusive options.
@@ -295,6 +351,17 @@ type MCPService struct {
 	// ImageContent, which re-encodes for the wire.
 	screenshotsMu sync.Mutex
 	screenshots   map[string]chan screenshotResult
+
+	// In-flight permission requests. The request_permission MCP tool (and
+	// fetch_url's self-gate) park here until the frontend answers via the
+	// AnswerToolPermission Wails binding. Same id→chan pattern as questions.
+	permissionsMu sync.Mutex
+	permissions   map[string]chan permissionDecision
+
+	// Session-remembered approvals: keys the user chose to "remember for
+	// this session". Cleared on ClearHistory so a new conversation re-asks.
+	rememberedMu sync.Mutex
+	remembered   map[string]struct{}
 }
 
 // screenshotResult carries the captured viewport PNG (raw bytes) back
@@ -314,6 +381,13 @@ type questionAnswer struct {
 	Notes   map[string]string `json:"notes,omitempty"`
 }
 
+// permissionDecision carries the user's allow/deny choice back from the
+// frontend to a parked permission request.
+type permissionDecision struct {
+	Allow    bool
+	Remember bool
+}
+
 // NewMCPService creates a new MCP service. The HTTP server is not started
 // until Start is called. The MCPService registers itself as the run recorder
 // on the EvalService so every /eval response updates the lastRun slot.
@@ -323,6 +397,8 @@ func NewMCPService(eval *EvalService) *MCPService {
 		state:       newMCPState(),
 		questions:   make(map[string]chan questionAnswer),
 		screenshots: make(map[string]chan screenshotResult),
+		permissions: make(map[string]chan permissionDecision),
+		remembered:  make(map[string]struct{}),
 	}
 	eval.SetRunRecorder(m.RecordRun)
 	return m
@@ -388,6 +464,89 @@ func (m *MCPService) DeliverScreenshot(id, dataURL, errMsg string) error {
 	default:
 		return fmt.Errorf("screenshot %q already delivered", id)
 	}
+}
+
+// requestPermission surfaces an Allow/Deny card in the assistant panel for a
+// tool the model wants to use and blocks until the user decides (or ctx is
+// cancelled). rememberKey identifies the tool+target for "remember for this
+// session"; pass "" to disable remembering. summary is the human-readable line
+// shown on the card. On ctx cancellation it returns a deny.
+func (m *MCPService) requestPermission(ctx context.Context, toolName, summary, rememberKey string) permissionDecision {
+	if rememberKey != "" {
+		m.rememberedMu.Lock()
+		_, ok := m.remembered[rememberKey]
+		m.rememberedMu.Unlock()
+		if ok {
+			return permissionDecision{Allow: true, Remember: true}
+		}
+	}
+
+	// If already cancelled, don't prompt. Also keeps requestPermission
+	// unit-testable without a live Wails event context.
+	select {
+	case <-ctx.Done():
+		return permissionDecision{Allow: false}
+	default:
+	}
+
+	id, err := generateToken()
+	if err != nil {
+		// A local token failure is a hard error; deny rather than allow.
+		return permissionDecision{Allow: false}
+	}
+	ch := make(chan permissionDecision, 1)
+	m.permissionsMu.Lock()
+	m.permissions[id] = ch
+	m.permissionsMu.Unlock()
+	defer func() {
+		m.permissionsMu.Lock()
+		delete(m.permissions, id)
+		m.permissionsMu.Unlock()
+	}()
+
+	wailsRuntime.EventsEmit(m.eventCtx, "assistant:permission-request", map[string]any{
+		"id":       id,
+		"toolName": toolName,
+		"summary":  summary,
+	})
+
+	select {
+	case d := <-ch:
+		if d.Allow && d.Remember && rememberKey != "" {
+			m.rememberedMu.Lock()
+			m.remembered[rememberKey] = struct{}{}
+			m.rememberedMu.Unlock()
+		}
+		return d
+	case <-ctx.Done():
+		return permissionDecision{Allow: false}
+	}
+}
+
+// AnswerPermission resolves the pending permission request identified by id
+// with the user's decision. Returns an error if no request is waiting (the
+// call may have been cancelled, already answered, or the id may be bogus).
+func (m *MCPService) AnswerPermission(id string, allow, remember bool) error {
+	m.permissionsMu.Lock()
+	ch, ok := m.permissions[id]
+	m.permissionsMu.Unlock()
+	if !ok {
+		return fmt.Errorf("no pending permission request with id %q", id)
+	}
+	select {
+	case ch <- permissionDecision{Allow: allow, Remember: remember}:
+		return nil
+	default:
+		return fmt.Errorf("permission %q already answered", id)
+	}
+}
+
+// ClearRememberedPermissions drops all session-remembered approvals so a new
+// conversation re-prompts. Called from ClearHistory.
+func (m *MCPService) ClearRememberedPermissions() {
+	m.rememberedMu.Lock()
+	m.remembered = make(map[string]struct{})
+	m.rememberedMu.Unlock()
 }
 
 // Endpoint returns the port and bearer token for the localhost HTTP server.
@@ -813,6 +972,84 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 		}
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: string(body)}},
+		}, nil, nil
+	})
+
+	// --- Tool: request_permission ---
+	// Registered as the CLI's --permission-prompt-tool. The CLI calls this for
+	// every tool use that is NOT pre-approved by --allowedTools (i.e. built-ins
+	// like WebSearch/WebFetch/Bash). It surfaces an Allow/Deny card and returns
+	// the CLI's required permission verdict JSON.
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "request_permission",
+		Description: "Internal permission gate invoked by the CLI when a tool needs user approval. Not for direct use by the model.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input requestPermissionInput) (*mcp.CallToolResult, any, error) {
+		d := m.requestPermission(ctx,
+			input.ToolName,
+			permissionSummary(input.ToolName, input.Input),
+			permissionRememberKey(input.ToolName, input.Input),
+		)
+		var verdict map[string]any
+		if d.Allow {
+			verdict = map[string]any{"behavior": "allow", "updatedInput": input.Input}
+		} else {
+			verdict = map[string]any{"behavior": "deny", "message": "User denied permission for " + input.ToolName}
+		}
+		body, err := json.Marshal(verdict)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal permission verdict: %w", err)
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(body)}},
+		}, nil, nil
+	})
+
+	// --- Tool: fetch_url ---
+	// Fetch a URL and return its content: images (png/jpeg/gif/webp) come back
+	// as a viewable image (vision); svg/text/json/xml/js come back as text.
+	// Network egress is gated through the same permission card as the CLI
+	// bridge (per-host, remember-for-session). Hard-errors on unsupported
+	// content types, oversize images, bad scheme, SSRF-blocked hosts, non-2xx.
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "fetch_url",
+		Description: "Fetch a URL and return its contents. Images (png/jpeg/gif/webp) are returned as an image you can SEE; text/JSON/XML/SVG are returned as text. Use this to look at an image from the web or read page content. The user is asked to approve network access the first time per site.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input fetchURLInput) (*mcp.CallToolResult, any, error) {
+		parsed, err := validateFetchURL(input.URL)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
+			}, nil, nil
+		}
+
+		// Self-gate: surface an Allow/Deny card before egress.
+		d := m.requestPermission(ctx, "fetch_url", "Fetch from the web: "+input.URL, "fetch_url:"+parsed.Host)
+		if !d.Allow {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "User denied network access to " + parsed.Host}},
+			}, nil, nil
+		}
+
+		res, err := fetchContent(ctx, newFetchClient(), input.URL)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
+			}, nil, nil
+		}
+
+		if res.IsImage {
+			header := fmt.Sprintf("Fetched %s (HTTP %d, %s, %d bytes)", res.FinalURL, res.Status, res.MIME, len(res.Data))
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: header},
+					&mcp.ImageContent{Data: res.Data, MIMEType: res.MIME},
+				},
+			}, nil, nil
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: res.Text}},
 		}, nil, nil
 	})
 

@@ -3,11 +3,12 @@ import type {
   AssistantQuestionOption,
   AssistantQuestionPayload,
   AssistantScreenshotRequest,
+  AssistantPermissionRequest,
   AssistantTaskItem,
   AssistantTaskPlanPayload,
   AssistantTaskStatus,
 } from './events';
-import { SendAssistantMessage, CancelAssistant, ClearAssistantHistory, PickImageFile, DetectAssistantCLIs, AnswerAssistantQuestion, DeliverViewportScreenshot }
+import { SendAssistantMessage, CancelAssistant, ClearAssistantHistory, PickImageFile, DetectAssistantCLIs, AnswerAssistantQuestion, DeliverViewportScreenshot, AnswerToolPermission }
   from '../wailsjs/go/main/App';
 
 export class AssistantPanel {
@@ -44,6 +45,7 @@ export class AssistantPanel {
   private offQuestion: (() => void) | null = null;
   private offScreenshot: (() => void) | null = null;
   private offTaskPlan: (() => void) | null = null;
+  private offPermission: (() => void) | null = null;
   private taskPlanDiv: HTMLElement | null = null;
   private captureScreenshot: (() => string | null) | null = null;
 
@@ -234,7 +236,7 @@ export class AssistantPanel {
     // generic indicator for those so we don't show a spurious
     // "<tool_name>..." line before the real UI lands.
     this.offToolUse = on('assistant:tool-use', (toolName: string, callNum: number) => {
-      if (toolName === 'ask_user_question' || toolName === 'update_task_plan' || toolName === 'screenshot_viewport') return;
+      if (toolName === 'ask_user_question' || toolName === 'update_task_plan' || toolName === 'screenshot_viewport' || toolName === 'request_permission') return;
       this.showToolUseIndicator(toolName, callNum);
     });
     // ask_user_question MCP tool — render an interactive multiple-choice
@@ -243,6 +245,12 @@ export class AssistantPanel {
     // back as the tool's JSON result.
     this.offQuestion = on('assistant:question', (payload: AssistantQuestionPayload) => {
       this.showQuestion(payload);
+    });
+    // request_permission / fetch_url self-gate — render an Allow/Deny card.
+    // The backend blocks the tool on a channel until AnswerToolPermission
+    // routes the decision back.
+    this.offPermission = on('assistant:permission-request', (payload: AssistantPermissionRequest) => {
+      this.showPermission(payload);
     });
     // screenshot_viewport MCP tool — capture the live viewport and hand
     // the PNG back to the blocked tool handler. captureScreenshot is
@@ -303,6 +311,7 @@ export class AssistantPanel {
     if (this.offQuestion) { this.offQuestion(); this.offQuestion = null; }
     if (this.offScreenshot) { this.offScreenshot(); this.offScreenshot = null; }
     if (this.offTaskPlan) { this.offTaskPlan(); this.offTaskPlan = null; }
+    if (this.offPermission) { this.offPermission(); this.offPermission = null; }
   }
 
   private async pickImage(): Promise<void> {
@@ -707,6 +716,79 @@ export class AssistantPanel {
         this.showError(`Failed to send answer: ${err?.message || err}`);
       }
     });
+  }
+
+  // showPermission renders an Allow/Deny card for a tool the model wants to
+  // use. The model is blocked on a channel in the MCP layer; on click,
+  // AnswerToolPermission routes the decision back and the card locks.
+  private showPermission(payload: AssistantPermissionRequest): void {
+    if (!payload?.id) return;
+    this.finalizeCurrentMessage();
+    this.removeToolUseIndicator();
+    this.removeThinking();
+
+    const card = document.createElement('div');
+    card.className = 'assistant-question-card';
+
+    const block = document.createElement('div');
+    block.className = 'assistant-question-block';
+    const headerRow = document.createElement('div');
+    headerRow.className = 'assistant-question-header';
+    const chip = document.createElement('span');
+    chip.className = 'assistant-question-chip';
+    chip.textContent = 'Permission';
+    headerRow.appendChild(chip);
+    const qText = document.createElement('span');
+    qText.className = 'assistant-question-text';
+    qText.textContent = payload.summary || `Allow tool: ${payload.toolName}?`;
+    headerRow.appendChild(qText);
+    block.appendChild(headerRow);
+
+    const rememberRow = document.createElement('label');
+    rememberRow.className = 'assistant-question-other';
+    rememberRow.style.display = 'flex';
+    rememberRow.style.alignItems = 'center';
+    rememberRow.style.gap = '6px';
+    const remember = document.createElement('input');
+    remember.type = 'checkbox';
+    rememberRow.appendChild(remember);
+    const rememberText = document.createElement('span');
+    rememberText.textContent = 'Remember for this session';
+    rememberRow.appendChild(rememberText);
+    block.appendChild(rememberRow);
+    card.appendChild(block);
+
+    const footer = document.createElement('div');
+    footer.className = 'assistant-question-footer';
+    const denyBtn = document.createElement('button');
+    denyBtn.type = 'button';
+    denyBtn.className = 'assistant-question-submit';
+    denyBtn.textContent = 'Deny';
+    const allowBtn = document.createElement('button');
+    allowBtn.type = 'button';
+    allowBtn.className = 'assistant-question-submit';
+    allowBtn.textContent = 'Allow';
+    footer.appendChild(denyBtn);
+    footer.appendChild(allowBtn);
+    card.appendChild(footer);
+
+    this.messagesDiv.appendChild(card);
+    this.scrollToBottom();
+
+    const decide = async (allow: boolean) => {
+      card.classList.add('answered');
+      card.querySelectorAll('button, input').forEach(el => (el as HTMLButtonElement | HTMLInputElement).disabled = true);
+      allowBtn.textContent = allow ? 'Allowed' : 'Allow';
+      denyBtn.textContent = allow ? 'Deny' : 'Denied';
+      this.showThinking();
+      try {
+        await AnswerToolPermission(payload.id, allow, remember.checked);
+      } catch (err: any) {
+        this.showError(`Failed to send permission decision: ${err?.message || err}`);
+      }
+    };
+    allowBtn.addEventListener('click', () => decide(true));
+    denyBtn.addEventListener('click', () => decide(false));
   }
 
   private appendToken(token: string): void {

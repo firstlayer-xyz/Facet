@@ -237,7 +237,9 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 		if err != nil {
 			return streamResult{}, fmt.Errorf("marshal mcp config: %w", err)
 		}
-		args = append(args, "--mcp-config", string(mcpConfigBytes), "--strict-mcp-config", "--allowedTools", "mcp__facet__*")
+		args = append(args, "--mcp-config", string(mcpConfigBytes), "--strict-mcp-config",
+			"--allowedTools", "mcp__facet__*",
+			"--permission-prompt-tool", "mcp__facet__request_permission")
 	} else {
 		// No MCP: disable all tools so Claude responds with text only
 		args = append(args, "--tools", "")
