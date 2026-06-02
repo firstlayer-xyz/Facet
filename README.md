@@ -114,6 +114,14 @@ facetc model.fct -fmt          # format source
 facetc model.fct -fmt -w       # format in place
 ```
 
+## Web Preview
+
+Try Facet in your browser, no install required: **https://firstlayer-xyz.github.io/Facet/**
+
+The web preview is a single-threaded wasm build of the latest `main`. It includes the language and viewer, an examples selector, typed parameter controls, color rendering, and library imports (resolved via jsDelivr).
+
+Compared to the desktop app, the preview omits OS-integrated features: file open/save, slicer hand-off, the AI assistant, multi-tab editing, debug stepping, and face-click source navigation. For those, [download a release](https://github.com/firstlayer-xyz/Facet/releases) or [build from source](BUILDING.md).
+
 ## License
 
 See [LICENSE](LICENSE).
