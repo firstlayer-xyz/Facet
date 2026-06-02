@@ -864,7 +864,9 @@ function handleBinaryResponse(u8) {
 const canvas = document.getElementById('canvas');
 let gl = null, meshProgram = null, edgeProgram = null;
 let meshBuf = null, edgeBuf = null, colorBuf = null;
+let gridMinorBuf = null, gridMajorBuf = null;
 let meshCount = 0, edgeCount = 0, hasColors = false;
+let gridMinorCount = 0, gridMajorCount = 0;
 
 let yaw = 30, pitch = 25, dist = 150;
 let dragging = false, lastX = 0, lastY = 0;
@@ -905,7 +907,8 @@ const EDGE_VS = `
 `;
 const EDGE_FS = `
   precision mediump float;
-  void main() { gl_FragColor = vec4(0.1, 0.1, 0.12, 1.0); }
+  uniform vec3 uColor;
+  void main() { gl_FragColor = vec4(uColor, 1.0); }
 `;
 
 function initGL() {
@@ -919,6 +922,8 @@ function initGL() {
   meshBuf = gl.createBuffer();
   edgeBuf = gl.createBuffer();
   colorBuf = gl.createBuffer();
+  gridMinorBuf = gl.createBuffer();
+  gridMajorBuf = gl.createBuffer();
 
   canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
   canvas.addEventListener('mouseup',   () => dragging = false);
@@ -1026,6 +1031,10 @@ function renderMesh(positions, colors, edges) {
     gl.bindBuffer(gl.ARRAY_BUFFER, edgeBuf);
     gl.bufferData(gl.ARRAY_BUFFER, edges, gl.STATIC_DRAW);
   }
+
+  // Ground grid in the XY plane (Z = 0 build plate), sized to the model.
+  buildGrid(minX, maxX, minY, maxY);
+
   draw();
 }
 
@@ -1036,10 +1045,11 @@ function draw() {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   const proj  = perspective(55, w/h, dist*0.01, dist*100);
+  // Z-up orbit: yaw is azimuth in the XY plane, pitch is elevation toward +Z.
   const cy    = Math.cos(pitch * Math.PI/180), sy = Math.sin(pitch * Math.PI/180);
   const cx    = Math.cos(yaw   * Math.PI/180), sx = Math.sin(yaw   * Math.PI/180);
-  const eyeX  = centerX + cx*cy*dist, eyeY = centerY + sy*dist, eyeZ = centerZ + sx*cy*dist;
-  const view  = lookAt([eyeX,eyeY,eyeZ], [centerX,centerY,centerZ], [0,1,0]);
+  const eyeX  = centerX + cy*cx*dist, eyeY = centerY + cy*sx*dist, eyeZ = centerZ + sy*dist;
+  const view  = lookAt([eyeX,eyeY,eyeZ], [centerX,centerY,centerZ], [0,0,1]);
   const mvp   = mulMat4(proj, view);
   const model = identityMat4();
 
@@ -1065,16 +1075,58 @@ function draw() {
   }
   gl.drawArrays(gl.TRIANGLES, 0, meshCount);
 
-  // Draw edges
-  if (edgeCount > 0) {
-    gl.useProgram(edgeProgram);
-    gl.uniformMatrix4fv(gl.getUniformLocation(edgeProgram,'uMVP'), false, mvp);
-    const eLoc = gl.getAttribLocation(edgeProgram, 'aPos');
-    gl.bindBuffer(gl.ARRAY_BUFFER, edgeBuf);
+  // Lines (ground grid + model edges) share the edge program; uColor tints.
+  gl.useProgram(edgeProgram);
+  gl.uniformMatrix4fv(gl.getUniformLocation(edgeProgram,'uMVP'), false, mvp);
+  const eLoc  = gl.getAttribLocation(edgeProgram, 'aPos');
+  const ucLoc = gl.getUniformLocation(edgeProgram, 'uColor');
+  const drawLines = (buf, count) => {
+    if (count <= 0) return;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.enableVertexAttribArray(eLoc);
     gl.vertexAttribPointer(eLoc, 3, gl.FLOAT, false, 0, 0);
-    gl.drawArrays(gl.LINES, 0, edgeCount);
+    gl.drawArrays(gl.LINES, 0, count);
+  };
+
+  // Ground grid (XY plane at Z=0): minor lines, then brighter major lines.
+  gl.uniform3f(ucLoc, 0.20, 0.20, 0.23); drawLines(gridMinorBuf, gridMinorCount);
+  gl.uniform3f(ucLoc, 0.33, 0.33, 0.38); drawLines(gridMajorBuf, gridMajorCount);
+
+  // Model edges.
+  gl.uniform3f(ucLoc, 0.10, 0.10, 0.12); drawLines(edgeBuf, edgeCount);
+}
+
+// buildGrid uploads a ground grid in the XY plane at Z=0 (the build plate),
+// centred on the origin. Spacing + extent adapt to the model; every 5th line
+// (and the axes) is "major". Mirrors the desktop viewer's floor grid.
+function buildGrid(minX, maxX, minY, maxY) {
+  const ext  = Math.max(maxX - minX, maxY - minY, 20);
+  const step = niceStep(ext / 16);
+  const reach = Math.max(Math.abs(minX), Math.abs(maxX), Math.abs(minY), Math.abs(maxY)) + ext * 0.5;
+  const n = Math.min(400, Math.ceil(reach / step)); // cap line count
+  const half = n * step;
+
+  const minorV = [], majorV = [];
+  for (let i = -n; i <= n; i++) {
+    const p = i * step;
+    const dst = (i % 5 === 0) ? majorV : minorV; // every 5th line + axes are major
+    dst.push(-half, p, 0,  half, p, 0); // line parallel to X
+    dst.push(p, -half, 0,  p, half, 0); // line parallel to Y
   }
+  gridMinorCount = minorV.length / 3;
+  gl.bindBuffer(gl.ARRAY_BUFFER, gridMinorBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(minorV), gl.STATIC_DRAW);
+  gridMajorCount = majorV.length / 3;
+  gl.bindBuffer(gl.ARRAY_BUFFER, gridMajorBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(majorV), gl.STATIC_DRAW);
+}
+
+// niceStep rounds x up to a 1/2/5 × 10^n value.
+function niceStep(x) {
+  if (!(x > 0)) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(x)));
+  const f = x / pow;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow;
 }
 
 // ── Math helpers ──────────────────────────────────────────────────────────────
