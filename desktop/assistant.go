@@ -240,9 +240,12 @@ func (a *App) CancelAssistant() {
 	a.assistant.Cancel()
 }
 
-// ClearAssistantHistory resets the conversation by clearing the session ID.
+// ClearAssistantHistory resets the conversation by clearing the session ID
+// and dropping any session-remembered tool permissions so a new conversation
+// re-asks before reaching the web or other gated tools.
 func (a *App) ClearAssistantHistory() {
 	a.assistant.ClearHistory()
+	a.mcp.ClearRememberedPermissions()
 }
 
 // AnswerAssistantQuestion routes a user's selections from the question
@@ -252,6 +255,13 @@ func (a *App) ClearAssistantHistory() {
 // notes field). Returns an error if no call is waiting for that id.
 func (a *App) AnswerAssistantQuestion(id string, answers map[string]string, notes map[string]string) error {
 	return a.mcp.AnswerQuestion(id, answers, notes)
+}
+
+// AnswerToolPermission routes a user's Allow/Deny decision from the permission
+// card back to the parked permission request in the MCP layer (the
+// request_permission CLI bridge or fetch_url's self-gate).
+func (a *App) AnswerToolPermission(id string, allow bool, remember bool) error {
+	return a.mcp.AnswerPermission(id, allow, remember)
 }
 
 // DeliverViewportScreenshot delivers a captured viewport PNG back to

@@ -34,6 +34,12 @@ export interface AssistantScreenshotRequest {
   id: string;
 }
 
+export interface AssistantPermissionRequest {
+  id: string;
+  toolName: string;
+  summary: string;
+}
+
 export type AssistantTaskStatus = 'pending' | 'in_progress' | 'completed';
 
 export interface AssistantTaskItem {
@@ -70,6 +76,7 @@ export interface FacetEventMap {
   'assistant:thinking': [callNum: number];
   'assistant:question': [payload: AssistantQuestionPayload];
   'assistant:screenshot-request': [payload: AssistantScreenshotRequest];
+  'assistant:permission-request': [payload: AssistantPermissionRequest];
   'assistant:task-plan': [payload: AssistantTaskPlanPayload];
   'assistant:replace-code': [code: string];
   'assistant:new-file': [payload: AssistantNewFilePayload];
