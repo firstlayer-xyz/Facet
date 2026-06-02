@@ -109,6 +109,13 @@ func (p *parser) parsePrimary() (Expr, error) {
 		return p.parseForExpr()
 	}
 
+	// If expression: "if" expr "{" expr "}" [ "else if" ... ] "else" "{" expr "}"
+	// Distinct from the if STATEMENT (parseIfStmt) — single-expression
+	// arms, required else, produces a value.
+	if p.cur.Type == TokenIf {
+		return p.parseIfExpr()
+	}
+
 	// Fold expression: "fold" accVar "," elemVar expr "{" body "}"
 	if p.cur.Type == TokenFold {
 		return p.parseFoldExpr()

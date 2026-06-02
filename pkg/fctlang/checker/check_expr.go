@@ -227,6 +227,9 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 	case *parser.MethodCallExpr:
 		return c.checkMethodCall(ex, env)
 
+	case *parser.IfExpr:
+		return c.checkIfExpr(ex, env)
+
 	case *parser.ForYieldExpr:
 		childEnv := env.child()
 		var yieldType typeInfo
@@ -602,4 +605,43 @@ func (c *checker) resolveStructName(expr parser.Expr, env *typeEnv) string {
 		}
 	}
 	return ""
+}
+
+// checkIfExpr type-checks an if-expression. The condition must be Bool;
+// every arm (then, all else-ifs, else) must produce the same type. The
+// result type is the common arm type, or typeUnknown if no arm produced
+// a known type.
+func (c *checker) checkIfExpr(ex *parser.IfExpr, env *typeEnv) typeInfo {
+	if t := c.inferExpr(ex.Cond, env); t.ft != typeUnknown && t.ft != typeBool {
+		c.addError(ex.Pos, fmt.Sprintf("if expression condition must be Bool, got %s", t.displayName()))
+	}
+	resultType := c.inferExpr(ex.Then, env)
+	for _, eif := range ex.ElseIfs {
+		if t := c.inferExpr(eif.Cond, env); t.ft != typeUnknown && t.ft != typeBool {
+			c.addError(eif.Pos, fmt.Sprintf("else-if condition must be Bool, got %s", t.displayName()))
+		}
+		armType := c.inferExpr(eif.Body, env)
+		resultType = c.unifyArmType(resultType, armType, eif.Pos, "else-if")
+	}
+	elseType := c.inferExpr(ex.Else, env)
+	resultType = c.unifyArmType(resultType, elseType, ex.Pos, "else")
+	return resultType
+}
+
+// unifyArmType returns the common type across two if-expression arms,
+// reporting a mismatch error against the second arm's position when
+// they disagree. typeUnknown defers to the other side so partial type
+// information still flows.
+func (c *checker) unifyArmType(prev, next typeInfo, pos parser.Pos, ctx string) typeInfo {
+	if prev.ft == typeUnknown {
+		return next
+	}
+	if next.ft == typeUnknown {
+		return prev
+	}
+	if !c.typeCompatible(prev, next) {
+		c.addError(pos, fmt.Sprintf("if expression arm types must match: %s arm has %s, previous arm has %s",
+			ctx, next.displayName(), prev.displayName()))
+	}
+	return prev
 }

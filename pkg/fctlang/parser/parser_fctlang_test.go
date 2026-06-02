@@ -902,12 +902,15 @@ func TestParseIfElseIfStmt(t *testing.T) {
 	}
 }
 
-func TestParseIfAsExpressionRejected(t *testing.T) {
-	// "if" is a statement, not an expression — it cannot appear in expression position
+func TestParseIfAsExpressionRejectsStatementArm(t *testing.T) {
+	// If-expressions exist (see parser_if_expr_test.go), but each arm
+	// must be a single expression — not a body of statements. So a
+	// `return` inside the arm braces is rejected even though `if` is
+	// otherwise legal in expression position.
 	src := `fn Main() { return if true { return 10; }; }`
 	_, err := parser.Parse(src, "", parser.SourceUser)
 	if err == nil {
-		t.Fatal("expected parse error for if in expression position, got nil")
+		t.Fatal("expected parse error for return inside if-expression arm, got nil")
 	}
 }
 

@@ -266,6 +266,37 @@ func (e *evaluator) evalFold(ex *parser.FoldExpr, locals map[string]value) (valu
 	return acc, nil
 }
 
+// evalIfExpr evaluates an if-expression and returns the value of the
+// matching arm. The else arm is required at parse time, so this never
+// falls through.
+func (e *evaluator) evalIfExpr(ex *parser.IfExpr, locals map[string]value) (value, error) {
+	cv, err := e.evalExpr(ex.Cond, locals)
+	if err != nil {
+		return nil, err
+	}
+	cb, ok := cv.(bool)
+	if !ok {
+		return nil, e.errAt(ex.Pos, "if expression condition must be a Bool, got %s", typeName(cv))
+	}
+	if cb {
+		return e.evalExpr(ex.Then, locals)
+	}
+	for _, eif := range ex.ElseIfs {
+		cv, err := e.evalExpr(eif.Cond, locals)
+		if err != nil {
+			return nil, err
+		}
+		cb, ok := cv.(bool)
+		if !ok {
+			return nil, e.errAt(eif.Pos, "else-if condition must be a Bool, got %s", typeName(cv))
+		}
+		if cb {
+			return e.evalExpr(eif.Body, locals)
+		}
+	}
+	return e.evalExpr(ex.Else, locals)
+}
+
 func (e *evaluator) evalIfStmt(s *parser.IfStmt, locals map[string]value) error {
 	cv, err := e.evalExpr(s.Cond, locals)
 	if err != nil {

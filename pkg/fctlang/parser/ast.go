@@ -415,6 +415,29 @@ type FoldExpr struct {
 
 func (*FoldExpr) exprNode() {}
 
+// IfExpr represents an if expression that produces a value.
+// Syntax: if cond { expr } [ else if cond { expr } ]* else { expr }
+// Distinct from IfStmt (which is a control-flow statement) in three ways:
+//   - parsed in expression position via parsePrimary
+//   - each arm is a single expression, not a block of statements
+//   - the else arm is required, since every code path must produce a value
+type IfExpr struct {
+	Cond    Expr
+	Then    Expr
+	ElseIfs []*ElseIfExprClause
+	Else    Expr
+	Pos     Pos
+}
+
+func (*IfExpr) exprNode() {}
+
+// ElseIfExprClause is one arm of an if-expression's else-if chain.
+type ElseIfExprClause struct {
+	Cond Expr
+	Body Expr
+	Pos  Pos
+}
+
 // YieldStmt represents a yield statement inside a for-yield body.
 type YieldStmt struct {
 	Value    Expr

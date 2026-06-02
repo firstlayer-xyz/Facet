@@ -165,6 +165,9 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 		}
 		return array{elems: elems, elemType: "Number"}, nil
 
+	case *parser.IfExpr:
+		return e.evalIfExpr(ex, locals)
+
 	case *parser.ForYieldExpr:
 		return e.evalForYield(ex, locals)
 
