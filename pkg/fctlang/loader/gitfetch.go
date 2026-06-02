@@ -155,9 +155,10 @@ func repoLock(sharedDir string) *sync.Mutex {
 	return v.(*sync.Mutex)
 }
 
-// LibTree is a read-only view of a library's source files, backed by either a
-// go-git bare clone (virtual) or a real on-disk directory (override/local).
-// The resolver treats both uniformly through ReadFile / Walk / SourceKey.
+// LibTree is a read-only view of a library's source files, backed by a go-git
+// bare clone (virtual), a real on-disk directory (override/local), or on-demand
+// HTTP fetches from a CORS-friendly mirror (browser/wasm). The resolver treats
+// all three uniformly through ReadFile / Walk / SourceKey.
 type LibTree struct {
 	// Virtual backing — set when sourced from a bare clone.
 	repo   *git.Repository
@@ -166,7 +167,28 @@ type LibTree struct {
 
 	// Physical backing — set when sourced from a real directory.
 	diskDir string
+
+	// HTTP backing — set when files are fetched on demand over HTTP (wasm,
+	// where go-git's clone is CORS-blocked). httpRef is the pinned ref, used
+	// alongside origin for stable SourceKeys.
+	httpFetch func(subPath string) ([]byte, error)
+	httpRef   string
 }
+
+// HTTPTree builds a LibTree whose files are fetched on demand over HTTP from a
+// CORS-friendly mirror — used by the browser/wasm build. lp supplies the
+// origin ("host/user/repo") and ref for stable SourceKeys; fetch resolves a
+// tree-relative subPath to file bytes.
+func HTTPTree(lp *LibPath, fetch func(subPath string) ([]byte, error)) *LibTree {
+	return &LibTree{
+		origin:    lp.RepoID(),
+		httpRef:   lp.Ref,
+		httpFetch: fetch,
+	}
+}
+
+// IsHTTP reports whether this tree fetches files over HTTP.
+func (t *LibTree) IsHTTP() bool { return t.httpFetch != nil }
 
 // IsVirtual reports whether this tree reads from a go-git object store (true)
 // or from the filesystem (false).
@@ -187,6 +209,14 @@ func (t *LibTree) SHA() plumbing.Hash { return t.sha }
 // virtual trees this is a URI (git+host/user/repo@<sha>/subpath); for
 // physical trees it is an absolute filesystem path.
 func (t *LibTree) SourceKey(subPath string) string {
+	if t.IsHTTP() {
+		// Same git+ scheme as virtual trees (so IsVirtualSourceKey holds and
+		// keys are stable), keyed on the pinned ref rather than a resolved SHA.
+		if subPath == "" {
+			return fmt.Sprintf("%s%s@%s", LibSourceScheme, t.origin, t.httpRef)
+		}
+		return fmt.Sprintf("%s%s@%s/%s", LibSourceScheme, t.origin, t.httpRef, subPath)
+	}
 	if t.IsVirtual() {
 		if subPath == "" {
 			return fmt.Sprintf("%s%s@%s", LibSourceScheme, t.origin, t.sha.String())
@@ -212,6 +242,9 @@ func (t *LibTree) ReadFile(subPath string) ([]byte, error) {
 	if subPath == "" {
 		return nil, fmt.Errorf("ReadFile: empty subPath")
 	}
+	if t.IsHTTP() {
+		return t.httpFetch(subPath)
+	}
 	if t.IsVirtual() {
 		tree, err := t.gitTree()
 		if err != nil {
@@ -234,6 +267,10 @@ func (t *LibTree) ReadFile(subPath string) ([]byte, error) {
 
 // HasFile reports whether subPath exists in the tree.
 func (t *LibTree) HasFile(subPath string) bool {
+	if t.IsHTTP() {
+		_, err := t.httpFetch(subPath)
+		return err == nil
+	}
 	if t.IsVirtual() {
 		tree, err := t.gitTree()
 		if err != nil {
@@ -249,6 +286,12 @@ func (t *LibTree) HasFile(subPath string) bool {
 // Walk invokes visit for every regular file in the tree. Paths are slash-
 // separated and tree-relative.
 func (t *LibTree) Walk(visit func(subPath string, r io.Reader) error) error {
+	if t.IsHTTP() {
+		// Plain HTTP offers no cheap enumeration; the only caller is the
+		// bare-repo error path (listLibraryModules), which degrades to a
+		// generic message when Walk yields nothing.
+		return nil
+	}
 	if t.IsVirtual() {
 		tree, err := t.gitTree()
 		if err != nil {

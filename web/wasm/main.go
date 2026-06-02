@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -84,9 +86,38 @@ func main() {
 // wasmLoaderOpts returns the loader Options used by every browser-side eval/
 // parse. The Cache is in-memory because there is no disk to persist between
 // page loads, and the disk-based NativeCache the loader would otherwise fall
-// back to would fail on the first os.MkdirAll call.
+// back to would fail on the first os.MkdirAll call. RemoteFetch routes remote
+// libraries through jsDelivr instead of a go-git clone (CORS-blocked in the
+// browser).
 func wasmLoaderOpts() *loader.Options {
-	return &loader.Options{Cache: loader.MemoryCache()}
+	return &loader.Options{
+		Cache:       loader.MemoryCache(),
+		RemoteFetch: jsDelivrFetch,
+	}
+}
+
+// jsDelivrFetch resolves a remote library file over HTTP via the jsDelivr CDN,
+// which mirrors public GitHub repos with permissive CORS headers — unlike
+// GitHub's git endpoints, which the browser blocks. The pinned @ref (SHA,
+// tag, or branch) maps straight onto a jsDelivr URL; for SHA pins the response
+// is immutable and the browser's HTTP cache persists it across reloads.
+//
+// In wasm, net/http is backed by the Fetch API and runs inside the eval/parse
+// goroutine, so the blocking call yields to the JS event loop.
+func jsDelivrFetch(lp *loader.LibPath, subPath string) ([]byte, error) {
+	if lp.Host != "github.com" {
+		return nil, fmt.Errorf("browser library imports support github.com only (got host %q); use a CORS-friendly mirror or run the desktop app", lp.Host)
+	}
+	url := fmt.Sprintf("https://cdn.jsdelivr.net/gh/%s/%s@%s/%s", lp.User, lp.Repo, lp.Ref, subPath)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch %s: HTTP %d", url, resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
 }
 
 // jsParse parses source and returns a Promise resolving to entry points

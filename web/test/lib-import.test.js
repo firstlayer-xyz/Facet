@@ -1,25 +1,14 @@
-// Regression test: a `.fct` that imports `lib "github.com/..."` makes it
-// past the wasm storage layer and through the Promise boundary without
-// triggering the Go runtime's deadlock detector.
+// Verifies that a `.fct` importing `lib "github.com/..."` resolves and renders
+// in the browser via the jsDelivr CORS-friendly mirror (go-git's git smart-HTTP
+// clone is CORS-blocked, so the wasm build routes remote libs through jsDelivr —
+// see loader.Options.RemoteFetch / web/wasm/main.go jsDelivrFetch).
 //
-// The test loads share/examples/Bolt And Nut.fct (which imports
-// firstlayer-xyz/facetlibs/fasteners) and calls `await
-// window.facetParse(src)`. Two separate things are being verified:
-//
-//   1. The wasm doesn't panic with "all goroutines are asleep -
-//      deadlock!" while waiting on the network fetch. This is the
-//      regression guarded by the Promise refactor.
-//
-//   2. The result Promise resolves cleanly — the lib-resolution error
-//      surfaces as a structured `{ok: false, error: …}` object rather
-//      than a hung Promise or a thrown exception.
-//
-// As of the time this test was written, the network fetch itself fails
-// (GitHub's smart-HTTP `/info/refs` endpoint doesn't return
-// Access-Control-Allow-Origin) so the result is `ok: false` with a
-// `fetch() failed` error message. Once a CORS-friendly raw-content
-// LibTree replaces go-git on the wasm side, this test should still pass
-// — flip the assertion to `ok: true` then.
+// Loads share/examples/Bolt And Nut.fct (which imports
+// firstlayer-xyz/facetlibs/fasteners, whose .fct in turn relative-imports
+// ../threads) and asserts the whole chain parses + evaluates to a non-empty
+// mesh. This exercises: the RemoteFetch hook, the HTTP-backed LibTree,
+// transitive/relative imports through that tree, and that the eval Promise
+// resolves without a Go deadlock. Requires network (jsDelivr).
 
 const { chromium } = require('playwright');
 const fs = require('node:fs');
@@ -29,9 +18,11 @@ const { runTest } = require('./harness');
 const FCT = path.join(__dirname, '..', '..', 'share', 'examples', 'Bolt And Nut.fct');
 
 runTest('lib-import', async ({ page }) => {
-  await page.waitForFunction(() => typeof window.facetParse === 'function', null, {
-    timeout: 60_000,
-  });
+  await page.waitForFunction(
+    () => typeof window.facetParse === 'function' && typeof window.facetEval === 'function',
+    null,
+    { timeout: 60_000 },
+  );
 
   const src = fs.readFileSync(FCT, 'utf8');
   console.log(`  loaded ${path.basename(FCT)} (${src.length} bytes)`);
@@ -39,33 +30,33 @@ runTest('lib-import', async ({ page }) => {
   const result = await page.evaluate(async (src) => {
     const t0 = performance.now();
     try {
-      const r = await window.facetParse(src);
-      return { resolved: true, ms: performance.now() - t0, result: r };
+      const parseRes = await window.facetParse(src);
+      if (parseRes === undefined || parseRes === null) return { stage: 'parse', panic: true };
+      if (!parseRes.ok) return { stage: 'parse', error: parseRes.error };
+      const entry = JSON.parse(parseRes.entryPoints || '[]')[0]?.name;
+      if (!entry) return { stage: 'entry', error: 'no entry point' };
+      const ev = await window.facetEval(src, entry, '{}');
+      if (!(ev instanceof Uint8Array)) return { stage: 'eval', error: `not Uint8Array: ${typeof ev}` };
+      const dv = new DataView(ev.buffer, ev.byteOffset, ev.byteLength);
+      const headerLen = dv.getUint32(0, true);
+      const header = JSON.parse(new TextDecoder().decode(ev.subarray(4, 4 + headerLen)));
+      return {
+        stage: 'done',
+        ms: performance.now() - t0,
+        entry,
+        verts: (header.mesh?.vertexCount || 0) + (header.mesh?.expandedCount || 0),
+        errors: header.errors,
+      };
     } catch (e) {
-      return { resolved: false, ms: performance.now() - t0, error: String(e) };
+      return { stage: 'threw', error: String(e) };
     }
   }, src);
 
-  if (!result.resolved) {
-    throw new Error(`Promise rejected (likely Go panic): ${result.error}`);
+  if (result.panic)  throw new Error('facetParse returned undefined — Go panicked');
+  if (result.stage !== 'done') throw new Error(`lib import failed at ${result.stage}: ${result.error}`);
+  if (result.errors && result.errors.length > 0) {
+    throw new Error(`eval carries errors: ${JSON.stringify(result.errors)}`);
   }
-  console.log(`  facetParse Promise resolved in ${result.ms.toFixed(1)} ms`);
-
-  // A wasm-side panic produces undefined, not a structured result.
-  if (result.result === undefined || result.result === null) {
-    throw new Error('facetParse returned undefined — Go panicked');
-  }
-
-  // We accept either ok:true (lib fetch succeeded — future state once
-  // CORS-friendly fetch is in place) or ok:false with a structured
-  // error message. Either is fine; the regression we're guarding is the
-  // deadlock that produced no result at all.
-  if (!result.result.ok) {
-    if (typeof result.result.error !== 'string' || result.result.error.length === 0) {
-      throw new Error(`ok:false but error message missing: ${JSON.stringify(result.result)}`);
-    }
-    console.log(`  resolved with structured error: ${result.result.error.split('\n')[0]}`);
-  } else {
-    console.log(`  lib resolution succeeded`);
-  }
+  if (result.verts === 0) throw new Error('imported model produced no geometry');
+  console.log(`  lib import via jsDelivr OK — entry ${result.entry}, ${result.verts} verts in ${result.ms.toFixed(0)} ms`);
 }, chromium);
