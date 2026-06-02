@@ -4,7 +4,7 @@ export GOROOT := $(GO_TOOLCHAIN)
 export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
 WAILS := $(HOME)/go/bin/wails
 
-.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test
+.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop
 
 all: manifold build
 
@@ -84,6 +84,22 @@ test-web: go-toolchain
 		trap 'kill $$(cat /tmp/facet-test-web.pid) 2>/dev/null; rm -f /tmp/facet-test-web.pid' EXIT; \
 		until curl -sf http://localhost:8000/ > /dev/null 2>&1; do sleep 0.2; done; \
 		(cd web/test && npm test)
+
+# Desktop frontend Playwright suite (vite + mocked Wails harness).
+# First run on a fresh checkout: generates wailsjs stubs, runs npm ci,
+# and downloads the chromium browser. Subsequent runs skip those steps.
+# On Linux you may need `npx playwright install --with-deps chromium`
+# once for system libs (CI does this for the runner).
+test-desktop:
+	@if [ ! -d desktop/frontend/wailsjs ]; then \
+		echo "generating wailsjs stubs..."; \
+		bash scripts/gen-wailsjs-stubs.sh; \
+	fi
+	@if [ ! -d desktop/frontend/node_modules ]; then \
+		echo "installing frontend deps + chromium browser..."; \
+		(cd desktop/frontend && npm ci && npx playwright install chromium); \
+	fi
+	cd desktop/frontend && npm test
 
 clean:
 	rm -rf $(GO_TOOLCHAIN)
