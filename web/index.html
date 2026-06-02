@@ -599,6 +599,7 @@ dropZone.addEventListener('drop', e => {
 function loadSource(text, name) {
   filenameEl.textContent = name;
   currentSource = text;
+  needsFrame = true;   // re-fit the camera to each newly loaded model
   doParse();
 }
 
@@ -926,10 +927,19 @@ let gridMinorBuf = null, gridMajorBuf = null;
 let meshCount = 0, edgeCount = 0, hasColors = false;
 let gridMinorCount = 0, gridMajorCount = 0;
 
-let yaw = 30, pitch = 25, dist = 150;
-let dragging = false, lastX = 0, lastY = 0;
-let centerX = 0, centerY = 0, centerZ = 0;
-let firstRender = true;
+// Orbit camera matching the desktop viewer (Three.js OrbitControls feel):
+// `cam` is the displayed state; `goal` is where input steers it. Each animation
+// frame `cam` eases toward `goal` (damping). yaw/pitch in degrees; (cx,cy,cz)
+// is the orbit pivot (the model's bounding-sphere centre). Z is up.
+const FOV  = 60;     // match desktop perspective FOV
+const DAMP = 0.2;    // ease fraction toward goal per frame (smooth inertia)
+const cam  = { yaw: 30, pitch: 25, dist: 150, cx: 0, cy: 0, cz: 0 };
+const goal = { yaw: 30, pitch: 25, dist: 150, cx: 0, cy: 0, cz: 0 };
+let needsFrame = true;     // re-fit the camera on the next model load
+let animating  = false;    // rAF damping loop running?
+let dragMode   = null;     // 'rotate' | 'pan' | null
+let lastX = 0, lastY = 0;
+const keysDown = new Set();
 
 const MESH_VS = `
   attribute vec3 aPos;
@@ -983,46 +993,67 @@ function initGL() {
   gridMinorBuf = gl.createBuffer();
   gridMajorBuf = gl.createBuffer();
 
-  canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
-  canvas.addEventListener('mouseup',   () => dragging = false);
-  canvas.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    yaw   += (e.clientX - lastX) * 0.4;
-    pitch += (e.clientY - lastY) * 0.4;
-    pitch = Math.max(-89, Math.min(89, pitch));
+  // Left-drag (or any drag with no modifier) = orbit; right-drag or shift-drag
+  // = pan (screen-space, moves the pivot); wheel = zoom — matching the desktop.
+  canvas.addEventListener('mousedown', e => {
+    dragMode = (e.button === 2 || e.shiftKey) ? 'pan' : 'rotate';
     lastX = e.clientX; lastY = e.clientY;
-    draw();
+    e.preventDefault();
   });
+  window.addEventListener('mouseup', () => { dragMode = null; });
+  canvas.addEventListener('mousemove', e => {
+    if (!dragMode) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    if (dragMode === 'pan') panBy(dx, dy);
+    else orbitBy(dx, dy);
+    ensureAnim();
+  });
+  canvas.addEventListener('contextmenu', e => e.preventDefault()); // allow right-drag pan
   canvas.addEventListener('wheel', e => {
-    dist *= 1 + e.deltaY * 0.001;
-    dist = Math.max(0.5, dist);
-    draw();
+    goal.dist = Math.max(0.5, goal.dist * (1 + e.deltaY * 0.001));
+    ensureAnim();
+    e.preventDefault();
+  }, { passive: false });
+
+  // Keyboard orbit/zoom (ignored while typing in a field), like the desktop.
+  window.addEventListener('keydown', e => {
+    const t = document.activeElement && document.activeElement.tagName;
+    if (t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA') return;
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Equal','Minus','NumpadAdd','NumpadSubtract'].includes(e.code)) {
+      e.preventDefault(); keysDown.add(e.code); ensureAnim();
+    }
   });
-  // Touch support
-  let lastTouchDist = 0;
+  window.addEventListener('keyup', e => keysDown.delete(e.code));
+
+  // Touch: 1 finger orbit; 2 fingers pinch-zoom + pan (centroid drag).
+  let lastTouchDist = 0, lastCX = 0, lastCY = 0;
+  const centroid = t => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2];
   canvas.addEventListener('touchstart', e => {
-    if (e.touches.length === 1) { dragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }
+    if (e.touches.length === 1) { dragMode = 'rotate'; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }
     else if (e.touches.length === 2) {
-      lastTouchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      dragMode = null;
+      lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      [lastCX, lastCY] = centroid(e.touches);
     }
     e.preventDefault();
   }, { passive: false });
   canvas.addEventListener('touchmove', e => {
-    if (e.touches.length === 1 && dragging) {
-      yaw   += (e.touches[0].clientX - lastX) * 0.4;
-      pitch += (e.touches[0].clientY - lastY) * 0.4;
-      pitch = Math.max(-89, Math.min(89, pitch));
+    if (e.touches.length === 1 && dragMode === 'rotate') {
+      orbitBy(e.touches[0].clientX - lastX, e.touches[0].clientY - lastY);
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
     } else if (e.touches.length === 2) {
-      const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
-      dist *= lastTouchDist / d;
-      dist = Math.max(0.5, dist);
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      if (lastTouchDist > 0) goal.dist = Math.max(0.5, goal.dist * (lastTouchDist / d));
       lastTouchDist = d;
+      const [cxp, cyp] = centroid(e.touches);
+      panBy(cxp - lastCX, cyp - lastCY);
+      lastCX = cxp; lastCY = cyp;
     }
-    draw();
+    ensureAnim();
     e.preventDefault();
   }, { passive: false });
-  canvas.addEventListener('touchend', () => { dragging = false; });
+  canvas.addEventListener('touchend', () => { dragMode = null; lastTouchDist = 0; });
 
   new ResizeObserver(resizeCanvas).observe(canvas.parentElement);
   resizeCanvas();
@@ -1064,11 +1095,15 @@ function renderMesh(positions, colors, edges) {
     minY = Math.min(minY, positions[i+1]); maxY = Math.max(maxY, positions[i+1]);
     minZ = Math.min(minZ, positions[i+2]); maxZ = Math.max(maxZ, positions[i+2]);
   }
-  if (firstRender) {
-    centerX = (minX+maxX)/2; centerY = (minY+maxY)/2; centerZ = (minZ+maxZ)/2;
-    const span = Math.max(maxX-minX, maxY-minY, maxZ-minZ);
-    dist = span * 1.8;
-    firstRender = false;
+  if (needsFrame) {
+    // Fit to the bounding sphere like the desktop's fitToView: distance =
+    // radius / sin(fov/2) * 1.2. Snap center+distance (keep current angle).
+    const cx = (minX+maxX)/2, cy = (minY+maxY)/2, cz = (minZ+maxZ)/2;
+    const radius = 0.5 * Math.hypot(maxX-minX, maxY-minY, maxZ-minZ) || 1;
+    const d = (radius / Math.sin(FOV * Math.PI / 360)) * 1.2;
+    goal.cx = cam.cx = cx; goal.cy = cam.cy = cy; goal.cz = cam.cz = cz;
+    goal.dist = cam.dist = d;
+    needsFrame = false;
   }
 
   meshCount = positions.length / 3;
@@ -1096,18 +1131,69 @@ function renderMesh(positions, colors, edges) {
   draw();
 }
 
+// ── Camera control + damping ────────────────────────────────────────────────
+function orbitBy(dx, dy) {
+  goal.yaw  += dx * 0.4;
+  goal.pitch = Math.max(-89, Math.min(89, goal.pitch + dy * 0.4));
+}
+
+// Screen-space pan: shift the pivot in the camera's right/up plane so the point
+// under the cursor tracks it. k scales 1 screen px to the world distance at the
+// pivot depth.
+function panBy(dx, dy) {
+  const k = (2 * goal.dist * Math.tan(FOV * Math.PI / 360)) / (canvas.clientHeight || 1);
+  const cp = Math.cos(goal.pitch * Math.PI / 180), sp = Math.sin(goal.pitch * Math.PI / 180);
+  const cyw = Math.cos(goal.yaw * Math.PI / 180), syw = Math.sin(goal.yaw * Math.PI / 180);
+  const fwd = [-cp * cyw, -cp * syw, -sp];      // eye → pivot
+  const right = vnorm(vcross(fwd, [0, 0, 1]));
+  const up    = vnorm(vcross(right, fwd));
+  goal.cx += (-right[0] * dx + up[0] * dy) * k;
+  goal.cy += (-right[1] * dx + up[1] * dy) * k;
+  goal.cz += (-right[2] * dx + up[2] * dy) * k;
+}
+
+function applyKeyboard() {
+  const r = 1.5;
+  if (keysDown.has('ArrowLeft'))  goal.yaw -= r;
+  if (keysDown.has('ArrowRight')) goal.yaw += r;
+  if (keysDown.has('ArrowUp'))    goal.pitch = Math.min(89, goal.pitch + r);
+  if (keysDown.has('ArrowDown'))  goal.pitch = Math.max(-89, goal.pitch - r);
+  if (keysDown.has('Equal') || keysDown.has('NumpadAdd'))      goal.dist = Math.max(0.5, goal.dist * 0.97);
+  if (keysDown.has('Minus') || keysDown.has('NumpadSubtract')) goal.dist = goal.dist / 0.97;
+}
+
+function ensureAnim() { if (!animating) { animating = true; requestAnimationFrame(tick); } }
+
+// Ease cam → goal each frame; stop when settled and not interacting.
+function tick() {
+  if (keysDown.size) applyKeyboard();
+  let moving = false;
+  for (const key of ['yaw', 'pitch', 'dist', 'cx', 'cy', 'cz']) {
+    const d = goal[key] - cam[key];
+    const eps = (key === 'dist') ? goal.dist * 1e-4 : 1e-4;
+    if (Math.abs(d) <= eps) cam[key] = goal[key];
+    else { cam[key] += d * DAMP; moving = true; }
+  }
+  draw();
+  if (moving || dragMode || keysDown.size) requestAnimationFrame(tick);
+  else animating = false;
+}
+
+function vcross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function vnorm(v) { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; }
+
 function draw() {
   if (!gl || meshCount === 0) return;
   const w = canvas.width, h = canvas.height;
   gl.viewport(0, 0, w, h);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  const proj  = perspective(55, w/h, dist*0.01, dist*100);
+  const proj  = perspective(FOV, w/h, cam.dist*0.01, cam.dist*100);
   // Z-up orbit: yaw is azimuth in the XY plane, pitch is elevation toward +Z.
-  const cy    = Math.cos(pitch * Math.PI/180), sy = Math.sin(pitch * Math.PI/180);
-  const cx    = Math.cos(yaw   * Math.PI/180), sx = Math.sin(yaw   * Math.PI/180);
-  const eyeX  = centerX + cy*cx*dist, eyeY = centerY + cy*sx*dist, eyeZ = centerZ + sy*dist;
-  const view  = lookAt([eyeX,eyeY,eyeZ], [centerX,centerY,centerZ], [0,0,1]);
+  const cyp   = Math.cos(cam.pitch * Math.PI/180), syp = Math.sin(cam.pitch * Math.PI/180);
+  const cyw   = Math.cos(cam.yaw   * Math.PI/180), syw = Math.sin(cam.yaw   * Math.PI/180);
+  const eyeX  = cam.cx + cyp*cyw*cam.dist, eyeY = cam.cy + cyp*syw*cam.dist, eyeZ = cam.cz + syp*cam.dist;
+  const view  = lookAt([eyeX,eyeY,eyeZ], [cam.cx,cam.cy,cam.cz], [0,0,1]);
   const mvp   = mulMat4(proj, view);
   const model = identityMat4();
 
