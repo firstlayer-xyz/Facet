@@ -298,10 +298,10 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 			c.addError(ex.Pos, fmt.Sprintf("unknown struct type %q", ex.TypeName))
 			return unknown()
 		}
-		// Record the reference for the type name at the struct literal's position.
-		// NOTE: for qualified struct lits like T.Thread{...}, ex.Pos points at the
-		// library variable position, not the type name itself. See parser_expr.go:300.
-		c.addRef(ex.Pos, DeclLocation{
+		// Record the reference at the type-name token itself — for
+		// qualified `T.Thread{...}` that's `Thread`, not `T`, so a click
+		// on `Thread` resolves to the type declaration.
+		c.addRef(ex.TypeNamePos, DeclLocation{
 			Line: decl.Pos.Line,
 			Col:  decl.Pos.Col,
 			File: c.fileForStruct(decl),

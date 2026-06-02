@@ -260,3 +260,46 @@ fn Main() P { return P{x: 1, y: 2} }`
 		t.Errorf("field init target = %+v, want line 1, col 10", xRef)
 	}
 }
+
+// TestReferenceForQualifiedStructLit pins the fix for the
+// qualified-struct-literal position bug: when the user writes
+// `T.Thread{...}`, the type reference must be recorded at the column
+// of `Thread`, not at the column of the library variable `T`. Otherwise
+// go-to-definition on `Thread` doesn't fire, and clicking `T` lands on
+// the type declaration instead of the library import.
+func TestReferenceForQualifiedStructLit(t *testing.T) {
+	prog := parseTestProg(t, `var L = lib "github.com/x/lib@main"
+fn Main() L.Thread { return L.Thread{pitch: 1 mm} }`)
+
+	libKey := "/test/libs/github.com/x/lib"
+	libSrc, err := parser.Parse(`type Thread { pitch Length }`, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse lib source: %v", err)
+	}
+	prog.Sources[libKey] = libSrc
+	prog.Imports["github.com/x/lib@main"] = libKey
+
+	res := Check(prog)
+	if len(res.Errors) > 0 {
+		t.Fatalf("unexpected checker errors: %v", res.Errors)
+	}
+
+	// Line 2:  "fn Main() L.Thread { return L.Thread{pitch: 1 mm} }"
+	//           1234567890123456789012345678901234567890
+	//                    1111111111222222222233333333334
+	// `L` in the body is at col 29; `Thread` is at col 31.
+	// The fix: the type reference must be keyed on `Thread`'s column (31),
+	// NOT on `L`'s column (29).
+	thread, okThread := res.References[testMainKey+":2:31"]
+	if !okThread {
+		t.Fatalf("no reference at Thread's column 2:31")
+	}
+	if thread.Kind != "type" {
+		t.Errorf("Thread Kind = %q, want type", thread.Kind)
+	}
+
+	// Defense-in-depth: the L column must NOT carry a type reference.
+	if lRef, ok := res.References[testMainKey+":2:29"]; ok && lRef.Kind == "type" {
+		t.Errorf("reference at L's column 2:29 unexpectedly points at the type; got %+v", lRef)
+	}
+}
