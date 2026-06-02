@@ -4,7 +4,7 @@ export GOROOT := $(GO_TOOLCHAIN)
 export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
 WAILS := $(HOME)/go/bin/wails
 
-.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web test
+.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test
 
 all: manifold build
 
@@ -56,6 +56,12 @@ wasm: go-toolchain wasm-cxx
 # SharedArrayBuffer), mirroring how GitHub Pages serves the bundle.
 serve-web: go-toolchain
 	$(GO) run scripts/serve-web.go
+
+# Verify the wasm JS bridge (web/index.html _mf_* shims) stays in sync with the
+# native cgo build, so a hand-written shim can't silently diverge from the C++
+# kernel. Source scan only — fast, no build needed.
+check-shims: go-toolchain
+	$(GO) run scripts/check-shims.go
 
 test: go-toolchain manifold
 	CGO_ENABLED=1 $(GO) test ./pkg/fctlang/... ./pkg/manifold/...

@@ -215,6 +215,12 @@ jobs:
         if: steps.cache-go.outputs.cache-hit != 'true'
         run: bash scripts/setup-go.sh
 
+      # Fast source-only check: the wasm JS bridge must stay in sync with the
+      # native cgo build (catches a shim that silently diverges from the C++
+      # kernel, as Insert once did). Runs before the expensive wasm build.
+      - name: Check wasm shim consistency
+        run: make check-shims
+
       - name: Cache emsdk
         id: cache-emsdk
         uses: actions/cache@v5
