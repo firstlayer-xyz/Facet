@@ -474,6 +474,15 @@ type BoolLit struct {
 
 func (*BoolLit) exprNode() {}
 
+// NilLit is the None variant of an Optional. Its type is inferred from
+// surrounding context (variable annotation, return type, etc.); a bare
+// `nil` with no context is a type error.
+type NilLit struct {
+	Pos Pos
+}
+
+func (*NilLit) exprNode() {}
+
 // IfStmt represents an if/else-if/else statement.
 type IfStmt struct {
 	Cond     Expr

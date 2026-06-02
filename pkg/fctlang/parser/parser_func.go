@@ -91,8 +91,29 @@ func (p *parser) parseFuncTypeStr() (string, error) {
 }
 
 // parseTypeStr parses a complete type expression.
-// Handles: ident, T.Type (qualified), var, []T (prefix array), fn(T...) R
+// Handles: ident, T.Type (qualified), var, []T (prefix array), fn(T...) R,
+// and a postfix `?` making the type Optional. The `?` is consumed once after
+// the base type, so `Number?` parses but `Number??` errors (double optional
+// is meaningless — Bind / Map flatten).
 func (p *parser) parseTypeStr() (string, error) {
+	t, err := p.parseTypeStrBase()
+	if err != nil {
+		return "", err
+	}
+	if p.cur.Type == TokenQuestion {
+		if err := p.next(); err != nil { // consume '?'
+			return "", err
+		}
+		if p.cur.Type == TokenQuestion {
+			return "", p.errorf("nested optional %q?? is not allowed — Optional is a single layer", t)
+		}
+		return t + "?", nil
+	}
+	return t, nil
+}
+
+// parseTypeStrBase parses the part of a type that comes before any postfix `?`.
+func (p *parser) parseTypeStrBase() (string, error) {
 	p.depth++
 	if p.depth > maxParseDepth {
 		return "", p.errorf("type too deeply nested (limit %d)", maxParseDepth)
@@ -150,6 +171,22 @@ func (p *parser) parseReturnTypeStr() (string, error) {
 		return p.parseTypeStr()
 	}
 	return "", nil
+}
+
+// IsOptionalType reports whether a parsed type string is an optional
+// (carries a trailing `?`). The corresponding inner type is what you get
+// from OptionalInner.
+func IsOptionalType(t string) bool {
+	return len(t) > 0 && t[len(t)-1] == '?'
+}
+
+// OptionalInner returns the inner type of an optional. Panics if t isn't an
+// optional — callers should guard with IsOptionalType.
+func OptionalInner(t string) string {
+	if !IsOptionalType(t) {
+		return t
+	}
+	return t[:len(t)-1]
 }
 
 // isOperatorToken returns true if the token type is an operator that can

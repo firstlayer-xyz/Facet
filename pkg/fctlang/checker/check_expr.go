@@ -46,6 +46,11 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 	case *parser.BoolLit:
 		return simple(typeBool)
 
+	case *parser.NilLit:
+		// nil is the None variant of Optional. With no surrounding context
+		// the inner type is unknown — the wild Optional widens to any T?.
+		return wildOptional()
+
 	case *parser.StringLit:
 		return simple(typeString)
 

@@ -73,6 +73,23 @@ func (e *evaluator) evalCompare(op string, lv, rv value, pos parser.Pos) (value,
 				return l >= r, nil
 			}
 		}
+	case *optionalVal:
+		// Optional == Optional. Most common shape is `opt == nil`: the
+		// right side is a None-with-empty-inner-type from NilLit, so we
+		// compare by presence first, then fall through to inner equality.
+		if r, rok := rv.(*optionalVal); rok && (op == "==" || op == "!=") {
+			eq := false
+			switch {
+			case !l.present && !r.present:
+				eq = true
+			case l.present && r.present:
+				eq = valuesEqual(l.inner, r.inner)
+			}
+			if op == "==" {
+				return eq, nil
+			}
+			return !eq, nil
+		}
 	}
 
 	if !ok {

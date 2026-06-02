@@ -128,6 +128,15 @@ func (p *parser) parsePrimary() (Expr, error) {
 		return &BoolLit{Value: false}, nil
 	}
 
+	// Optional None literal: nil
+	if p.cur.Type == TokenNil {
+		line, col := p.cur.Line, p.cur.Col
+		if err := p.next(); err != nil {
+			return nil, err
+		}
+		return &NilLit{Pos: Pos{line, col}}, nil
+	}
+
 	// String literal (quoted or raw backtick)
 	if p.cur.Type == TokenString || p.cur.Type == TokenRawString {
 		val := p.cur.Text

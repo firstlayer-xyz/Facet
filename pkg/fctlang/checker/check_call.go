@@ -484,6 +484,38 @@ func (c *checker) resolveReturnType(fn *parser.Function) typeInfo {
 	return unknown()
 }
 
+// checkOptionalMethod validates a method call on a value of type T?. The
+// method set is closed and language-level — IsSome / IsNone / Or in v1.
+// Returns the method's return type, or unknown on error.
+func (c *checker) checkOptionalMethod(mc *parser.MethodCallExpr, recvType typeInfo, argTypes []typeInfo) typeInfo {
+	var inner typeInfo
+	if recvType.inner != nil {
+		inner = *recvType.inner
+	}
+	switch mc.Method {
+	case "IsSome", "IsNone":
+		if len(argTypes) != 0 {
+			c.addError(mc.Pos, fmt.Sprintf("%s.%s() takes no arguments, got %d",
+				recvType.displayName(), mc.Method, len(argTypes)))
+		}
+		return simple(typeBool)
+	case "Or":
+		if len(argTypes) != 1 {
+			c.addError(mc.Pos, fmt.Sprintf("%s.Or() expects 1 argument, got %d",
+				recvType.displayName(), len(argTypes)))
+			return inner
+		}
+		if inner.ft != typeUnknown && argTypes[0].ft != typeUnknown && !c.typeCompatible(inner, argTypes[0]) {
+			c.addError(mc.Pos, fmt.Sprintf("%s.Or() default must be %s, got %s",
+				recvType.displayName(), inner.displayName(), argTypes[0].displayName()))
+		}
+		return inner
+	}
+	c.addError(mc.Pos, fmt.Sprintf("%s has no method %q (try .IsSome(), .IsNone(), or .Or(default:))",
+		recvType.displayName(), mc.Method))
+	return unknown()
+}
+
 // checkMethodCall checks a method call and returns its inferred return type.
 func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeInfo {
 	recvType := c.inferExpr(mc.Receiver, env)
@@ -496,6 +528,13 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 
 	if recvType.ft == typeUnknown {
 		return unknown()
+	}
+
+	// Optional methods — language-level, dispatched before any user method
+	// lookup so callers always get the same semantics regardless of any
+	// stdlib changes.
+	if recvType.ft == typeOptional {
+		return c.checkOptionalMethod(mc, recvType, argTypes)
 	}
 
 	// Library method calls — resolve from loaded library programs
