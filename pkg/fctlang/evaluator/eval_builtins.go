@@ -102,6 +102,11 @@ func init() {
 		"_string": builtinString,
 		"_number": builtinNumber,
 		"_size":   builtinSize,
+		// Array search
+		"_index_of_arr": builtinIndexOf,
+		"_indices_of":   builtinIndicesOf,
+		"_find_index":   builtinFindIndex,
+		"_find_indices": builtinFindIndices,
 		// Time
 		"_utc_date": builtinUtcDate,
 		"_utc_time": builtinUtcTime,

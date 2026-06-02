@@ -1,0 +1,77 @@
+package evaluator
+
+import "testing"
+
+// ── IndexOf — first index, -1 if absent ────────────────────────────────────
+
+func TestEvalIndexOfPresent(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var i = IndexOf(arr: [10, 20, 30, 40], value: 30);`,
+		`i == 2`)
+}
+
+func TestEvalIndexOfFirstOccurrenceWins(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var i = IndexOf(arr: [1, 2, 1, 3, 1], value: 1);`,
+		`i == 0`)
+}
+
+func TestEvalIndexOfAbsent(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var i = IndexOf(arr: [10, 20, 30], value: 99);`,
+		`i == -1`)
+}
+
+func TestEvalIndexOfStringArray(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var i = IndexOf(arr: ["a", "b", "c"], value: "c");`,
+		`i == 2`)
+}
+
+// ── IndicesOf — all matching indices ───────────────────────────────────────
+
+func TestEvalIndicesOfMultiMatch(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var ix = IndicesOf(arr: [1, 2, 1, 3, 1], value: 1);`,
+		`Size(of: ix) == 3 && ix[0] == 0 && ix[1] == 2 && ix[2] == 4`)
+}
+
+func TestEvalIndicesOfNoMatch(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var ix = IndicesOf(arr: [10, 20, 30], value: 99);`,
+		`Size(of: ix) == 0`)
+}
+
+func TestEvalIndicesOfSingleMatch(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var ix = IndicesOf(arr: [10, 20, 30], value: 20);`,
+		`Size(of: ix) == 1 && ix[0] == 1`)
+}
+
+// ── FindIndex — first match by predicate ───────────────────────────────────
+
+func TestEvalFindIndexPresent(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var i = FindIndex(arr: [1, 5, 9, 2], pred: fn(n var) Bool { return n > 3 });`,
+		`i == 1`)
+}
+
+func TestEvalFindIndexAbsent(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var i = FindIndex(arr: [1, 2, 3], pred: fn(n var) Bool { return n > 99 });`,
+		`i == -1`)
+}
+
+// ── FindIndices — all matches by predicate ─────────────────────────────────
+
+func TestEvalFindIndicesMultiMatch(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var ix = FindIndices(arr: [1, 5, 9, 2, 7], pred: fn(n var) Bool { return n > 3 });`,
+		`Size(of: ix) == 3 && ix[0] == 1 && ix[1] == 2 && ix[2] == 4`)
+}
+
+func TestEvalFindIndicesNoMatch(t *testing.T) {
+	stdlibIfThenCubeWithSetup(t,
+		`var ix = FindIndices(arr: [1, 2, 3], pred: fn(n var) Bool { return n > 99 });`,
+		`Size(of: ix) == 0`)
+}
