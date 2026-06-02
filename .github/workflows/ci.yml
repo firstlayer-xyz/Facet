@@ -89,7 +89,7 @@ jobs:
         run: bash scripts/setup-go.sh
 
       - name: Install Wails
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Cache manifold + third-party builds
         # Caches the manifold/assimp/freetype/tbb source clones and built
@@ -258,7 +258,7 @@ jobs:
       - name: Install Playwright browsers
         run: |
           cd web/test
-          npm install
+          npm ci
           npx playwright install --with-deps chromium
 
       - name: Run web tests
@@ -374,7 +374,7 @@ jobs:
 
       - name: Install Wails
         shell: bash
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Cache manifold + third-party builds
         # Re-enabled after the ISA baseline fix in build-manifold.sh
@@ -493,7 +493,7 @@ jobs:
         run: bash scripts/setup-go.sh
 
       - name: Install Wails
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Cache manifold + third-party builds
         # See Linux job for rationale.

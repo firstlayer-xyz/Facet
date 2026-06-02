@@ -55,7 +55,7 @@ jobs:
         run: bash scripts/setup-go.sh
 
       - name: Install Wails
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Cache manifold + third-party builds
         id: cache-manifold
