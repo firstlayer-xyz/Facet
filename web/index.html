@@ -623,9 +623,22 @@ function loadExample(name) {
 }
 
 function initExamples() {
-  let names = [];
-  try { names = JSON.parse(window.facetExamples()); }
-  catch (e) { console.error('facetExamples failed:', e); }
+  // Surface failures instead of leaving a silently-empty selector — the most
+  // likely cause is a stale cached facet.wasm (no facetExamples export) loaded
+  // against a fresh index.html.
+  if (typeof window.facetExamples !== 'function') {
+    showError('Examples unavailable: facetExamples is not registered (stale cached wasm? hard-reload).');
+    setStatus('Ready — drop a .fct file');
+    return;
+  }
+  let names;
+  try {
+    names = JSON.parse(window.facetExamples());
+  } catch (e) {
+    showError('Failed to load examples: ' + e);
+    setStatus('Ready — drop a .fct file');
+    return;
+  }
   populateExamples(names);
   const def = names.includes('Tutorial.fct') ? 'Tutorial.fct' : names[0];
   if (def && !currentSource) {
