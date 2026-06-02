@@ -486,6 +486,19 @@ type NilLit struct {
 
 func (*NilLit) exprNode() {}
 
+// TernaryExpr is the C-style conditional expression `cond ? then : else`.
+// Cond must be Bool. Then and Else must produce compatible types; the
+// expression's type is that unified type. Only the chosen arm is
+// evaluated at runtime.
+type TernaryExpr struct {
+	Cond Expr
+	Then Expr
+	Else Expr
+	Pos  Pos
+}
+
+func (*TernaryExpr) exprNode() {}
+
 // IfStmt represents an if/else-if/else statement.
 //
 // If BindVar is non-empty, the form is `if var NAME = Cond { ... }`:
