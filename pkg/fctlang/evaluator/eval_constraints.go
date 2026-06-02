@@ -318,6 +318,18 @@ func valuesEqual(a, b value) bool {
 		if bv, ok := b.(bool); ok {
 			return av == bv
 		}
+	case *optionalVal:
+		if bv, ok := b.(*optionalVal); ok {
+			// Two Optionals are equal if both absent, or both present
+			// with equal inner values.
+			if !av.present && !bv.present {
+				return true
+			}
+			if av.present && bv.present {
+				return valuesEqual(av.inner, bv.inner)
+			}
+			return false
+		}
 	}
 	return false
 }

@@ -217,6 +217,10 @@ func marshalExpr(e Expr) interface{} {
 			"type":  "BoolLit",
 			"value": e.Value,
 		}
+	case *NilLit:
+		return map[string]interface{}{
+			"type": "NilLit",
+		}
 	case *StringLit:
 		return map[string]interface{}{
 			"type":  "StringLit",

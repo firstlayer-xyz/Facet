@@ -82,6 +82,28 @@ type structVal struct {
 	lib      *libRef // non-nil if struct was created in a library context
 }
 
+// optionalVal represents the runtime form of an Optional. When `present`
+// is false, `inner` is nil — this is the None case. innerType records the
+// expected inner type (used for typeName() reporting and downstream type
+// checks at borrow sites).
+type optionalVal struct {
+	present   bool
+	inner     value
+	innerType string // "Number", "Length", ..., or "" for bare nil
+}
+
+// some wraps a definite value as an Optional with that value present.
+func some(v value, innerType string) *optionalVal {
+	return &optionalVal{present: true, inner: v, innerType: innerType}
+}
+
+// none returns the None variant for a given inner type. innerType may be ""
+// for a bare nil literal; downstream code that needs to know the inner type
+// must thread it through from the binding context.
+func none(innerType string) *optionalVal {
+	return &optionalVal{present: false, innerType: innerType}
+}
+
 // functionVal represents a first-class function (lambda) value.
 // captured holds a snapshot of the local scope at the time the lambda was created.
 type functionVal struct {

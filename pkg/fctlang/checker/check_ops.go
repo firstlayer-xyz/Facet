@@ -207,6 +207,15 @@ func (c *checker) inferComparison(ex *parser.BinaryExpr, left, right typeInfo) t
 		return simple(typeBool)
 	}
 
+	// Optional == / != Optional: same-shape comparison. Inner types must
+	// be compatible in one direction. `opt == nil` lands here because the
+	// `nil` literal types as a wild Optional whose inner is unknown.
+	if (op == "==" || op == "!=") && (left.ft == typeOptional || right.ft == typeOptional) {
+		if c.typeCompatible(left, right) || c.typeCompatible(right, left) {
+			return simple(typeBool)
+		}
+	}
+
 	c.addError(ex.Pos, fmt.Sprintf("operator %s: incompatible types %s and %s", op, left.displayName(), right.displayName()))
 	return unknown()
 }

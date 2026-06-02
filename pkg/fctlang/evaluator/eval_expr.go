@@ -15,6 +15,12 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 	case *parser.BoolLit:
 		return ex.Value, nil
 
+	case *parser.NilLit:
+		// Bare nil — the None variant with no inferred inner type. The
+		// surrounding context (variable type, return type, function arg)
+		// will narrow it via funcReturn / param coercion.
+		return none(""), nil
+
 	case *parser.IdentExpr:
 		v, ok := locals[ex.Name]
 		if !ok {

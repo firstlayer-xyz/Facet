@@ -23,16 +23,19 @@ const (
 	typeLibrary
 	typeStruct
 	typeFunc
+	typeOptional
 )
 
 // typeInfo wraps a facetType with optional element type info (for arrays),
-// struct name (for struct types), and function signature (for function types).
+// struct name (for struct types), function signature (for function types),
+// and inner type (for optionals).
 type typeInfo struct {
 	ft         facetType
 	elem       *typeInfo  // non-nil for typed arrays
 	structName string     // for struct types
 	funcParams []typeInfo // for function types: parameter types
 	funcReturn *typeInfo  // for function types: return type (nil = void)
+	inner      *typeInfo  // non-nil for optional types (T?), points to T
 }
 
 // simple creates a typeInfo for a basic type (non-array, non-struct).
@@ -47,6 +50,22 @@ func structTI(name string) typeInfo { return typeInfo{ft: typeStruct, structName
 // funcTI creates a function typeInfo with parameter and return types.
 func funcTI(params []typeInfo, ret *typeInfo) typeInfo {
 	return typeInfo{ft: typeFunc, funcParams: params, funcReturn: ret}
+}
+
+// optionalOf wraps a typeInfo as Optional<T>. Optionals don't nest —
+// optionalOf(optionalOf(x)) collapses to optionalOf(x).
+func optionalOf(inner typeInfo) typeInfo {
+	if inner.ft == typeOptional {
+		return inner
+	}
+	return typeInfo{ft: typeOptional, inner: &inner}
+}
+
+// wildOptional is the inferred type for a bare `nil` expression with no
+// surrounding context. Its inner type is unknown; it widens to any T?.
+func wildOptional() typeInfo {
+	u := unknown()
+	return typeInfo{ft: typeOptional, inner: &u}
 }
 
 // unknown returns a typeInfo for typeUnknown.
@@ -70,6 +89,12 @@ func (ti typeInfo) displayName() string {
 			s += " " + ti.funcReturn.displayName()
 		}
 		return s
+	}
+	if ti.ft == typeOptional {
+		if ti.inner == nil || ti.inner.ft == typeUnknown {
+			return "Optional"
+		}
+		return ti.inner.displayName() + "?"
 	}
 	return typeDisplayName(ti.ft)
 }
@@ -111,6 +136,15 @@ func (c *checker) typeInfoEqual(a, b typeInfo) bool {
 		}
 		return c.typeInfoEqual(*a.funcReturn, *b.funcReturn)
 	}
+	if a.ft == typeOptional {
+		if a.inner == nil && b.inner == nil {
+			return true
+		}
+		if a.inner == nil || b.inner == nil {
+			return false
+		}
+		return c.typeInfoEqual(*a.inner, *b.inner)
+	}
 	return true
 }
 
@@ -144,6 +178,13 @@ func typeFromName(name string) facetType {
 // e.g. "[]Vec3" → arrayOf(structTI("Vec3")), "Solid" → simple(typeSolid).
 // For struct element types (e.g. "[]MyStruct"), returns arrayOf(structTI("MyStruct")).
 func typeFromNameStr(name string) typeInfo {
+	// Postfix `?` makes the type Optional. Strip it first so the inner
+	// parse sees the base type. Optionals don't nest in the type system,
+	// but a stray `??` here would be a parser bug.
+	if strings.HasSuffix(name, "?") {
+		inner := typeFromNameStr(name[:len(name)-1])
+		return optionalOf(inner)
+	}
 	if strings.HasPrefix(name, "[]") {
 		elemStr := name[2:]
 		elem := typeFromNameStr(elemStr)
@@ -281,6 +322,8 @@ func typeDisplayName(t facetType) string {
 		return "type"
 	case typeFunc:
 		return "fn"
+	case typeOptional:
+		return "Optional"
 	default:
 		return "unknown"
 	}
