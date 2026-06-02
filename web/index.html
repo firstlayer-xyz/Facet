@@ -150,6 +150,11 @@
     <div id="filename"></div>
   </div>
 
+  <div id="example-section">
+    <div class="section-label">Examples</div>
+    <select id="example-select"></select>
+  </div>
+
   <div id="entry-section">
     <div class="section-label">Entry Point</div>
     <select id="entry-select"><option>–</option></select>
@@ -545,6 +550,7 @@ async function initWasm() {
 const statusEl   = document.getElementById('status');
 const filenameEl = document.getElementById('filename');
 const entrySelect= document.getElementById('entry-select');
+const exampleSelect = document.getElementById('example-select');
 const paramsList = document.getElementById('params-list');
 const statsEl    = document.getElementById('stats-section');
 const statsText  = document.getElementById('stats-text');
@@ -579,15 +585,61 @@ dropZone.addEventListener('drop', e => {
   if (file) loadFile(file);
 });
 
+function loadSource(text, name) {
+  filenameEl.textContent = name;
+  currentSource = text;
+  doParse();
+}
+
 function loadFile(file) {
-  filenameEl.textContent = file.name;
   const reader = new FileReader();
   reader.onload = ev => {
-    currentSource = ev.target.result;
-    doParse();
+    loadSource(ev.target.result, file.name);
+    if (exampleSelect) exampleSelect.value = '';   // show neutral "(uploaded file)"
   };
   reader.readAsText(file);
 }
+
+// ── Bundled examples ───────────────────────────────────────────────────────────
+function populateExamples(names) {
+  exampleSelect.innerHTML = '';
+  const neutral = document.createElement('option');
+  neutral.value = '';
+  neutral.textContent = '— (uploaded file) —';
+  neutral.hidden = true;
+  exampleSelect.appendChild(neutral);
+  for (const n of names) {
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = n.replace(/\.fct$/, '');
+    exampleSelect.appendChild(o);
+  }
+}
+
+function loadExample(name) {
+  const src = window.facetExample(name);
+  if (src && typeof src === 'object' && src.error) { showError(src.error); return; }
+  loadSource(src, name);
+}
+
+function initExamples() {
+  let names = [];
+  try { names = JSON.parse(window.facetExamples()); }
+  catch (e) { console.error('facetExamples failed:', e); }
+  populateExamples(names);
+  const def = names.includes('Tutorial.fct') ? 'Tutorial.fct' : names[0];
+  if (def && !currentSource) {
+    exampleSelect.value = def;
+    loadExample(def);
+  } else {
+    setStatus('Ready — drop a .fct file');
+  }
+}
+
+exampleSelect.addEventListener('change', e => {
+  const name = e.target.value;
+  if (name) loadExample(name);
+});
 
 // ── Parse ─────────────────────────────────────────────────────────────────────
 async function doParse() {
@@ -1013,7 +1065,7 @@ function mulMat4(a,b) {
     await initWasm();
 
     wasmReady = true;
-    setStatus('Ready — drop a .fct file');
+    initExamples();
   } catch (e) {
     setStatus('Failed: ' + e.message);
     showError('Init failed: ' + e);

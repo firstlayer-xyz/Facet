@@ -16,6 +16,7 @@ import (
 	"facet/pkg/fctlang/loader"
 	"facet/pkg/fctlang/parser"
 	"facet/pkg/manifold"
+	"facet/share/examples"
 )
 
 // ── Parameter / entry-point types ─────────
@@ -71,6 +72,8 @@ type evalResponseHeader struct {
 func main() {
 	js.Global().Set("facetParse", js.FuncOf(jsParse))
 	js.Global().Set("facetEval", js.FuncOf(jsEval))
+	js.Global().Set("facetExamples", js.FuncOf(jsExamples))
+	js.Global().Set("facetExample", js.FuncOf(jsExample))
 	// Block forever — WASM runtime must stay alive.
 	select {}
 }
@@ -191,6 +194,53 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 		}
 		resolve.Invoke(bytesToU8(bin))
 	})
+}
+
+// jsExamples returns a JSON array of bundled example names, with Tutorial.fct
+// first and the remainder sorted alphabetically.
+//
+// JS signature: facetExamples() → string  (synchronous — no Promise)
+func jsExamples(this js.Value, args []js.Value) any {
+	entries, err := examples.FS.ReadDir(".")
+	if err != nil {
+		// embed.FS.ReadDir never fails for a valid embed; this is defensive.
+		return "[]"
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && len(e.Name()) > 4 && e.Name()[len(e.Name())-4:] == ".fct" {
+			names = append(names, e.Name())
+		}
+	}
+	// Tutorial.fct first, remainder alphabetical (ReadDir already returns
+	// lexicographic order, so a stable partition is sufficient).
+	sort.SliceStable(names, func(i, j int) bool {
+		if names[i] == "Tutorial.fct" {
+			return true
+		}
+		if names[j] == "Tutorial.fct" {
+			return false
+		}
+		return names[i] < names[j]
+	})
+	b, _ := json.Marshal(names)
+	return string(b)
+}
+
+// jsExample returns the source of the named bundled example as a string.
+// If the name is unknown or unreadable, returns a JS object {error: "..."}.
+//
+// JS signature: facetExample(name: string) → string | {error: string}  (synchronous)
+func jsExample(this js.Value, args []js.Value) any {
+	if len(args) < 1 {
+		return js.ValueOf(map[string]any{"error": "facetExample: expected name argument"})
+	}
+	name := args[0].String()
+	data, err := examples.FS.ReadFile(name)
+	if err != nil {
+		return js.ValueOf(map[string]any{"error": err.Error()})
+	}
+	return string(data)
 }
 
 // newPromise constructs a JS Promise whose body runs in a Go goroutine so
