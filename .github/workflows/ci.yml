@@ -513,10 +513,15 @@ jobs:
         # No -platform, no MACOSX_DEPLOYMENT_TARGET, no CGO_LDFLAGS dance.
         # macos-14 is arm64 native; the prior cross-compile machinery
         # existed for x86 self-hosted hardware and is no longer needed.
+        #
+        # /opt/homebrew/bin is required: the manifold target re-runs the
+        # facet_cxx cmake build, and cmake on Apple Silicon runners lives
+        # under Homebrew. The Linux job doesn't need this because
+        # /usr/bin/cmake is there by default.
         run: make build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
-          PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+          PATH: ${{ github.workspace }}/.go-toolchain/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
       - name: Ad-hoc codesign (release.yml will do real signing for main/tag)
         run: codesign -s - --force --deep --options runtime desktop/build/bin/Facet.app
