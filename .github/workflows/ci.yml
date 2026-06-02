@@ -320,7 +320,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Run integration tests
-        run: cd desktop/frontend && npm test
+        run: make test-desktop
 
       - name: Upload failure artifacts
         if: failure()

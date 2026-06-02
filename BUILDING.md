@@ -52,7 +52,8 @@ The app binary is produced at `desktop/build/bin/Facet.app` (macOS); `make run` 
 | `make serve-web` | Static dev server for the wasm bundle in `web/` |
 | `make test` | Run the Go test suite |
 | `make test-race` | Run Go tests with `-race` |
-| `make test-web` | Run the Playwright browser test suite (requires `make wasm` first) |
+| `make test-desktop` | Run the desktop frontend Playwright suite (mocked Wails harness, no Wails build needed) |
+| `make test-web` | Run the Playwright browser test suite for the wasm preview (requires `make wasm` first) |
 | `make check-shims` | Verify the wasm JS bridge stays in sync with the cgo build |
 | `make clean` | Remove all build artifacts (toolchain, third-party builds, `desktop/frontend/dist`) |
 
