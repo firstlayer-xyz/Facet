@@ -572,6 +572,7 @@ let currentSource = '';
 let currentEntryPoints = [];
 let evalDebounceTimer = null;
 let wasmReady = false;
+let urlLoadAttempted = false;   // true once a ?fct= load was attempted (success or fail)
 
 function setStatus(msg)  { statusEl.textContent = msg; }
 function showError(msg)  {
@@ -610,6 +611,27 @@ function loadFile(file) {
     if (exampleSelect) exampleSelect.value = '';   // show neutral "(uploaded file)"
   };
   reader.readAsText(file);
+}
+
+// ── Shared design via URL (?fct=<url>) ──────────────────────────────────────────
+// If the page URL carries ?fct=<url>, fetch that .fct and load it instead of the
+// default example. On failure, surface the error and deliberately do NOT fall
+// back to the default example (which would clear the error via doParse) — the
+// examples dropdown and drop-zone keep the app usable for recovery.
+async function loadFromURL() {
+  const fctUrl = new URLSearchParams(location.search).get('fct');
+  if (!fctUrl) return;
+  urlLoadAttempted = true;
+  try {
+    setStatus('Loading shared design…');
+    const res = await fetch(fctUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const name = fctUrl.split(/[?#]/)[0].split('/').pop() || 'shared.fct';
+    loadSource(text, name);
+  } catch (e) {
+    showError(`Couldn't load ?fct= design: ${e}`);
+  }
 }
 
 // ── Bundled examples ───────────────────────────────────────────────────────────
@@ -653,7 +675,9 @@ function initExamples() {
   }
   populateExamples(names);
   const def = names.includes('Tutorial.fct') ? 'Tutorial.fct' : names[0];
-  if (def && !currentSource) {
+  // Skip the default when a ?fct= load already set the source, or when one was
+  // attempted and failed (so its error stays on screen).
+  if (def && !currentSource && !urlLoadAttempted) {
     exampleSelect.value = def;
     loadExample(def);
   } else {
@@ -1304,6 +1328,7 @@ function mulMat4(a,b) {
     await initWasm();
 
     wasmReady = true;
+    await loadFromURL();   // ?fct=<url> → fetch + load a shared design (before the default)
     initExamples();
   } catch (e) {
     setStatus('Failed: ' + e.message);
