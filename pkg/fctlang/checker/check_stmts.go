@@ -53,20 +53,18 @@ func (c *checker) typeCompatible(expected, actual typeInfo) bool {
 	if (expected.ft == typeLength || expected.ft == typeAngle) && actual.ft == typeNumber {
 		return true
 	}
-	// Optional widening: T → T? — passing a definite value to a slot that
-	// accepts maybe-absent. The reverse (T? → T) is intentionally rejected;
-	// you have to call .Or() or check first.
+	// T widens to T?; the reverse (narrowing) is rejected.
 	if expected.ft == typeOptional && actual.ft != typeOptional {
 		if expected.inner == nil {
-			return true // wild T?  accepts anything
+			return true
 		}
 		return c.typeCompatible(*expected.inner, actual)
 	}
-	// Optional → Optional: inner types must be compatible. A wild Optional
-	// (from a bare `nil`) is compatible with any T?.
+	// T? ↔ U?: inner types must be compatible. A wild Optional (bare nil)
+	// fits any T?.
 	if expected.ft == typeOptional && actual.ft == typeOptional {
 		if actual.inner == nil || actual.inner.ft == typeUnknown {
-			return true // bare nil — typeable anywhere
+			return true
 		}
 		if expected.inner == nil || expected.inner.ft == typeUnknown {
 			return true

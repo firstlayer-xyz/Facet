@@ -571,13 +571,11 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 	return c.checkMethodOnRecvType(mc, env, recvType, argTypes)
 }
 
-// checkMethodOnRecvType is the post-receiver-resolved body of checkMethodCall.
-// Split out so optional-chaining (`opt?.Method`) can invoke it with the
-// unwrapped inner type without re-running inferExpr on the receiver.
+// checkMethodOnRecvType returns the type of `recvType.Method(args)`. The
+// receiver may be a user value or, via optional-chaining, the unwrapped
+// inner type of a T?.
 func (c *checker) checkMethodOnRecvType(mc *parser.MethodCallExpr, env *typeEnv, recvType typeInfo, argTypes []typeInfo) typeInfo {
-	// Optional methods — language-level, dispatched before any user method
-	// lookup so callers always get the same semantics regardless of any
-	// stdlib changes.
+	// Optional methods are language-level and outrank any user method.
 	if recvType.ft == typeOptional {
 		return c.checkOptionalMethod(mc, recvType, argTypes)
 	}

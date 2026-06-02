@@ -74,9 +74,8 @@ func (e *evaluator) evalCompare(op string, lv, rv value, pos parser.Pos) (value,
 			}
 		}
 	case *optionalVal:
-		// Optional == Optional. Most common shape is `opt == nil`: the
-		// right side is a None-with-empty-inner-type from NilLit, so we
-		// compare by presence first, then fall through to inner equality.
+		// Two Nones are equal regardless of inner type; two Somes recurse
+		// on their inner values.
 		if r, rok := rv.(*optionalVal); rok && (op == "==" || op == "!=") {
 			eq := false
 			switch {

@@ -92,9 +92,9 @@ func (e *evaluator) blockYield(s *parser.YieldStmt, locals map[string]value) err
 }
 
 func (e *evaluator) evalForYield(ex *parser.ForYieldExpr, locals map[string]value) (value, error) {
-	// for-yield on a single Optional source: Optional is a 0-or-1 element
-	// collection, so the result is also Optional (T → U? via Map / Filter).
-	// Multiple clauses with an Optional source aren't supported in v1.
+	// A single-clause loop over an Optional source produces an Optional
+	// (Map / Filter on T?). Anything else (multi-clause, or single-clause
+	// over an array) takes the array path.
 	if len(ex.Clauses) == 1 {
 		iterVal, err := e.evalExpr(ex.Clauses[0].Iter, locals)
 		if err != nil {
@@ -103,26 +103,15 @@ func (e *evaluator) evalForYield(ex *parser.ForYieldExpr, locals map[string]valu
 		if opt, ok := iterVal.(*optionalVal); ok {
 			return e.evalForYieldOptional(ex, opt, locals)
 		}
-		// Fall through to array path with the already-evaluated iter so we
-		// don't re-evaluate side effects.
-		return e.evalForYieldArray(ex, []value{iterVal}, locals)
 	}
-
-	return e.evalForYieldArray(ex, nil, locals)
+	return e.evalForYieldArray(ex, locals)
 }
 
-// evalForYieldArray runs the standard array-source for-yield. preEval[i] (if
-// non-nil and within bounds) is a pre-evaluated iter value for clause i,
-// used by the dispatcher above to avoid re-evaluating side effects when
-// type-dispatching.
-func (e *evaluator) evalForYieldArray(ex *parser.ForYieldExpr, preEval []value, locals map[string]value) (value, error) {
+func (e *evaluator) evalForYieldArray(ex *parser.ForYieldExpr, locals map[string]value) (value, error) {
 	var results []value
 	prev := e.yieldTarget
 	e.yieldTarget = &results
 	err := e.evalForClauses(ex.Clauses, 0, ex.Body, locals, &results)
-	if err == nil && len(preEval) > 0 {
-		_ = preEval // reserved for future iter-pre-eval optimization
-	}
 	e.yieldTarget = prev
 	if err != nil {
 		return nil, err
@@ -333,11 +322,12 @@ func (e *evaluator) evalIfStmt(s *parser.IfStmt, locals map[string]value) error 
 	if err != nil {
 		return err
 	}
-	// Bind-and-narrow form: `if var NAME = expr { ... }`. expr must be
-	// Optional; when Some(v), inject NAME = v into the enclosing locals
-	// (so assignments to OTHER vars inside the body still propagate out
-	// as they would for a regular if), run the body, then remove NAME so
-	// the binding doesn't leak past the closing brace.
+	// `if var NAME = expr { ... }` binds NAME to the inner value of an
+	// Optional when present. NAME shadows any outer binding for the
+	// duration of the body and is restored on exit, so the binding does
+	// not leak. Other assignments inside the body still propagate to the
+	// enclosing scope because we mutate `locals` in place rather than
+	// passing a copy to evalBlock.
 	if s.BindVar != "" {
 		opt, ok := cv.(*optionalVal)
 		if !ok {
@@ -354,7 +344,6 @@ func (e *evaluator) evalIfStmt(s *parser.IfStmt, locals map[string]value) error 
 			}
 			return err
 		}
-		// Fall through to else-if / else.
 	} else {
 		cb, ok := cv.(bool)
 		if !ok {

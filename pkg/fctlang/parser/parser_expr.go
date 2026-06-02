@@ -319,10 +319,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 			expr = &IndexExpr{Receiver: expr, Index: index, Pos: Pos{line, col}}
 			continue
 		}
-		// `.` (regular) vs `?.` (optional chaining). Both consume the
-		// dot/question-dot then expect an identifier; the only difference
-		// is the Optional flag set on the resulting AST node so the
-		// checker/evaluator can apply short-circuit semantics.
+		// `?.` parses identically to `.` and sets Optional on the node.
 		optional := p.cur.Type == TokenQuestionDot
 		if err := p.next(); err != nil { // consume '.' or '?.'
 			return nil, err
