@@ -18,6 +18,42 @@ runTest('examples', async ({ page }) => {
     { timeout: 60_000 },
   );
 
+  // DOM check: the page's own boot (initExamples) must populate the actual
+  // <select> and load the default — not just expose the wasm functions. This
+  // guards the selector wiring, which a function-only test would miss.
+  await page.waitForFunction(
+    () => document.getElementById('example-select')?.options.length > 1,
+    null,
+    { timeout: 60_000 },
+  );
+  const dom = await page.evaluate(() => {
+    const sel = document.getElementById('example-select');
+    return {
+      optionCount: sel.options.length,
+      optionValues: Array.from(sel.options).map(o => o.value),
+      selected: sel.value,
+      filename: document.getElementById('filename')?.textContent,
+      errorBox: document.getElementById('error-box')?.textContent || '',
+    };
+  });
+  // neutral option + one per example.
+  if (dom.optionCount < 2) {
+    throw new Error(`example-select not populated: ${dom.optionCount} options`);
+  }
+  if (dom.selected !== 'Tutorial.fct') {
+    throw new Error(`expected Tutorial.fct selected on boot, got "${dom.selected}"`);
+  }
+  if (dom.filename !== 'Tutorial.fct') {
+    throw new Error(`expected filename "Tutorial.fct" after default load, got "${dom.filename}"`);
+  }
+  if (dom.errorBox) {
+    throw new Error(`error box not empty on boot: ${dom.errorBox}`);
+  }
+  if (!dom.optionValues.includes('Tutorial.fct') || !dom.optionValues.includes('Shark.fct')) {
+    throw new Error(`selector missing expected examples: ${JSON.stringify(dom.optionValues)}`);
+  }
+  console.log(`  selector populated: ${dom.optionCount} options, default "${dom.selected}" loaded`);
+
   const result = await page.evaluate(async () => {
     const names = JSON.parse(window.facetExamples());
     // Load the default (Tutorial) the same way the page does on boot.
