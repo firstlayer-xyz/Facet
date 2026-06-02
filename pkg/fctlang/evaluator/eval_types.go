@@ -103,15 +103,11 @@ func checkType(declaredType string, v value) bool {
 	if declaredType == "var" {
 		return true
 	}
-	// Optional types — accept any optionalVal (the coerceToType pass has
-	// already wrapped a definite value with some() if needed).
+	// A T? slot accepts any Optional, or a definite T (widened on demand).
 	if strings.HasSuffix(declaredType, "?") {
 		if _, ok := v.(*optionalVal); ok {
 			return true
 		}
-		// Allow a definite inner value too: implicit widening at the
-		// boundary. coerceToType should normally have wrapped it, but the
-		// type check runs after coercion so this is a safety net.
 		return checkType(declaredType[:len(declaredType)-1], v)
 	}
 	// fn(...) R accepts a functionVal

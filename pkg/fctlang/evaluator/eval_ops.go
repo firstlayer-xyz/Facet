@@ -72,10 +72,8 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		return rb, nil
 	}
 
-	// Nullish coalescing: `opt ?? fallback`. If opt is Some, return its
-	// inner value; otherwise evaluate and return the fallback. Right side
-	// is only evaluated when the left is None — matches the short-circuit
-	// semantics of && and ||.
+	// `opt ?? fallback` short-circuits: the right side is evaluated only
+	// when the left is None.
 	if ex.Op == "??" {
 		lv, err := e.evalExpr(ex.Left, locals)
 		if err != nil {

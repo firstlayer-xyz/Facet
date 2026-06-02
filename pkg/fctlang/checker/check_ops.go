@@ -40,10 +40,8 @@ func (c *checker) inferBinaryOp(ex *parser.BinaryExpr, env *typeEnv) typeInfo {
 		return c.inferComparison(ex, left, right)
 	}
 
-	// Nullish coalescing: `opt ?? fallback` — left must be T?, fallback
-	// must be compatible with the inner T (or itself T?, in which case
-	// the chain stays optional). Result is T (when fallback is definite)
-	// or T? (when fallback is itself optional).
+	// `opt ?? fallback`: a definite fallback collapses the type to T; an
+	// Optional fallback keeps it at T?.
 	if op == "??" {
 		if left.ft != typeOptional {
 			c.addError(ex.Pos, fmt.Sprintf("operator ??: left operand must be Optional, got %s", left.displayName()))
@@ -53,7 +51,6 @@ func (c *checker) inferBinaryOp(ex *parser.BinaryExpr, env *typeEnv) typeInfo {
 		if left.inner != nil {
 			inner = *left.inner
 		}
-		// Fallback may be definite T (result is T) or another T? (result is T?).
 		if right.ft == typeOptional {
 			if inner.ft != typeUnknown && right.inner != nil && right.inner.ft != typeUnknown &&
 				!c.typeCompatible(inner, *right.inner) {
@@ -236,9 +233,8 @@ func (c *checker) inferComparison(ex *parser.BinaryExpr, left, right typeInfo) t
 		return simple(typeBool)
 	}
 
-	// Optional == / != Optional: same-shape comparison. Inner types must
-	// be compatible in one direction. `opt == nil` lands here because the
-	// `nil` literal types as a wild Optional whose inner is unknown.
+	// Optional == / != Optional. `opt == nil` matches because nil types
+	// as a wild Optional.
 	if (op == "==" || op == "!=") && (left.ft == typeOptional || right.ft == typeOptional) {
 		if c.typeCompatible(left, right) || c.typeCompatible(right, left) {
 			return simple(typeBool)

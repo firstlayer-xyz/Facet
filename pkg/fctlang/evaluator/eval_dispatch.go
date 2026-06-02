@@ -150,10 +150,8 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		}
 	}
 
-	// Optional chaining: `opt?.Method(args)`. None short-circuits to None;
-	// Some(v) unwraps the receiver to v and falls through to the normal
-	// dispatch below. The result will be wrapped back into Some at the
-	// bottom of this function (see chainOptionalWrap).
+	// `opt?.Method(args)`: None short-circuits; Some(v) unwraps and the
+	// return value is re-wrapped in Some via chainOptionalWrap.
 	chainOptionalWrap := false
 	if mc.Optional {
 		opt, ok := receiver.(*optionalVal)
@@ -167,7 +165,7 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		chainOptionalWrap = true
 	}
 
-	// Optional methods — language-level, handled before any stdlib lookup.
+	// Methods on Optional outrank user methods.
 	if opt, ok := receiver.(*optionalVal); ok {
 		return e.evalOptionalMethod(mc, opt, argMap)
 	}
@@ -184,9 +182,9 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 	return result, nil
 }
 
-// dispatchMethodCall is the post-Optional-handling body of evalMethodCall.
-// Split out so the optional-chaining path can fall through after unwrapping
-// the receiver, then wrap the result back into Some on the way out.
+// dispatchMethodCall evaluates `receiver.Method(args)` for a definite
+// receiver. Optional methods and the optional-chaining unwrap happen in
+// the caller.
 func (e *evaluator) dispatchMethodCall(
 	mc *parser.MethodCallExpr,
 	receiver value,

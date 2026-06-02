@@ -290,8 +290,7 @@ func (e *evaluator) evalFieldAccess(ex *parser.FieldAccessExpr, locals map[strin
 	if err != nil {
 		return nil, err
 	}
-	// Optional chaining: `opt?.field`. None short-circuits to None;
-	// Some(v) accesses .field on v and wraps the result back as Some.
+	// `opt?.field`: None short-circuits; Some(v) returns Some(v.field).
 	if ex.Optional {
 		opt, ok := unwrap(recv).(*optionalVal)
 		if !ok {

@@ -286,14 +286,13 @@ type NamedArg struct {
 
 func (*NamedArg) exprNode() {}
 
-// MethodCallExpr represents a method call on a receiver: receiver.Method(args).
+// MethodCallExpr represents `receiver.Method(args)`. Optional is true for
+// `opt?.Method(args)` — see FieldAccessExpr for the short-circuit shape.
 type MethodCallExpr struct {
 	Receiver Expr
 	Method   string
 	Args     []Expr
 	Pos      Pos
-	// Optional is true for `opt?.Method(args)` (optional chaining).
-	// Same short-circuit + result-wrapping rules as FieldAccessExpr.
 	Optional bool
 }
 
@@ -477,19 +476,16 @@ type BoolLit struct {
 
 func (*BoolLit) exprNode() {}
 
-// NilLit is the None variant of an Optional. Its type is inferred from
-// surrounding context (variable annotation, return type, etc.); a bare
-// `nil` with no context is a type error.
+// NilLit is the None variant of an Optional. Its inner type is inferred
+// from surrounding context; a bare `nil` without one is a type error.
 type NilLit struct {
 	Pos Pos
 }
 
 func (*NilLit) exprNode() {}
 
-// TernaryExpr is the C-style conditional expression `cond ? then : else`.
-// Cond must be Bool. Then and Else must produce compatible types; the
-// expression's type is that unified type. Only the chosen arm is
-// evaluated at runtime.
+// TernaryExpr is `cond ? then : else`. Cond is Bool, the arms unify on a
+// common type, only the chosen arm is evaluated.
 type TernaryExpr struct {
 	Cond Expr
 	Then Expr
@@ -501,10 +497,8 @@ func (*TernaryExpr) exprNode() {}
 
 // IfStmt represents an if/else-if/else statement.
 //
-// If BindVar is non-empty, the form is `if var NAME = Cond { ... }`:
-// Cond must evaluate to an Optional. If it is Some(v), NAME is bound to v
-// (with the inner type, not the Optional type) inside Then; otherwise Else
-// runs. ElseIfs are unchanged and don't carry their own bindings.
+// `if var NAME = Cond` form: Cond must be Optional. When Some(v), NAME is
+// bound to v (typed as the inner T) inside Then. ElseIfs never carry a bind.
 type IfStmt struct {
 	Cond     Expr
 	BindVar  string // non-empty for `if var NAME = Cond`; empty for regular if
@@ -598,15 +592,13 @@ type StructFieldInit struct {
 	Pos   Pos // position of the field-name token
 }
 
-// FieldAccessExpr represents field access: receiver.field
+// FieldAccessExpr represents `receiver.field`. Optional is true for the
+// `opt?.field` form: a None receiver short-circuits to None, a Some(v)
+// receiver yields Some(v.field).
 type FieldAccessExpr struct {
 	Receiver Expr
 	Field    string
 	Pos      Pos
-	// Optional is true for `opt?.field` (optional chaining). When set, the
-	// receiver must be T? and the result type is the field's type wrapped
-	// in `?`. If the receiver is None, the evaluator short-circuits and
-	// returns None instead of dereferencing.
 	Optional bool
 }
 
