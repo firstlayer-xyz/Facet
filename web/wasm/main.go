@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sort"
+	"strconv"
+	"strings"
 	"syscall/js"
 
 	"facet/pkg/fctlang/checker"
@@ -56,6 +58,7 @@ type meshMeta struct {
 	FaceColors     map[string]string `json:"faceColors,omitempty"`
 	Expanded       *blobRef          `json:"expanded,omitempty"`
 	ExpandedCount  int               `json:"expandedCount,omitempty"`
+	Colors         *blobRef          `json:"colors,omitempty"` // uint8 RGB per expanded vertex
 	EdgeLines      *blobRef          `json:"edgeLines,omitempty"`
 	EdgeCount      int               `json:"edgeCount,omitempty"`
 }
@@ -320,6 +323,12 @@ func appendMeshBinary(buf []byte, dm *manifold.DisplayMesh) (*meshMeta, []byte) 
 		meta.Expanded = &ref
 		meta.ExpandedCount = dm.ExpandedCount
 		buf = append(buf, dm.ExpandedRaw...)
+
+		if cols := buildExpandedColors(dm); len(cols) > 0 {
+			cref := blobRef{Offset: len(buf), Size: len(cols)}
+			meta.Colors = &cref
+			buf = append(buf, cols...)
+		}
 	}
 	if len(dm.EdgeLinesRaw) > 0 {
 		ref := blobRef{Offset: len(buf), Size: len(dm.EdgeLinesRaw)}
@@ -328,6 +337,75 @@ func appendMeshBinary(buf []byte, dm *manifold.DisplayMesh) (*meshMeta, []byte) 
 		buf = append(buf, dm.EdgeLinesRaw...)
 	}
 	return meta, buf
+}
+
+// defaultRenderColor matches the legacy flat shader color (0.55, 0.7, 0.88)
+// so models without assigned face colors render exactly as before.
+var defaultRenderColor = [3]byte{0x8c, 0xb3, 0xe0} // 140, 179, 224
+
+// buildExpandedColors returns a per-expanded-vertex RGB buffer (3 bytes per
+// vertex) parallel to dm.ExpandedRaw. Each vertex takes its triangle's face
+// color; faces with no assigned color fall back to defaultRenderColor. Alpha
+// is intentionally dropped for now — the web viewer renders opaque.
+func buildExpandedColors(dm *manifold.DisplayMesh) []byte {
+	expVerts := dm.ExpandedCount
+	if expVerts == 0 {
+		return nil
+	}
+	// Resolve each face id's hex color once.
+	rgb := make(map[uint32][3]byte, len(dm.FaceColorMap))
+	for k, hex := range dm.FaceColorMap {
+		id, err := strconv.ParseUint(k, 10, 32)
+		if err != nil {
+			continue
+		}
+		if c, ok := parseHexRGB(hex); ok {
+			rgb[uint32(id)] = c
+		}
+	}
+
+	// FaceGroupRaw carries one uint32 face id per triangle (the common case)
+	// or per expanded vertex; detect which so we index it correctly.
+	fgN := len(dm.FaceGroupRaw) / 4
+	perVertex := fgN == expVerts
+	faceID := func(vert int) (uint32, bool) {
+		idx := vert
+		if !perVertex {
+			idx = vert / 3
+		}
+		off := idx * 4
+		if off+4 > len(dm.FaceGroupRaw) {
+			return 0, false
+		}
+		return binary.LittleEndian.Uint32(dm.FaceGroupRaw[off : off+4]), true
+	}
+
+	out := make([]byte, expVerts*3)
+	for v := 0; v < expVerts; v++ {
+		c := defaultRenderColor
+		if fgN > 0 {
+			if id, ok := faceID(v); ok {
+				if cc, ok := rgb[id]; ok {
+					c = cc
+				}
+			}
+		}
+		out[v*3], out[v*3+1], out[v*3+2] = c[0], c[1], c[2]
+	}
+	return out
+}
+
+// parseHexRGB parses "#RRGGBB" or "#RRGGBBAA" (alpha ignored) into RGB bytes.
+func parseHexRGB(s string) ([3]byte, bool) {
+	s = strings.TrimPrefix(s, "#")
+	if len(s) != 6 && len(s) != 8 {
+		return [3]byte{}, false
+	}
+	v, err := strconv.ParseUint(s[:6], 16, 32)
+	if err != nil {
+		return [3]byte{}, false
+	}
+	return [3]byte{byte(v >> 16), byte(v >> 8), byte(v)}, true
 }
 
 // bytesToU8 copies a Go byte slice into a JS Uint8Array.

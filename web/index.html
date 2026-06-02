@@ -836,9 +836,14 @@ function handleBinaryResponse(u8) {
     const s = bin.slice(mesh.edgeLines.offset, mesh.edgeLines.offset + mesh.edgeLines.size);
     edges = new Float32Array(s.buffer);
   }
+  let colors = null;
+  if (mesh.colors) {
+    // uint8 RGB, one triple per expanded vertex (parallel to positions).
+    colors = bin.slice(mesh.colors.offset, mesh.colors.offset + mesh.colors.size);
+  }
 
   if (positions) {
-    renderMesh(positions, edges);
+    renderMesh(positions, colors, edges);
     const tris = mesh.expandedCount / 3;
     if (stats) {
       statsEl.style.display = 'block';
@@ -858,8 +863,8 @@ function handleBinaryResponse(u8) {
 // ── WebGL renderer ────────────────────────────────────────────────────────────
 const canvas = document.getElementById('canvas');
 let gl = null, meshProgram = null, edgeProgram = null;
-let meshBuf = null, edgeBuf = null;
-let meshCount = 0, edgeCount = 0;
+let meshBuf = null, edgeBuf = null, colorBuf = null;
+let meshCount = 0, edgeCount = 0, hasColors = false;
 
 let yaw = 30, pitch = 25, dist = 150;
 let dragging = false, lastX = 0, lastY = 0;
@@ -868,12 +873,15 @@ let firstRender = true;
 
 const MESH_VS = `
   attribute vec3 aPos;
+  attribute vec3 aColor;
   uniform mat4 uMVP;
   uniform mat4 uModel;
   varying vec3 vPos;
+  varying vec3 vColor;
   void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
     vPos = (uModel * vec4(aPos, 1.0)).xyz;
+    vColor = aColor;
   }
 `;
 // dFdx/dFdy require OES_standard_derivatives in WebGL 1. Enable that extension
@@ -882,11 +890,12 @@ const MESH_FS = `
   #extension GL_OES_standard_derivatives : enable
   precision mediump float;
   varying vec3 vPos;
+  varying vec3 vColor;
   void main() {
     vec3 dx = dFdx(vPos), dy = dFdy(vPos);
     vec3 n = normalize(cross(dx, dy));
     float d = dot(n, normalize(vec3(0.8, 1.5, 1.2))) * 0.45 + 0.55;
-    gl_FragColor = vec4(vec3(0.55, 0.7, 0.88) * d, 1.0);
+    gl_FragColor = vec4(vColor * d, 1.0);
   }
 `;
 const EDGE_VS = `
@@ -909,6 +918,7 @@ function initGL() {
   edgeProgram = buildProgram(EDGE_VS, EDGE_FS);
   meshBuf = gl.createBuffer();
   edgeBuf = gl.createBuffer();
+  colorBuf = gl.createBuffer();
 
   canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
   canvas.addEventListener('mouseup',   () => dragging = false);
@@ -980,7 +990,7 @@ function resizeCanvas() {
   if (gl) draw();
 }
 
-function renderMesh(positions, edges) {
+function renderMesh(positions, colors, edges) {
   if (!gl && !initGL()) return;
 
   // Compute bounding box of expanded vertices for auto-framing
@@ -1001,6 +1011,14 @@ function renderMesh(positions, edges) {
   meshCount = positions.length / 3;
   gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf);
   gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+  // Per-vertex RGB (uint8 ×3), parallel to positions. Falls back to a flat
+  // color in draw() when absent.
+  hasColors = !!(colors && colors.length >= meshCount * 3);
+  if (hasColors) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+  }
 
   edgeCount = 0;
   if (edges && edges.length > 0) {
@@ -1033,6 +1051,18 @@ function draw() {
   gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf);
   gl.enableVertexAttribArray(posLoc);
   gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+  const colLoc = gl.getAttribLocation(meshProgram, 'aColor');
+  if (colLoc >= 0) {
+    if (hasColors) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, colorBuf);
+      gl.enableVertexAttribArray(colLoc);
+      gl.vertexAttribPointer(colLoc, 3, gl.UNSIGNED_BYTE, true, 0, 0); // normalized 0–255 → 0–1
+    } else {
+      gl.disableVertexAttribArray(colLoc);
+      gl.vertexAttrib3f(colLoc, 0.55, 0.7, 0.88); // legacy flat color
+    }
+  }
   gl.drawArrays(gl.TRIANGLES, 0, meshCount);
 
   // Draw edges
