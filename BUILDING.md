@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- [Wails CLI v2.12.0](https://wails.io/docs/gettingstarted/installation): `go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0` (matches `go.mod` and CI)
+- Wails CLI — installed automatically by `make dev` / `make build` into `.go-toolchain/bin/wails` at the version pinned in the Makefile (currently `v2.12.0`, matching `go.mod`). No manual `go install` required.
 - CMake + Ninja
 - Node.js / npm
 - A C/C++ compiler (Xcode Command Line Tools on macOS, gcc/g++ on Linux)

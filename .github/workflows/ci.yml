@@ -88,9 +88,6 @@ jobs:
         if: steps.cache-go.outputs.cache-hit != 'true'
         run: bash scripts/setup-go.sh
 
-      - name: Install Wails
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-
       - name: Cache manifold + third-party builds
         # Caches the manifold/assimp/freetype/tbb source clones and built
         # libs, plus the facet_cxx glue layer build. Key invalidates when
@@ -378,10 +375,6 @@ jobs:
         shell: bash
         run: bash scripts/setup-go.sh
 
-      - name: Install Wails
-        shell: bash
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-
       - name: Cache manifold + third-party builds
         # Re-enabled after the ISA baseline fix in build-manifold.sh
         # (-march=x86-64-v2 on x86_64 targets). Earlier failures were
@@ -497,9 +490,6 @@ jobs:
       - name: Build custom Go toolchain
         if: steps.cache-go.outputs.cache-hit != 'true'
         run: bash scripts/setup-go.sh
-
-      - name: Install Wails
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Cache manifold + third-party builds
         # See Linux job for rationale.
