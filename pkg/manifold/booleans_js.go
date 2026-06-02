@@ -29,9 +29,13 @@ func (a *Solid) Intersection(b *Solid) *Solid {
 }
 
 // Insert cuts a hole in a for b, removes floating inner plugs, and seats b.
-// Implemented as a.Difference(b).Union(b) since we don't have a native insert.
+// Calls the same C++ facet_insert as the native build (via the _mf_insert
+// bridge) so web and desktop produce identical geometry.
 func (a *Solid) Insert(b *Solid) *Solid {
-	return a.Difference(b).Union(b)
+	id := js.Global().Call("_mf_insert", a.id, b.id).Int()
+	s := newSolid(id)
+	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
+	return s
 }
 
 func DecomposeSolid(s *Solid) []*Solid {
