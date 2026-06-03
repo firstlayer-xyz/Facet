@@ -115,7 +115,10 @@ func (s *AssistantService) Send(userMessage, editorCode, errorsText, activeTabPa
 	s.mu.Unlock()
 
 	cliID := config.CLI
-	if cliID == "" {
+	if cliID == "" || !enabledCLIs[cliID] {
+		// Only enabled providers run. An unset selection, or stale config
+		// pointing at a now-disabled provider, resolves to Claude rather than
+		// launching a CLI the UI no longer offers.
 		cliID = "claude"
 	}
 

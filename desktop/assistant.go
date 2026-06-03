@@ -49,6 +49,11 @@ var knownCLIs = []cliDef{
 	{ID: "qwen", Name: "Qwen Code", Bin: "qwen", Models: []string{"qwen3-coder-plus", "qwen3-coder-flash", "qwen-turbo", "qwen-plus", "qwen-max"}, DefaultModel: "qwen3-coder-plus"},
 }
 
+// enabledCLIs is the set of provider IDs currently usable. Only Claude is
+// enabled today; the rest stay defined in knownCLIs and surface as "coming
+// soon" in the settings picker. Re-enable a provider by adding its ID here.
+var enabledCLIs = map[string]bool{"claude": true}
+
 // extraSearchDirs returns common binary directories not always in PATH.
 func extraSearchDirs() []string {
 	home, _ := os.UserHomeDir()
@@ -122,10 +127,15 @@ func findBinary(name string) string {
 	return ""
 }
 
-// DetectAssistantCLIs returns the list of AI CLIs found on the system.
+// DetectAssistantCLIs returns the enabled AI CLIs found on the system. Only
+// providers in enabledCLIs are probed; disabled ones are reported separately by
+// ComingSoonCLIs.
 func (a *App) DetectAssistantCLIs() []CLIInfo {
 	var result []CLIInfo
 	for _, cli := range knownCLIs {
+		if !enabledCLIs[cli.ID] {
+			continue
+		}
 		if p := findBinary(cli.Bin); p != "" {
 			models := queryModels(cli.ID, p)
 			if len(models) == 0 {
@@ -138,6 +148,21 @@ func (a *App) DetectAssistantCLIs() []CLIInfo {
 				DefaultModel: cli.DefaultModel,
 			})
 		}
+	}
+	return result
+}
+
+// ComingSoonCLIs returns the known providers that are not yet enabled, so the
+// settings picker can show them as greyed-out "(coming soon)" entries. Only ID
+// and Name are populated — these CLIs are display-only until added to
+// enabledCLIs.
+func (a *App) ComingSoonCLIs() []CLIInfo {
+	var result []CLIInfo
+	for _, cli := range knownCLIs {
+		if enabledCLIs[cli.ID] {
+			continue
+		}
+		result = append(result, CLIInfo{ID: cli.ID, Name: cli.Name})
 	}
 	return result
 }

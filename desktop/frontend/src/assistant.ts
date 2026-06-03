@@ -190,23 +190,14 @@ export class AssistantPanel {
     this.noCLIBanner = document.createElement('div');
     this.noCLIBanner.className = 'assistant-no-cli';
     const isMac = navigator.platform?.startsWith('Mac') || navigator.userAgent.includes('Mac');
-    const isWin = navigator.platform?.startsWith('Win') || navigator.userAgent.includes('Win');
-    let installHtml = `<strong>No AI assistant found</strong><br><br>Install one of the supported CLIs to enable AI assistance:<br><br>`;
-    installHtml += `<strong>Claude</strong> (recommended)<br>`;
+    let installHtml = `<strong>Currently only Claude is supported.</strong><br><br>Install the Claude CLI to use the AI assistant:<br><br>`;
     if (isMac) {
       installHtml += `<code>brew install claude-code</code><br>or <code>npm install -g @anthropic-ai/claude-code</code>`;
     } else {
       installHtml += `<code>npm install -g @anthropic-ai/claude-code</code>`;
     }
-    installHtml += `<br><br><strong>Ollama</strong> (local, free)<br>`;
-    if (isMac) {
-      installHtml += `<code>brew install ollama</code><br>then <code>ollama pull llama3</code>`;
-    } else if (isWin) {
-      installHtml += `Download from <strong>ollama.com</strong><br>then <code>ollama pull llama3</code>`;
-    } else {
-      installHtml += `<code>curl -fsSL https://ollama.com/install.sh | sh</code><br>then <code>ollama pull llama3</code>`;
-    }
     installHtml += `<br><br><em>Restart Facet after installing.</em>`;
+    installHtml += `<br><br>More AI assistants coming soon.`;
     this.noCLIBanner.innerHTML = installHtml;
     this.messagesDiv.insertBefore(this.noCLIBanner, this.messagesDiv.firstChild);
   }

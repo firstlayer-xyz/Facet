@@ -1,4 +1,4 @@
-import { DetectAssistantCLIs, GetDefaultSystemPrompt } from '../wailsjs/go/main/App';
+import { DetectAssistantCLIs, ComingSoonCLIs, GetDefaultSystemPrompt } from '../wailsjs/go/main/App';
 import {
   settingsRow,
   type SettingsPageContext,
@@ -25,22 +25,25 @@ export function buildAssistantPage(ctx: SettingsPageContext): PageResult {
   loading.textContent = 'Detecting CLIs...';
   page.appendChild(loading);
 
-  // Load detected CLIs and default prompt, then build the form
+  // Load detected CLIs, the "coming soon" roster, and the default prompt,
+  // then build the form.
   Promise.all([
     DetectAssistantCLIs() as Promise<CLIInfoFE[]>,
+    ComingSoonCLIs() as Promise<CLIInfoFE[]>,
     GetDefaultSystemPrompt() as Promise<string>,
-  ]).then(([clis, defaultPrompt]) => {
+  ]).then(([clis, comingSoon, defaultPrompt]) => {
     loading.remove();
 
     if (!clis || clis.length === 0) {
       const msg = document.createElement('div');
       msg.style.color = '#888';
-      msg.textContent = 'No AI CLIs detected. Install claude, ollama, aichat, llm, or chatgpt.';
+      msg.textContent = 'Claude CLI not found. Install it to use the AI assistant. More assistants coming soon.';
       page.appendChild(msg);
       return;
     }
 
-    // CLI dropdown
+    // CLI dropdown — enabled providers are selectable; the rest are shown
+    // greyed-out as "(coming soon)".
     const cliSelect = document.createElement('select');
     cliSelect.id = 'settings-assistant-cli';
     for (const cli of clis) {
@@ -48,6 +51,13 @@ export function buildAssistantPage(ctx: SettingsPageContext): PageResult {
       opt.value = cli.id;
       opt.textContent = cli.name;
       if (cli.id === draft.assistant.cli) opt.selected = true;
+      cliSelect.appendChild(opt);
+    }
+    for (const cli of comingSoon ?? []) {
+      const opt = document.createElement('option');
+      opt.value = cli.id;
+      opt.textContent = `${cli.name} (coming soon)`;
+      opt.disabled = true;
       cliSelect.appendChild(opt);
     }
     // If no saved CLI or saved CLI not available, select first detected
