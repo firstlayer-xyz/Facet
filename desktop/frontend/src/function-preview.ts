@@ -101,8 +101,7 @@ export class FunctionPreview {
     return { ...this.overrides };
   }
 
-  /** Re-render the current selection — used by external callers to sync state
-   *  (e.g. after playback state changes). */
+  /** Re-render the current selection. No-op while a slider drag is in progress. */
   refresh() {
     if (!this.dragging) this.render();
   }

@@ -106,7 +106,7 @@ let onDebugFilesChangeCb: (() => void) | null = null;
 let onDebugExitCb: (() => void) | null = null;
 // Returns the picked entry point name (or null to skip running).
 let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } | null) | null = null;
-// Fired whenever playback state changes (play/pause); used to refresh transport controls.
+// Fired whenever playback state changes (play/pause).
 let onPlaybackStateChangeCb: (() => void) | null = null;
 
 
