@@ -1090,10 +1090,24 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 		return server
 	}, &mcp.StreamableHTTPOptions{Stateless: true})
 
+	frameSessions := newSessionCache()
+
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", handleMcp)
 	mux.Handle("/eval", m.eval.HTTPHandler())
 	mux.HandleFunc("/check", handleCheck)
+	mux.HandleFunc("/frame", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req frameRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		handleFrame(r.Context(), w, req, frameSessions)
+	})
 
 	log.Printf("[http] server listening on http://127.0.0.1:%d (mcp, eval)", port)
 

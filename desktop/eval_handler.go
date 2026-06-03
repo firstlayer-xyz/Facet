@@ -227,6 +227,23 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 		return
 	}
 
+	// Animation entry: render the initial frame so the viewer has something to
+	// show immediately; live playback uses /frame once the frontend starts ticking.
+	if evalResult.Animation != nil {
+		solid, ferr := evalResult.Animation.Frame(initialFrameTimeMs())
+		if ferr != nil {
+			header.Errors = append(header.Errors, sourceErrorFromErr(ferr))
+			respond(&header, nil, nil)
+			return
+		}
+		merged := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
+		var binaryData []byte
+		meta, binaryData := appendMeshBinary(binaryData, merged)
+		header.Mesh = meta
+		respond(&header, binaryData, []*manifold.Solid{solid})
+		return
+	}
+
 	merged := manifold.MergeExtractExpandedMeshes(evalResult.Solids, 40)
 	stats := evalResult.Stats
 	stats.Triangles += merged.IndexCount / 3
