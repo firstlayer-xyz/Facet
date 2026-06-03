@@ -1,0 +1,604 @@
+# ---------------------------------------------------------------------------
+# 3D Constructors
+# ---------------------------------------------------------------------------
+# All primitive constructors (2D and 3D) place the shape's bounding-box min
+# corner at the origin — i.e. the shape sits in the positive octant/quadrant.
+# Use .Move() or .AlignCenter() to reposition.
+# 
+# Axis-aligned box with bounding-box min corner at (0,0,0) and max at (x,y,z).
+# Optional `r` rounds every edge with a fillet of that radius — the corners
+# become spherical and the edges quarter-cylindrical, while the bounding
+# box still spans (0,0,0)..(x,y,z). `r` must be at most half the smallest
+# dimension; the rounded form is built as the convex hull of eight spheres
+# placed at the inset corners.
+# ```
+# fn Main() { Cube(s: Vec3{x: 20 mm, y: 10 mm, z: 5 mm}) }
+# fn Main() { Cube(s: 20 mm, r: 2 mm) }
+# ```
+fn Cube(
+    x Length,
+    y Length,
+    z Length,
+    r Length = 0 mm,
+) Solid {
+    if r == 0 mm { return _cube(x, y, z) }
+    assert 2 * r <= x, "Cube: radius too large for x dimension"
+    assert 2 * r <= y, "Cube: radius too large for y dimension"
+    assert 2 * r <= z, "Cube: radius too large for z dimension"
+
+    var s = Sphere(r: r)
+    return Hull(
+        arr: [
+            s, s.Move(x: x - 2 * r), s.Move(y: y - 2 * r),
+            s.Move(x: x - 2 * r, y: y - 2 * r), s.Move(z: z - 2 * r),
+            s.Move(x: x - 2 * r, z: z - 2 * r),
+            s.Move(y: y - 2 * r, z: z - 2 * r),
+            s.Move(x: x - 2 * r, y: y - 2 * r, z: z - 2 * r)
+        ]
+    )
+}
+
+fn Cube(
+    s Vec3,
+    r Length = 0 mm,
+) Solid {
+    return Cube(x: s.x, y: s.y, z: s.z, r: r)
+}
+
+fn Cube(
+    s Length,
+    r Length = 0 mm,
+) Solid {
+    return Cube(x: s, y: s, z: s, r: r)
+}
+
+# UV sphere with bounding-box min corner at (0,0,0) (diameter extends from
+# 0 to 2r on each axis). Optional `segments` controls smoothness (default 32).
+# Accepts either `r:` (radius) or `d:` (diameter).
+# ```
+# fn Main() { Sphere(r: 10 mm) }
+# ```
+fn Sphere(
+    r Length,
+    segments Number = 0,
+) Solid {
+    return _sphere(r, segments)
+}
+
+fn Sphere(
+    d Length,
+    segments Number = 0,
+) Solid {
+    return _sphere(d / 2, segments)
+}
+
+# Uniform cylinder with bounding-box min corner at (0,0,0): axis runs along Z
+# from Z=0 to Z=`h`. Also accepts diameter `d`. Optional `segments` controls
+# smoothness (default 32); use 6 for a hexagonal prism.
+# ```
+# fn Main() { Cylinder(r: 5 mm, h: 20 mm) }
+# ```
+fn Cylinder(
+    r Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, r, r, segments)
+}
+
+fn Cylinder(
+    d Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, d / 2, d / 2, segments)
+}
+
+# Frustum (truncated cone) along Z from Z=0 to Z=`h`. `r1` is the bottom
+# radius, `r2` the top; set either to 0 for a true cone. Also accepts diameters
+# `d1`/`d2`. Optional `segments` controls smoothness (default 32).
+# ```
+# fn Main() { Frustum(r1: 8 mm, r2: 3 mm, h: 20 mm) }
+# ```
+fn Frustum(
+    r1 Length,
+    r2 Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, r1, r2, segments)
+}
+
+fn Frustum(
+    d1 Length,
+    d2 Length,
+    h Length,
+    segments Number = 0,
+) Solid {
+    return _cylinder(h, d1 / 2, d2 / 2, segments)
+}
+
+# Cone along Z from Z=0 to Z=`h` with base radius `r`.
+fn Cone(r, h Length) Solid {
+    return _cylinder(h, r, 0 mm)
+}
+
+# Right prism: regular n-gon cross-section extruded along Z. `s` is the
+# polygon side length; `h` the extrusion height. `sides` defaults to 3
+# (triangular prism); pass higher values for square/pentagonal/hexagonal/etc.
+# prisms (minimum 3). Bounding-box min corner sits at (0,0,0).
+# ```
+# fn Main() { Prism(s: 10 mm, h: 20 mm) }              # triangular prism
+# fn Main() { Prism(s: 10 mm, h: 20 mm, sides: 6) }    # hexagonal prism
+# ```
+fn Prism(
+    s Length,
+    h Length,
+    sides Number = 3,
+) Solid {
+    var r = s / (2 * Sin(a: 180 deg / sides))
+    return _cylinder(h, r, r, sides)
+}
+
+# Right prism with an arbitrary triangle cross-section. `a`, `b`, `c` are the
+# triangle's corners in the XY plane; the triangle is extruded along Z to
+# height `h`. Winding is normalized internally — order doesn't matter.
+# ```
+# fn Main() {
+#     Prism(a: Vec2{x: 0 mm, y: 0 mm},
+#           b: Vec2{x: 20 mm, y: 0 mm},
+#           c: Vec2{x: 5 mm, y: 15 mm},
+#           h: 10 mm)
+# }
+# ```
+fn Prism(a, b, c Vec2, h Length) Solid {
+    return Polygon(points: [a, b, c]).Extrude(z: h)
+}
+
+# ---------------------------------------------------------------------------
+# Solid Methods
+# ---------------------------------------------------------------------------
+# Moves a solid. All axes default to 0 so you can move along a single axis.
+fn Solid.Move(
+    x Length = 0 mm,
+    y Length = 0 mm,
+    z Length = 0 mm,
+) Solid {
+    return _translate(self, x, y, z)
+}
+
+fn Solid.Move(v Vec3) Solid {
+    return _translate(self, v.x, v.y, v.z)
+}
+
+# Rotates the solid around X→Y→Z axes through a pivot point. Unspecified axes and pivot default to zero,
+# so `.Rotate(z: 90 deg)` spins around the world Z axis. Pass `self.Bounds().Center()` for the bbox center.
+fn Solid.Rotate(
+    x Angle = 0 deg,
+    y Angle = 0 deg,
+    z Angle = 0 deg,
+    around Vec3 = Vec3{},
+) Solid {
+    return _rotate(self, x, y, z, around.x, around.y, around.z)
+}
+
+# Scales a solid around a pivot point. `Scale(v, around)` uses the same factor for all axes.
+# `Resize(s, around)` scales to exact target dimensions.
+fn Solid.Scale(
+    x Number,
+    y Number,
+    z Number,
+    around Vec3 = Vec3{},
+) Solid {
+    return _scale(self, x, y, z, around.x, around.y, around.z)
+}
+
+fn Solid.Scale(
+    v Number,
+    around Vec3 = Vec3{},
+) Solid {
+    return _scale(self, v, v, v, around.x, around.y, around.z)
+}
+
+fn Solid.Resize(
+    size Vec3,
+    around Vec3 = Vec3{},
+) Solid {
+    var b = self.Bounds()
+    var w = Number(from: b.Width())
+    var d = Number(from: b.Depth())
+    var h = Number(from: b.Height())
+    if w == 0 || d == 0 || h == 0 { return self }
+    return self.Scale(
+        x: Number(from: size.x) / w,
+        y: Number(from: size.y) / d,
+        z: Number(from: size.z) / h,
+        around: around
+    )
+}
+
+# Reflects a solid across a plane defined by normal `(x, y, z)` at `offset` from the origin.
+# Unspecified components default to zero, so `.Mirror(x: 1)` reflects across the YZ plane at the origin.
+fn Solid.Mirror(
+    x Number = 0,
+    y Number = 0,
+    z Number = 0,
+    offset Length = 0 mm,
+) Solid {
+    return _mirror(self, x, y, z, offset)
+}
+
+# Cuts away the portion of a solid on the negative side of a half-space (normal + offset).
+fn Solid.Trim(
+    x Number = 0,
+    y Number = 0,
+    z Number = 0,
+    offset Length = 0 mm,
+) Solid {
+    return _trim(self, x, y, z, offset)
+}
+
+# Smooths edges sharper than `minSharpAngle` using Laplacian relaxation; `minSmoothness` in [0,1].
+# Best results after `.Refine()`. `Refine(n)` subdivides every triangle `n` times (4× per pass).
+fn Solid.Smooth(minSharpAngle Angle, minSmoothness Number) Solid {
+    return _smooth(self, minSharpAngle, minSmoothness)
+}
+
+# Subdivides every triangle `n` times (each pass quadruples triangle count). Use before `Smooth` for best results.
+fn Solid.Refine(n Number) Solid {
+    return _refine(self, n)
+}
+
+# Returns the enclosed volume as a Number. Defaults to cubic millimeters; pass `unit` to convert (e.g. `unit: 1 cm` → cubic centimeters, `unit: 1 in` → cubic inches).
+fn Solid.Volume(
+    unit Length = 1 mm,
+) Number {
+    var u = Number(from: unit)
+    return _volume(self) / (u * u * u)
+}
+
+# Returns the total surface area as a Number. Defaults to square millimeters; pass `unit` to convert (e.g. `unit: 1 cm` → square centimeters, `unit: 1 in` → square inches).
+fn Solid.SurfaceArea(
+    unit Length = 1 mm,
+) Number {
+    var u = Number(from: unit)
+    return _surface_area(self) / (u * u)
+}
+
+# Cross-section at Z=`z` → Sketch. `Project()` → orthographic top-down silhouette.
+fn Solid.Slice(z Length) Sketch {
+    return _slice(self, z)
+}
+
+fn Solid.Project() Sketch {
+    return _project(self)
+}
+
+# Axis-aligned bounding box. Access via `.min`/`.max`, `.Width()`, `.Height()`, `.Depth()`, `.Center()`.
+fn Solid.Bounds() Box {
+    return _bounding_box(self)
+}
+
+# X extent of the bounding box. Shorthand for `Bounds().Width()`.
+fn Solid.Width() Length {
+    var b = _bounding_box(self)
+    return b.max.x - b.min.x
+}
+
+# Y extent (front-to-back depth) of the bounding box. Shorthand for `Bounds().Depth()`.
+fn Solid.Depth() Length {
+    var b = _bounding_box(self)
+    return b.max.y - b.min.y
+}
+
+# Z extent (vertical height) of the bounding box. Shorthand for `Bounds().Height()`.
+fn Solid.Height() Length {
+    var b = _bounding_box(self)
+    return b.max.z - b.min.z
+}
+
+# X coordinate of the left face (bounding box min.x).
+fn Solid.Left() Length {
+    return _bounding_box(self).min.x
+}
+
+# X coordinate of the right face (bounding box max.x).
+fn Solid.Right() Length {
+    return _bounding_box(self).max.x
+}
+
+# Y coordinate of the front face (bounding box min.y).
+fn Solid.Front() Length {
+    return _bounding_box(self).min.y
+}
+
+# Y coordinate of the back face (bounding box max.y).
+fn Solid.Back() Length {
+    return _bounding_box(self).max.y
+}
+
+# Z coordinate of the bottom face (bounding box min.z).
+fn Solid.Bottom() Length {
+    return _bounding_box(self).min.z
+}
+
+# Z coordinate of the top face (bounding box max.z).
+fn Solid.Top() Length {
+    return _bounding_box(self).max.z
+}
+
+# Center point of the bounding box (midpoint of min and max corners).
+fn Solid.Center() Vec3 {
+    return _bounding_box(self).Center()
+}
+
+# World-space position of the left-front-bottom corner (bounding box min).
+fn Solid.LeftFrontBottom() Vec3 {
+    return _bounding_box(self).min
+}
+
+# World-space position of the right-back-top corner (bounding box max).
+fn Solid.RightBackTop() Vec3 {
+    return _bounding_box(self).max
+}
+
+# World-space position of the right-front-bottom corner.
+fn Solid.RightFrontBottom() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.max.x, y: b.min.y, z: b.min.z}
+}
+
+# World-space position of the left-back-bottom corner.
+fn Solid.LeftBackBottom() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.min.x, y: b.max.y, z: b.min.z}
+}
+
+# World-space position of the right-back-bottom corner.
+fn Solid.RightBackBottom() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.max.x, y: b.max.y, z: b.min.z}
+}
+
+# World-space position of the left-front-top corner.
+fn Solid.LeftFrontTop() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.min.x, y: b.min.y, z: b.max.z}
+}
+
+# World-space position of the right-front-top corner.
+fn Solid.RightFrontTop() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.max.x, y: b.min.y, z: b.max.z}
+}
+
+# World-space position of the left-back-top corner.
+fn Solid.LeftBackTop() Vec3 {
+    var b = _bounding_box(self)
+    return Vec3{x: b.min.x, y: b.max.y, z: b.max.z}
+}
+
+# Aligns this solid's bounding-box center to another solid's center. `x`, `y`, `z`
+# control which axes participate in the alignment (default: all three). `nudgeX`,
+# `nudgeY`, `nudgeZ` add a per-axis offset applied after alignment.
+fn Solid.AlignCenter(
+    with Solid,
+    x Bool = true,
+    y Bool = true,
+    z Bool = true,
+    nudgeX Length = 0 mm,
+    nudgeY Length = 0 mm,
+    nudgeZ Length = 0 mm,
+) Solid {
+    var a = self.Bounds().Center()
+    var b = with.Bounds().Center()
+    var dx = 0 mm
+    var dy = 0 mm
+    var dz = 0 mm
+    if x { dx = b.x - a.x + nudgeX }
+    if y { dy = b.y - a.y + nudgeY }
+    if z { dz = b.z - a.z + nudgeZ }
+    return self.Move(x: dx, y: dy, z: dz)
+}
+
+# Aligns this solid's bounding-box center to a fixed point. Pass `Vec3{}`
+# to recenter a corner-origin primitive (e.g. a freshly-created Sphere) on (0,0,0).
+# `x`, `y`, `z` control which axes participate; `nudgeX/Y/Z` add per-axis offsets.
+fn Solid.AlignCenter(
+    pos Vec3,
+    x Bool = true,
+    y Bool = true,
+    z Bool = true,
+    nudgeX Length = 0 mm,
+    nudgeY Length = 0 mm,
+    nudgeZ Length = 0 mm,
+) Solid {
+    var c = self.Bounds().Center()
+    var dx = 0 mm
+    var dy = 0 mm
+    var dz = 0 mm
+    if x { dx = pos.x - c.x + nudgeX }
+    if y { dy = pos.y - c.y + nudgeY }
+    if z { dz = pos.z - c.z + nudgeZ }
+    return self.Move(x: dx, y: dy, z: dz)
+}
+
+# Moves this solid so its bounding-box minimum corner (left, front, bottom) lands at `pos`.
+fn Solid.MoveTo(pos Vec3) Solid {
+    var m = self.Bounds().min
+    return self.Move(x: pos.x - m.x, y: pos.y - m.y, z: pos.z - m.z)
+}
+
+fn Solid.MoveTo(
+    x Length = 0 mm,
+    y Length = 0 mm,
+    z Length = 0 mm,
+) Solid {
+    var m = self.Bounds().min
+    return self.Move(x: x - m.x, y: y - m.y, z: z - m.z)
+}
+
+# Stack placement helpers — place this solid flush against one face of `of`.
+# Each family aligns the corresponding face of `self` to the matching face of `of` and (by default)
+# centers on the two perpendicular axes. `nudge` adds a gap in the stack direction (positive = more gap).
+# Disable centering on either perpendicular axis with `centerX: false` / `centerY: false` etc.
+# Places this solid on top of `of` — self's bottom face flush with its top face.
+fn Solid.StackOnTop(
+    of Solid,
+    nudge Length = 0 mm,
+    centerX Bool = true,
+    centerY Bool = true,
+) Solid {
+    return self.AlignBottom(pos: of.Bounds().Top() + nudge)
+        .AlignCenter(with: of, x: centerX, y: centerY, z: false)
+}
+
+# Places this solid below `of` — self's top face flush with its bottom face.
+fn Solid.StackOnBottom(
+    of Solid,
+    nudge Length = 0 mm,
+    centerX Bool = true,
+    centerY Bool = true,
+) Solid {
+    return self.AlignTop(pos: of.Bounds().Bottom() - nudge)
+        .AlignCenter(with: of, x: centerX, y: centerY, z: false)
+}
+
+# Places this solid to the right of `of` — self's left face flush with its right face.
+fn Solid.StackOnRight(
+    of Solid,
+    nudge Length = 0 mm,
+    centerY Bool = true,
+    centerZ Bool = true,
+) Solid {
+    return self.AlignLeft(pos: of.Bounds().Right() + nudge)
+        .AlignCenter(with: of, x: false, y: centerY, z: centerZ)
+}
+
+# Places this solid to the left of `of` — self's right face flush with its left face.
+fn Solid.StackOnLeft(
+    of Solid,
+    nudge Length = 0 mm,
+    centerY Bool = true,
+    centerZ Bool = true,
+) Solid {
+    return self.AlignRight(pos: of.Bounds().Left() - nudge)
+        .AlignCenter(with: of, x: false, y: centerY, z: centerZ)
+}
+
+# Places this solid behind `of` — self's front face flush with its back face.
+fn Solid.StackOnBack(
+    of Solid,
+    nudge Length = 0 mm,
+    centerX Bool = true,
+    centerZ Bool = true,
+) Solid {
+    return self.AlignFront(pos: of.Bounds().Back() + nudge)
+        .AlignCenter(with: of, x: centerX, y: false, z: centerZ)
+}
+
+# Places this solid in front of `of` — self's back face flush with its front face.
+fn Solid.StackOnFront(
+    of Solid,
+    nudge Length = 0 mm,
+    centerX Bool = true,
+    centerZ Bool = true,
+) Solid {
+    return self.AlignBack(pos: of.Bounds().Front() - nudge)
+        .AlignCenter(with: of, x: centerX, y: false, z: centerZ)
+}
+
+# Face-alignment helpers. Each aligns one face of this solid to the same face of `other` (or a fixed `pos`).
+# Optional `nudge` offsets after alignment (outward from `other`). The `with Solid` overloads also accept
+# `centerX`/`centerY`/`centerZ` (default false) to center on the perpendicular axes in one call.
+# Families: Left(min.x), Right(max.x), Front(min.y), Back(max.y), Bottom(min.z), Top(max.z).
+fn Solid.AlignLeft(
+    with Solid,
+    nudge Length = 0 mm,
+    centerY Bool = false,
+    centerZ Bool = false,
+) Solid {
+    return self.Move(x: with.Bounds().Left() - self.Bounds().Left() - nudge)
+        .AlignCenter(with: with, x: false, y: centerY, z: centerZ)
+}
+
+# Moves this solid so its left face lands at world-space X = `pos`.
+fn Solid.AlignLeft(pos Length) Solid {
+    return self.Move(x: pos - self.Bounds().Left())
+}
+
+fn Solid.AlignRight(
+    with Solid,
+    nudge Length = 0 mm,
+    centerY Bool = false,
+    centerZ Bool = false,
+) Solid {
+    return self.Move(x: with.Bounds().Right() - self.Bounds().Right() + nudge)
+        .AlignCenter(with: with, x: false, y: centerY, z: centerZ)
+}
+
+# Moves this solid so its right face lands at world-space X = `pos`.
+fn Solid.AlignRight(pos Length) Solid {
+    return self.Move(x: pos - self.Bounds().Right())
+}
+
+fn Solid.AlignFront(
+    with Solid,
+    nudge Length = 0 mm,
+    centerX Bool = false,
+    centerZ Bool = false,
+) Solid {
+    return self.Move(y: with.Bounds().Front() - self.Bounds().Front() - nudge)
+        .AlignCenter(with: with, x: centerX, y: false, z: centerZ)
+}
+
+# Moves this solid so its front face lands at world-space Y = `pos`.
+fn Solid.AlignFront(pos Length) Solid {
+    return self.Move(y: pos - self.Bounds().Front())
+}
+
+fn Solid.AlignBack(
+    with Solid,
+    nudge Length = 0 mm,
+    centerX Bool = false,
+    centerZ Bool = false,
+) Solid {
+    return self.Move(y: with.Bounds().Back() - self.Bounds().Back() + nudge)
+        .AlignCenter(with: with, x: centerX, y: false, z: centerZ)
+}
+
+# Moves this solid so its back face lands at world-space Y = `pos`.
+fn Solid.AlignBack(pos Length) Solid {
+    return self.Move(y: pos - self.Bounds().Back())
+}
+
+fn Solid.AlignBottom(
+    with Solid,
+    nudge Length = 0 mm,
+    centerX Bool = false,
+    centerY Bool = false,
+) Solid {
+    return self.Move(z: with.Bounds().Bottom() - self.Bounds().Bottom() - nudge)
+        .AlignCenter(with: with, x: centerX, y: centerY, z: false)
+}
+
+# Moves this solid so its bottom face lands at world-space Z = `pos`.
+fn Solid.AlignBottom(pos Length) Solid {
+    return self.Move(z: pos - self.Bounds().Bottom())
+}
+
+fn Solid.AlignTop(
+    with Solid,
+    nudge Length = 0 mm,
+    centerX Bool = false,
+    centerY Bool = false,
+) Solid {
+    return self.Move(z: with.Bounds().Top() - self.Bounds().Top() + nudge)
+        .AlignCenter(with: with, x: centerX, y: centerY, z: false)
+}
+
+# Moves this solid so its top face lands at world-space Z = `pos`.
+fn Solid.AlignTop(pos Length) Solid {
+    return self.Move(z: pos - self.Bounds().Top())
+}
+

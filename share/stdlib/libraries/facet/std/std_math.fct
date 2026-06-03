@@ -1,0 +1,132 @@
+# ---------------------------------------------------------------------------
+# Trigonometric Functions
+# ---------------------------------------------------------------------------
+# Trigonometric functions. Angles are in degrees internally.
+# Sin/Cos/Tan → Number. Asin/Acos → Angle. Atan2(y, x) → Angle (full-circle, unambiguous).
+fn Sin(a Angle) Number {
+    return _sin(a)
+}
+
+fn Cos(a Angle) Number {
+    return _cos(a)
+}
+
+fn Tan(a Angle) Number {
+    return _tan(a)
+}
+
+fn Asin(n Number) Angle {
+    return _asin(n)
+}
+
+fn Acos(n Number) Angle {
+    return _acos(n)
+}
+
+fn Atan2(y, x Number) Angle {
+    return _atan2(y, x)
+}
+
+# ---------------------------------------------------------------------------
+# Math Helpers
+# ---------------------------------------------------------------------------
+# Math helpers — work on Number, Length, and Angle via `Any` generics.
+fn Min(a, b Any) Any {
+    return _min(a, b)
+}
+
+fn Max(a, b Any) Any {
+    return _max(a, b)
+}
+
+fn Abs(a Any) Any {
+    return _abs(a)
+}
+
+fn Sqrt(n Number) Number {
+    return _sqrt(n)
+}
+
+fn Pow(base, exp Number) Number {
+    return _pow(base, exp)
+}
+
+fn Floor(n Number) Number {
+    return _floor(n)
+}
+
+fn Ceil(n Number) Number {
+    return _ceil(n)
+}
+
+fn Round(n Number) Number {
+    return _round(n)
+}
+
+# Linear interpolation: `a + (b - a) * t`. Values outside [0, 1] extrapolate.
+fn Lerp(from, to Any, t Number) Any {
+    return _lerp(from, to, t)
+}
+
+# Extracts the raw numeric value: Length → mm, Angle → degrees, String → parsed number.
+fn Number(from Any) Number {
+    return _number(from)
+}
+
+# Converts a value to its string representation.
+fn String(a Any) String {
+    return _string(a)
+}
+
+# Returns the number of elements in an array or characters in a string.
+fn Size(of []Any) Number {
+    return _size(of)
+}
+
+fn Size(of String) Number {
+    return _size(of)
+}
+
+# ---------------------------------------------------------------------------
+# Array Search
+# ---------------------------------------------------------------------------
+# Returns the index of the first element equal to `value`, or -1 if absent.
+# ```
+# fn Main() { var i = IndexOf(arr: [10, 20, 30], value: 20) }    # i = 1
+# ```
+fn IndexOf(arr []Any, value Any) Number {
+    return _index_of_arr(arr, value)
+}
+
+# Returns every index where `arr` contains `value`. Empty list if none match.
+# ```
+# fn Main() { var ix = IndicesOf(arr: [1, 2, 1, 3], value: 1) }   # ix = [0, 2]
+# ```
+fn IndicesOf(arr []Any, value Any) []Number {
+    return _indices_of(arr, value)
+}
+
+# Returns the index of the first element matching `pred`, or -1 if none match.
+# `pred` is a lambda taking one element and returning Bool.
+# ```
+# fn Main() { var i = FindIndex(arr: [1, 5, 9], pred: fn(n Any) Bool { return n > 3 }) }   # i = 1
+# ```
+fn FindIndex(arr []Any, pred fn(Any) Bool) Number {
+    return _find_index(arr, pred)
+}
+
+# Returns every index where `pred(arr[i])` is true. Empty list if none match.
+fn FindIndices(arr []Any, pred fn(Any) Bool) []Number {
+    return _find_indices(arr, pred)
+}
+
+# Current UTC date as a string in M/D/YYYY format (no leading zeros).
+fn UtcDate() String {
+    return _utc_date()
+}
+
+# Current UTC time as a string in HH:MM:SS 24-hour format.
+fn UtcTime() String {
+    return _utc_time()
+}
+

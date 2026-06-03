@@ -1,0 +1,214 @@
+# ---------------------------------------------------------------------------
+# 2D Constructors
+# ---------------------------------------------------------------------------
+# 2D rectangle with bounding-box min corner at (0,0) and max at (x,y).
+# `x` = width, `y` = height.
+# ```
+# fn Main() { Square(20 mm, 20 mm).Extrude(10 mm) }
+# ```
+fn Square(x, y Length) Sketch {
+    return _square(x, y)
+}
+
+# 2D circle with bounding-box min corner at (0,0) (diameter extends from 0
+# to 2r on each axis). Optional `segments` controls smoothness (default 32);
+# use 6 for a hexagon. Accepts either `r:` (radius) or `d:` (diameter).
+# ```
+# fn Main() { Circle(r: 5 mm).Extrude(20 mm) }
+# ```
+fn Circle(
+    r Length,
+    segments Number = 0,
+) Sketch {
+    return _circle(r, segments)
+}
+
+fn Circle(
+    d Length,
+    segments Number = 0,
+) Sketch {
+    return _circle(d / 2, segments)
+}
+
+fn Square(s Length) Sketch {
+    return _square(s, s)
+}
+
+# ---------------------------------------------------------------------------
+# Arc Generators
+# ---------------------------------------------------------------------------
+# Evenly-spaced points along a circular arc. Returns `segments + 1` Vec2 (2D) or Vec3 (3D at `center.z`).
+# `startAngle` to `endAngle` are inclusive. Use as input to `Polygon` or `Sweep`.
+# ```
+# fn Main() { Polygon(Arc(Vec2{0 mm, 0 mm}, 10 mm, 0 deg, 90 deg, 16)).Extrude(5 mm) }
+# ```
+fn Arc(center Vec2, r Length, startAngle, endAngle Angle, segments Number) []Vec2 {
+    return for i [0:segments] {
+        var t = i / segments
+        var a = startAngle + (endAngle - startAngle) * t
+        yield Vec2{x: center.x + Cos(a: a) * r, y: center.y + Sin(a: a) * r}
+    }
+}
+
+fn Arc3d(center Vec3, r Length, startAngle, endAngle Angle, segments Number) []Vec3 {
+    return for i [0:segments] {
+        var t = i / segments
+        var a = startAngle + (endAngle - startAngle) * t
+        yield Vec3{x: center.x + Cos(a: a) * r, y: center.y + Sin(a: a) * r,
+            z: center.z}
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Sketch Methods
+# ---------------------------------------------------------------------------
+# Moves a sketch. All axes default to 0.
+fn Sketch.Move(
+    x Length = 0 mm,
+    y Length = 0 mm,
+) Sketch {
+    return _translate(self, x, y)
+}
+
+fn Sketch.Move(v Vec2) Sketch {
+    return _translate(self, v.x, v.y)
+}
+
+# Moves this sketch so its bounding-box minimum corner (left, front) lands at `pos`.
+fn Sketch.MoveTo(pos Vec2) Sketch {
+    var m = self.Bounds().min
+    return self.Move(x: pos.x - m.x, y: pos.y - m.y)
+}
+
+fn Sketch.MoveTo(
+    x Length = 0 mm,
+    y Length = 0 mm,
+) Sketch {
+    var m = self.Bounds().min
+    return self.Move(x: x - m.x, y: y - m.y)
+}
+
+# Rotates a sketch counterclockwise by `a` around a pivot point (defaults to the origin).
+fn Sketch.Rotate(
+    a Angle = 0 deg,
+    around Vec2 = Vec2{},
+) Sketch {
+    return _rotate_origin(self.Move(v: Vec2{x: -around.x, y: -around.y}), a)
+        .Move(v: Vec2{x: around.x, y: around.y})
+}
+
+# Scales a sketch non-uniformly around a pivot point.
+fn Sketch.Scale(
+    x Number,
+    y Number,
+    around Vec2 = Vec2{},
+) Sketch {
+    return _scale(self, x, y, around.x, around.y)
+}
+
+# Reflects a sketch across a line whose normal is `(x, y)` at `offset` from the origin.
+# Unspecified components default to zero, so `.Mirror(x: 1)` reflects across the Y axis (X coords flip).
+fn Sketch.Mirror(
+    x Number = 0,
+    y Number = 0,
+    offset Length = 0 mm,
+) Sketch {
+    return _mirror(self, x, y, offset)
+}
+
+# Expands (positive) or shrinks (negative) a sketch with round joins.
+fn Sketch.Offset(delta Length) Sketch {
+    return _offset(self, delta)
+}
+
+# Rounds convex corners by `r`. Use before extruding for filleted edges.
+fn Sketch.Fillet(r Length) Sketch {
+    return _fillet(self, r)
+}
+
+# Bevels convex corners by cutting `distance` from each corner.
+fn Sketch.Chamfer(distance Length) Sketch {
+    return _chamfer(self, distance)
+}
+
+# Axis-aligned bounding box of a sketch (z components are 0).
+fn Sketch.Bounds() Box {
+    return _bounding_box(self)
+}
+
+# X extent of the sketch's bounding box.
+fn Sketch.Width() Length {
+    var b = _bounding_box(self)
+    return b.max.x - b.min.x
+}
+
+# Y extent of the sketch's bounding box.
+fn Sketch.Depth() Length {
+    var b = _bounding_box(self)
+    return b.max.y - b.min.y
+}
+
+# Minimum X of the bounding box.
+fn Sketch.Left() Length {
+    return _bounding_box(self).min.x
+}
+
+# Maximum X of the bounding box.
+fn Sketch.Right() Length {
+    return _bounding_box(self).max.x
+}
+
+# Minimum Y of the bounding box.
+fn Sketch.Front() Length {
+    return _bounding_box(self).min.y
+}
+
+# Maximum Y of the bounding box.
+fn Sketch.Back() Length {
+    return _bounding_box(self).max.y
+}
+
+# Centroid of the bounding box.
+fn Sketch.Center() Vec2 {
+    var b = _bounding_box(self)
+    return Vec2{x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2}
+}
+
+# Signed area enclosed by the sketch.
+fn Sketch.Area() Number {
+    return _area(self)
+}
+
+# Extrudes a sketch upward along +Z. The sketch extends from Z=0 to Z=`z`.
+# Optional args: `slices` (resolution for twist), `twist` (total rotation bottom→top),
+# `taperX`/`taperY` (top-face taper; 1 = no change).
+# ```
+# fn Main() { Circle(5 mm).Extrude(20 mm) }
+# ```
+fn Sketch.Extrude(
+    z Length,
+    slices Number = 1,
+    twist Angle = 0 deg,
+    taperX Number = 1,
+    taperY Number = 1,
+) Solid {
+    return _extrude(self, z, slices, twist, taperX, taperY)
+}
+
+# Revolves a sketch around the Z axis (the world's up axis). The sketch's X
+# becomes the radius; its Y becomes the height along Z. Move the sketch away
+# from x = 0 first for a torus. Optional `a` limits the arc (default 360°);
+# optional `segments` overrides the auto-chosen circumferential resolution
+# (0 = use manifold's default formula).
+fn Sketch.Revolve(
+    a Angle = 360 deg,
+    segments Number = 0,
+) Solid {
+    return _revolve(self, a, segments)
+}
+
+# Sweeps the sketch along a 3D path using a rotation-minimizing frame.
+fn Sketch.Sweep(path []Vec3) Solid {
+    return _sweep(self, path)
+}
+

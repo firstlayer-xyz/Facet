@@ -1,0 +1,192 @@
+# ---------------------------------------------------------------------------
+# Aggregate Operations
+# ---------------------------------------------------------------------------
+# Convex hull of an array of Solid, Sketch, or Vec3 values.
+fn Hull(arr []Solid) Solid {
+    return _hull(arr)
+}
+
+fn Hull(arr []Sketch) Sketch {
+    return _hull(arr)
+}
+
+fn Hull(arr []Vec3) Solid {
+    return _hull(arr)
+}
+
+# N-ary boolean operations on arrays of Solid or Sketch.
+# Union: combine all. Difference: subtract 2..n from first. Intersection: keep overlap only.
+fn Union(arr []Solid) Solid {
+    return _union(arr)
+}
+
+fn Union(arr []Sketch) Sketch {
+    return _union(arr)
+}
+
+fn Difference(arr []Solid) Solid {
+    return _difference(arr)
+}
+
+fn Difference(arr []Sketch) Sketch {
+    return _difference(arr)
+}
+
+fn Intersection(arr []Solid) Solid {
+    return _intersection(arr)
+}
+
+fn Intersection(arr []Sketch) Sketch {
+    return _intersection(arr)
+}
+
+# Symmetric difference: material in exactly one of {self, b}.
+fn Solid.Exclude(with Solid) Solid {
+    return self + with - (self & with)
+}
+
+# N-ary even-odd fill: material inside an odd number of input solids.
+fn EvenOdd(solids []Solid) Solid {
+    return fold acc, s solids { yield acc + s - (acc & s) }
+}
+
+# Cuts a hole for `part`, removes floating bore plugs, then seats `part`. Used with the `|` operator. Designed for inserting hollow tools (pipes, tubes) into a body.
+fn Solid.Insert(part Solid) Solid {
+    return _insert(self, part)
+}
+
+# Splits a solid into its disconnected components as an array of independent solids.
+fn Decompose(s Solid) []Solid {
+    return _decompose(s)
+}
+
+# Packs non-overlapping solids into one without boolean operations (faster than Union). Behavior is undefined if any solids overlap.
+fn Compose(solids []Solid) Solid {
+    return _compose(solids)
+}
+
+# Splits a solid into [inside, outside] using a cutter solid, or [above, below] using a plane.
+fn Solid.Split(cutter Solid) []Solid {
+    return _split(self, cutter)
+}
+
+# Splits into [above, below] along a plane. `normal` is the plane's orientation vector; `offset` shifts the plane along the normal from the origin.
+fn Solid.SplitByPlane(normal Vec3, offset Length) []Solid {
+    return _split_plane(
+        self,
+        Number(from: normal.x),
+        Number(from: normal.y),
+        Number(from: normal.z),
+        offset
+    )
+}
+
+# Reduces triangle count by collapsing edges shorter than `tolerance`.
+fn Solid.Simplify(tolerance Length) Solid {
+    return _simplify(self, tolerance)
+}
+
+# Subdivides edges longer than `edgeLength`. Finer control than `Refine(n)`.
+fn Solid.RefineToLength(edgeLength Length) Solid {
+    return _refine_to_length(self, edgeLength)
+}
+
+# Topological genus: 0 = sphere-like, 1 = torus-like (one through-hole), etc.
+fn Solid.Genus() Number {
+    return _genus(self)
+}
+
+# Minimum gap (closest distance) between two solids. `searchLength` bounds the search.
+fn Solid.MinGap(with Solid, reach Length) Length {
+    return _min_gap(self, with, reach)
+}
+
+# Blends between two or more cross-sections placed at the corresponding `heights`.
+fn Loft(profiles []Sketch, heights []Length) Solid {
+    return _loft(profiles, heights)
+}
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+# Pack an array of solids onto the X/Y plane using shelf bin-packing.
+# Solids are sorted by footprint area (largest first) and placed left-to-right
+# onto shelves, starting a new shelf when the row width exceeds a target
+# chosen to produce a roughly square overall layout. All solids are
+# repositioned — their original positions are discarded.
+# `gap` sets spacing between items (default: auto, 10% of the largest footprint dimension).
+# ```
+# fn Main() []Solid {
+#     return Layout([Cube(10 mm), Sphere(5 mm), Cylinder(3 mm, 15 mm)])
+# }
+# ```
+fn Layout(
+    solids []Solid,
+    gap Length = -1 mm,
+) []Solid {
+    return _layout(solids, gap)
+}
+
+# ---------------------------------------------------------------------------
+# Pattern Operations
+# ---------------------------------------------------------------------------
+# Repeats a solid `count` times at even `spacing`.
+# Copies are placed at 0, 1×spacing, … (count-1)×spacing and unioned together.
+fn Solid.LinearPattern(
+    count Number,
+    spacing Vec3 = Vec3{},
+) Solid {
+    var copies = for i [0:<count] {
+        yield self.Move(x: i * spacing.x, y: i * spacing.y, z: i * spacing.z)
+    }
+    return fold a, b copies { yield a + b }
+}
+
+# Repeats a solid `count` times evenly around the Z axis (full 360°, or `span` degrees).
+# Requires `count >= 2` when `span` is given.
+fn Solid.CircularPattern(
+    count Number,
+    span Angle = 0 deg,
+) Solid {
+    if span == 0 deg {
+        assert count >= 1, "CircularPattern requires count >= 1"
+        var step = 360 / count * 1 deg
+        var copies = for i [0:<count] { yield self.Rotate(z: i * step) }
+        return fold a, b copies { yield a + b }
+    } else {
+        assert count >= 2, "CircularPattern with span requires count >= 2"
+        var step = span / (count - 1)
+        var copies = for i [0:<count] { yield self.Rotate(z: i * step) }
+        return fold a, b copies { yield a + b }
+    }
+}
+
+# Same as Solid.LinearPattern but for Sketch.
+fn Sketch.LinearPattern(
+    count Number,
+    spacing Vec2 = Vec2{},
+) Sketch {
+    var copies = for i [0:<count] {
+        yield self.Move(x: i * spacing.x, y: i * spacing.y)
+    }
+    return fold a, b copies { yield a + b }
+}
+
+# Same as Solid.CircularPattern but for Sketch.
+fn Sketch.CircularPattern(
+    count Number,
+    span Angle = 0 deg,
+) Sketch {
+    if span == 0 deg {
+        assert count >= 1, "CircularPattern requires count >= 1"
+        var step = 360 / count * 1 deg
+        var copies = for i [0:<count] { yield _rotate_origin(self, i * step) }
+        return fold a, b copies { yield a + b }
+    } else {
+        assert count >= 2, "CircularPattern with span requires count >= 2"
+        var step = span / (count - 1)
+        var copies = for i [0:<count] { yield _rotate_origin(self, i * step) }
+        return fold a, b copies { yield a + b }
+    }
+}
+
