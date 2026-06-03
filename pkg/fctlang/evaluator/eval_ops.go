@@ -103,10 +103,24 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		return e.evalCompare(ex.Op, lv, rv, ex.Pos)
 	}
 
-	// Array concatenation / append
+	// Scalar/vector broadcast: a numeric scalar (Number, Length, Angle) on
+	// either side of +, -, *, / against an array applies element-wise. This
+	// fires before the array-concat/append branch so `arr + 5` is `5+each`
+	// rather than the legacy append, matching SCAD/NumPy semantics.
+	if ex.Op == "+" || ex.Op == "-" || ex.Op == "*" || ex.Op == "/" {
+		if out, ok, err := e.broadcastScalarVec(ex.Pos, ex.Op, lv, rv); err != nil {
+			return nil, err
+		} else if ok {
+			return out, nil
+		}
+	}
+
+	// Array concatenation / non-numeric append. Numeric scalars (Number,
+	// Length, Angle) are handled above by the broadcast branch; what reaches
+	// here is array + array (concat) or array + non-numeric-element (append
+	// — for struct/Solid arrays where broadcasting has no meaning).
 	if larr, lok := lv.(array); lok && ex.Op == "+" {
 		if rarr, rok := rv.(array); rok {
-			// array + array → concatenated array
 			result := make([]value, len(larr.elems)+len(rarr.elems))
 			copy(result, larr.elems)
 			copy(result[len(larr.elems):], rarr.elems)
@@ -116,7 +130,6 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 			}
 			return array{elems: result, elemType: et}, nil
 		}
-		// array + element → append
 		result := make([]value, len(larr.elems)+1)
 		copy(result, larr.elems)
 		result[len(larr.elems)] = rv
@@ -389,5 +402,138 @@ func registerOpFunc(m map[opFuncKey]*parser.Function, fn *parser.Function) {
 		}
 		m[key] = fn
 	}
+}
+
+// broadcastScalarVec applies a +, -, *, / op element-wise when exactly one
+// side is an array of numeric values (float64, length, angle) and the other
+// is a numeric scalar. Returns (result, true, nil) on a successful broadcast,
+// (nil, false, nil) when neither side fits the pattern, or (nil, false, err)
+// when a per-element op fails.
+func (e *evaluator) broadcastScalarVec(pos parser.Pos, op string, lv, rv value) (value, bool, error) {
+	lv = unwrap(lv)
+	rv = unwrap(rv)
+	larr, lIsArr := lv.(array)
+	rarr, rIsArr := rv.(array)
+	if lIsArr == rIsArr {
+		return nil, false, nil
+	}
+	var arr array
+	var scalar value
+	scalarOnRight := lIsArr
+	if scalarOnRight {
+		arr = larr
+		scalar = rv
+	} else {
+		arr = rarr
+		scalar = lv
+	}
+	if !isNumericScalar(scalar) {
+		return nil, false, nil
+	}
+	result := make([]value, len(arr.elems))
+	for i, el := range arr.elems {
+		var left, right value
+		if scalarOnRight {
+			left, right = el, scalar
+		} else {
+			left, right = scalar, el
+		}
+		out, err := e.numericBinop(pos, op, left, right)
+		if err != nil {
+			return nil, false, err
+		}
+		result[i] = out
+	}
+	return array{elems: result, elemType: inferElemType(result)}, true, nil
+}
+
+// isNumericScalar reports whether v is a Number, Length, or Angle —
+// the scalar types that participate in element-wise broadcasting.
+func isNumericScalar(v value) bool {
+	v = unwrap(v)
+	switch v.(type) {
+	case float64, length, angle:
+		return true
+	}
+	return false
+}
+
+// numericBinop applies a single +, -, *, / to two numeric scalars. Both
+// operands must satisfy isNumericScalar; mixed Number/Length, Number/Angle,
+// and same-type combos follow the standard evalBinary rules.
+func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value, error) {
+	lv = unwrap(lv)
+	rv = unwrap(rv)
+	asFloat := func(v value) (float64, bool) {
+		n, ok := v.(float64)
+		return n, ok
+	}
+	asLen := func(v value) (length, bool) {
+		l, ok := v.(length)
+		return l, ok
+	}
+	asAng := func(v value) (angle, bool) {
+		a, ok := v.(angle)
+		return a, ok
+	}
+	if ln, lok := asFloat(lv); lok {
+		if rn, rok := asFloat(rv); rok {
+			switch op {
+			case "+":
+				return ln + rn, nil
+			case "-":
+				return ln - rn, nil
+			case "*":
+				return ln * rn, nil
+			case "/":
+				return ln / rn, nil
+			}
+		}
+		if rL, rok := asLen(rv); rok && op == "*" {
+			return length{mm: ln * rL.mm}, nil
+		}
+		if rA, rok := asAng(rv); rok && op == "*" {
+			return angle{deg: ln * rA.deg}, nil
+		}
+	}
+	if lL, lok := asLen(lv); lok {
+		if rL, rok := asLen(rv); rok {
+			switch op {
+			case "+":
+				return length{mm: lL.mm + rL.mm}, nil
+			case "-":
+				return length{mm: lL.mm - rL.mm}, nil
+			case "/":
+				return lL.mm / rL.mm, nil
+			}
+		}
+		if rn, rok := asFloat(rv); rok {
+			switch op {
+			case "*":
+				return length{mm: lL.mm * rn}, nil
+			case "/":
+				return length{mm: lL.mm / rn}, nil
+			}
+		}
+	}
+	if lA, lok := asAng(lv); lok {
+		if rA, rok := asAng(rv); rok {
+			switch op {
+			case "+":
+				return angle{deg: lA.deg + rA.deg}, nil
+			case "-":
+				return angle{deg: lA.deg - rA.deg}, nil
+			}
+		}
+		if rn, rok := asFloat(rv); rok {
+			switch op {
+			case "*":
+				return angle{deg: lA.deg * rn}, nil
+			case "/":
+				return angle{deg: lA.deg / rn}, nil
+			}
+		}
+	}
+	return nil, e.errAt(pos, "operator %s: incompatible scalar types %s and %s", op, typeName(lv), typeName(rv))
 }
 

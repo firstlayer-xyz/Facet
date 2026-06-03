@@ -141,16 +141,19 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 			return unknown()
 		}
 
-		// Check if first element is a sub-array (nested array inference)
+		// Check if first element is a sub-array (nested array inference).
+		// Validation accepts any element that infers to an array — literal
+		// sub-arrays AND expressions whose type is an array (e.g. a function
+		// call returning []Number). A non-array element is the genuine
+		// mismatch.
 		if inner, ok := ex.Elems[0].(*parser.ArrayLitExpr); ok && inner.TypeName == "" {
-			// Nested: validate all elements are sub-arrays, infer inner type
 			for _, elem := range ex.Elems {
-				if sub, ok := elem.(*parser.ArrayLitExpr); ok && sub.TypeName == "" {
-					c.inferExpr(sub, env)
-				} else {
-					c.addError(ex.Pos, "mixed array and non-array elements")
-					return unknown()
+				et := c.inferExpr(elem, env)
+				if et.ft == typeArray || et.ft == typeUnknown {
+					continue
 				}
+				c.addError(ex.Pos, "mixed array and non-array elements")
+				return unknown()
 			}
 			innerType := c.inferExpr(inner, env)
 			return arrayOf(innerType)

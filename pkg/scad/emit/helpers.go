@@ -34,6 +34,17 @@ const scadFacesHelper = `fn scad_faces(fs [][]Number) []Face {
 	return fold acc, tris perFace { yield acc + tris }
 }`
 
+// scadV2PathHelper picks the indexed subset of a runtime points list and
+// returns it as []Vec2 (mm). It is the paths-branch counterpart to scad_v2:
+// when polygon(points=…, paths=…) has computed points, the emitter renders
+// each path's literal indices as a Number list and lets this helper index
+// into the runtime points at evaluation time.
+const scadV2PathHelper = `fn scad_v2_path(ps [][]Number, indices []Number) []Vec2 {
+	return for i indices {
+		yield Vec2{x: ps[Number(from: i)][0] * 1 mm, y: ps[Number(from: i)][1] * 1 mm}
+	}
+}`
+
 // helperPreamble returns the definitions of every emitted helper the program
 // references, each followed by a blank line. Unreferenced helpers are omitted.
 func (e *Emitter) helperPreamble() string {
@@ -45,6 +56,7 @@ func (e *Emitter) helperPreamble() string {
 		{e.usesV2, scadV2Helper},
 		{e.usesV3, scadV3Helper},
 		{e.usesFaces, scadFacesHelper},
+		{e.usesV2Path, scadV2PathHelper},
 	} {
 		if h.used {
 			w.write(h.src)

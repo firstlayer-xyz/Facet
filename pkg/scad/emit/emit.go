@@ -33,12 +33,15 @@ type Emitter struct {
 	// usesAnimTime is set when the program references $t (OpenSCAD's animation
 	// clock); File then emits `const scad_t = 0`, the non-animating default.
 	usesAnimTime bool
-	// usesV2/usesV3/usesFaces are set when the corresponding emitted helper is
-	// referenced (scad_v2 for polygon points, scad_v3 + scad_faces for
-	// polyhedron); File then emits only those helpers (see helperPreamble).
-	usesV2    bool
-	usesV3    bool
-	usesFaces bool
+	// usesV2/usesV3/usesFaces/usesV2Path are set when the corresponding emitted
+	// helper is referenced (scad_v2 for polygon points, scad_v3 + scad_faces
+	// for polyhedron, scad_v2_path for polygon-with-paths whose points are
+	// computed at runtime); File then emits only those helpers (see
+	// helperPreamble).
+	usesV2     bool
+	usesV3     bool
+	usesFaces  bool
+	usesV2Path bool
 	// childUse records, per module, whether it consumes children() and whether
 	// those children are 2D (see analyzeChildren). A module that uses children
 	// gains a `children []Solid`/`[]Sketch` parameter.

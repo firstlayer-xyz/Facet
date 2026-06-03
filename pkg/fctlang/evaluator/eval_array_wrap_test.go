@@ -70,15 +70,20 @@ fn Main() Solid {
 	}
 }
 
-// TestEvalArrayAppendScalarToFlat confirms that `+` between an array and a
-// non-array scalar appends the scalar — no wrapping needed at the flat level.
-// (The wrap idiom only matters when the element you want to append is itself
-// an array.)
-func TestEvalArrayAppendScalarToFlat(t *testing.T) {
+// TestEvalArrayBroadcastNumericScalar confirms numeric scalar broadcasting:
+// `arr + scalar` (and -, *, /) applies the op element-wise rather than
+// appending. To grow a numeric array, use the singleton-wrap idiom
+// (arr + [elem]) — same idiom that already serves nested arrays.
+func TestEvalArrayBroadcastNumericScalar(t *testing.T) {
 	src := `
 fn Main() Solid {
     var xs = [1, 2, 3];
-    var grown = xs + 4;
+    var added = xs + 10;
+    assert Size(of: added) == 3;
+    assert added[0] == 11 && added[2] == 13;
+    var scaled = xs * 2;
+    assert scaled[2] == 6;
+    var grown = xs + [4];
     assert Size(of: grown) == 4;
     assert grown[3] == 4;
     return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});

@@ -696,17 +696,45 @@ func TestTranspileLiteralPolygonNoHelper(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// Variable points combined with paths (holes) cannot resolve indices at
-// transpile time, so that combination errors rather than emit wrong geometry.
-func TestTranspilePolygonVariablePointsWithPathsErrors(t *testing.T) {
+// Variable points combined with paths (literal index lists) route each path
+// through scad_v2_path, which indexes the runtime points at evaluation time.
+// The indices stay literal — they are baked into the emitted call — and a
+// single path collapses to Polygon(points: ...), matching the no-paths shape.
+func TestTranspilePolygonVariablePointsSinglePath(t *testing.T) {
 	src := "pts = [[0,0],[10,0],[0,10]];\npolygon(pts, [[0,1,2]]);\n"
 	res, err := Transpile(src, "part.scad")
-	if err == nil {
-		t.Fatalf("variable points with paths should error; output:\n%s", res.Facet)
+	if err != nil {
+		t.Fatalf("variable points with literal paths should transpile, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "literal points") {
-		t.Fatalf("error should explain literal points are required: %v", err)
+	if !strings.Contains(res.Facet, "fn scad_v2_path(ps [][]Number, indices []Number) []Vec2") {
+		t.Fatalf("expected scad_v2_path helper:\n%s", res.Facet)
 	}
+	if !strings.Contains(res.Facet, "Polygon(points: scad_v2_path(ps: pts, indices: [0, 1, 2]))") {
+		t.Fatalf("expected single-path polygon routed through scad_v2_path:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A polygon with multiple paths emits the outer outline plus a typed `holes`
+// list, each entry an independent scad_v2_path call against the same runtime
+// points expression.
+func TestTranspilePolygonVariablePointsMultiplePaths(t *testing.T) {
+	src := "pts = [[0,0],[10,0],[10,10],[0,10],[3,3],[7,3],[7,7],[3,7]];\n" +
+		"polygon(pts, [[0,1,2,3], [4,5,6,7]]);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("variable points with multiple paths should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "scad_v2_path(ps: pts, indices: [0, 1, 2, 3])") {
+		t.Fatalf("expected outer path call:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "scad_v2_path(ps: pts, indices: [4, 5, 6, 7])") {
+		t.Fatalf("expected hole path call:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "holes: [scad_v2_path") {
+		t.Fatalf("expected holes argument:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
 }
 
 // A parameter never indexed in its own body, but forwarded to a helper whose
