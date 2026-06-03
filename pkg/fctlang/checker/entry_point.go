@@ -8,13 +8,14 @@ import (
 
 // entryReturnTypes is the set of return types an entry-point function may
 // declare. An entry point must ultimately produce a renderable geometry —
-// a single solid, an array of solids, or a PolyMesh. Any other return type
-// is rejected statically so the user gets the error at check time rather
-// than after a full evaluation.
+// a single solid, an array of solids, a PolyMesh, or an Animation. Any other
+// return type is rejected statically so the user gets the error at check time
+// rather than after a full evaluation.
 var entryReturnTypes = map[string]bool{
-	"Solid":   true,
-	"[]Solid": true,
-	"PolyMesh": true,
+	"Solid":     true,
+	"[]Solid":   true,
+	"PolyMesh":  true,
+	"Animation": true,
 }
 
 // ValidateEntryPoint checks that the function named entryName in the given
@@ -55,9 +56,9 @@ func (r *Result) ValidateEntryPoint(srcKey, entryName string) *parser.SourceErro
 		return nil
 	}
 
-	msg := fmt.Sprintf("%s() must return Solid, []Solid, or PolyMesh", entryName)
+	msg := fmt.Sprintf("%s() must return Solid, []Solid, PolyMesh, or Animation", entryName)
 	if ret != "" {
-		msg = fmt.Sprintf("%s() must return Solid, []Solid, or PolyMesh, got %s", entryName, ret)
+		msg = fmt.Sprintf("%s() must return Solid, []Solid, PolyMesh, or Animation, got %s", entryName, ret)
 	}
 	return &parser.SourceError{
 		File:    srcKey,

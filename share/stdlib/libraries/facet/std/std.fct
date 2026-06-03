@@ -99,3 +99,14 @@ fn Color.Hex() String {
     return _color_to_hex(self)
 }
 
+# ---------------------------------------------------------------------------
+# Animation Type (a model as a function of time)
+# ---------------------------------------------------------------------------
+# A time-driven model. `frame` is called with the current time in milliseconds
+# (Unix epoch ms) and returns the Solid for that instant. An entry point that
+# returns an Animation has its body evaluated once; `frame` captures that setup
+# and is invoked per displayed frame.
+type Animation {
+    frame fn(Number) Solid
+}
+
