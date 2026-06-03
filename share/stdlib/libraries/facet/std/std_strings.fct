@@ -19,9 +19,7 @@ fn Text(
     halign String = "left",
     valign String = "baseline",
 ) Sketch {
-    # TODO: _text reads "" as the built-in-font sentinel. A future cleanup could
-    # move the default into Go and drop this `?? ""` bridge.
-    return _text(text, s, font ?? "", halign, valign)
+    return _text(text, s, font, halign, valign)
 }
 
 # ---------------------------------------------------------------------------

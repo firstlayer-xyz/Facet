@@ -408,7 +408,7 @@ func (e *evaluator) builtinNewText(args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
-	fontPath, err := requireString("_text", 3, args[2])
+	font, err := optionalString("_text", 3, args[2])
 	if err != nil {
 		return nil, err
 	}
@@ -420,14 +420,19 @@ func (e *evaluator) builtinNewText(args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
-	if fontPath == "" {
+	// No font (None) selects the built-in font; a relative path resolves
+	// against the working directory.
+	var fontPath string
+	if font == nil {
 		fontPath = manifold.DefaultFontPath()
-	} else if !filepath.IsAbs(fontPath) {
+	} else if filepath.IsAbs(*font) {
+		fontPath = *font
+	} else {
 		cwd, cwdErr := os.Getwd()
 		if cwdErr != nil {
 			return nil, fmt.Errorf("_text(): failed to get working directory: %w", cwdErr)
 		}
-		fontPath = filepath.Join(cwd, fontPath)
+		fontPath = filepath.Join(cwd, *font)
 	}
 	return manifold.CreateText(fontPath, text, size, halign, valign)
 }

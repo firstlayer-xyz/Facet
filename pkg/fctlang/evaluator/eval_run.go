@@ -229,7 +229,7 @@ func extractSolids(entryPoint string, arr array) ([]*manifold.Solid, error) {
 // overall layout is roughly square. All solids are translated so Z=0 rests
 // on the build plate. The returned slice preserves the input order.
 // gap < 0 means auto (10% of the largest footprint dimension).
-func arrangeLayout(solids []*manifold.Solid, gap float64) []*manifold.Solid {
+func arrangeLayout(solids []*manifold.Solid, gapOpt *float64) []*manifold.Solid {
 	n := len(solids)
 	if n == 0 {
 		return solids
@@ -258,8 +258,10 @@ func arrangeLayout(solids []*manifold.Solid, gap float64) []*manifold.Solid {
 		}
 	}
 
-	if gap < 0 {
-		gap = maxSide * 0.1
+	// nil gap = automatic spacing (10% of the largest footprint dimension).
+	gap := maxSide * 0.1
+	if gapOpt != nil {
+		gap = *gapOpt
 	}
 
 	// Sort by footprint area descending (largest first).
