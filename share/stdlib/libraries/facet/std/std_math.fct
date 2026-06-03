@@ -90,12 +90,15 @@ fn Size(of String) Number {
 # ---------------------------------------------------------------------------
 # Array Search
 # ---------------------------------------------------------------------------
-# Returns the index of the first element equal to `value`, or -1 if absent.
+# Returns the index of the first element equal to `value`, or `nil` if absent.
+# Bind with `if var i = IndexOf(...)` or supply a fallback with `?? `.
 # ```
 # fn Main() { var i = IndexOf(arr: [10, 20, 30], value: 20) }    # i = 1
 # ```
-fn IndexOf(arr []Any, value Any) Number {
-    return _index_of_arr(arr, value)
+fn IndexOf(arr []Any, value Any) Number? {
+    var i = _index_of_arr(arr, value)
+    if i == -1 { return nil }
+    return i
 }
 
 # Returns every index where `arr` contains `value`. Empty list if none match.
@@ -106,13 +109,15 @@ fn IndicesOf(arr []Any, value Any) []Number {
     return _indices_of(arr, value)
 }
 
-# Returns the index of the first element matching `pred`, or -1 if none match.
+# Returns the index of the first element matching `pred`, or `nil` if none match.
 # `pred` is a lambda taking one element and returning Bool.
 # ```
 # fn Main() { var i = FindIndex(arr: [1, 5, 9], pred: fn(n Any) Bool { return n > 3 }) }   # i = 1
 # ```
-fn FindIndex(arr []Any, pred fn(Any) Bool) Number {
-    return _find_index(arr, pred)
+fn FindIndex(arr []Any, pred fn(Any) Bool) Number? {
+    var i = _find_index(arr, pred)
+    if i == -1 { return nil }
+    return i
 }
 
 # Returns every index where `pred(arr[i])` is true. Empty list if none match.

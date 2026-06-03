@@ -21,7 +21,7 @@ type Function struct {
 func (fn *Function) ArgsInRange(nArgs int) bool {
 	required := 0
 	for _, p := range fn.Params {
-		if p.Default == nil {
+		if p.IsRequired() {
 			required++
 		}
 	}

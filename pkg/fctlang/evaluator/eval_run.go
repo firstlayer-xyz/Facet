@@ -120,6 +120,8 @@ func (e *evaluator) run() (*EvalResult, error) {
 				return nil, err
 			}
 			args[p.Name] = v
+		} else if parser.IsOptionalType(p.Type) {
+			args[p.Name] = none("")
 		} else {
 			return nil, e.errAt(entryFn.Pos, "%s() parameter %q has no default and no override", e.entryPoint, p.Name)
 		}

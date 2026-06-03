@@ -267,7 +267,7 @@ func (c *checker) resolveNamedArgs(name string, pos parser.Pos, fn *parser.Funct
 	}
 
 	for i, p := range fn.Params {
-		if !filled[i] && p.Default == nil {
+		if !filled[i] && p.IsRequired() {
 			c.addError(pos, fmt.Sprintf("%s() missing required argument %q", name, p.Name))
 		}
 	}
@@ -301,7 +301,7 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 	// Count required params
 	required := 0
 	for _, p := range fn.Params {
-		if p.Default == nil {
+		if p.IsRequired() {
 			required++
 		}
 	}
@@ -444,14 +444,10 @@ func (c *checker) resolveParamType(fn *parser.Function, typeName string) typeInf
 	if strings.HasPrefix(typeName, "fn(") {
 		return c.resolveFuncTypeStr("", typeName)
 	}
-	ti := typeFromNameStr(typeName)
-	if ti.ft != typeUnknown {
-		return ti
-	}
-	if _, ok := c.structDecls[typeName]; ok {
-		return structTI(typeName)
-	}
-	return unknown()
+	// Everything else shares the return-type resolver, which also peels the
+	// postfix `?` for optional params (e.g. `gap Length?`) and resolves array
+	// element / struct names.
+	return c.resolveTypeString(typeName)
 }
 
 // resolveReturnType resolves a function's return type to typeInfo.

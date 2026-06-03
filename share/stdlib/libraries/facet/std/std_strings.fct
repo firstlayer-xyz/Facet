@@ -15,11 +15,11 @@
 fn Text(
     text String,
     s Length,
-    font String = "",
+    font String?,
     halign String = "left",
     valign String = "baseline",
 ) Sketch {
-    return _text(text, s, font, halign, valign)
+    return _text(text, s, font ?? "", halign, valign)
 }
 
 # ---------------------------------------------------------------------------
@@ -45,9 +45,12 @@ fn String.Split(delimiter String) []String {
     return _split(self, delimiter)
 }
 
-# Match returns [full match, capture1, …] or [] if no match.
-fn String.Match(pattern String) []String {
-    return _match(self, pattern)
+# Match returns the [full match, capture1, …] groups, or `nil` if the pattern
+# did not match. Bind with `if var m = s.Match(pattern: …) { … }`.
+fn String.Match(pattern String) []String? {
+    var m = _match(self, pattern)
+    if Size(of: m) == 0 { return nil }
+    return m
 }
 
 # Returns the string converted to uppercase.
@@ -70,9 +73,11 @@ fn String.Replace(old, new String) String {
     return _replace(self, old, new)
 }
 
-# Returns the index of the first occurrence of `substr`, or -1 if not found.
-fn String.IndexOf(substr String) Number {
-    return _index_of(self, substr)
+# Returns the index of the first occurrence of `substr`, or `nil` if not found.
+fn String.IndexOf(substr String) Number? {
+    var i = _index_of(self, substr)
+    if i == -1 { return nil }
+    return i
 }
 
 # Returns true if the string contains `substr`.

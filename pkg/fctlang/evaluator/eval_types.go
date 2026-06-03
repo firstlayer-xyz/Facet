@@ -291,6 +291,10 @@ func (e *evaluator) coerceArgs(fnName string, params []*parser.Param, args map[s
 // qualified library types (e.g. "T.Thread") are accessible.  Bare names that
 // only exist in a library (e.g. "Thread" without qualification) are NOT.
 func (e *evaluator) isAccessibleType(typeName string) bool {
+	// Handle T? — strip the optional suffix and recurse on the inner type.
+	if strings.HasSuffix(typeName, "?") {
+		return e.isAccessibleType(strings.TrimSuffix(typeName, "?"))
+	}
 	// Handle []Type — strip prefix and recurse.
 	if strings.HasPrefix(typeName, "[]") {
 		return e.isAccessibleType(typeName[2:])

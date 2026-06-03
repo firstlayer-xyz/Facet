@@ -144,7 +144,7 @@ func (e *evaluator) evalCall(call *parser.CallExpr, locals map[string]value) (va
 	if fb != nil {
 		required := 0
 		for _, p := range fb.Params {
-			if p.Default == nil {
+			if p.IsRequired() {
 				required++
 			}
 		}

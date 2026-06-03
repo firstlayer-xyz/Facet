@@ -537,6 +537,20 @@ fn Main() {
 }
 ```
 
+A parameter whose type is an Optional (`name Type?`) is also omittable — when
+left out, it binds `nil` (None). This is the idiomatic way to express "absent
+by default" without a magic sentinel value; read it with `?? fallback`:
+
+```
+fn Peg(r Length?, h Length = 10 mm) Solid {
+    return Cylinder(r: r ?? 3 mm, h: h)
+}
+
+fn Main() {
+    return Peg()              # r is nil → falls back to 3 mm
+}
+```
+
 ### Recursion
 
 ```
