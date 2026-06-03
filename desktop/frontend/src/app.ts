@@ -14,6 +14,7 @@ import { evalRequest, cancelEval } from './eval-client';
 import type { EvalResponse, EvalResult, SourceEntry, SourceError } from './eval-client';
 import { decodeBinaryMesh } from './mesh-decode';
 import type { BinaryMeshMeta } from './mesh-decode';
+import { initPlayback, onRenderTick } from './playback';
 
 // Source kind constants (mirrors parser.SourceKind in Go)
 const SOURCE_USER = 0;
@@ -238,6 +239,18 @@ export function initApp(deps: AppDeps) {
 
   // Persist tabs when app is about to close
   on('app:before-close', () => persistOpenTabs());
+
+  // Wire the frame playback loop.  getSources is injected here rather
+  // than imported directly to avoid a circular dependency between
+  // playback.ts and editor/app.ts.
+  initPlayback({
+    getSources: () => editor.getAllSources(),
+    applyFrame: (binary, header) => {
+      const decoded = header.mesh ? decodeBinaryMesh(binary, header.mesh) : null;
+      viewer.applyEvalResult(decoded, header.posMap ?? [], { autofit: false });
+    },
+  });
+  viewer.onFrame(() => onRenderTick());
 
 }
 

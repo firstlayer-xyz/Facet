@@ -29,14 +29,14 @@ export interface FacetSymbol {
 
 let currentController: AbortController | null = null;
 
-interface EvalAuth {
+export interface EvalAuth {
   url: string;
   token: string;
 }
 
 let cachedAuth: EvalAuth | null = null;
 
-async function getEvalAuth(): Promise<EvalAuth> {
+export async function getEvalAuth(): Promise<EvalAuth> {
   if (!cachedAuth) {
     const auth = await GetHTTPAuth();
     cachedAuth = {
