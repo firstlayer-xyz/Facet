@@ -52,6 +52,13 @@ func (e *Emitter) moduleCall(n *ast.ModuleCall) string {
 		}
 		return e.userModuleCall(n, sym)
 	}
+	// echo() and assert() are debug-only constructs in OpenSCAD — they print
+	// or check at preview time and produce no geometry. The transpiled Facet
+	// program is render-only, so we silently drop them rather than fail the
+	// transpile.
+	if n.Name == "echo" || n.Name == "assert" {
+		return ""
+	}
 	return e.errf(n.Pos(), "module '%s'", n.Name)
 }
 

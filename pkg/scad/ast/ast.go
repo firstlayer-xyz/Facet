@@ -161,6 +161,15 @@ type Vector struct {
 	P     Pos
 }
 
+// ListComp is `[for (var = range, …) body]`. The body is an expression
+// (commonly another vector, a function call, or a scalar). Multiple iterator
+// clauses form a Cartesian product, matching OpenSCAD semantics.
+type ListComp struct {
+	Iters []ForIter
+	Body  Expr
+	P     Pos
+}
+
 // Range is `[start:end]` or `[start:step:end]` (OpenSCAD step-MIDDLE order).
 type Range struct {
 	Start, End Expr
@@ -222,6 +231,7 @@ func (*Bool) exprNode()    {}
 func (*Undef) exprNode()   {}
 func (*Vector) exprNode()  {}
 func (*Range) exprNode()   {}
+func (*ListComp) exprNode() {}
 func (*Binary) exprNode()  {}
 func (*Unary) exprNode()   {}
 func (*Ternary) exprNode() {}
@@ -236,7 +246,8 @@ func (n *Ident) Pos() Pos   { return n.P }
 func (n *Bool) Pos() Pos    { return n.P }
 func (n *Undef) Pos() Pos   { return n.P }
 func (n *Vector) Pos() Pos  { return n.P }
-func (n *Range) Pos() Pos   { return n.P }
+func (n *Range) Pos() Pos    { return n.P }
+func (n *ListComp) Pos() Pos { return n.P }
 func (n *Binary) Pos() Pos  { return n.P }
 func (n *Unary) Pos() Pos   { return n.P }
 func (n *Ternary) Pos() Pos { return n.P }

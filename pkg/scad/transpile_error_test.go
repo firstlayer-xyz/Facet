@@ -21,14 +21,95 @@ func TestTranspileErrorsOnUnsupported(t *testing.T) {
 	}
 }
 
-func TestTranspileErrorsOnOffsetR(t *testing.T) {
+// A list comprehension `[for (var = range) body]` renders to a Facet
+// `for var range { yield body }`. Used heavily in real OpenSCAD models that
+// build polygon points by sampling a function over a range.
+func TestTranspileListComprehensionInPolygon(t *testing.T) {
+	src := "polygon([for (a = [0:0.1:1]) [a*10, a*5]]);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("list comprehension should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "for a [0:1:0.1] { yield [a * 10, a * 5] }") {
+		t.Fatalf("expected for-yield in output:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A module body of a single statement (no braces) parses the same as a
+// braced block. `module curve() polygon(...);` and `module curve() { polygon(...); }`
+// produce identical Facet output.
+func TestTranspileModuleSingleStatementBody(t *testing.T) {
+	src := "module unit_sq() square([1,1]);\nunit_sq();\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("single-statement module body should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn unit_sq") {
+		t.Fatalf("expected unit_sq definition:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// echo() and assert() are debug-only in OpenSCAD; the render-only Facet
+// program drops them silently rather than refusing to transpile.
+func TestTranspileEchoAssertSilentlyDropped(t *testing.T) {
+	src := `echo("hello");` + "\nassert(true);\ncube(10);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("echo/assert should be dropped, got: %v", err)
+	}
+	if strings.Contains(res.Facet, "echo") || strings.Contains(res.Facet, "assert") {
+		t.Fatalf("echo/assert should not appear in output:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A non-literal color value (a parameter or other expression) passes through
+// to Color(hex:); the Facet runtime resolves a CSS name to its hex value via
+// the shared colorname table.
+func TestTranspileNonLiteralColorPassThrough(t *testing.T) {
+	src := "module tinted(c) color(c) cube(5);\ntinted(\"red\");\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("non-literal color should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Color(hex: c)") {
+		t.Fatalf("expected runtime Color(hex:) call:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "c String") {
+		t.Fatalf("expected parameter c classified as String:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A translate whose vector is a runtime expression (not a literal) indexes
+// the expression per axis so Facet's Move receives Length-coercible Numbers.
+func TestTranspileTranslateComputedVector(t *testing.T) {
+	src := "module shift(s) translate(s * [1, 2, 0]) cube(3);\nshift(5);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("computed translate should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "[0] * 1 mm") || !strings.Contains(res.Facet, "[1] * 1 mm") || !strings.Contains(res.Facet, "[2] * 1 mm") {
+		t.Fatalf("expected per-axis indexing:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// offset(r=…) is approximated as mitered Offset(delta:…). The visual
+// difference between rounded and mitered offsets is small for thin offsets
+// (line outlines, fillets at small radii), and the alternative — refusing to
+// transpile any model that uses `r` — blocks too many real OpenSCAD files.
+func TestTranspileOffsetRAsDelta(t *testing.T) {
 	res, err := Transpile("offset(r=5) circle(r=3);\n", "part.scad")
-	if err == nil || res.Facet != "" {
-		t.Fatalf("offset(r=…) should fail with no output; err=%v out=%q", err, res.Facet)
+	if err != nil {
+		t.Fatalf("offset(r=…) should transpile as Offset(delta:…), got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "offset") {
-		t.Fatalf("error should mention offset, got: %v", err)
+	if !strings.Contains(res.Facet, "Offset(delta: 5 mm)") {
+		t.Fatalf("expected Offset(delta: 5 mm) approximation:\n%s", res.Facet)
 	}
+	assertTypeChecks(t, res.Facet)
 }
 
 func TestTranspileErrorsOnUnknownColor(t *testing.T) {

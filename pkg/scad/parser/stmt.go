@@ -194,7 +194,10 @@ func (p *parser) parseModuleDef() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	body, err := p.parseChildBlock()
+	// OpenSCAD accepts either a braced block or a single statement as the
+	// module body (`module curve() polygon(...);` is valid). parseChildren
+	// already handles both forms for transforms; reuse it here.
+	body, err := p.parseChildren()
 	if err != nil {
 		return nil, err
 	}

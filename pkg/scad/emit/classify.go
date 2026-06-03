@@ -6,8 +6,9 @@ import "facet/pkg/scad/ast"
 // (`flag = false`) classifies the parameter as Bool. A nested array (a list
 // of lists) exceeds the binary scalar/vector model and is typed `Any`
 // (dynamic). A flat vector — from a vector default, in-body indexing/member
-// access, or a type propagated across call sites — is []Number. Everything
-// else is scalar Number.
+// access, or a type propagated across call sites — is []Number. A parameter
+// forwarded as a String-position argument (e.g. `color(c)`, `text(name)`)
+// classifies as String. Everything else is scalar Number.
 func (e *Emitter) paramType(defName string, p ast.Param) string {
 	switch {
 	case e.nested.has(defName, p.Name):
@@ -16,9 +17,53 @@ func (e *Emitter) paramType(defName string, p ast.Param) string {
 		return "[]Number"
 	case isBoolDefault(p.Default):
 		return "Bool"
+	case e.paramIsString(defName, p.Name):
+		return "String"
 	default:
 		return "Number"
 	}
+}
+
+// paramIsString reports whether `name` is used as a String argument anywhere
+// in defName's body — currently just `color(name)` and `color(c = name)`.
+func (e *Emitter) paramIsString(defName, name string) bool {
+	sym, ok := e.syms[defName]
+	if !ok {
+		return false
+	}
+	return stmtsUseAsStringColor(name, sym.moduleBody)
+}
+
+func stmtsUseAsStringColor(name string, stmts []ast.Stmt) bool {
+	for _, s := range stmts {
+		if stmtUsesAsStringColor(name, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func stmtUsesAsStringColor(name string, s ast.Stmt) bool {
+	switch n := s.(type) {
+	case *ast.ModuleCall:
+		if n.Name == "color" {
+			for i, a := range n.Args {
+				if a.Name == "c" || (a.Name == "" && i == 0) {
+					if id, ok := a.Value.(*ast.Ident); ok && id.Name == name {
+						return true
+					}
+				}
+			}
+		}
+		if stmtsUseAsStringColor(name, n.Children) {
+			return true
+		}
+	case *ast.For:
+		return stmtsUseAsStringColor(name, n.Children)
+	case *ast.If:
+		return stmtsUseAsStringColor(name, n.Then) || stmtsUseAsStringColor(name, n.Else)
+	}
+	return false
 }
 
 // isBoolDefault reports whether a parameter's default is a Bool literal —
