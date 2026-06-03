@@ -19,6 +19,15 @@ func TestCheckAnyReturn(t *testing.T) {
 fn Main() Solid { return Cube(s: first(v: [[5, 6], [7, 8]])[0]) }`)
 }
 
+// A concrete body (a list or number literal) may be returned through an `Any`
+// return type. The transpiler relies on this: its helpers build concrete
+// values but declare `Any` returns, e.g. `fn getMiddlePoint() Any { return [...] }`.
+func TestCheckAnyReturnFromConcreteBody(t *testing.T) {
+	expectNoErrors(t, `fn mid() Any { return [1, 2, 3] }
+fn scalar() Any { return 5 }
+fn Main() Solid { return Cube(s: mid()[0]) + Cube(s: scalar()) }`)
+}
+
 // `Any` must not weaken typo detection: an unrecognized type name on a
 // parameter still errors (only the literal keyword `Any` is the dynamic type).
 func TestCheckUnknownParamTypeStillErrors(t *testing.T) {

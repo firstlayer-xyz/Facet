@@ -340,7 +340,11 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog
 	}
 	if fn.ReturnType != "" && retType.ft != typeUnknown {
 		expected := c.resolveReturnType(fn)
-		if expected.ft == typeUnknown {
+		// `Any` is the dynamic type: it resolves to the permissive typeUnknown
+		// on purpose, so a declared `Any` return is not an unknown-type error
+		// (mirrors the parameter handling). A concrete body returning into an
+		// `Any` slot is fine — the compatibility check below skips typeUnknown.
+		if expected.ft == typeUnknown && fn.ReturnType != "Any" {
 			c.addError(fn.Pos, fmt.Sprintf("%s() has unknown return type %q", fn.Name, fn.ReturnType))
 		}
 		// Top-down coercion: if the inferred return type is unknown (e.g. array of anonymous structs)
