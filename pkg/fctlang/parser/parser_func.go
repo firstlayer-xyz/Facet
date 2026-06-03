@@ -374,12 +374,19 @@ func (p *parser) parseParams() ([]*Param, error) {
 			return nil, p.errorf("constraints are not allowed on grouped parameters; use separate declarations")
 		}
 
-		// Emit params.
+		// Emit params. Multi-name groups (`a, b var`) share a positive
+		// GroupID so the checker can treat them as one type slot; singletons
+		// stay at 0.
+		groupID := 0
+		if len(names) > 1 {
+			p.groupSeq++
+			groupID = p.groupSeq
+		}
 		for _, tok := range names {
 			if err := p.rejectUnderscoreIdent(tok, "parameter"); err != nil {
 				return nil, err
 			}
-			params = append(params, &Param{Type: typeStr, Name: tok.Text, Default: defExpr, Constraint: constraint, Pos: Pos{Line: tok.Line, Col: tok.Col}})
+			params = append(params, &Param{Type: typeStr, Name: tok.Text, Default: defExpr, Constraint: constraint, Pos: Pos{Line: tok.Line, Col: tok.Col}, GroupID: groupID})
 		}
 
 		if p.cur.Type != TokenComma {

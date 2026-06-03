@@ -59,6 +59,12 @@ type Param struct {
 	Default    Expr // nil if required
 	Constraint Expr // nil if unconstrained
 	Pos        Pos  // position of the parameter name token
+	// GroupID identifies parameters declared together as `a, b var`.
+	// Zero means the param has its own type slot; positive IDs are shared
+	// across all params from one multi-name declaration so the checker can
+	// enforce that they resolve to the same concrete type for generic
+	// (`var`/`[]var`) groups.
+	GroupID int
 }
 
 // Stmt is the interface implemented by all statement nodes.

@@ -336,34 +336,35 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 		}
 	}
 
-	// Var-group consistency check: consecutive params with the same var/var[]
-	// type form a group. All args in a group must resolve to the same concrete type.
+	// Var-group consistency check: params declared together as `a, b var`
+	// (same Param.GroupID) share a type slot and must resolve to the same
+	// concrete type. Singletons (GroupID == 0) get their own slot — two
+	// independent `var` params can take different types.
 	var firstGroupConcreteType typeInfo
 	hasVarParams := false
 	if len(argTypes) > 0 && len(fn.Params) > 0 {
 		type varGroup struct {
-			typeStr   string    // "var" or "[]var"
-			indices   []int     // param indices in this group
-			first     bool      // is this the first var group?
+			typeStr string // "var" or "[]var"
+			indices []int  // param indices in this group
+			first   bool   // is this the first var group?
 		}
 		var groups []varGroup
-		var currentGroup *varGroup
+		groupByID := map[int]int{} // Param.GroupID → index into groups (shared decls only)
 		for i, p := range fn.Params {
 			pType := p.Type
 			isVar := pType == "var" || pType == "[]var"
-			if isVar {
-				hasVarParams = true
-				if currentGroup != nil && currentGroup.typeStr == pType {
-					// Same var type as previous — extend group
-					currentGroup.indices = append(currentGroup.indices, i)
-				} else {
-					// New var group
-					groups = append(groups, varGroup{typeStr: pType, indices: []int{i}, first: len(groups) == 0})
-					currentGroup = &groups[len(groups)-1]
-				}
-			} else {
-				currentGroup = nil // break the group
+			if !isVar {
+				continue
 			}
+			hasVarParams = true
+			if p.GroupID != 0 {
+				if existing, ok := groupByID[p.GroupID]; ok {
+					groups[existing].indices = append(groups[existing].indices, i)
+					continue
+				}
+				groupByID[p.GroupID] = len(groups)
+			}
+			groups = append(groups, varGroup{typeStr: pType, indices: []int{i}, first: len(groups) == 0})
 		}
 
 		for _, grp := range groups {

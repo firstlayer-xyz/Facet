@@ -47,6 +47,7 @@ type parser struct {
 	cur        Token
 	inForYield int // nesting depth; > 0 means yield is valid in nested blocks
 	depth      int // expression recursion depth
+	groupSeq   int // monotonic counter for Param.GroupID (multi-name declarations)
 }
 
 func (p *parser) next() error {

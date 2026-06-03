@@ -327,9 +327,10 @@ fn Main() Solid { return MakeBox(s: 10 mm) }
 }
 
 func TestCheckVarGroupConsistency(t *testing.T) {
-	// Consecutive var params form a group — checker enforces same concrete type
+	// Params declared together as `a, b var` share a type slot — the checker
+	// rejects calls where the args don't resolve to the same concrete type.
 	src := `
-fn Add(a var, b var) var { return a + b }
+fn Add(a, b var) var { return a + b }
 fn Main() Solid {
 	var n = Add(a: 10, b: "hello")
 	return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm})
