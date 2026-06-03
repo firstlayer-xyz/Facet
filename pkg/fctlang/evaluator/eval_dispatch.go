@@ -150,6 +150,48 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		}
 	}
 
+	// `opt?.Method(args)`: None short-circuits; Some(v) unwraps and the
+	// return value is re-wrapped in Some via chainOptionalWrap.
+	chainOptionalWrap := false
+	if mc.Optional {
+		opt, ok := receiver.(*optionalVal)
+		if !ok {
+			return nil, e.errAt(mc.Pos, "?. operator requires an Optional receiver, got %s", typeName(receiver))
+		}
+		if !opt.present {
+			return none(""), nil
+		}
+		receiver = opt.inner
+		chainOptionalWrap = true
+	}
+
+	// Methods on Optional outrank user methods.
+	if opt, ok := receiver.(*optionalVal); ok {
+		return e.evalOptionalMethod(mc, opt, argMap)
+	}
+
+	// dispatch is the original method-lookup body; result is wrapped if
+	// we entered via `?.` so the surrounding type stays Optional.
+	result, dispatchErr := e.dispatchMethodCall(mc, receiver, argMap, stdlibCall)
+	if dispatchErr != nil {
+		return nil, dispatchErr
+	}
+	if chainOptionalWrap {
+		return some(result, ""), nil
+	}
+	return result, nil
+}
+
+// dispatchMethodCall evaluates `receiver.Method(args)` for a definite
+// receiver. Optional methods and the optional-chaining unwrap happen in
+// the caller.
+func (e *evaluator) dispatchMethodCall(
+	mc *parser.MethodCallExpr,
+	receiver value,
+	argMap map[string]value,
+	stdlibCall func(receiver value) func(fn *parser.Function, args map[string]value) (value, error),
+) (value, error) {
+
 	switch r := receiver.(type) {
 	case *manifold.Solid:
 		candidates := findMethods(e.stdMethods["Solid"], mc.Method, "*", len(argMap))
@@ -254,4 +296,33 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 	default:
 		return nil, e.errAt(mc.Pos, "cannot call method %s on %s", mc.Method, typeName(receiver))
 	}
+}
+
+// evalOptionalMethod handles the closed set of methods on Optional values.
+// In sync with the checker's checkOptionalMethod — both must agree on which
+// method names exist and what shape they take.
+func (e *evaluator) evalOptionalMethod(mc *parser.MethodCallExpr, opt *optionalVal, argMap map[string]value) (value, error) {
+	switch mc.Method {
+	case "IsSome":
+		if len(argMap) != 0 {
+			return nil, e.errAt(mc.Pos, "%s.IsSome() takes no arguments, got %d", typeName(opt), len(argMap))
+		}
+		return opt.present, nil
+	case "IsNone":
+		if len(argMap) != 0 {
+			return nil, e.errAt(mc.Pos, "%s.IsNone() takes no arguments, got %d", typeName(opt), len(argMap))
+		}
+		return !opt.present, nil
+	case "Or":
+		def, ok := argMap["default"]
+		if !ok || len(argMap) != 1 {
+			return nil, e.errAt(mc.Pos, "%s.Or() requires a single 'default:' argument", typeName(opt))
+		}
+		if opt.present {
+			return opt.inner, nil
+		}
+		return def, nil
+	}
+	return nil, e.errAt(mc.Pos, "%s has no method %q (try .IsSome(), .IsNone(), or .Or(default:))",
+		typeName(opt), mc.Method)
 }

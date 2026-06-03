@@ -131,7 +131,7 @@ Facet uses a **Z-up** right-handed coordinate system:
 
 Key conventions:
 
-- `Rotate`, `Scale`, and `Mirror` always require an explicit pivot or offset — there is no implicit default
+- `Rotate`, `Scale`, and `Mirror` default to the world origin / a zero offset when their pivot/offset arg is omitted
 - For primitive-specific axis/origin conventions (e.g. where `Cube` or `Cylinder` sits relative to the origin, which axis `Extrude` / `Revolve` / `CircularPattern` use), see the **Stdlib API Reference** section below — it is auto-generated from the stdlib source so it is always current
 
 ## Types
@@ -150,6 +150,64 @@ Key conventions:
 | `String` | A text string |
 | `Library` | A loaded library namespace |
 | `Box` | A 3D bounding box with `min` and `max` Vec3 |
+| `T?` | An Optional — either a value of type `T` or absent (`nil`). See **Optional Types** below. |
+
+## Optional Types
+
+An Optional carries either a value of some inner type or no value at all. The shape is the postfix `?` on any type:
+
+```
+Number?              // a Number or absent
+Length?              // a Length or absent
+Vec3?                // a Vec3 or absent
+[]Number?            // an array of Number? (the `?` binds tighter than `[]`)
+```
+
+Double-optional (`T??`) is rejected at parse time — Optional is always a single layer.
+
+### Constructing an Optional
+
+A bare value implicitly widens to its Optional form at any type boundary that expects `T?`:
+
+```
+fn Lookup() Number? {
+    return 5             // implicit Some(5) — widens from Number to Number?
+}
+
+fn Missing() Number? {
+    return nil           // explicit None
+}
+```
+
+`nil` is the None literal. With no surrounding type context it has type "wild Optional" and widens to any `T?`.
+
+### Working with Optionals
+
+The language provides one method, four sugar operators, and an extension to `for-yield`. Together they cover every common pattern; there is no raw "unwrap or crash" form, so the type system forces every caller to handle absence at the boundary.
+
+| Form | Purpose | Example |
+|------|---------|---------|
+| `opt ?? fallback` | Use the inner value if present, otherwise the fallback | `Lookup() ?? 0` |
+| `opt?.field` / `opt?.method()` | Access a field or method through an Optional; the result is `?`-wrapped | `MaybeVec()?.x ?? 0 mm` |
+| `opt == nil` / `opt != nil` | Presence check, returns Bool | `if Lookup() != nil { ... }` |
+| `if var name = opt { ... }` | Bind-and-narrow: enters the branch only when present, with `name` typed as the inner `T` | `if var i = Lookup() { return i }` |
+| `for v opt { yield expr }` | Map / Filter through Optional — the result is `?`-wrapped | `for n m { yield n * 2 }` |
+| `opt.IsSome()` / `opt.IsNone()` | Methods equivalent to `!= nil` / `== nil` | `if opt.IsSome() { ... }` |
+| `opt.Or(default: x)` | Method form of `??` | `Lookup().Or(default: 0)` |
+
+Optional chaining short-circuits: if the receiver is None, the whole `opt?.x.y.z` chain is None and no field access is attempted. `??` short-circuits too — the fallback is only evaluated when the left side is absent.
+
+### Worked Example
+
+```
+fn FindPerson(name String) Person? { ... }
+
+fn AgeOf(name String) Number {
+    return FindPerson(name: name)?.age ?? 0
+}
+```
+
+The chain: look up a person, take their age if present, otherwise 0. Each step short-circuits to None if the previous step was None.
 
 ## Literals
 
@@ -165,7 +223,7 @@ A number followed by a distance unit. All lengths are stored as millimeters inte
 
 **Common units:** `mm`, `cm`, `m`, `km`, `um` (micron), `in`, `ft`, `yd`, `mi`, `thou`. Many more supported (metric prefixes, historical, astronomical, fun units). All stored as mm internally.
 
-**Unit precedence:** Unit suffixes bind as postfix (tighter than all binary operators). `2 * 3 mm` means `2 * (3 mm)` = `6 mm`. `2 mm * 3 mm` = `Number` (Length × Length gives a dimensionless area ratio).
+**Unit precedence:** Unit suffixes bind as postfix (tighter than all binary operators). `2 * 3 mm` means `2 * (3 mm)` = `6 mm`. `Length × Length` is rejected at compile time — there is no Area type — so use `Length / Number` and friends to keep dimensions consistent.
 
 ### Angle Literals
 
@@ -262,10 +320,8 @@ Constrained parameters on entry point functions appear as interactive controls i
 | `Length - Length` | `Length` | Subtraction |
 | `Length * Number` | `Length` | Scaling |
 | `Number * Length` | `Length` | Scaling |
-| `Length * Length` | `Number` | Area (dimensionless) |
 | `Length / Number` | `Length` | Division |
 | `Length / Length` | `Number` | Ratio |
-| `Length % Length` | `Length` | Modulo |
 | `Number op Number` | `Number` | All arithmetic ops |
 | `Angle + Angle` | `Angle` | Addition |
 | `Angle - Angle` | `Angle` | Subtraction |
@@ -300,19 +356,35 @@ Vec2 and Vec3 arithmetic (`+`, `-`, `*`, `/`, unary `-`) is defined in the stdli
 
 `&&` (short-circuit AND), `||` (short-circuit OR), `!` (NOT).
 
+### Optional
+
+- `??` — nullish coalescing. `opt ?? fallback` returns the inner value if `opt` is Some, else evaluates and returns `fallback`. Short-circuits like `&&`/`||`.
+- `?.` — optional chaining (postfix on a field/method access). `opt?.field` short-circuits to None if `opt` is absent, else accesses `.field` on the inner value and wraps the result in `?`.
+
+### Conditional (Ternary)
+
+`cond ? a : b` — C-style conditional expression. `cond` must be Bool; `a` and `b` must produce compatible types; the result is that unified type. Only the chosen arm is evaluated. Right-associative: `a ? b : c ? d : e` parses as `a ? b : (c ? d : e)`.
+
+```
+var size = big ? 20 mm : 5 mm
+return color != nil ? color : Color(hex: "#FFFFFF")
+```
+
 ### Unary
 
 `-` (negate `Number`, `Length`, `Angle`), `!` (negate `Bool`).
 
 ### Precedence (highest first)
 
-1. Postfix (`.method()`, `[index]`, unit application)
+1. Postfix (`.method()`, `?.field` / `?.method()`, `[index]`, unit application)
 2. Unary (`-`, `!`)
 3. Multiplicative (`*`, `/`, `%`, `&`, `^`)
 4. Additive (`+`, `-`, `|`)
 5. Comparison (`<`, `>`, `<=`, `>=`, `==`, `!=`)
 6. Logical AND (`&&`)
-7. Logical OR (`||`)
+7. Nullish coalescing (`??`) — binds tighter than `||`, so `a || opt ?? d` parses as `a || (opt ?? d)`
+8. Logical OR (`||`)
+9. Ternary (`? :`) — looser than `||`, so `a || b ? c : d` parses as `(a || b) ? c : d`
 
 ## Expressions
 
@@ -322,7 +394,20 @@ Vec2 and Vec3 arithmetic (`+`, `-`, `*`, `/`, unary `-`) is defined in the stdli
 if cond { body } else if cond { body } else { body }
 ```
 
-`if` is a statement, not an expression. `return` inside a branch exits the enclosing function:
+`if` is a statement, not an expression. `return` inside a branch exits the enclosing function.
+
+Bind-and-narrow form for Optionals: `if var NAME = opt { body }`. The body runs only when `opt` is Some, with `NAME` bound to the unwrapped inner value (typed as `T`, not `T?`):
+
+```
+fn AgeOrZero(name String) Number {
+    if var p = FindPerson(name: name) {
+        return p.age            // p is Person here, not Person?
+    }
+    return 0
+}
+```
+
+The bound name is scoped to the then-branch and does not leak past the closing brace.
 
 ```
 fn Bigger(a, b Length) Length {
@@ -377,6 +462,23 @@ var evens = for i [0:<10] {
     yield i;
 };
 ```
+
+**For-yield over an Optional.** The same `for v opt { yield expr }` shape works when the source is `T?`. An Optional is conceptually a 0-or-1 element collection, so the result is `U?` instead of `[]U`:
+
+```
+fn Maybe() Number? { return 5 }
+var doubled = for n Maybe() { yield n * 2 }     // doubled is Number? — Some(10)
+
+fn None() Number? { return nil }
+var stillNone = for n None() { yield n * 2 }    // stillNone is Number? — None
+
+// Conditional yield = Filter
+var positive = for n Maybe() {
+    if n > 0 { yield n }
+}                                                // positive is Number? — Some(5)
+```
+
+This unifies Map and Filter on Optionals with the existing array machinery — no extra method API.
 
 ### Fold
 

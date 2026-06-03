@@ -290,6 +290,25 @@ func (e *evaluator) evalFieldAccess(ex *parser.FieldAccessExpr, locals map[strin
 	if err != nil {
 		return nil, err
 	}
+	// `opt?.field`: None short-circuits; Some(v) returns Some(v.field).
+	if ex.Optional {
+		opt, ok := unwrap(recv).(*optionalVal)
+		if !ok {
+			return nil, e.errAt(ex.Pos, "?. operator requires an Optional receiver, got %s", typeName(recv))
+		}
+		if !opt.present {
+			return none(""), nil
+		}
+		sv, ok := unwrap(opt.inner).(*structVal)
+		if !ok {
+			return nil, e.errAt(ex.Pos, "cannot access field %q on %s", ex.Field, typeName(opt.inner))
+		}
+		v, ok := sv.fields[ex.Field]
+		if !ok {
+			return nil, e.errAt(ex.Pos, "struct %s has no field %q", sv.typeName, ex.Field)
+		}
+		return some(v, ""), nil
+	}
 	sv, ok := unwrap(recv).(*structVal)
 	if !ok {
 		return nil, e.errAt(ex.Pos, "cannot access field %q on %s", ex.Field, typeName(recv))

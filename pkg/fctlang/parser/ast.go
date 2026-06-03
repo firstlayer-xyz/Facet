@@ -286,12 +286,14 @@ type NamedArg struct {
 
 func (*NamedArg) exprNode() {}
 
-// MethodCallExpr represents a method call on a receiver: receiver.Method(args).
+// MethodCallExpr represents `receiver.Method(args)`. Optional is true for
+// `opt?.Method(args)` — see FieldAccessExpr for the short-circuit shape.
 type MethodCallExpr struct {
 	Receiver Expr
 	Method   string
 	Args     []Expr
 	Pos      Pos
+	Optional bool
 }
 
 func (*MethodCallExpr) exprNode() {}
@@ -474,9 +476,32 @@ type BoolLit struct {
 
 func (*BoolLit) exprNode() {}
 
+// NilLit is the None variant of an Optional. Its inner type is inferred
+// from surrounding context; a bare `nil` without one is a type error.
+type NilLit struct {
+	Pos Pos
+}
+
+func (*NilLit) exprNode() {}
+
+// TernaryExpr is `cond ? then : else`. Cond is Bool, the arms unify on a
+// common type, only the chosen arm is evaluated.
+type TernaryExpr struct {
+	Cond Expr
+	Then Expr
+	Else Expr
+	Pos  Pos
+}
+
+func (*TernaryExpr) exprNode() {}
+
 // IfStmt represents an if/else-if/else statement.
+//
+// `if var NAME = Cond` form: Cond must be Optional. When Some(v), NAME is
+// bound to v (typed as the inner T) inside Then. ElseIfs never carry a bind.
 type IfStmt struct {
 	Cond     Expr
+	BindVar  string // non-empty for `if var NAME = Cond`; empty for regular if
 	Then     []Stmt
 	ElseIfs  []*ElseIfClause
 	Else     []Stmt // nil if no else
@@ -567,11 +592,14 @@ type StructFieldInit struct {
 	Pos   Pos // position of the field-name token
 }
 
-// FieldAccessExpr represents field access: receiver.field
+// FieldAccessExpr represents `receiver.field`. Optional is true for the
+// `opt?.field` form: a None receiver short-circuits to None, a Some(v)
+// receiver yields Some(v.field).
 type FieldAccessExpr struct {
 	Receiver Expr
 	Field    string
 	Pos      Pos
+	Optional bool
 }
 
 func (*FieldAccessExpr) exprNode() {}

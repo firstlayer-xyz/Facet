@@ -2,9 +2,14 @@ GO_TOOLCHAIN := $(CURDIR)/.go-toolchain
 GO := $(GO_TOOLCHAIN)/bin/go
 export GOROOT := $(GO_TOOLCHAIN)
 export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
-WAILS := $(HOME)/go/bin/wails
 
-.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test
+# Pin the Wails CLI to match go.mod's require, so `make dev` / `make build`
+# never silently use whatever a contributor happens to have in ~/go/bin/wails.
+# Installed into the project-local Go toolchain dir alongside `go`.
+WAILS_VERSION := v2.12.0
+WAILS := $(GO_TOOLCHAIN)/bin/wails
+
+.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
 
 all: manifold build
 
@@ -12,16 +17,29 @@ go-toolchain: $(GO)
 $(GO):
 	bash scripts/setup-go.sh
 
+# wails-cli installs the pinned Wails build tool into the project's local
+# toolchain. The marker file lets make skip the install when the binary is
+# already current; delete .go-toolchain/bin/wails (or `make clean`) to force
+# a reinstall.
+#
+# GOBIN must be set explicitly: `go install` ignores GOROOT and otherwise
+# defaults to $GOPATH/bin (~/go/bin), which is exactly the location we are
+# trying to avoid depending on.
+wails-cli: $(WAILS)
+$(WAILS): go-toolchain
+	@echo "installing wails@$(WAILS_VERSION) into $(WAILS)..."
+	GOBIN=$(GO_TOOLCHAIN)/bin $(GO) install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
+
 manifold:
 	bash scripts/build-manifold.sh $(TARGET)
 
-dev: go-toolchain manifold
+dev: go-toolchain manifold wails-cli
 	cd desktop && $(WAILS) dev
 
 run: build
-	open desktop/build/bin/facet.app
+	open desktop/build/bin/Facet.app
 
-build: go-toolchain manifold
+build: go-toolchain manifold wails-cli
 	cd desktop && $(WAILS) build
 
 cli: go-toolchain manifold
@@ -66,6 +84,21 @@ check-shims: go-toolchain
 test: go-toolchain manifold
 	CGO_ENABLED=1 $(GO) test ./pkg/fctlang/... ./pkg/manifold/...
 
+# Tests for the desktop (Wails app) Go package — the Go-side counterpart to
+# `test-desktop` (which runs the frontend Playwright suite). Separate from
+# `test` because the package does `//go:embed all:frontend/dist`, so it only
+# compiles once the frontend has been built — which also needs the generated
+# wailsjs bindings. We build the frontend (real bindings + vite, no app
+# packaging) only when dist is absent, so this runs fast after a `make build`
+# or in CI right after `wails build`, but still works from a clean checkout.
+test-desktop-go: go-toolchain manifold
+	@if [ ! -d desktop/frontend/dist ] || [ -z "$$(ls -A desktop/frontend/dist 2>/dev/null)" ]; then \
+		echo "frontend/dist missing — building frontend for the embed..."; \
+		( cd desktop && $(WAILS) generate module ); \
+		( cd desktop/frontend && npm ci && npm run build ); \
+	fi
+	CGO_ENABLED=1 $(GO) test ./desktop/...
+
 test-race: go-toolchain manifold
 	CGO_ENABLED=1 $(GO) test -race ./pkg/fctlang/... ./pkg/manifold/...
 
@@ -84,6 +117,22 @@ test-web: go-toolchain
 		trap 'kill $$(cat /tmp/facet-test-web.pid) 2>/dev/null; rm -f /tmp/facet-test-web.pid' EXIT; \
 		until curl -sf http://localhost:8000/ > /dev/null 2>&1; do sleep 0.2; done; \
 		(cd web/test && npm test)
+
+# Desktop frontend Playwright suite (vite + mocked Wails harness).
+# First run on a fresh checkout: generates wailsjs stubs, runs npm ci,
+# and downloads the chromium browser. Subsequent runs skip those steps.
+# On Linux you may need `npx playwright install --with-deps chromium`
+# once for system libs (CI does this for the runner).
+test-desktop:
+	@if [ ! -d desktop/frontend/wailsjs ]; then \
+		echo "generating wailsjs stubs..."; \
+		bash scripts/gen-wailsjs-stubs.sh; \
+	fi
+	@if [ ! -d desktop/frontend/node_modules ]; then \
+		echo "installing frontend deps + chromium browser..."; \
+		(cd desktop/frontend && npm ci && npx playwright install chromium); \
+	fi
+	cd desktop/frontend && npm test
 
 clean:
 	rm -rf $(GO_TOOLCHAIN)

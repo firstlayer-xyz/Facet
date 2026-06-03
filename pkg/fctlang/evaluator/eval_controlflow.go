@@ -92,6 +92,22 @@ func (e *evaluator) blockYield(s *parser.YieldStmt, locals map[string]value) err
 }
 
 func (e *evaluator) evalForYield(ex *parser.ForYieldExpr, locals map[string]value) (value, error) {
+	// A single-clause loop over an Optional source produces an Optional
+	// (Map / Filter on T?). Anything else (multi-clause, or single-clause
+	// over an array) takes the array path.
+	if len(ex.Clauses) == 1 {
+		iterVal, err := e.evalExpr(ex.Clauses[0].Iter, locals)
+		if err != nil {
+			return nil, err
+		}
+		if opt, ok := iterVal.(*optionalVal); ok {
+			return e.evalForYieldOptional(ex, opt, locals)
+		}
+	}
+	return e.evalForYieldArray(ex, locals)
+}
+
+func (e *evaluator) evalForYieldArray(ex *parser.ForYieldExpr, locals map[string]value) (value, error) {
 	var results []value
 	prev := e.yieldTarget
 	e.yieldTarget = &results
@@ -101,6 +117,41 @@ func (e *evaluator) evalForYield(ex *parser.ForYieldExpr, locals map[string]valu
 		return nil, err
 	}
 	return array{elems: results, elemType: inferElemType(results)}, nil
+}
+
+// evalForYieldOptional runs `for v opt { ... yield ... }` against an
+// Optional source. The iteration runs 0 or 1 times; the result is None if
+// no yield reached the collector, Some(value) if exactly one did, and an
+// error if more than one (Optional can't hold many values).
+func (e *evaluator) evalForYieldOptional(ex *parser.ForYieldExpr, opt *optionalVal, locals map[string]value) (value, error) {
+	if !opt.present {
+		return none(""), nil
+	}
+	clause := ex.Clauses[0]
+	iterLocals := make(map[string]value, len(locals)+1)
+	for k, v := range locals {
+		iterLocals[k] = v
+	}
+	iterLocals[clause.Var] = opt.inner
+	if clause.Index != "" {
+		iterLocals[clause.Index] = float64(0)
+	}
+	var results []value
+	prev := e.yieldTarget
+	e.yieldTarget = &results
+	err := e.evalForBody(ex.Body, iterLocals, &results)
+	e.yieldTarget = prev
+	if err != nil {
+		return nil, err
+	}
+	switch len(results) {
+	case 0:
+		return none(""), nil
+	case 1:
+		return some(results[0], ""), nil
+	default:
+		return nil, e.errAt(ex.Pos, "for-yield over Optional yielded %d values; an Optional can hold at most one", len(results))
+	}
 }
 
 // evalForClauses recursively iterates over for-yield clauses (cartesian product).
@@ -271,13 +322,37 @@ func (e *evaluator) evalIfStmt(s *parser.IfStmt, locals map[string]value) error 
 	if err != nil {
 		return err
 	}
-	cb, ok := cv.(bool)
-	if !ok {
-		return e.errAt(s.Pos, "if condition must be a Bool, got %s", typeName(cv))
-	}
-	if cb {
-		_, err := e.evalBlock(s.Then, locals)
-		return err
+	// `if var NAME = expr { ... }` binds NAME to the inner value of an
+	// Optional when present. NAME shadows any outer binding for the
+	// duration of the body and is restored on exit, so the binding does
+	// not leak. Other assignments inside the body still propagate to the
+	// enclosing scope because we mutate `locals` in place rather than
+	// passing a copy to evalBlock.
+	if s.BindVar != "" {
+		opt, ok := cv.(*optionalVal)
+		if !ok {
+			return e.errAt(s.Pos, "if var %s = expr: expr must be Optional, got %s", s.BindVar, typeName(cv))
+		}
+		if opt.present {
+			shadowed, hadShadowed := locals[s.BindVar]
+			locals[s.BindVar] = opt.inner
+			_, err := e.evalBlock(s.Then, locals)
+			if hadShadowed {
+				locals[s.BindVar] = shadowed
+			} else {
+				delete(locals, s.BindVar)
+			}
+			return err
+		}
+	} else {
+		cb, ok := cv.(bool)
+		if !ok {
+			return e.errAt(s.Pos, "if condition must be a Bool, got %s", typeName(cv))
+		}
+		if cb {
+			_, err := e.evalBlock(s.Then, locals)
+			return err
+		}
 	}
 	for _, eif := range s.ElseIfs {
 		cv, err := e.evalExpr(eif.Cond, locals)

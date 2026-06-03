@@ -466,21 +466,71 @@ func (c *checker) resolveReturnType(fn *parser.Function) typeInfo {
 		}
 		return unknown()
 	}
-	// "var" return type → caller resolves from var group
-	if fn.ReturnType == "var" {
+	return c.resolveTypeString(fn.ReturnType)
+}
+
+// resolveTypeString turns a type string into a typeInfo, applying struct
+// lookup so user-defined types like Vec3 resolve correctly. Also handles
+// the postfix `?` by recursively resolving the inner type and wrapping.
+func (c *checker) resolveTypeString(name string) typeInfo {
+	if name == "var" {
 		return simple(typeVar)
 	}
-	if fn.ReturnType == "[]var" {
+	if name == "[]var" {
 		return arrayOf(simple(typeVar))
 	}
-	ti := typeFromNameStr(fn.ReturnType)
+	if parser.IsOptionalType(name) {
+		inner := c.resolveTypeString(parser.OptionalInner(name))
+		return optionalOf(inner)
+	}
+	ti := typeFromNameStr(name)
 	if ti.ft != typeUnknown {
+		// typeFromNameStr returned a known shape; if it's an array whose
+		// element type is unknown, attempt struct lookup on the element.
+		if ti.ft == typeArray && ti.elem != nil && ti.elem.ft == typeUnknown {
+			elemStr := name[2:]
+			if _, ok := c.structDecls[elemStr]; ok {
+				return arrayOf(structTI(elemStr))
+			}
+		}
 		return ti
 	}
 	// Check for struct type
-	if _, ok := c.structDecls[fn.ReturnType]; ok {
-		return structTI(fn.ReturnType)
+	if _, ok := c.structDecls[name]; ok {
+		return structTI(name)
 	}
+	return unknown()
+}
+
+// checkOptionalMethod validates a method call on a value of type T?. The
+// method set is closed and language-level — IsSome / IsNone / Or in v1.
+// Returns the method's return type, or unknown on error.
+func (c *checker) checkOptionalMethod(mc *parser.MethodCallExpr, recvType typeInfo, argTypes []typeInfo) typeInfo {
+	var inner typeInfo
+	if recvType.inner != nil {
+		inner = *recvType.inner
+	}
+	switch mc.Method {
+	case "IsSome", "IsNone":
+		if len(argTypes) != 0 {
+			c.addError(mc.Pos, fmt.Sprintf("%s.%s() takes no arguments, got %d",
+				recvType.displayName(), mc.Method, len(argTypes)))
+		}
+		return simple(typeBool)
+	case "Or":
+		if len(argTypes) != 1 {
+			c.addError(mc.Pos, fmt.Sprintf("%s.Or() expects 1 argument, got %d",
+				recvType.displayName(), len(argTypes)))
+			return inner
+		}
+		if inner.ft != typeUnknown && argTypes[0].ft != typeUnknown && !c.typeCompatible(inner, argTypes[0]) {
+			c.addError(mc.Pos, fmt.Sprintf("%s.Or() default must be %s, got %s",
+				recvType.displayName(), inner.displayName(), argTypes[0].displayName()))
+		}
+		return inner
+	}
+	c.addError(mc.Pos, fmt.Sprintf("%s has no method %q (try .IsSome(), .IsNone(), or .Or(default:))",
+		recvType.displayName(), mc.Method))
 	return unknown()
 }
 
@@ -496,6 +546,38 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 
 	if recvType.ft == typeUnknown {
 		return unknown()
+	}
+
+	// Optional chaining: `opt?.Method(args)`. Unwrap the receiver to its
+	// inner T, dispatch the method on T, then wrap the result in `?`.
+	// Short-circuit semantics at runtime — if opt is None, the whole
+	// chain is None and the call never executes.
+	if mc.Optional {
+		if recvType.ft != typeOptional {
+			c.addError(mc.Pos, fmt.Sprintf("?. operator requires an Optional receiver, got %s", recvType.displayName()))
+			return unknown()
+		}
+		inner := unknown()
+		if recvType.inner != nil {
+			inner = *recvType.inner
+		}
+		ret := c.checkMethodOnRecvType(mc, env, inner, argTypes)
+		if ret.ft == typeUnknown {
+			return unknown()
+		}
+		return optionalOf(ret)
+	}
+
+	return c.checkMethodOnRecvType(mc, env, recvType, argTypes)
+}
+
+// checkMethodOnRecvType returns the type of `recvType.Method(args)`. The
+// receiver may be a user value or, via optional-chaining, the unwrapped
+// inner type of a T?.
+func (c *checker) checkMethodOnRecvType(mc *parser.MethodCallExpr, env *typeEnv, recvType typeInfo, argTypes []typeInfo) typeInfo {
+	// Optional methods are language-level and outrank any user method.
+	if recvType.ft == typeOptional {
+		return c.checkOptionalMethod(mc, recvType, argTypes)
 	}
 
 	// Library method calls — resolve from loaded library programs

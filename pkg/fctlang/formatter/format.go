@@ -728,20 +728,22 @@ func opPrec(op string) int {
 	switch op {
 	case "||":
 		return 1
-	case "&&":
+	case "??":
 		return 2
-	case "==", "!=", "<", ">", "<=", ">=":
+	case "&&":
 		return 3
-	case "|":
+	case "==", "!=", "<", ">", "<=", ">=":
 		return 4
-	case "^":
+	case "|":
 		return 5
-	case "&":
+	case "^":
 		return 6
-	case "+", "-":
+	case "&":
 		return 7
-	case "*", "/", "%":
+	case "+", "-":
 		return 8
+	case "*", "/", "%":
+		return 9
 	default:
 		return 0
 	}
@@ -765,13 +767,30 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 		} else {
 			f.write("false")
 		}
+	case *parser.NilLit:
+		f.write("nil")
+	case *parser.TernaryExpr:
+		// Ternary is lower-precedence than any binary op. When nested
+		// inside something tighter, wrap in parens.
+		needParens := parentPrec > 0
+		if needParens {
+			f.write("(")
+		}
+		f.formatExprPrec(e.Cond, 1)
+		f.write(" ? ")
+		f.formatExprPrec(e.Then, 0)
+		f.write(" : ")
+		f.formatExprPrec(e.Else, 0)
+		if needParens {
+			f.write(")")
+		}
 	case *parser.StringLit:
 		f.write(`"` + escapeString(e.Value) + `"`)
 	case *parser.IdentExpr:
 		f.write(e.Name)
 	case *parser.UnaryExpr:
 		f.write(e.Op)
-		f.formatExprPrec(e.Operand, 9) // unary binds tighter than anything
+		f.formatExprPrec(e.Operand, 10) // unary binds tighter than anything
 	case *parser.BinaryExpr:
 		prec := opPrec(e.Op)
 		needParens := prec < parentPrec
@@ -797,7 +816,7 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 		f.write(e.Name + ": ")
 		f.formatExpr(e.Value)
 	case *parser.MethodCallExpr:
-		f.formatExprPrec(e.Receiver, 10) // method call binds tightest
+		f.formatExprPrec(e.Receiver, 11) // method call binds tightest
 		tail := f.measureMethodTail(e)
 		if f.wouldExceed(tail) {
 			// Full single-line tail won't fit on the current line. Two choices:
@@ -817,19 +836,27 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 				f.depth--
 			}
 		}
-		f.write("." + e.Method + "(")
+		dot := "."
+		if e.Optional {
+			dot = "?."
+		}
+		f.write(dot + e.Method + "(")
 		f.formatArgs(e.Args, e.Pos.Line)
 		f.write(")")
 	case *parser.FieldAccessExpr:
-		f.formatExprPrec(e.Receiver, 10)
-		f.write("." + e.Field)
+		f.formatExprPrec(e.Receiver, 11)
+		dot := "."
+		if e.Optional {
+			dot = "?."
+		}
+		f.write(dot + e.Field)
 	case *parser.IndexExpr:
-		f.formatExprPrec(e.Receiver, 10)
+		f.formatExprPrec(e.Receiver, 11)
 		f.write("[")
 		f.formatExpr(e.Index)
 		f.write("]")
 	case *parser.SliceExpr:
-		f.formatExprPrec(e.Receiver, 10)
+		f.formatExprPrec(e.Receiver, 11)
 		f.write("[")
 		if e.Start != nil {
 			f.formatExpr(e.Start)

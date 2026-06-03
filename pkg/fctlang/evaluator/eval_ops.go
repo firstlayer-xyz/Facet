@@ -72,6 +72,23 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		return rb, nil
 	}
 
+	// `opt ?? fallback` short-circuits: the right side is evaluated only
+	// when the left is None.
+	if ex.Op == "??" {
+		lv, err := e.evalExpr(ex.Left, locals)
+		if err != nil {
+			return nil, err
+		}
+		opt, ok := lv.(*optionalVal)
+		if !ok {
+			return nil, e.errAt(ex.Pos, "operator ??: left operand must be Optional, got %s", typeName(lv))
+		}
+		if opt.present {
+			return opt.inner, nil
+		}
+		return e.evalExpr(ex.Right, locals)
+	}
+
 	lv, err := e.evalExpr(ex.Left, locals)
 	if err != nil {
 		return nil, err

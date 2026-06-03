@@ -88,9 +88,6 @@ jobs:
         if: steps.cache-go.outputs.cache-hit != 'true'
         run: bash scripts/setup-go.sh
 
-      - name: Install Wails
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-
       - name: Cache manifold + third-party builds
         # Caches the manifold/assimp/freetype/tbb source clones and built
         # libs, plus the facet_cxx glue layer build. Key invalidates when
@@ -121,7 +118,7 @@ jobs:
           CXX: zig c++
 
       - name: Build Facet
-        run: cd desktop && ~/go/bin/wails build
+        run: make build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
@@ -320,7 +317,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Run integration tests
-        run: cd desktop/frontend && npm test
+        run: make test-desktop
 
       - name: Upload failure artifacts
         if: failure()
@@ -377,10 +374,6 @@ jobs:
         if: steps.cache-go.outputs.cache-hit != 'true'
         shell: bash
         run: bash scripts/setup-go.sh
-
-      - name: Install Wails
-        shell: bash
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Cache manifold + third-party builds
         # Re-enabled after the ISA baseline fix in build-manifold.sh
@@ -455,7 +448,7 @@ jobs:
 
       - name: Build Facet
         shell: bash
-        run: cd desktop && ~/go/bin/wails build
+        run: make build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           CC: zig cc
@@ -498,9 +491,6 @@ jobs:
         if: steps.cache-go.outputs.cache-hit != 'true'
         run: bash scripts/setup-go.sh
 
-      - name: Install Wails
-        run: .go-toolchain/bin/go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-
       - name: Cache manifold + third-party builds
         # See Linux job for rationale.
         id: cache-manifold
@@ -523,10 +513,15 @@ jobs:
         # No -platform, no MACOSX_DEPLOYMENT_TARGET, no CGO_LDFLAGS dance.
         # macos-14 is arm64 native; the prior cross-compile machinery
         # existed for x86 self-hosted hardware and is no longer needed.
-        run: cd desktop && ~/go/bin/wails build
+        #
+        # /opt/homebrew/bin is required: the manifold target re-runs the
+        # facet_cxx cmake build, and cmake on Apple Silicon runners lives
+        # under Homebrew. The Linux job doesn't need this because
+        # /usr/bin/cmake is there by default.
+        run: make build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
-          PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+          PATH: ${{ github.workspace }}/.go-toolchain/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
       - name: Ad-hoc codesign (release.yml will do real signing for main/tag)
         run: codesign -s - --force --deep --options runtime desktop/build/bin/Facet.app

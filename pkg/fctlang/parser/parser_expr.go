@@ -1,18 +1,49 @@
 package parser
 
-// parseExpr → orExpr
+// parseExpr → ternaryExpr
 func (p *parser) parseExpr() (Expr, error) {
 	p.depth++
 	if p.depth > maxParseDepth {
 		return nil, p.errorf("expression too deeply nested (limit %d)", maxParseDepth)
 	}
 	defer func() { p.depth-- }()
-	return p.parseOrExpr()
+	return p.parseTernaryExpr()
 }
 
-// parseOrExpr → andExpr { "||" andExpr }
+// parseTernaryExpr → orExpr [ "?" expr ":" expr ]
+// The conditional expression `cond ? a : b`. cond must be Bool, both arms
+// must produce compatible types. Right-associative: `a ? b : c ? d : e`
+// parses as `a ? b : (c ? d : e)`. Each arm is parsed via parseTernaryExpr
+// so a nested ternary can re-enter on the right.
+func (p *parser) parseTernaryExpr() (Expr, error) {
+	cond, err := p.parseOrExpr()
+	if err != nil {
+		return nil, err
+	}
+	if p.cur.Type != TokenQuestion {
+		return cond, nil
+	}
+	line, col := p.cur.Line, p.cur.Col
+	if err := p.next(); err != nil { // consume '?'
+		return nil, err
+	}
+	thenExpr, err := p.parseTernaryExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenColon); err != nil {
+		return nil, err
+	}
+	elseExpr, err := p.parseTernaryExpr()
+	if err != nil {
+		return nil, err
+	}
+	return &TernaryExpr{Cond: cond, Then: thenExpr, Else: elseExpr, Pos: Pos{line, col}}, nil
+}
+
+// parseOrExpr → nullCoalesceExpr { "||" nullCoalesceExpr }
 func (p *parser) parseOrExpr() (Expr, error) {
-	left, err := p.parseAndExpr()
+	left, err := p.parseNullCoalesceExpr()
 	if err != nil {
 		return nil, err
 	}
@@ -21,11 +52,33 @@ func (p *parser) parseOrExpr() (Expr, error) {
 		if err := p.next(); err != nil {
 			return nil, err
 		}
-		right, err := p.parseAndExpr()
+		right, err := p.parseNullCoalesceExpr()
 		if err != nil {
 			return nil, err
 		}
 		left = &BinaryExpr{Op: "||", Left: left, Right: right, Pos: Pos{line, col}}
+	}
+	return left, nil
+}
+
+// parseNullCoalesceExpr → andExpr { "??" andExpr }
+// `??` binds tighter than `||` so `cond || opt ?? default` parses as
+// `cond || (opt ?? default)` — the natural reading.
+func (p *parser) parseNullCoalesceExpr() (Expr, error) {
+	left, err := p.parseAndExpr()
+	if err != nil {
+		return nil, err
+	}
+	for p.cur.Type == TokenQuestionQuestion {
+		line, col := p.cur.Line, p.cur.Col
+		if err := p.next(); err != nil {
+			return nil, err
+		}
+		right, err := p.parseAndExpr()
+		if err != nil {
+			return nil, err
+		}
+		left = &BinaryExpr{Op: "??", Left: left, Right: right, Pos: Pos{line, col}}
 	}
 	return left, nil
 }
@@ -195,7 +248,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	for p.cur.Type == TokenDot || p.cur.Type == TokenLBracket || p.isUnitSuffix() {
+	for p.cur.Type == TokenDot || p.cur.Type == TokenQuestionDot || p.cur.Type == TokenLBracket || p.isUnitSuffix() {
 		// Unit suffix: 5 mm, (1/2) mm, Foo() deg
 		if p.isUnitSuffix() {
 			line, col := p.cur.Line, p.cur.Col
@@ -266,7 +319,9 @@ func (p *parser) parsePostfix() (Expr, error) {
 			expr = &IndexExpr{Receiver: expr, Index: index, Pos: Pos{line, col}}
 			continue
 		}
-		if err := p.next(); err != nil { // consume '.'
+		// `?.` parses identically to `.` and sets Optional on the node.
+		optional := p.cur.Type == TokenQuestionDot
+		if err := p.next(); err != nil { // consume '.' or '?.'
 			return nil, err
 		}
 		methodLine, methodCol := p.cur.Line, p.cur.Col
@@ -276,7 +331,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 		}
 		// Field access: no '(' after .IDENT
 		if p.cur.Type != TokenLParen {
-			expr = &FieldAccessExpr{Receiver: expr, Field: method.Text, Pos: Pos{methodLine, methodCol}}
+			expr = &FieldAccessExpr{Receiver: expr, Field: method.Text, Pos: Pos{methodLine, methodCol}, Optional: optional}
 			continue
 		}
 		if _, err := p.expect(TokenLParen); err != nil {
@@ -289,7 +344,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 		if _, err := p.expect(TokenRParen); err != nil {
 			return nil, err
 		}
-		expr = &MethodCallExpr{Receiver: expr, Method: method.Text, Args: args, Pos: Pos{methodLine, methodCol}}
+		expr = &MethodCallExpr{Receiver: expr, Method: method.Text, Args: args, Pos: Pos{methodLine, methodCol}, Optional: optional}
 	}
 	// Check for qualified struct literal: T.Thread { field: val }
 	// Pos points at T (start of the whole expression) for diagnostics;

@@ -18,9 +18,9 @@ fn Main(
 ) {
     var body = Cylinder(r: radius, h: height)
     var nose = Cone(r: radius, h: height * 0.4)
-        .Translate(v: Vec3{x: 0 mm, y: 0 mm, z: height})
-    var fin = Cube(size: Vec3{x: 1 mm, y: radius * 1.5, z: height * 0.3})
-        .Translate(v: Vec3{x: -0.5 mm, y: radius, z: 0 mm})
+        .Move(z: height)
+    var fin = Cube(s: Vec3{x: 1 mm, y: radius * 1.5, z: height * 0.3})
+        .Move(x: -0.5 mm, y: radius)
     return body + nose + fin.CircularPattern(count: fins)
 }
 ```
@@ -31,7 +31,7 @@ Parameters with `where` clauses become sliders in the UI. Change `fins` from 4 t
 
 - **Live preview** -- edit code, see the result immediately
 - **Physical units** -- `mm`, `in`, `deg`, `rad` are first-class types
-- **Boolean operations** -- `+` (union), `-` (difference), `*` (intersection)
+- **Boolean operations** -- `+` (union), `-` (difference), `&` (intersection)
 - **Interactive sliders** -- constrained parameters become UI controls
 - **2D sketches** -- draw profiles and extrude, revolve, loft, or sweep them
 - **Libraries** -- import community packages with `var T = lib "github.com/..."`
@@ -57,7 +57,7 @@ Functions starting with a capital letter are entry points -- they appear in the 
 
 ```
 fn Main() {
-    return Cube(size: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})
 }
 ```
 
@@ -65,26 +65,25 @@ Lowercase functions are helpers:
 
 ```
 fn rounded_box(w, d, h, r Length) Solid {
-    return Cube(size: Vec3{x: w, y: d, z: h})
-        .Fillet(radius: r)
+    return Cube(s: Vec3{x: w, y: d, z: h}, r: r)
 }
 ```
 
 ### Primitives
 
 ```
-Cube(size: Vec3{x: 10 mm, y: 20 mm, z: 5 mm})
-Sphere(radius: 8 mm)
+Cube(s: Vec3{x: 10 mm, y: 20 mm, z: 5 mm})
+Sphere(r: 8 mm)
 Cylinder(r: 5 mm, h: 20 mm)
 ```
 
 ### Transforms
 
 ```
-solid.Translate(v: Vec3{x: 10 mm, y: 0 mm, z: 0 mm})
-solid.RotateZ(angle: 45 deg, pivot: WorldOrigin)
-solid.Mirror(normal: Vec3{x: 1 mm, y: 0 mm, z: 0 mm})
-solid.Scale(factor: 2.0)
+solid.Move(x: 10 mm)
+solid.Rotate(z: 45 deg)
+solid.Mirror(x: 1)
+solid.Scale(v: 2.0)
 ```
 
 ### Patterns
@@ -97,8 +96,8 @@ solid.CircularPattern(count: 8)
 ### 2D Sketches
 
 ```
-var profile = Circle(radius: 10 mm) - Circle(radius: 8 mm)
-var ring = profile.Extrude(height: 5 mm)
+var profile = Circle(r: 10 mm) - Circle(r: 8 mm)
+var ring = profile.Extrude(z: 5 mm)
 ```
 
 Full language reference is available in the built-in docs panel (Help > Documentation).
@@ -113,6 +112,14 @@ facetc model.fct -o model.stl -entry Bracket -set radius=12 -set height=30
 facetc model.fct -fmt          # format source
 facetc model.fct -fmt -w       # format in place
 ```
+
+## Web Preview
+
+Try Facet in your browser, no install required: **https://firstlayer-xyz.github.io/Facet/**
+
+The web preview is a single-threaded wasm build of the latest `main`. It includes the language and viewer, an examples selector, typed parameter controls, color rendering, and library imports (resolved via jsDelivr).
+
+Compared to the desktop app, the preview omits OS-integrated features: file open/save, slicer hand-off, the AI assistant, multi-tab editing, debug stepping, and face-click source navigation. For those, [download a release](https://github.com/firstlayer-xyz/Facet/releases) or [build from source](BUILDING.md).
 
 ## License
 

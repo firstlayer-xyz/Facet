@@ -86,6 +86,11 @@ func typeName(v value) string {
 		return v.typeName
 	case *functionVal:
 		return "Function"
+	case *optionalVal:
+		if v.innerType == "" {
+			return "Optional"
+		}
+		return v.innerType + "?"
 	default:
 		return fmt.Sprintf("%T", v)
 	}
@@ -97,6 +102,13 @@ func checkType(declaredType string, v value) bool {
 	// var accepts any value
 	if declaredType == "var" {
 		return true
+	}
+	// A T? slot accepts any Optional, or a definite T (widened on demand).
+	if strings.HasSuffix(declaredType, "?") {
+		if _, ok := v.(*optionalVal); ok {
+			return true
+		}
+		return checkType(declaredType[:len(declaredType)-1], v)
 	}
 	// fn(...) R accepts a functionVal
 	if strings.HasPrefix(declaredType, "fn(") {
@@ -193,6 +205,19 @@ func (e *evaluator) coerceToType(declType string, v value, locals map[string]val
 	// var types — no coercion needed
 	if declType == "var" || declType == "[]var" {
 		return v
+	}
+	// Optional types — wrap a definite value as Some, or stamp the inner
+	// type on a None placeholder so downstream typeName() reads correctly.
+	if strings.HasSuffix(declType, "?") {
+		innerType := declType[:len(declType)-1]
+		if opt, ok := v.(*optionalVal); ok {
+			if !opt.present && opt.innerType == "" {
+				return none(innerType)
+			}
+			return opt
+		}
+		coerced := e.coerceToType(innerType, v, locals)
+		return some(coerced, innerType)
 	}
 	// Handle []Type — coerce each element to the element type.
 	if strings.HasPrefix(declType, "[]") {

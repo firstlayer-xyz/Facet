@@ -73,6 +73,22 @@ func (e *evaluator) evalCompare(op string, lv, rv value, pos parser.Pos) (value,
 				return l >= r, nil
 			}
 		}
+	case *optionalVal:
+		// Two Nones are equal regardless of inner type; two Somes recurse
+		// on their inner values.
+		if r, rok := rv.(*optionalVal); rok && (op == "==" || op == "!=") {
+			eq := false
+			switch {
+			case !l.present && !r.present:
+				eq = true
+			case l.present && r.present:
+				eq = valuesEqual(l.inner, r.inner)
+			}
+			if op == "==" {
+				return eq, nil
+			}
+			return !eq, nil
+		}
 	}
 
 	if !ok {

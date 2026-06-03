@@ -658,7 +658,7 @@ fn Main() {
     };
     return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
 }
-`, "expected Array to iterate over")
+`, "expected Array or Optional to iterate over")
 }
 
 func TestCheckFoldIterNotArray(t *testing.T) {

@@ -309,6 +309,119 @@ func builtinSize(_ *evaluator, args []value) (value, error) {
 }
 
 // ---------------------------------------------------------------------------
+// Array search builtins — call the user-supplied predicate via the
+// functionVal path so the stdlib doesn't have to invoke a lambda directly
+// from Facet source (lambda invocation in stdlib bodies trips the
+// "all arguments must be named" rule because lambda types carry no
+// parameter names).
+// ---------------------------------------------------------------------------
+
+func builtinIndexOf(_ *evaluator, args []value) (value, error) {
+	const name = "_index_of_arr"
+	if len(args) != 2 {
+		return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args))
+	}
+	arr, ok := args[0].(array)
+	if !ok {
+		return nil, fmt.Errorf("%s() argument 1 must be Array, got %s", name, typeName(args[0]))
+	}
+	target := args[1]
+	for i, elem := range arr.elems {
+		if valuesEqual(elem, target) {
+			return float64(i), nil
+		}
+	}
+	return float64(-1), nil
+}
+
+func builtinIndicesOf(_ *evaluator, args []value) (value, error) {
+	const name = "_indices_of"
+	if len(args) != 2 {
+		return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args))
+	}
+	arr, ok := args[0].(array)
+	if !ok {
+		return nil, fmt.Errorf("%s() argument 1 must be Array, got %s", name, typeName(args[0]))
+	}
+	target := args[1]
+	hits := []value{}
+	for i, elem := range arr.elems {
+		if valuesEqual(elem, target) {
+			hits = append(hits, float64(i))
+		}
+	}
+	return array{elems: hits, elemType: "Number"}, nil
+}
+
+// applyPredicate runs `pred(elem)` and converts the result to bool. Returns
+// the bool result, or a wrapped error if pred misbehaves.
+func applyPredicate(e *evaluator, pred *functionVal, elem value, name string, idx int) (bool, error) {
+	if len(pred.params) != 1 {
+		return false, fmt.Errorf("%s: predicate must take exactly 1 argument, got %d", name, len(pred.params))
+	}
+	res, err := e.callFunctionVal(pred, map[string]value{pred.params[0].Name: elem})
+	if err != nil {
+		return false, fmt.Errorf("%s: predicate at index %d: %w", name, idx, err)
+	}
+	b, ok := res.(bool)
+	if !ok {
+		return false, fmt.Errorf("%s: predicate at index %d must return Bool, got %s", name, idx, typeName(res))
+	}
+	return b, nil
+}
+
+func builtinFindIndex(e *evaluator, args []value) (value, error) {
+	const name = "_find_index"
+	if len(args) != 2 {
+		return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args))
+	}
+	arr, ok := args[0].(array)
+	if !ok {
+		return nil, fmt.Errorf("%s() argument 1 must be Array, got %s", name, typeName(args[0]))
+	}
+	pred, ok := args[1].(*functionVal)
+	if !ok {
+		return nil, fmt.Errorf("%s() argument 2 must be Function, got %s", name, typeName(args[1]))
+	}
+	for i, elem := range arr.elems {
+		match, err := applyPredicate(e, pred, elem, name, i)
+		if err != nil {
+			return nil, err
+		}
+		if match {
+			return float64(i), nil
+		}
+	}
+	return float64(-1), nil
+}
+
+func builtinFindIndices(e *evaluator, args []value) (value, error) {
+	const name = "_find_indices"
+	if len(args) != 2 {
+		return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args))
+	}
+	arr, ok := args[0].(array)
+	if !ok {
+		return nil, fmt.Errorf("%s() argument 1 must be Array, got %s", name, typeName(args[0]))
+	}
+	pred, ok := args[1].(*functionVal)
+	if !ok {
+		return nil, fmt.Errorf("%s() argument 2 must be Function, got %s", name, typeName(args[1]))
+	}
+	hits := []value{}
+	for i, elem := range arr.elems {
+		match, err := applyPredicate(e, pred, elem, name, i)
+		if err != nil {
+			return nil, err
+		}
+		if match {
+			hits = append(hits, float64(i))
+		}
+	}
+	return array{elems: hits, elemType: "Number"}, nil
+}
+
+// ---------------------------------------------------------------------------
 // Time builtins
 // ---------------------------------------------------------------------------
 

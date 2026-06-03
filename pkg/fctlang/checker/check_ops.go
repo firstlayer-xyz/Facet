@@ -40,6 +40,32 @@ func (c *checker) inferBinaryOp(ex *parser.BinaryExpr, env *typeEnv) typeInfo {
 		return c.inferComparison(ex, left, right)
 	}
 
+	// `opt ?? fallback`: a definite fallback collapses the type to T; an
+	// Optional fallback keeps it at T?.
+	if op == "??" {
+		if left.ft != typeOptional {
+			c.addError(ex.Pos, fmt.Sprintf("operator ??: left operand must be Optional, got %s", left.displayName()))
+			return unknown()
+		}
+		inner := unknown()
+		if left.inner != nil {
+			inner = *left.inner
+		}
+		if right.ft == typeOptional {
+			if inner.ft != typeUnknown && right.inner != nil && right.inner.ft != typeUnknown &&
+				!c.typeCompatible(inner, *right.inner) {
+				c.addError(ex.Pos, fmt.Sprintf("operator ??: fallback %s does not match Optional inner type %s",
+					right.displayName(), inner.displayName()))
+			}
+			return left
+		}
+		if inner.ft != typeUnknown && right.ft != typeUnknown && !c.typeCompatible(inner, right) {
+			c.addError(ex.Pos, fmt.Sprintf("operator ??: fallback must be %s, got %s",
+				inner.displayName(), right.displayName()))
+		}
+		return inner
+	}
+
 	// Array concatenation / append — preserve element type
 	if left.ft == typeArray && op == "+" {
 		if right.ft == typeArray {
@@ -205,6 +231,14 @@ func (c *checker) inferComparison(ex *parser.BinaryExpr, left, right typeInfo) t
 	// Length/Number mixed comparison (coercion)
 	if (left.ft == typeLength && right.ft == typeNumber) || (left.ft == typeNumber && right.ft == typeLength) {
 		return simple(typeBool)
+	}
+
+	// Optional == / != Optional. `opt == nil` matches because nil types
+	// as a wild Optional.
+	if (op == "==" || op == "!=") && (left.ft == typeOptional || right.ft == typeOptional) {
+		if c.typeCompatible(left, right) || c.typeCompatible(right, left) {
+			return simple(typeBool)
+		}
 	}
 
 	c.addError(ex.Pos, fmt.Sprintf("operator %s: incompatible types %s and %s", op, left.displayName(), right.displayName()))

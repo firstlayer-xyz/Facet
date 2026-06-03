@@ -58,6 +58,10 @@ const (
 	TokenString                     // string literal
 	TokenRawString                  // raw string literal (backtick)
 	TokenColon                      // :
+	TokenQuestion                   // ? — postfix marker on a type making it Optional
+	TokenQuestionQuestion           // ?? — nullish coalescing: opt ?? fallback
+	TokenQuestionDot                // ?. — optional chaining: opt?.field / opt?.method()
+	TokenNil                        // nil keyword — the None variant of an Optional
 	TokenPlusEq                     // +=
 	TokenMinusEq                    // -=
 	TokenStarEq                     // *=
@@ -155,7 +159,7 @@ func isLineTerminator(t TokenType) bool {
 	switch t {
 	case TokenIdent, TokenNumber, TokenString, TokenRawString,
 		TokenRParen, TokenRBracket,
-		TokenTrue, TokenFalse, TokenYield:
+		TokenTrue, TokenFalse, TokenYield, TokenNil:
 		return true
 	}
 	return false
@@ -300,6 +304,17 @@ func (l *lexer) nextRaw() (Token, error) {
 	case ':':
 		l.advance()
 		return Token{Type: TokenColon, Text: ":", Line: line, Col: col}, nil
+	case '?':
+		l.advance()
+		if l.pos < len(l.src) && l.peek() == '?' {
+			l.advance()
+			return Token{Type: TokenQuestionQuestion, Text: "??", Line: line, Col: col}, nil
+		}
+		if l.pos < len(l.src) && l.peek() == '.' {
+			l.advance()
+			return Token{Type: TokenQuestionDot, Text: "?.", Line: line, Col: col}, nil
+		}
+		return Token{Type: TokenQuestion, Text: "?", Line: line, Col: col}, nil
 	case '=':
 		l.advance()
 		if l.pos < len(l.src) && l.peek() == '=' {
@@ -540,6 +555,8 @@ func (l *lexer) nextRaw() (Token, error) {
 			typ = TokenTrue
 		case "false":
 			typ = TokenFalse
+		case "nil":
+			typ = TokenNil
 		case "lib":
 			typ = TokenLib
 		case "type":
