@@ -165,7 +165,7 @@ func (c *checker) checkDuplicateFunctions(prog loader.Program) {
 		for _, fn := range src.Functions() {
 			required := 0
 			for _, p := range fn.Params {
-				if p.Default == nil {
+				if p.IsRequired() {
 					required++
 				}
 			}

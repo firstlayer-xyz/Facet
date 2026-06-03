@@ -75,3 +75,26 @@ fn Main() Number { return Maybe().Unwrap() }
 // (Double-nesting `Number??` is rejected at the parser layer — see
 // TestParseDoubleOptionalRejected in the parser_test package — so the
 // checker never sees it.)
+
+// ── Optional-parameter contract ───────────────────────────────────────────
+// An Optional-typed param with no default is omittable (binds None); a
+// non-optional param with no default stays mandatory. These pin both
+// directions of Param.IsRequired so neither can silently flip.
+
+// TestCheckOptionalParamOmittable confirms a `T?` param can be omitted.
+func TestCheckOptionalParamOmittable(t *testing.T) {
+	expectNoErrors(t, `
+fn Foo(x Number?) Number { return x ?? 0 }
+fn Main() Number { return Foo() }
+`)
+}
+
+// TestCheckRequiredParamStillRequired confirms a non-optional param with no
+// default still errors when omitted — IsRequired must not treat it as optional
+// (if it did, required would be 0 and Foo() would type-check).
+func TestCheckRequiredParamStillRequired(t *testing.T) {
+	expectError(t, `
+fn Foo(x Number) Number { return x }
+fn Main() Number { return Foo() }
+`, "expects 1 arguments, got 0")
+}

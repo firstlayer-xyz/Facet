@@ -49,3 +49,36 @@ func requireString(funcName string, argNum int, v value) (string, error) {
 	}
 	return s, nil
 }
+
+// optionalLengthMM extracts the mm value from an Optional Length argument,
+// returning nil for None so builtins can apply their own default instead of a
+// sentinel. A bare (non-Optional) Length is treated as present.
+func optionalLengthMM(funcName string, argNum int, v value) (*float64, error) {
+	if opt, ok := unwrap(v).(*optionalVal); ok {
+		if !opt.present {
+			return nil, nil
+		}
+		v = opt.inner
+	}
+	mm, err := requireLength(funcName, argNum, v)
+	if err != nil {
+		return nil, err
+	}
+	return &mm, nil
+}
+
+// optionalString extracts the string from an Optional String argument,
+// returning nil for None. A bare (non-Optional) String is treated as present.
+func optionalString(funcName string, argNum int, v value) (*string, error) {
+	if opt, ok := unwrap(v).(*optionalVal); ok {
+		if !opt.present {
+			return nil, nil
+		}
+		v = opt.inner
+	}
+	s, err := requireString(funcName, argNum, v)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}

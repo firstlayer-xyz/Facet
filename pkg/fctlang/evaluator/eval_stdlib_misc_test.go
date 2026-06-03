@@ -169,6 +169,71 @@ func TestEvalLayout(t *testing.T) {
 		`Size(of: arr) == 3`)
 }
 
+func TestEvalLayoutDefaultGap(t *testing.T) {
+	// Omitting gap uses the automatic spacing (the nil default).
+	stdlibIfThenCubeWithSetup(t, `
+    var arr = Layout(solids: [
+        Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}),
+        Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}),
+    ]);`,
+		`Size(of: arr) == 2`)
+}
+
+func TestEvalLayoutNilGap(t *testing.T) {
+	// gap: nil is equivalent to omitting gap — automatic spacing.
+	stdlibIfThenCubeWithSetup(t, `
+    var arr = Layout(solids: [
+        Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}),
+        Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}),
+    ], gap: nil);`,
+		`Size(of: arr) == 2`)
+}
+
+// ── Text — font: nil selects the built-in font ────────────────────────────────
+
+func TestEvalTextNilFont(t *testing.T) {
+	// font: nil is equivalent to omitting font — the built-in Hack font.
+	src := `
+fn Main() Solid {
+    return Text(text: "AB", s: 5 mm, font: nil).Extrude(z: 1 mm);
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil || len(mesh.Vertices) == 0 {
+		t.Fatal("expected non-empty mesh")
+	}
+}
+
+// ── Optional params default to None when omitted ──────────────────────────────
+
+func TestEvalOptionalParamDefaultsToNone(t *testing.T) {
+	// A `T?` parameter with no `= nil` default is omittable; an omitted optional
+	// binds None, so `x ?? -1` falls back. Passing a value widens to Some.
+	src := `
+fn Pick(x Number?) Number { return x ?? -1 }
+fn Main() Solid {
+    if Pick() == -1 && Pick(x: 7) == 7 {
+        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
+    } else {
+        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
+    }
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil {
+		t.Fatal("expected non-nil mesh")
+	}
+	assertMeshSize(t, mesh, 10, 10, 10, 0.1)
+}
+
 // ── N-ary boolean operations on solid arrays ──────────────────────────────────
 
 func TestEvalDifferenceArraySolid(t *testing.T) {

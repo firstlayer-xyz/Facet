@@ -154,7 +154,7 @@ func init() {
 				}
 				solids[i] = s
 			}
-			gap, err := requireLength(name, 2, args[1])
+			gap, err := optionalLengthMM(name, 2, args[1])
 			if err != nil {
 				return nil, err
 			}

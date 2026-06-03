@@ -114,7 +114,7 @@ fn Loft(profiles []Sketch, heights []Length) Solid {
 # onto shelves, starting a new shelf when the row width exceeds a target
 # chosen to produce a roughly square overall layout. All solids are
 # repositioned — their original positions are discarded.
-# `gap` sets spacing between items (default: auto, 10% of the largest footprint dimension).
+# `gap` sets spacing between items; `nil` (the default) auto-picks 10% of the largest footprint dimension.
 # ```
 # fn Main() []Solid {
 #     return Layout([Cube(10 mm), Sphere(5 mm), Cylinder(3 mm, 15 mm)])
@@ -122,7 +122,7 @@ fn Loft(profiles []Sketch, heights []Length) Solid {
 # ```
 fn Layout(
     solids []Solid,
-    gap Length = -1 mm,
+    gap Length?,
 ) []Solid {
     return _layout(solids, gap)
 }

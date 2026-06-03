@@ -525,6 +525,9 @@ fn Name(param1 Type, param2 Type) ReturnType {
 - Functions require an explicit `return` statement to return a value. Functions without `return` are void.
 - `return` always exits the enclosing function. For-yield bodies use `yield`. Fold bodies use `yield`.
 - Optional parameters: `param Type = default` (default after the type).
+- A parameter of Optional type (`param Type?`) is itself optional: when the
+  caller omits it, it binds `nil` (None). `param Type? = nil` is equivalent but
+  redundant. Read the value with `?? fallback` or `if var`.
 - Default values and constraints are not allowed on grouped parameters.
 
 ### Overloading

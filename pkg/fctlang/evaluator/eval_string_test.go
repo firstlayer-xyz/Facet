@@ -128,15 +128,16 @@ fn Main() {
 }
 
 func TestEvalStringMatch(t *testing.T) {
-	// Match with captures: "m30x2".Match(`m(\d+)x([\d.]+)`) → ["m30x2", "30", "2"]
+	// Match returns []String? — a present match binds via `if var` to the
+	// inner []String: "m30x2".Match(`m(\d+)x([\d.]+)`) → ["m30x2", "30", "2"]
 	src := "fn Main() {\n" +
 		"    var s = \"m30x2\";\n" +
-		"    var m = s.Match(pattern: `m(\\d+)x([\\d.]+)`);\n" +
-		"    if Size(of: m) == 3 && m[0] == \"m30x2\" && m[1] == \"30\" && m[2] == \"2\" {\n" +
-		"        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});\n" +
-		"    } else {\n" +
-		"        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});\n" +
+		"    if var m = s.Match(pattern: `m(\\d+)x([\\d.]+)`) {\n" +
+		"        if Size(of: m) == 3 && m[0] == \"m30x2\" && m[1] == \"30\" && m[2] == \"2\" {\n" +
+		"            return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});\n" +
+		"        }\n" +
 		"    }\n" +
+		"    return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});\n" +
 		"}\n"
 	prog := parseTestProg(t, src)
 	mesh, err := evalMerged(context.Background(), prog, nil)
@@ -146,15 +147,16 @@ func TestEvalStringMatch(t *testing.T) {
 	if mesh == nil {
 		t.Fatal("expected non-nil mesh")
 	}
+	assertMeshSize(t, mesh, 10, 10, 10, 0.1)
 }
 
 func TestEvalStringMatchNoMatch(t *testing.T) {
-	// No match returns empty array
+	// No match returns nil
 	src := `
 fn Main() {
     var s = "hello";
     var m = s.Match(pattern: "xyz");
-    if Size(of: m) == 0 {
+    if m == nil {
         return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});
     } else {
         return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});
@@ -169,15 +171,16 @@ fn Main() {
 	if mesh == nil {
 		t.Fatal("expected non-nil mesh")
 	}
+	assertMeshSize(t, mesh, 10, 10, 10, 0.1)
 }
 
-func TestEvalStringMatchTruthiness(t *testing.T) {
-	// Non-empty match result == true, empty == false
+func TestEvalStringMatchPresence(t *testing.T) {
+	// A present match is != nil; an absent match == nil.
 	src := "fn Main() {\n" +
 		"    var s = \"m30x2\";\n" +
 		"    var matched = s.Match(pattern: `m\\d+`);\n" +
 		"    var noMatch = s.Match(pattern: \"xyz\");\n" +
-		"    if matched == true && noMatch == false {\n" +
+		"    if matched != nil && noMatch == nil {\n" +
 		"        return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm});\n" +
 		"    } else {\n" +
 		"        return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm});\n" +
@@ -191,6 +194,7 @@ func TestEvalStringMatchTruthiness(t *testing.T) {
 	if mesh == nil {
 		t.Fatal("expected non-nil mesh")
 	}
+	assertMeshSize(t, mesh, 10, 10, 10, 0.1)
 }
 
 func TestEvalStringMatchInvalidRegex(t *testing.T) {
@@ -243,9 +247,9 @@ func TestEvalStringContains(t *testing.T) {
 }
 
 func TestEvalStringIndexOf(t *testing.T) {
-	stringPredicateTest(t, `"hello world".IndexOf(substr: "world") == 6`)
-	stringPredicateTest(t, `"hello world".IndexOf(substr: "missing") == -1`)
-	stringPredicateTest(t, `"abc".IndexOf(substr: "a") == 0`)
+	stringPredicateTest(t, `("hello world".IndexOf(substr: "world") ?? -1) == 6`)
+	stringPredicateTest(t, `"hello world".IndexOf(substr: "missing") == nil`)
+	stringPredicateTest(t, `("abc".IndexOf(substr: "a") ?? -1) == 0`)
 }
 
 func TestEvalStringReplace(t *testing.T) {

@@ -38,6 +38,12 @@ func (e *evaluator) fillDefaults(fn *parser.Function, args map[string]value, loc
 			continue // already provided
 		}
 		if p.Default == nil {
+			if parser.IsOptionalType(p.Type) {
+				// An omitted optional parameter binds None (bare nil — the
+				// inner type is stamped on by coerceArgs against p.Type).
+				args[p.Name] = none("")
+				continue
+			}
 			return fmt.Errorf("%s() missing required parameter %q", fn.Name, p.Name)
 		}
 		v, err := e.evalExpr(p.Default, locals)

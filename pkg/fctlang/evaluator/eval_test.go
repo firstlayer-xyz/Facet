@@ -788,7 +788,7 @@ func TestEvalRevolveDefaultSegments(t *testing.T) {
 
 func TestEvalThreadStructAPI(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@f95a707";
 
 fn Main() {
     return T.Thread(size: "m3").Outside(length: 2 mm);
@@ -810,7 +810,7 @@ fn Main() {
 
 func TestEvalSAEThread(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@f95a707";
 
 fn Main() {
     return T.Thread(size: "1/4-20").Outside(length: 5 mm);
@@ -832,7 +832,7 @@ fn Main() {
 
 func TestEvalSAEFineThread(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@f95a707";
 
 fn Main() {
     return T.Thread(size: "1/4-28").Outside(length: 5 mm);
@@ -854,7 +854,7 @@ fn Main() {
 
 func TestEvalNPTThread(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@f95a707";
 
 fn Main() {
     return T.Thread(size: "1/4-npt").Outside(length: 10 mm);
@@ -1948,7 +1948,7 @@ fn Main() {
 
 func TestEvalKnurlCylinder(t *testing.T) {
 	src := `
-var K = lib "github.com/firstlayer-xyz/facetlibs/knurling@3af7741";
+var K = lib "github.com/firstlayer-xyz/facetlibs/knurling@f95a707";
 
 fn Main() {
     var knurl = K.Knurl(count: 20, depth: 0.5 mm, angle: 30 deg);
@@ -1972,7 +1972,7 @@ fn Main() {
 
 func TestEvalKnurlSphere(t *testing.T) {
 	src := `
-var K = lib "github.com/firstlayer-xyz/facetlibs/knurling@3af7741";
+var K = lib "github.com/firstlayer-xyz/facetlibs/knurling@f95a707";
 
 fn Main() {
     var knurl = K.Knurl(count: 16, depth: 0.5 mm, angle: 30 deg);
@@ -2862,7 +2862,7 @@ fn Main() { return MakeBox(d: { w: 10, h: 20 }); }
 		{
 			name: "library struct field assignment",
 			src: `
-var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@3af7741";
+var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@f95a707";
 fn Main() {
     var n = F.HexNut(size: "m8");
     n.nut_h = 2;
@@ -3035,7 +3035,7 @@ func TestEvalFastenerTypes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			src := fmt.Sprintf(`
-var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@3af7741";
+var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@f95a707";
 fn Main() { return %s; }
 `, tc.expr)
 			prog := parseTestProg(t, src)
@@ -3128,7 +3128,7 @@ fn Main() {
 
 func TestEvalMetricFineThread(t *testing.T) {
 	src := `
-var T = lib "github.com/firstlayer-xyz/facetlibs/threads@3af7741";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@f95a707";
 fn Main() { return T.Thread(size: "m8x1").Outside(length: 5 mm); }
 `
 	prog := parseTestProg(t, src)
@@ -3304,7 +3304,7 @@ func TestEvalPosMapTransitiveLibrary(t *testing.T) {
 	// Fasteners library imports threads internally.
 	// PosMap should contain entries from both the user file AND the fastener library.
 	src := `
-var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@3af7741";
+var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@f95a707";
 
 fn Main() {
     return F.HexBolt(size: "m8", length: 30 mm).Solid();

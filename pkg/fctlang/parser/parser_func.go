@@ -193,6 +193,13 @@ func OptionalInner(t string) string {
 	return t[:len(t)-1]
 }
 
+// IsRequired reports whether a caller must supply this parameter. A parameter
+// is optional when it has a default value, or when its type is optional (`T?`)
+// — an omitted optional parameter binds None.
+func (p *Param) IsRequired() bool {
+	return p.Default == nil && !IsOptionalType(p.Type)
+}
+
 // isOperatorToken returns true if the token type is an operator that can
 // be used as an operator function name (fn +, fn -, fn *, etc.).
 func isOperatorToken(t TokenType) bool {
