@@ -1,0 +1,5 @@
+# Facet sources and OpenSCAD fixtures are reference content — bytes matter
+# (golden tests do strict comparisons). Pin to LF so Windows checkouts don't
+# convert them to CRLF and break the byte equality check.
+*.fct text eol=lf
+*.scad text eol=lf

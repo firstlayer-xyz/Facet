@@ -1,0 +1,4 @@
+fn Main() Solid {
+    return (Cube(s: 2 mm) + Sphere(r: 1 mm).AlignCenter(pos: Vec3{}))
+        .Move(z: 5 mm)
+}

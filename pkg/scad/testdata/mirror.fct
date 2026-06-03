@@ -1,0 +1,3 @@
+fn Main() Solid {
+    return Cube(s: 5 mm).Mirror(x: 1)
+}

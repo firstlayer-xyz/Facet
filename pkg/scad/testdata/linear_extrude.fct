@@ -1,0 +1,3 @@
+fn Main() Solid {
+    return Circle(r: 4 mm).Move(x: -4 mm, y: -4 mm).Extrude(z: 10 mm)
+}

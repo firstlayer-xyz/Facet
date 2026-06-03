@@ -1,0 +1,3 @@
+fn Main() Sketch {
+    return Circle(r: 5 mm).Move(x: -5 mm, y: -5 mm).Offset(delta: 2 mm)
+}

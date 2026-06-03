@@ -9,7 +9,7 @@ export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
 WAILS_VERSION := v2.12.0
 WAILS := $(GO_TOOLCHAIN)/bin/wails
 
-.PHONY: all manifold dev run build clean cli wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
+.PHONY: all manifold dev run build clean cli scad2facet wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
 
 all: manifold build
 
@@ -44,6 +44,11 @@ build: go-toolchain manifold wails-cli
 
 cli: go-toolchain manifold
 	$(GO) build -o build/bin/facetc ./cmd/facetc
+
+# OpenSCAD -> Facet transpiler. Pure Go (no geometry layer), so it needs
+# neither manifold nor CGO.
+scad2facet: go-toolchain
+	$(GO) build -o build/bin/scad2facet ./cmd/scad2facet
 
 FACET_WEB := $(CURDIR)/web
 
@@ -82,7 +87,7 @@ check-shims: go-toolchain
 	$(GO) run scripts/check-shims.go
 
 test: go-toolchain manifold
-	CGO_ENABLED=1 $(GO) test ./pkg/fctlang/... ./pkg/manifold/...
+	CGO_ENABLED=1 $(GO) test ./pkg/fctlang/... ./pkg/manifold/... ./pkg/scad/...
 
 # Tests for the desktop (Wails app) Go package — the Go-side counterpart to
 # `test-desktop` (which runs the frontend Playwright suite). Separate from
@@ -100,7 +105,7 @@ test-desktop-go: go-toolchain manifold
 	CGO_ENABLED=1 $(GO) test ./desktop/...
 
 test-race: go-toolchain manifold
-	CGO_ENABLED=1 $(GO) test -race ./pkg/fctlang/... ./pkg/manifold/...
+	CGO_ENABLED=1 $(GO) test -race ./pkg/fctlang/... ./pkg/manifold/... ./pkg/scad/...
 
 # Browser-side smoke tests via Playwright (Node.js + headless Chromium).
 # Starts serve-web in the background, runs the playwright suite under
