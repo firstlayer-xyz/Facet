@@ -71,8 +71,23 @@ void facet_sphere(double radius, int segments, FacetSolidRet* out) {
 void facet_cylinder(double height, double radius_low, double radius_high, int segments, FacetSolidRet* out) {
   // Manifold::Cylinder is XY-centered with base at z=0; translate XY so bbox
   // starts at (0,0,0) on all axes, matching cube/sphere/square/circle.
+  //
+  // Workaround: Manifold's Cylinder returns an empty mesh when radius_low=0
+  // and radius_high>0 (the bottom-tip cone is unsupported; the top-tip cone
+  // works). Build the symmetric (top-tip) cone instead and reflect Z about
+  // height/2 so the apex ends up at z=0 with the base at z=height. The Z
+  // reflection is a Scale({1,1,-1}) followed by a Translate({0,0,height}),
+  // which composes onto the same XY translate we use for the regular path.
   double r = std::fmax(radius_low, radius_high);
-  auto s = Manifold::Cylinder(height, radius_low, radius_high, segments).Translate({r, r, 0});
+  manifold::Manifold s;
+  if (radius_low == 0 && radius_high > 0) {
+    s = Manifold::Cylinder(height, radius_high, 0, segments)
+            .Scale({1, 1, -1})
+            .Translate({r, r, height});
+  } else {
+    s = Manifold::Cylinder(height, radius_low, radius_high, segments)
+            .Translate({r, r, 0});
+  }
   wrap(new Manifold(s.AsOriginal()), out);
 }
 
