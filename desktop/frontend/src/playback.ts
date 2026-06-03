@@ -3,9 +3,8 @@
 //
 // Registered with viewer.onFrame so it fires on every render tick
 // (~60 Hz). Each tick issues one /frame request if playing and no
-// request is already in flight (frame-dropping).  The caller
-// injects getSources and applyFrame to avoid import cycles with
-// app.ts/editor.
+// request is already in flight (frame-dropping).
+// Playback dependencies (getSources, applyFrame) are supplied by the host app.
 
 import { frameRequest, frameInFlight } from './frame-client';
 import type { EvalResult } from './frame-client';
@@ -59,7 +58,8 @@ export function onRenderTick(): void {
 
 async function issueFrame(timeMs: number): Promise<void> {
   const key = tabStore.active();
-  const picked = tabStore.activeState()?.pickedEntry;
+  const state = tabStore.activeState();
+  const picked = state?.pickedEntry;
   if (!key || !picked?.name || !applyFrame || !getSources) return;
 
   try {
@@ -67,7 +67,7 @@ async function issueFrame(timeMs: number): Promise<void> {
       sources: getSources(),
       key,
       entry: picked.name,
-      overrides: tabStore.activeState()?.entryOverrides ?? {},
+      overrides: state?.entryOverrides ?? {},
       timeMs,
     });
     // Any source or eval errors pause playback so the error state is visible.

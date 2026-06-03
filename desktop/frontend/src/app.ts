@@ -240,9 +240,7 @@ export function initApp(deps: AppDeps) {
   // Persist tabs when app is about to close
   on('app:before-close', () => persistOpenTabs());
 
-  // Wire the frame playback loop.  getSources is injected here rather
-  // than imported directly to avoid a circular dependency between
-  // playback.ts and editor/app.ts.
+  // Wire the frame playback loop.
   initPlayback({
     getSources: () => editor.getAllSources(),
     applyFrame: (binary, header) => {
