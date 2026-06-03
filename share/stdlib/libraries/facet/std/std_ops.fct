@@ -1,0 +1,161 @@
+# ---------------------------------------------------------------------------
+# Operator Functions
+# ---------------------------------------------------------------------------
+# Vec3 arithmetic
+fn +(a, b Vec3) Vec3 {
+    return Vec3{x: a.x + b.x, y: a.y + b.y, z: a.z + b.z}
+}
+
+fn -(a, b Vec3) Vec3 {
+    return Vec3{x: a.x - b.x, y: a.y - b.y, z: a.z - b.z}
+}
+
+# Component-wise Vec3*Vec3 — strips units on each side and reapplies the
+# Vec3 field's default mm. Strict units forbid Length*Length in user code;
+# here we make the unit-strip explicit via Number() so the operator remains
+# callable from user code without a surprise dimension error.
+fn *(a, b Vec3) Vec3 {
+    return Vec3{x: Number(from: a.x) * Number(from: b.x),
+        y: Number(from: a.y) * Number(from: b.y),
+        z: Number(from: a.z) * Number(from: b.z)}
+}
+
+fn *(v Vec3, s Number) Vec3 {
+    return Vec3{x: v.x * s, y: v.y * s, z: v.z * s}
+}
+
+fn *(s Number, v Vec3) Vec3 {
+    return v * s
+}
+
+fn /(v Vec3, s Number) Vec3 {
+    return Vec3{x: v.x / s, y: v.y / s, z: v.z / s}
+}
+
+fn -(v Vec3) Vec3 {
+    return Vec3{x: -v.x, y: -v.y, z: -v.z}
+}
+
+# Vec2 arithmetic
+fn +(a, b Vec2) Vec2 {
+    return Vec2{x: a.x + b.x, y: a.y + b.y}
+}
+
+fn -(a, b Vec2) Vec2 {
+    return Vec2{x: a.x - b.x, y: a.y - b.y}
+}
+
+# Component-wise Vec2*Vec2 — see Vec3*Vec3 above for rationale on Number().
+fn *(a, b Vec2) Vec2 {
+    return Vec2{x: Number(from: a.x) * Number(from: b.x),
+        y: Number(from: a.y) * Number(from: b.y)}
+}
+
+fn *(v Vec2, s Number) Vec2 {
+    return Vec2{x: v.x * s, y: v.y * s}
+}
+
+fn *(s Number, v Vec2) Vec2 {
+    return v * s
+}
+
+fn /(v Vec2, s Number) Vec2 {
+    return Vec2{x: v.x / s, y: v.y / s}
+}
+
+fn -(v Vec2) Vec2 {
+    return Vec2{x: -v.x, y: -v.y}
+}
+
+# Dot product — strips mm from each operand before multiplying. Under strict
+# units Length*Length has no type (no Area); dot/cross are inherently such
+# products, so stdlib opts into the strip explicitly via Number().
+fn Dot(a, b Vec3) Number {
+    return Number(from: a.x) * Number(from: b.x) + Number(from: a.y) * Number(
+        from: b.y
+    ) + Number(from: a.z) * Number(from: b.z)
+}
+
+fn Dot(a, b Vec2) Number {
+    return Number(from: a.x) * Number(from: b.x) + Number(from: a.y) * Number(
+        from: b.y
+    )
+}
+
+# Cross product — see Dot() rationale. Result components are re-attached to
+# mm at the Vec3 field boundary.
+fn Cross(a, b Vec3) Vec3 {
+    return Vec3{x: Number(from: a.y) * Number(from: b.z) - Number(from: a.z) * Number(
+            from: b.y
+        ),
+        y: Number(from: a.z) * Number(from: b.x) - Number(from: a.x) * Number(
+            from: b.z
+        ),
+        z: Number(from: a.x) * Number(from: b.y) - Number(from: a.y) * Number(
+            from: b.x
+        )}
+}
+
+# Comparison operators
+fn ==(a, b Vec3) Bool {
+    return a.x == b.x && a.y == b.y && a.z == b.z
+}
+
+fn !=(a, b Vec3) Bool {
+    return !(a == b)
+}
+
+fn ==(a, b Vec2) Bool {
+    return a.x == b.x && a.y == b.y
+}
+
+fn !=(a, b Vec2) Bool {
+    return !(a == b)
+}
+
+# Solid boolean operators
+fn +(a, b Solid) Solid {
+    return _union([a, b])
+}
+
+fn -(a, b Solid) Solid {
+    return _difference([a, b])
+}
+
+fn &(a, b Solid) Solid {
+    return _intersection([a, b])
+}
+
+fn |(a, b Solid) Solid {
+    return a.Insert(part: b)
+}
+
+fn ^(a, b Solid) Solid {
+    return a.Exclude(with: b)
+}
+
+# Sketch boolean operators
+fn +(a, b Sketch) Sketch {
+    return _union([a, b])
+}
+
+fn -(a, b Sketch) Sketch {
+    return _difference([a, b])
+}
+
+fn &(a, b Sketch) Sketch {
+    return _intersection([a, b])
+}
+
+# 2D polygon from an array of Vec2 vertices (minimum 3). Points connect in order; closes automatically.
+fn Polygon(points []Vec2) Sketch {
+    return _polygon(points, [])
+}
+
+# 2D polygon with holes: an outer outline plus zero or more inner outlines that are cut out.
+# Each hole must be a ring of at least 3 Vec2 points. Winding direction is irrelevant —
+# any ring nested in another flips fill (even-odd rule), so nested rings produce solid islands.
+fn Polygon(points []Vec2, holes [][]Vec2) Sketch {
+    return _polygon(points, holes)
+}
+

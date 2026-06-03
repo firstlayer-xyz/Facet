@@ -1,0 +1,96 @@
+# ---------------------------------------------------------------------------
+# Text Constructors
+# ---------------------------------------------------------------------------
+# 2D text sketch using the built-in Hack font, or a custom `.ttf`/`.otf` `font` path.
+# `s` is the cap height in mm. Extrude to make 3D lettering.
+#
+# `halign`: "left" (default — text starts at x=0), "center", or "right".
+# `valign`: "baseline" (default — y=0 sits on the baseline), "top" (y=0 at
+# ascender top), "center" (y=0 at vertical midpoint), or "bottom" (y=0 at
+# descender bottom).
+# ```
+# fn Main() { Text("HELLO", 8 mm).Extrude(2 mm) }
+# fn Main() { Text("HI", 8 mm, halign: "center", valign: "center").Extrude(2 mm) }
+# ```
+fn Text(
+    text String,
+    s Length,
+    font String = "",
+    halign String = "left",
+    valign String = "baseline",
+) Sketch {
+    return _text(text, s, font, halign, valign)
+}
+
+# ---------------------------------------------------------------------------
+# String Methods
+# ---------------------------------------------------------------------------
+# Returns `length` characters starting at `start` (0-indexed, rune-based).
+fn String.SubStr(start, length Number) String {
+    return _sub_str(self, start, length)
+}
+
+# Returns true if the string starts with `prefix`.
+fn String.HasPrefix(prefix String) Bool {
+    return _has_prefix(self, prefix)
+}
+
+# Returns true if the string ends with `suffix`.
+fn String.HasSuffix(suffix String) Bool {
+    return _has_suffix(self, suffix)
+}
+
+# Splits the string on `delimiter` and returns the resulting parts.
+fn String.Split(delimiter String) []String {
+    return _split(self, delimiter)
+}
+
+# Match returns [full match, capture1, …] or [] if no match.
+fn String.Match(pattern String) []String {
+    return _match(self, pattern)
+}
+
+# Returns the string converted to uppercase.
+fn String.ToUpper() String {
+    return _to_upper(self)
+}
+
+# Returns the string converted to lowercase.
+fn String.ToLower() String {
+    return _to_lower(self)
+}
+
+# Returns the string with leading and trailing whitespace removed.
+fn String.Trim() String {
+    return _trim_str(self)
+}
+
+# Returns a new string with all occurrences of `old` replaced by `new`.
+fn String.Replace(old, new String) String {
+    return _replace(self, old, new)
+}
+
+# Returns the index of the first occurrence of `substr`, or -1 if not found.
+fn String.IndexOf(substr String) Number {
+    return _index_of(self, substr)
+}
+
+# Returns true if the string contains `substr`.
+fn String.Contains(substr String) Bool {
+    return _contains(self, substr)
+}
+
+# Returns the number of characters (runes) in the string.
+fn String.Length() Number {
+    return _length(self)
+}
+
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Mesh Import
+# ---------------------------------------------------------------------------
+# Imports an STL or OBJ file as a Solid. Path is relative to the current file.
+fn LoadMesh(path String) Solid {
+    return _load_mesh(path)
+}
+
