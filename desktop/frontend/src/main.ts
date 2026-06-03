@@ -51,6 +51,7 @@ import {
   getSources, getActiveTabValue, isActiveTabReadOnly, assistantCreateFile, getActiveLabel, addRestoredTab, renderTabs,
   isDebugStepping,
   setOnSourceChange, setOnDebugFilesChange, setOnDebugExit, setOnEntryPoints,
+  setOnPlaybackStateChange,
   setEntryOverrides, refreshEditorUI, showError,
 } from './app';
 import { resolveThemePalette, resolveUiTheme, resolveEditorTheme, applyUIPalette } from './themes';
@@ -416,6 +417,7 @@ async function init() {
       if (fn) reeval(fn.name, fn.libPath);
     },
   });
+  setOnPlaybackStateChange(() => functionPreview.refresh());
 
   /** Filter visible entry points for a tab, keep previous selection if valid, else pick first. */
   function pickEntryPoint(tab: string, fns: EntryPoint[]): EntryPoint | null {
