@@ -1939,6 +1939,100 @@ export class Viewer {
     return this.renderer.domElement.toDataURL('image/png');
   }
 
+  /**
+   * Render the scene off-screen from a requested spherical camera pose and
+   * return a base64 PNG data URL. The user's camera/controls are not touched.
+   *
+   * Conventions, normalized to the active bed's up axis:
+   *   - `target` is world-space (mm). Defaults to the model bounding-sphere centre.
+   *   - `distance` is in mm from target to camera.
+   *   - `azimuth` is degrees around `up`, counterclockwise viewed from `+up`.
+   *     0° places the camera along the bed's front basis (matches the "front" preset).
+   *   - `elevation` is degrees above the horizontal plane.
+   *     0° = on the horizon, 90° = overhead (top view), -90° = underside.
+   */
+  captureScreenshotFromView(opts: {
+    azimuth: number;
+    elevation: number;
+    distance: number;
+    target?: { x: number; y: number; z: number };
+    width?: number;
+    height?: number;
+  }): string {
+    const { up, front } = this.bedBasis();
+    const right = new THREE.Vector3().crossVectors(up, front).normalize();
+
+    let target: THREE.Vector3;
+    if (opts.target) {
+      target = new THREE.Vector3(opts.target.x, opts.target.y, opts.target.z);
+    } else {
+      const sphere = this._getMeshBoundingSphere();
+      target = sphere.radius > 0 ? sphere.center.clone() : new THREE.Vector3(0, 0, 0);
+    }
+
+    const az = THREE.MathUtils.degToRad(opts.azimuth);
+    const el = THREE.MathUtils.degToRad(opts.elevation);
+    const cosEl = Math.cos(el);
+    const offset = new THREE.Vector3()
+      .addScaledVector(front, cosEl * Math.cos(az))
+      .addScaledVector(right, cosEl * Math.sin(az))
+      .addScaledVector(up,    Math.sin(el))
+      .multiplyScalar(opts.distance);
+    const position = target.clone().add(offset);
+
+    const canvas = this.renderer.domElement;
+    const width = Math.max(1, Math.floor(opts.width ?? canvas.width));
+    const height = Math.max(1, Math.floor(opts.height ?? canvas.height));
+
+    const camera = new THREE.PerspectiveCamera(
+      this.perspCamera.fov,
+      width / height,
+      this.perspCamera.near,
+      Math.max(this.perspCamera.far, opts.distance * 4),
+    );
+    camera.up.copy(up);
+    camera.position.copy(position);
+    camera.lookAt(target);
+
+    const rt = new THREE.WebGLRenderTarget(width, height, { type: THREE.UnsignedByteType });
+    const prevTarget = this.renderer.getRenderTarget();
+    try {
+      this.renderer.setRenderTarget(rt);
+      this.renderer.clear();
+      this.renderer.render(this.scene, camera);
+      const pixels = new Uint8Array(width * height * 4);
+      this.renderer.readRenderTargetPixels(rt, 0, 0, width, height, pixels);
+
+      // readRenderTargetPixels yields bottom-up rows; flip into a 2D canvas
+      // so toDataURL writes a correctly oriented PNG.
+      const out = document.createElement('canvas');
+      out.width = width;
+      out.height = height;
+      const ctx = out.getContext('2d');
+      if (!ctx) throw new Error('2d context unavailable');
+      const img = ctx.createImageData(width, height);
+      const rowBytes = width * 4;
+      for (let y = 0; y < height; y++) {
+        const src = (height - 1 - y) * rowBytes;
+        img.data.set(pixels.subarray(src, src + rowBytes), y * rowBytes);
+      }
+      ctx.putImageData(img, 0, 0);
+      return out.toDataURL('image/png');
+    } finally {
+      this.renderer.setRenderTarget(prevTarget);
+      rt.dispose();
+    }
+  }
+
+  /** Up axis and front-view basis vectors for the active bed. */
+  private bedBasis(): { up: THREE.Vector3; front: THREE.Vector3 } {
+    switch (this.bed) {
+      case 'XY': return { up: new THREE.Vector3(0, 0, 1), front: new THREE.Vector3(0, -1, 0) };
+      case 'YZ': return { up: new THREE.Vector3(1, 0, 0), front: new THREE.Vector3(0,  0, 1) };
+      default:   return { up: new THREE.Vector3(0, 1, 0), front: new THREE.Vector3(0,  0, 1) };
+    }
+  }
+
   private animate(): void {
     requestAnimationFrame(() => this.animate());
     if (!this._visible) return;

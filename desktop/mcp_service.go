@@ -295,10 +295,23 @@ type askOption struct {
 	Description string `json:"description,omitempty" jsonschema:"One-line explanation of what selecting this option means."`
 }
 
-// screenshotViewportInput is empty: the tool always captures the live
-// viewport. No camera angle, no resolution — the user picks the view;
-// the model just looks at what's on screen.
-type screenshotViewportInput struct{}
+// screenshotViewportInput optionally specifies a camera pose. Omit all
+// of azimuth/elevation/distance to capture the user's live view; supply
+// all three (and optionally target) to render an off-screen view from a
+// chosen angle without disturbing the user's camera.
+type screenshotViewportInput struct {
+	Azimuth   *float64    `json:"azimuth,omitempty" jsonschema:"Degrees around the bed's up axis, counterclockwise viewed from above. 0° is the bed's front-view direction. Optional — omit to use the user's current view."`
+	Elevation *float64    `json:"elevation,omitempty" jsonschema:"Degrees above the horizontal plane. 0° is on the horizon, 90° is overhead (top-down), -90° is from underneath. Optional — omit to use the user's current view."`
+	Distance  *float64    `json:"distance,omitempty" jsonschema:"Distance from target to camera, in millimetres. Optional — omit to use the user's current view."`
+	Target    *vec3Coords `json:"target,omitempty" jsonschema:"World-space point the camera looks at, in millimetres. Defaults to the model bounding-sphere centre. Only used when azimuth/elevation/distance are supplied."`
+}
+
+// vec3Coords is a {x,y,z} point in world-space millimetres.
+type vec3Coords struct {
+	X float64 `json:"x" jsonschema:"X coordinate in millimetres."`
+	Y float64 `json:"y" jsonschema:"Y coordinate in millimetres."`
+	Z float64 `json:"z" jsonschema:"Z coordinate in millimetres."`
+}
 
 // updateTaskPlanInput renders the model's working task list in the
 // assistant panel so the user can see step-by-step progress on a
@@ -885,7 +898,7 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 	// through ImageContent which encodes them base64 on the wire.
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "screenshot_viewport",
-		Description: "Capture the current 3D viewport as a PNG and return it as an image. Use this to verify how your edit actually looks (not just stats) — get_last_run tells you the bounding box and triangle count; this lets you SEE proportions, alignment, and obvious mistakes. Call after each meaningful edit, not constantly.",
+		Description: "Capture the 3D viewport as a PNG. By default returns the user's live view; supply azimuth/elevation/distance (and optional target) to render off-screen from a chosen pose without moving the user's camera — useful for inspecting the back or underside. Use this to verify how your edit actually looks (not just stats); call after meaningful edits, not constantly.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input screenshotViewportInput) (*mcp.CallToolResult, any, error) {
 		id, err := generateToken()
 		if err != nil {
@@ -901,7 +914,20 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 			m.screenshotsMu.Unlock()
 		}()
 
-		wailsRuntime.EventsEmit(m.eventCtx, "assistant:screenshot-request", map[string]any{"id": id})
+		payload := map[string]any{"id": id}
+		if input.Azimuth != nil {
+			payload["azimuth"] = *input.Azimuth
+		}
+		if input.Elevation != nil {
+			payload["elevation"] = *input.Elevation
+		}
+		if input.Distance != nil {
+			payload["distance"] = *input.Distance
+		}
+		if input.Target != nil {
+			payload["target"] = map[string]float64{"x": input.Target.X, "y": input.Target.Y, "z": input.Target.Z}
+		}
+		wailsRuntime.EventsEmit(m.eventCtx, "assistant:screenshot-request", payload)
 
 		select {
 		case res := <-ch:

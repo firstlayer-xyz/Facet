@@ -47,7 +47,7 @@ export class AssistantPanel {
   private offTaskPlan: (() => void) | null = null;
   private offPermission: (() => void) | null = null;
   private taskPlanDiv: HTMLElement | null = null;
-  private captureScreenshot: (() => string | null) | null = null;
+  private captureScreenshot: ((opts?: AssistantScreenshotRequest) => string | null) | null = null;
 
   constructor(
     container: HTMLElement,
@@ -57,7 +57,7 @@ export class AssistantPanel {
     onApplyCode: (newCode: string, searchFor?: string) => void,
     onSetEditorSilent: (newCode: string) => void,
     onNewFile: (name: string, code: string) => void,
-    captureScreenshot?: () => string | null,
+    captureScreenshot?: (opts?: AssistantScreenshotRequest) => string | null,
     onClose?: () => void,
   ) {
     this.container = container;
@@ -275,7 +275,7 @@ export class AssistantPanel {
       let dataURL: string | null = null;
       let err = '';
       try {
-        dataURL = this.captureScreenshot();
+        dataURL = this.captureScreenshot(payload);
       } catch (e: any) {
         err = e?.message || String(e);
       }

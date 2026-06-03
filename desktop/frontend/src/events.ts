@@ -32,6 +32,10 @@ export interface AssistantQuestionPayload {
 
 export interface AssistantScreenshotRequest {
   id: string;
+  azimuth?: number;
+  elevation?: number;
+  distance?: number;
+  target?: { x: number; y: number; z: number };
 }
 
 export interface AssistantPermissionRequest {

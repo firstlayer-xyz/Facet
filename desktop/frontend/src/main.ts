@@ -149,10 +149,21 @@ const assistantPanel = new AssistantPanel(
   (name: string, code: string) => {
     assistantCreateFile(name, code).catch(err => showError(err));
   },
-  // Viewport capture for the screenshot_viewport MCP tool. The viewer
-  // already runs WebGL with preserveDrawingBuffer; toDataURL is safe to
-  // call any time without an extra render pass.
-  () => viewer.captureScreenshot(),
+  // Viewport capture for the screenshot_viewport MCP tool. When the model
+  // requests an explicit camera pose, render off-screen so the user's view
+  // is untouched; otherwise grab the live canvas (preserveDrawingBuffer is
+  // on, so toDataURL is safe without an extra render pass).
+  (opts) => {
+    if (opts && opts.azimuth !== undefined && opts.elevation !== undefined && opts.distance !== undefined) {
+      return viewer.captureScreenshotFromView({
+        azimuth: opts.azimuth,
+        elevation: opts.elevation,
+        distance: opts.distance,
+        target: opts.target,
+      });
+    }
+    return viewer.captureScreenshot();
+  },
   // onClose: sync toolbar button state when closed via the × button.
   syncAssistantState,
 );
