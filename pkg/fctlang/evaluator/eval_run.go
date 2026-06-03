@@ -137,6 +137,19 @@ func (e *evaluator) run() (*EvalResult, error) {
 	case *manifold.Solid:
 		solids = []*manifold.Solid{r}
 	case *structVal:
+		if r.typeName == "Animation" {
+			frameVal := r.fields["frame"]
+			frameFn, ok := frameVal.(*functionVal)
+			if !ok {
+				return nil, e.errAt(entryFn.Pos, "Animation.frame must be a function, got %s", typeName(frameVal))
+			}
+			if len(frameFn.params) != 1 {
+				return nil, e.errAt(entryFn.Pos, "Animation.frame must take exactly one parameter (time in ms), got %d", len(frameFn.params))
+			}
+			return &EvalResult{
+				Animation: &Animation{e: e, frame: frameFn, argName: frameFn.params[0].Name},
+			}, nil
+		}
 		if r.typeName != "PolyMesh" {
 			return nil, e.errAt(entryFn.Pos, "%s() must return a Solid, PolyMesh, or Array of Solids, got %s", e.entryPoint, r.typeName)
 		}

@@ -178,10 +178,12 @@ type SolidTrack struct {
 
 // EvalResult holds the evaluated solids and model statistics.
 // Callers extract meshes as needed: ToMesh() for rendering, ExtractMeshShared() for export.
+// When the entry returns an Animation, Animation is non-nil and Solids is empty.
 type EvalResult struct {
-	Solids []*manifold.Solid
-	Stats  ModelStats
-	PosMap []PosEntry
+	Solids    []*manifold.Solid
+	Animation *Animation // non-nil when the entry returned an Animation
+	Stats     ModelStats
+	PosMap    []PosEntry
 }
 
 // newEvaluator creates an evaluator with all shared fields initialized.
