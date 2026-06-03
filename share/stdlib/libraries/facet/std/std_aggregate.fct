@@ -124,6 +124,8 @@ fn Layout(
     solids []Solid,
     gap Length?,
 ) []Solid {
+    # TODO: _layout reads -1 mm as the "auto spacing" sentinel. A future cleanup
+    # could move the auto default into Go and drop this `?? -1 mm` bridge.
     return _layout(solids, gap ?? -1 mm)
 }
 
