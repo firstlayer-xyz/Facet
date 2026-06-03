@@ -1,0 +1,10 @@
+# A cube that spins once every 4 seconds, driven by the wall clock.
+fn Main() Animation {
+    var base = Cube(s: 20 mm)                        # built once, captured
+    return Animation{
+        frame: fn(t Number) Solid {                  # t = Unix epoch ms
+            const deg = (t % 4000) / 4000 * 360     # one turn / 4 s
+            return base.Rotate(z: deg * 1 deg)
+        }
+    }
+}
