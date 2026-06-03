@@ -276,11 +276,11 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog
 			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: bare Array type is not allowed; use a typed array (e.g., []Solid) or []var for generic arrays", fn.Name, p.Name))
 		}
 		pt := c.resolveParamType(fn, p.Type)
-		// `any` is the explicit dynamic type: it resolves to the permissive
+		// `Any` is the explicit dynamic type: it resolves to the permissive
 		// typeUnknown on purpose (indexable, op-checks skipped, runtime-checked),
 		// so it is not an "unknown type" error. Other unrecognized names still
 		// error here, preserving typo detection.
-		if pt.ft == typeUnknown && p.Type != "" && p.Type != "any" && bareType != "Array" {
+		if pt.ft == typeUnknown && p.Type != "" && p.Type != "Any" && bareType != "Array" {
 			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q has unknown type %q", fn.Name, p.Name, p.Type))
 		}
 		env.bind(p.Name, pt, p.Pos, "param")

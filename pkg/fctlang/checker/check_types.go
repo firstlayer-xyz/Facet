@@ -185,8 +185,15 @@ func typeFromNameStr(name string) typeInfo {
 		inner := typeFromNameStr(name[:len(name)-1])
 		return optionalOf(inner)
 	}
+	// `Any` is the dynamic type — explicitly typeUnknown, not a struct name.
+	if name == "Any" {
+		return unknown()
+	}
 	if strings.HasPrefix(name, "[]") {
 		elemStr := name[2:]
+		if elemStr == "Any" {
+			return arrayOf(unknown())
+		}
 		elem := typeFromNameStr(elemStr)
 		if elem.ft == typeUnknown && elemStr != "" {
 			// Assume unknown element type is a struct name
