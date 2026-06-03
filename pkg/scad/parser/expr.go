@@ -152,12 +152,16 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	return nil, p.errf("unexpected token %q in expression", t.Text)
 }
 
-// parseBracket parses either a vector [a,b,...] or a range [a:b] / [a:s:b].
+// parseBracket parses either a list comprehension `[for (var = iter, …) body]`,
+// a vector `[a, b, …]`, or a range `[a:b]` / `[a:s:b]`.
 func (p *parser) parseBracket() (ast.Expr, error) {
 	lb := p.advance() // [
 	if p.at(token.RBracket) {
 		p.advance()
 		return &ast.Vector{P: curPos(lb)}, nil
+	}
+	if p.at(token.For) {
+		return p.parseListComp(lb)
 	}
 	first, err := p.parseExpr()
 	if err != nil {
@@ -201,6 +205,45 @@ func (p *parser) parseBracket() (ast.Expr, error) {
 		return nil, err
 	}
 	return &ast.Vector{Elems: elems, P: curPos(lb)}, nil
+}
+
+// parseListComp parses `[for (var = iter, …) body]`. The opening `[` is
+// already consumed; `lb` is its token for position tracking.
+func (p *parser) parseListComp(lb token.Token) (ast.Expr, error) {
+	p.advance() // consume `for`
+	if _, err := p.expect(token.LParen); err != nil {
+		return nil, err
+	}
+	var iters []ast.ForIter
+	for {
+		v, err := p.expect(token.Ident)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(token.Assign); err != nil {
+			return nil, err
+		}
+		rng, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		iters = append(iters, ast.ForIter{Var: v.Text, Range: rng})
+		if !p.at(token.Comma) {
+			break
+		}
+		p.advance()
+	}
+	if _, err := p.expect(token.RParen); err != nil {
+		return nil, err
+	}
+	body, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(token.RBracket); err != nil {
+		return nil, err
+	}
+	return &ast.ListComp{Iters: iters, Body: body, P: curPos(lb)}, nil
 }
 
 func (p *parser) parseLetExpr() (ast.Expr, error) {

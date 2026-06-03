@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"facet/pkg/colorname"
 	"facet/pkg/manifold"
 )
 
@@ -477,8 +478,15 @@ func clampByte(f float64) int {
 	return v
 }
 
-// parseHexColorRGBA parses "#RGB", "#RRGGBB", or "#RRGGBBAA" to float64 r, g, b, a in 0-1.
+// parseHexColorRGBA parses a "#RGB", "#RRGGBB", or "#RRGGBBAA" hex literal
+// — or a common CSS color name like "red" — to float64 r, g, b, a in 0-1.
+// Name resolution lets transpiled SCAD models forward a color parameter
+// through Color(hex:) without the transpiler having to bake a hex value at
+// compile time.
 func parseHexColorRGBA(s string) (float64, float64, float64, float64, error) {
+	if hex, ok := colorname.Hex(s); ok {
+		s = hex
+	}
 	s = strings.TrimPrefix(s, "#")
 	var r, g, b, a uint8
 	a = 255

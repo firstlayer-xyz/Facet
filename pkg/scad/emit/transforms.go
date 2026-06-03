@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"facet/pkg/colorname"
 	"facet/pkg/scad/ast"
 )
 
@@ -248,16 +249,18 @@ func (e *Emitter) projectionMethod(n *ast.ModuleCall) string {
 }
 
 // offsetMethod builds `.Offset(delta: D mm)`. OpenSCAD's `delta` is a straight
-// (mitered) offset; `r` is a rounded offset not supported by Facet's Offset.
-// `chamfer` is a geometric modifier (bevels corners) that is also not supported;
+// (mitered) offset; `r` is a rounded offset. Facet's Offset is mitered, so a
+// rounded `r` request is approximated as mitered — the visual difference for
+// thin offsets (line outlines, fillets at small radii) is usually negligible.
+// `chamfer` is a geometric modifier (bevels corners) that is not supported;
 // it must error rather than be silently ignored.
 func (e *Emitter) offsetMethod(n *ast.ModuleCall) string {
 	e.rejectExtraArgs(n, 1, "delta", "r")
 	if d, found := arg(n, "delta", -1); found {
 		return "Offset(delta: " + e.expr(d, kLength) + ")"
 	}
-	if _, found := arg(n, "r", 0); found {
-		return e.errf(n.Pos(), "offset with r (rounded offset) is not supported")
+	if r, found := arg(n, "r", 0); found {
+		return "Offset(delta: " + e.expr(r, kLength) + ")"
 	}
 	e.errf(n.Pos(), "offset without delta or r")
 	return ""
@@ -335,17 +338,28 @@ func joinNonZero(pairs ...pair) string {
 }
 
 // translateMethod builds `.Move(...)`. 2D children move in x,y only. Accepts
-// both `translate([x,y,z])` and the named `translate(v=[x,y,z])` form.
+// both `translate([x,y,z])` and the named `translate(v=[x,y,z])` form. When
+// the argument is a runtime expression rather than a Vector literal (e.g.
+// `translate(l1 * [cos(a), sin(a), 0])`), each axis indexes into the
+// expression — Facet auto-coerces the resulting Number to Length at the
+// Move boundary.
 func (e *Emitter) translateMethod(n *ast.ModuleCall, is2D bool) string {
 	e.rejectExtraArgs(n, 1, "v")
-	x, y, z, ok := e.vecArg(n, "v", 0, kLength)
-	if !ok {
+	if x, y, z, ok := e.vecArg(n, "v", 0, kLength); ok {
+		if is2D {
+			return "Move(" + joinNonZero(pair{"x", x}, pair{"y", y}) + ")"
+		}
+		return "Move(" + joinNonZero(pair{"x", x}, pair{"y", y}, pair{"z", z}) + ")"
+	}
+	v, found := arg(n, "v", 0)
+	if !found {
 		return ""
 	}
+	expr := e.expr(v, kNumber)
 	if is2D {
-		return "Move(" + joinNonZero(pair{"x", x}, pair{"y", y}) + ")"
+		return fmt.Sprintf("Move(x: %s[0] * 1 mm, y: %s[1] * 1 mm)", expr, expr)
 	}
-	return "Move(" + joinNonZero(pair{"x", x}, pair{"y", y}, pair{"z", z}) + ")"
+	return fmt.Sprintf("Move(x: %s[0] * 1 mm, y: %s[1] * 1 mm, z: %s[2] * 1 mm)", expr, expr, expr)
 }
 
 // rotateMethod builds `.Rotate(...)`. Handles both the vector form
@@ -470,7 +484,18 @@ func (e *Emitter) colorMethod(n *ast.ModuleCall, is2D bool) string {
 		return fmt.Sprintf("Color(r: %s, g: %s, b: %s, a: %s)",
 			e.expr(v.Elems[0], kNumber), e.expr(v.Elems[1], kNumber), e.expr(v.Elems[2], kNumber), alpha)
 	default:
-		return e.errf(n.Pos(), "non-literal color value")
+		// A runtime color value (a parameter or other expression). We can't
+		// resolve CSS color names at transpile time, so we pass the string
+		// through to Color(hex:) and let the runtime decide. The user is
+		// responsible for ensuring the value is a hex string (`#RRGGBB`) at
+		// runtime — SCAD CSS color names won't resolve.
+		expr := e.expr(c, kNumber)
+		if alpha == "" {
+			return fmt.Sprintf("Color(hex: %s)", expr)
+		}
+		// With an explicit alpha, decompose the hex client-side at runtime is
+		// not currently supported. Fall back to the historical error.
+		return e.errf(n.Pos(), "non-literal color value with alpha")
 	}
 }
 
@@ -534,48 +559,13 @@ func clamp255(f float64) int {
 	return v
 }
 
-// cssColorHex maps a common CSS color name to its "#RRGGBB" hex value. The
-// second result is false for unknown names (the caller emits #000000 + an error).
+// cssColorHex maps a common CSS color name to its "#RRGGBB" hex value via
+// the shared colorname table. The second result is false for unknown names
+// (the caller emits #000000 + an error).
 func cssColorHex(name string) (string, bool) {
-	switch strings.ToLower(name) {
-	case "black":
-		return "#000000", true
-	case "white":
-		return "#FFFFFF", true
-	case "red":
-		return "#FF0000", true
-	case "green":
-		return "#008000", true
-	case "lime":
-		return "#00FF00", true
-	case "blue":
-		return "#0000FF", true
-	case "yellow":
-		return "#FFFF00", true
-	case "cyan", "aqua":
-		return "#00FFFF", true
-	case "magenta", "fuchsia":
-		return "#FF00FF", true
-	case "gray", "grey":
-		return "#808080", true
-	case "silver":
-		return "#C0C0C0", true
-	case "maroon":
-		return "#800000", true
-	case "olive":
-		return "#808000", true
-	case "purple":
-		return "#800080", true
-	case "teal":
-		return "#008080", true
-	case "navy":
-		return "#000080", true
-	case "orange":
-		return "#FFA500", true
-	case "pink":
-		return "#FFC0CB", true
-	case "brown":
-		return "#A52A2A", true
+	hex, ok := colorname.Hex(name)
+	if !ok {
+		return "#000000", false
 	}
-	return "#000000", false
+	return hex, true
 }

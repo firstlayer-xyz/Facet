@@ -74,6 +74,15 @@ func (e *Emitter) expr(x ast.Expr, k kind) string {
 			return "[" + e.expr(n.Start, kNumber) + ":" + e.expr(n.End, kNumber) + ":" + e.expr(n.Step, kNumber) + "]"
 		}
 		return "[" + e.expr(n.Start, kNumber) + ":" + e.expr(n.End, kNumber) + "]"
+	case *ast.ListComp:
+		// SCAD `[for (v = iter, …) body]` maps to Facet's
+		// `for v iter, … { yield body }`. Multiple iterators form a Cartesian
+		// product in both languages.
+		clauses := make([]string, 0, len(n.Iters))
+		for _, it := range n.Iters {
+			clauses = append(clauses, it.Var+" "+e.expr(it.Range, kNumber))
+		}
+		return "for " + strings.Join(clauses, ", ") + " { yield " + e.expr(n.Body, kNumber) + " }"
 	case *ast.Vector:
 		// A SCAD vector is a []Number list. Geometry boundaries that need a
 		// Vec2/Vec3 extract components or wrap with a scad_v* helper separately.
