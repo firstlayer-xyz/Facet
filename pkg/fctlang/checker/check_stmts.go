@@ -8,8 +8,15 @@ import (
 // typeCompatible checks if actualType is compatible with expectedType.
 // Number→Length and Number→Angle coercions are allowed. Array compatibility checks element types.
 func (c *checker) typeCompatible(expected, actual typeInfo) bool {
-	// typeVar is compatible with any type (generic type variable)
+	// typeVar (builtin generic placeholder) and typeUnknown (Any /
+	// unresolved) are both wildcards — compatible with any type. typeUnknown
+	// landing here means either an `Any`-typed value or an inference failure
+	// upstream; in both cases coercion at the runtime boundary owns the
+	// final check.
 	if expected.ft == typeVar || actual.ft == typeVar {
+		return true
+	}
+	if expected.ft == typeUnknown || actual.ft == typeUnknown {
 		return true
 	}
 	if expected.ft == actual.ft {

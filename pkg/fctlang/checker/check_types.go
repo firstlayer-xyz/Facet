@@ -161,8 +161,6 @@ func typeFromName(name string) facetType {
 		return typeAngle
 	case "Number":
 		return typeNumber
-	case "var":
-		return typeVar
 	case "Bool":
 		return typeBool
 	case "String":
@@ -185,8 +183,15 @@ func typeFromNameStr(name string) typeInfo {
 		inner := typeFromNameStr(name[:len(name)-1])
 		return optionalOf(inner)
 	}
+	// `Any` is the dynamic type — explicitly typeUnknown, not a struct name.
+	if name == "Any" {
+		return unknown()
+	}
 	if strings.HasPrefix(name, "[]") {
 		elemStr := name[2:]
+		if elemStr == "Any" {
+			return arrayOf(unknown())
+		}
 		elem := typeFromNameStr(elemStr)
 		if elem.ft == typeUnknown && elemStr != "" {
 			// Assume unknown element type is a struct name
@@ -309,7 +314,7 @@ func typeDisplayName(t facetType) string {
 	case typeNumber:
 		return "Number"
 	case typeVar:
-		return "var"
+		return "Any"
 	case typeArray:
 		return "array"
 	case typeBool:

@@ -52,13 +52,13 @@ func TestEvalIndicesOfSingleMatch(t *testing.T) {
 
 func TestEvalFindIndexPresent(t *testing.T) {
 	stdlibIfThenCubeWithSetup(t,
-		`var i = FindIndex(arr: [1, 5, 9, 2], pred: fn(n var) Bool { return n > 3 });`,
+		`var i = FindIndex(arr: [1, 5, 9, 2], pred: fn(n Any) Bool { return n > 3 });`,
 		`i == 1`)
 }
 
 func TestEvalFindIndexAbsent(t *testing.T) {
 	stdlibIfThenCubeWithSetup(t,
-		`var i = FindIndex(arr: [1, 2, 3], pred: fn(n var) Bool { return n > 99 });`,
+		`var i = FindIndex(arr: [1, 2, 3], pred: fn(n Any) Bool { return n > 99 });`,
 		`i == -1`)
 }
 
@@ -66,12 +66,12 @@ func TestEvalFindIndexAbsent(t *testing.T) {
 
 func TestEvalFindIndicesMultiMatch(t *testing.T) {
 	stdlibIfThenCubeWithSetup(t,
-		`var ix = FindIndices(arr: [1, 5, 9, 2, 7], pred: fn(n var) Bool { return n > 3 });`,
+		`var ix = FindIndices(arr: [1, 5, 9, 2, 7], pred: fn(n Any) Bool { return n > 3 });`,
 		`Size(of: ix) == 3 && ix[0] == 1 && ix[1] == 2 && ix[2] == 4`)
 }
 
 func TestEvalFindIndicesNoMatch(t *testing.T) {
 	stdlibIfThenCubeWithSetup(t,
-		`var ix = FindIndices(arr: [1, 2, 3], pred: fn(n var) Bool { return n > 99 });`,
+		`var ix = FindIndices(arr: [1, 2, 3], pred: fn(n Any) Bool { return n > 99 });`,
 		`Size(of: ix) == 0`)
 }

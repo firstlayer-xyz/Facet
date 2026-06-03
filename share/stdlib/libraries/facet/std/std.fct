@@ -663,16 +663,16 @@ fn Atan2(y, x Number) Angle {
 # ---------------------------------------------------------------------------
 # Math Helpers
 # ---------------------------------------------------------------------------
-# Math helpers — work on Number, Length, and Angle via `var` generics.
-fn Min(a, b var) var {
+# Math helpers — work on Number, Length, and Angle via `Any` generics.
+fn Min(a, b Any) Any {
     return _min(a, b)
 }
 
-fn Max(a, b var) var {
+fn Max(a, b Any) Any {
     return _max(a, b)
 }
 
-fn Abs(a var) var {
+fn Abs(a Any) Any {
     return _abs(a)
 }
 
@@ -697,22 +697,22 @@ fn Round(n Number) Number {
 }
 
 # Linear interpolation: `a + (b - a) * t`. Values outside [0, 1] extrapolate.
-fn Lerp(from, to var, t Number) var {
+fn Lerp(from, to Any, t Number) Any {
     return _lerp(from, to, t)
 }
 
 # Extracts the raw numeric value: Length → mm, Angle → degrees, String → parsed number.
-fn Number(from var) Number {
+fn Number(from Any) Number {
     return _number(from)
 }
 
 # Converts a value to its string representation.
-fn String(a var) String {
+fn String(a Any) String {
     return _string(a)
 }
 
 # Returns the number of elements in an array or characters in a string.
-fn Size(of []var) Number {
+fn Size(of []Any) Number {
     return _size(of)
 }
 
@@ -727,7 +727,7 @@ fn Size(of String) Number {
 # ```
 # fn Main() { var i = IndexOf(arr: [10, 20, 30], value: 20) }    # i = 1
 # ```
-fn IndexOf(arr []var, value var) Number {
+fn IndexOf(arr []Any, value Any) Number {
     return _index_of_arr(arr, value)
 }
 
@@ -735,21 +735,21 @@ fn IndexOf(arr []var, value var) Number {
 # ```
 # fn Main() { var ix = IndicesOf(arr: [1, 2, 1, 3], value: 1) }   # ix = [0, 2]
 # ```
-fn IndicesOf(arr []var, value var) []Number {
+fn IndicesOf(arr []Any, value Any) []Number {
     return _indices_of(arr, value)
 }
 
 # Returns the index of the first element matching `pred`, or -1 if none match.
 # `pred` is a lambda taking one element and returning Bool.
 # ```
-# fn Main() { var i = FindIndex(arr: [1, 5, 9], pred: fn(n var) Bool { return n > 3 }) }   # i = 1
+# fn Main() { var i = FindIndex(arr: [1, 5, 9], pred: fn(n Any) Bool { return n > 3 }) }   # i = 1
 # ```
-fn FindIndex(arr []var, pred fn(var) Bool) Number {
+fn FindIndex(arr []Any, pred fn(Any) Bool) Number {
     return _find_index(arr, pred)
 }
 
 # Returns every index where `pred(arr[i])` is true. Empty list if none match.
-fn FindIndices(arr []var, pred fn(var) Bool) []Number {
+fn FindIndices(arr []Any, pred fn(Any) Bool) []Number {
     return _find_indices(arr, pred)
 }
 

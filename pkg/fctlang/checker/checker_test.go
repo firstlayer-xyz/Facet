@@ -2659,9 +2659,9 @@ fn Main() {
 }
 
 func TestCheckLambdaVarParam(t *testing.T) {
-	// Lambda passed to fn(var) var param should be accepted (var matches any)
+	// Lambda passed to fn(Any) var param should be accepted (var matches any)
 	expectNoErrors(t, `
-fn Transform(s Solid, f fn(var) var) Solid {
+fn Transform(s Solid, f fn(Any) Any) Solid {
     return s;
 }
 fn Main() {

@@ -276,7 +276,11 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog
 			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: bare Array type is not allowed; use a typed array (e.g., []Solid) or []var for generic arrays", fn.Name, p.Name))
 		}
 		pt := c.resolveParamType(fn, p.Type)
-		if pt.ft == typeUnknown && p.Type != "" && bareType != "Array" {
+		// `Any` is the explicit dynamic type: it resolves to the permissive
+		// typeUnknown on purpose (indexable, op-checks skipped, runtime-
+		// checked), so it is not an "unknown type" error. Other unrecognized
+		// names still error here, preserving typo detection.
+		if pt.ft == typeUnknown && p.Type != "" && p.Type != "Any" && bareType != "Array" {
 			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q has unknown type %q", fn.Name, p.Name, p.Type))
 		}
 		env.bind(p.Name, pt, p.Pos, "param")
@@ -336,7 +340,11 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog
 	}
 	if fn.ReturnType != "" && retType.ft != typeUnknown {
 		expected := c.resolveReturnType(fn)
-		if expected.ft == typeUnknown {
+		// `Any` is the dynamic type: it resolves to the permissive typeUnknown
+		// on purpose, so a declared `Any` return is not an unknown-type error
+		// (mirrors the parameter handling). A concrete body returning into an
+		// `Any` slot is fine — the compatibility check below skips typeUnknown.
+		if expected.ft == typeUnknown && fn.ReturnType != "Any" {
 			c.addError(fn.Pos, fmt.Sprintf("%s() has unknown return type %q", fn.Name, fn.ReturnType))
 		}
 		// Top-down coercion: if the inferred return type is unknown (e.g. array of anonymous structs)

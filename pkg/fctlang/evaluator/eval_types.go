@@ -99,8 +99,8 @@ func typeName(v value) string {
 // checkType verifies a value matches the declared type name.
 func checkType(declaredType string, v value) bool {
 	v = unwrap(v)
-	// var accepts any value
-	if declaredType == "var" {
+	// Any (the dynamic type) accepts any runtime value.
+	if declaredType == "Any" {
 		return true
 	}
 	// A T? slot accepts any Optional, or a definite T (widened on demand).
@@ -115,8 +115,8 @@ func checkType(declaredType string, v value) bool {
 		_, ok := v.(*functionVal)
 		return ok
 	}
-	// []var accepts any array
-	if declaredType == "[]var" {
+	// []Any accepts any array
+	if declaredType == "[]Any" {
 		_, ok := v.(array)
 		return ok
 	}
@@ -202,8 +202,8 @@ func checkType(declaredType string, v value) bool {
 // the original value is returned unchanged.
 func (e *evaluator) coerceToType(declType string, v value, locals map[string]value) value {
 	v = unwrap(v)
-	// var types — no coercion needed
-	if declType == "var" || declType == "[]var" {
+	// Any types — pass the runtime value through unchanged.
+	if declType == "Any" || declType == "[]Any" {
 		return v
 	}
 	// Optional types — wrap a definite value as Some, or stamp the inner
@@ -301,7 +301,7 @@ func (e *evaluator) isAccessibleType(typeName string) bool {
 	}
 	switch typeName {
 	case "", "Solid", "Sketch", "Length", "Angle",
-		"Bool", "Number", "String", "Array", "var":
+		"Bool", "Number", "String", "Array", "Any":
 		return true
 	default:
 		// Local or stdlib struct

@@ -336,27 +336,23 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 		}
 	}
 
-	// Var-group consistency check: params declared together as `a, b var`
-	// (same Param.GroupID) share a type slot and must resolve to the same
+	// Generic-group consistency check: params declared together as `a, b Any`
+	// share a type slot via Param.GroupID and must resolve to the same
 	// concrete type. Singletons (GroupID == 0) get their own slot — two
-	// independent `var` params can take different types.
-	var firstGroupConcreteType typeInfo
-	hasVarParams := false
+	// independent `Any` params can take different types.
 	if len(argTypes) > 0 && len(fn.Params) > 0 {
 		type varGroup struct {
-			typeStr string // "var" or "[]var"
+			typeStr string // "Any" or "[]Any"
 			indices []int  // param indices in this group
-			first   bool   // is this the first var group?
 		}
 		var groups []varGroup
 		groupByID := map[int]int{} // Param.GroupID → index into groups (shared decls only)
 		for i, p := range fn.Params {
 			pType := p.Type
-			isVar := pType == "var" || pType == "[]var"
+			isVar := pType == "Any" || pType == "[]Any"
 			if !isVar {
 				continue
 			}
-			hasVarParams = true
 			if p.GroupID != 0 {
 				if existing, ok := groupByID[p.GroupID]; ok {
 					groups[existing].indices = append(groups[existing].indices, i)
@@ -364,10 +360,11 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 				}
 				groupByID[p.GroupID] = len(groups)
 			}
-			groups = append(groups, varGroup{typeStr: pType, indices: []int{i}, first: len(groups) == 0})
+			groups = append(groups, varGroup{typeStr: pType, indices: []int{i}})
 		}
 
 		for _, grp := range groups {
+			isArrayGroup := grp.typeStr == "[]Any"
 			var groupType typeInfo
 			for _, idx := range grp.indices {
 				if idx >= len(argTypes) {
@@ -377,9 +374,9 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 				if argT.ft == typeUnknown {
 					continue
 				}
-				// For var[], extract the element type from the array arg
+				// For []var / []Any, extract the element type from the array arg
 				concreteT := argT
-				if grp.typeStr == "[]var" && argT.ft == typeArray && argT.elem != nil {
+				if isArrayGroup && argT.ft == typeArray && argT.elem != nil {
 					concreteT = *argT.elem
 				}
 				if groupType.ft == typeUnknown {
@@ -395,23 +392,22 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 					}
 				}
 			}
-			if grp.first {
-				firstGroupConcreteType = groupType
-			}
 		}
 	}
 
-	// Determine return type — resolve var return from first var group's concrete type
-	retType := c.resolveReturnType(fn)
-	if hasVarParams && (retType.ft == typeVar || (retType.ft == typeUnknown && (fn.ReturnType == "" || fn.ReturnType == "var"))) {
-		if fn.ReturnType == "[]var" {
-			return arrayOf(firstGroupConcreteType)
-		}
-		if firstGroupConcreteType.ft != typeUnknown {
-			return firstGroupConcreteType
-		}
+	// A declared `Any` (or `[]Any`) return stays opaque at the call site —
+	// coercion at the consumer's boundary handles the concrete type. We
+	// deliberately do not specialize from the first generic group's arg type:
+	// that's wrong for functions that index or reshape (e.g.
+	// `fn first(v Any) Any { return v[0] }` returns the element type, not v's
+	// type).
+	switch fn.ReturnType {
+	case "Any":
+		return unknown()
+	case "[]Any":
+		return arrayOf(unknown())
 	}
-	return retType
+	return c.resolveReturnType(fn)
 }
 
 // checkLibFuncArgs validates arguments against a library function and returns
@@ -474,11 +470,13 @@ func (c *checker) resolveReturnType(fn *parser.Function) typeInfo {
 // lookup so user-defined types like Vec3 resolve correctly. Also handles
 // the postfix `?` by recursively resolving the inner type and wrapping.
 func (c *checker) resolveTypeString(name string) typeInfo {
-	if name == "var" {
-		return simple(typeVar)
+	// `Any` is the dynamic type — resolves to typeUnknown so body checks
+	// (indexing, arithmetic) stay permissive. `[]Any` is array-of-unknown.
+	if name == "Any" {
+		return unknown()
 	}
-	if name == "[]var" {
-		return arrayOf(simple(typeVar))
+	if name == "[]Any" {
+		return arrayOf(unknown())
 	}
 	if parser.IsOptionalType(name) {
 		inner := c.resolveTypeString(parser.OptionalInner(name))

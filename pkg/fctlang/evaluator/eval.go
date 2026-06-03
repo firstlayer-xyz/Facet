@@ -68,7 +68,7 @@ type angle struct {
 
 // array represents a runtime array of values.
 // elemType tracks the element type (e.g. "Solid", "Length", "Number").
-// Empty string means untyped/heterogeneous. "var" means explicitly generic.
+// Empty string means untyped/heterogeneous. "Any" means explicitly dynamic.
 type array struct {
 	elems    []value
 	elemType string
