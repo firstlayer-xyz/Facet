@@ -89,11 +89,13 @@ var slicerDefs = []slicerDef{
 	},
 	{
 		// Snapmaker Orca is Snapmaker's OrcaSlicer fork tuned for their J1,
-		// Artisan, 2.0, and U1 series. Asset filenames use underscores
-		// (Snapmaker_Orca_*); the installed bundle keeps that convention.
+		// Artisan, 2.0, and U1 series. The macOS bundle and Linux/Windows
+		// names below were verified for macOS; the Linux/Windows names mirror
+		// the asset filename + OrcaSlicer fork conventions and will need
+		// verification on a real machine.
 		Name:     "Snapmaker Orca",
 		ID:       "snapmaker-orca",
-		MacApp:   "Snapmaker_Orca",
+		MacApp:   "Snapmaker Orca",
 		LinuxBin: "snapmaker-orca",
 		WinExe:   `Snapmaker_Orca\Snapmaker_Orca.exe`,
 	},
