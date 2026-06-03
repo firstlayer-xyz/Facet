@@ -269,20 +269,30 @@ func (e *Emitter) polygon(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "polygon without points")
 	}
-	pv, ok := pts.(*ast.Vector)
-	if !ok {
-		// Points held in a variable/expression are a runtime [][]Number; convert
-		// to []Vec2 via the scad_v2 helper. Paths (holes) need literal indices
-		// into literal points, so that combination is still unsupported.
-		if _, hasPaths := arg(n, "paths", 1); hasPaths {
-			return e.errf(n.Pos(), "polygon with paths requires literal points")
-		}
-		e.usesV2 = true
-		return "Polygon(points: scad_v2(ps: " + e.expr(pts, kNumber) + "))"
+	pv, isVecLit := pts.(*ast.Vector)
+	paths, hasPaths := arg(n, "paths", 1)
+
+	// Treat a literal points vector that contains anything other than literal
+	// 2-vectors (e.g. a function call returning a Vec2-shaped value, or a
+	// variable reference) the same as a fully computed points list — the
+	// elements only have a known shape at runtime, so we route through the
+	// scad_v2 / scad_v2_path helpers.
+	if isVecLit && !allLiteralVec2(pv.Elems) {
+		isVecLit = false
 	}
+
+	// Case 1: computed (or mixed-literal) points.
+	if !isVecLit {
+		if !hasPaths {
+			e.usesV2 = true
+			return "Polygon(points: scad_v2(ps: " + e.expr(pts, kNumber) + "))"
+		}
+		return e.polygonComputedWithPaths(n, pts, paths)
+	}
+
 	points := pv.Elems
 
-	paths, hasPaths := arg(n, "paths", 1)
+	// Case 2: literal points, no paths — the simple case.
 	if !hasPaths {
 		outer, ok := e.vec2Array(points)
 		if !ok {
@@ -291,6 +301,7 @@ func (e *Emitter) polygon(n *ast.ModuleCall) string {
 		return "Polygon(points: " + outer + ")"
 	}
 
+	// Case 3: literal points + paths — resolve indices at compile time.
 	pathsVec, ok := paths.(*ast.Vector)
 	if !ok || len(pathsVec.Elems) == 0 {
 		return e.errf(n.Pos(), "polygon paths must be a non-empty literal list")
@@ -317,6 +328,70 @@ func (e *Emitter) polygon(n *ast.ModuleCall) string {
 		hole, ok := e.vec2Array(holePts)
 		if !ok {
 			return e.errf(n.Pos(), "polygon with non-Vec2 point")
+		}
+		if i > 0 {
+			holes.WriteString(", ")
+		}
+		holes.WriteString(hole)
+	}
+	holes.WriteString("]")
+	return "Polygon(points: " + outer + ", holes: " + holes.String() + ")"
+}
+
+// allLiteralVec2 reports whether every element is a literal 2-vector — the
+// shape vec2Array consumes. False means at least one element is a function
+// call, variable reference, or other non-vector expression and the points
+// list has to be rendered as a runtime []]Number.
+func allLiteralVec2(elems []ast.Expr) bool {
+	for _, el := range elems {
+		v, ok := el.(*ast.Vector)
+		if !ok || len(v.Elems) < 2 {
+			return false
+		}
+	}
+	return true
+}
+
+// polygonComputedWithPaths emits a polygon whose `points` is a runtime
+// expression and whose `paths` is a literal list of literal index lists. The
+// emitted code routes each path through scad_v2_path, which indexes the
+// runtime points and converts each chosen entry to a Vec2 (mm).
+func (e *Emitter) polygonComputedWithPaths(n *ast.ModuleCall, pts ast.Expr, paths ast.Expr) string {
+	pathsVec, ok := paths.(*ast.Vector)
+	if !ok || len(pathsVec.Elems) == 0 {
+		return e.errf(n.Pos(), "polygon paths must be a non-empty literal list")
+	}
+	ptsExpr := e.expr(pts, kNumber)
+	render := func(p ast.Expr) (string, bool) {
+		pv, ok := p.(*ast.Vector)
+		if !ok {
+			return "", false
+		}
+		var idx strings.Builder
+		idx.WriteString("[")
+		for i, idxExpr := range pv.Elems {
+			if i > 0 {
+				idx.WriteString(", ")
+			}
+			idx.WriteString(e.expr(idxExpr, kNumber))
+		}
+		idx.WriteString("]")
+		return "scad_v2_path(ps: " + ptsExpr + ", indices: " + idx.String() + ")", true
+	}
+	outer, ok := render(pathsVec.Elems[0])
+	if !ok {
+		return e.errf(n.Pos(), "polygon paths must be literal index lists into points")
+	}
+	e.usesV2Path = true
+	if len(pathsVec.Elems) == 1 {
+		return "Polygon(points: " + outer + ")"
+	}
+	var holes strings.Builder
+	holes.WriteString("[")
+	for i, hp := range pathsVec.Elems[1:] {
+		hole, ok := render(hp)
+		if !ok {
+			return e.errf(n.Pos(), "polygon paths must be literal index lists into points")
 		}
 		if i > 0 {
 			holes.WriteString(", ")

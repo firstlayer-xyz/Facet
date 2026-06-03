@@ -3077,10 +3077,16 @@ fn Main() {
 }
 
 func TestEvalArrayAppendElement(t *testing.T) {
-	// [1,2] + 3 → [1,2,3]; use Size to verify
+	// Numeric scalars broadcast element-wise: [1,2] + 3 → [4,5]. Appending
+	// a scalar with `+` is no longer the way to grow a numeric array; use
+	// the singleton-wrap idiom (arr + [elem]) instead. This test confirms
+	// the broadcast result is non-empty and indexes correctly.
 	src := `
 fn Main() {
     var a = []Number[1,2] + 3;
+    assert Size(of: a) == 2;
+    assert a[0] == 4;
+    assert a[1] == 5;
     return Cube(s: Vec3{x: Size(of: a) * 1 mm, y: 1 mm, z: 1 mm});
 }
 `

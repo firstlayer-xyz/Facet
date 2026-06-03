@@ -2,19 +2,32 @@ package emit
 
 import "facet/pkg/scad/ast"
 
-// paramType returns a parameter's Facet type. A nested array (a list of lists)
-// exceeds the binary scalar/vector model and is typed `Any` (dynamic). A flat
-// vector — from a vector default, in-body indexing/member access, or a type
-// propagated across call sites — is []Number. Everything else is scalar Number.
+// paramType returns a parameter's Facet type. A Bool literal default
+// (`flag = false`) classifies the parameter as Bool. A nested array (a list
+// of lists) exceeds the binary scalar/vector model and is typed `Any`
+// (dynamic). A flat vector — from a vector default, in-body indexing/member
+// access, or a type propagated across call sites — is []Number. Everything
+// else is scalar Number.
 func (e *Emitter) paramType(defName string, p ast.Param) string {
 	switch {
 	case e.nested.has(defName, p.Name):
 		return "Any"
 	case e.vecParams.has(defName, p.Name):
 		return "[]Number"
+	case isBoolDefault(p.Default):
+		return "Bool"
 	default:
 		return "Number"
 	}
+}
+
+// isBoolDefault reports whether a parameter's default is a Bool literal —
+// the only signal we use today for classifying a parameter as Bool, since
+// OpenSCAD has no separate Bool type annotation. False on a missing default
+// (nil) or any other expression shape.
+func isBoolDefault(x ast.Expr) bool {
+	_, ok := x.(*ast.Bool)
+	return ok
 }
 
 // exprUsesAsVector reports whether `name` is indexed (`name[…]`) or
@@ -174,6 +187,13 @@ func (e *Emitter) classifyFuncReturn(body ast.Expr, seen map[string]bool) string
 		switch b.Op {
 		case "<", ">", "<=", ">=", "==", "!=", "&&", "||":
 			return "Bool"
+		case "+", "-", "*", "/":
+			// Arithmetic broadcasts a vector through: scalar*vector and
+			// vector*scalar both produce a vector. If either operand
+			// classifies as a vector, so does the result.
+			if e.classifyFuncReturn(b.L, seen) == "[]Number" || e.classifyFuncReturn(b.R, seen) == "[]Number" {
+				return "[]Number"
+			}
 		}
 	case *ast.Call:
 		if b.Name == "concat" {

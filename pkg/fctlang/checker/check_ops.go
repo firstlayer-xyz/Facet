@@ -66,6 +66,20 @@ func (c *checker) inferBinaryOp(ex *parser.BinaryExpr, env *typeEnv) typeInfo {
 		return inner
 	}
 
+	// Scalar/vector broadcasting: `scalar op array` and `array op scalar` for
+	// +, -, *, / produce an array of the element-op-scalar result, applied
+	// element-wise. Mirrors SCAD/NumPy semantics. The element type is
+	// inferred by recursively type-checking a synthesized element op against
+	// the scalar.
+	if op == "+" || op == "-" || op == "*" || op == "/" {
+		if left.ft == typeArray && right.ft != typeArray && left.elem != nil {
+			return arrayOf(c.inferElemOp(ex.Pos, op, *left.elem, right))
+		}
+		if right.ft == typeArray && left.ft != typeArray && right.elem != nil {
+			return arrayOf(c.inferElemOp(ex.Pos, op, left, *right.elem))
+		}
+	}
+
 	// Array concatenation / append — preserve element type
 	if left.ft == typeArray && op == "+" {
 		if right.ft == typeArray {
@@ -200,6 +214,50 @@ func (c *checker) inferBinaryOp(ex *parser.BinaryExpr, env *typeEnv) typeInfo {
 	}
 
 	c.addError(ex.Pos, fmt.Sprintf("operator %s: incompatible types %s and %s", op, left.displayName(), right.displayName()))
+	return unknown()
+}
+
+// inferElemOp returns the result type of `left op right` for a scalar/vector
+// broadcast. Both operands must already be scalar (the caller pulls element
+// types out of array operands). Returns typeUnknown on incompatible
+// combinations; the broadcast wrapper then reports the array-level error.
+func (c *checker) inferElemOp(pos parser.Pos, op string, left, right typeInfo) typeInfo {
+	if left.ft == typeUnknown || right.ft == typeUnknown {
+		return unknown()
+	}
+	switch {
+	case left.ft == typeNumber && right.ft == typeNumber:
+		return simple(typeNumber)
+	case left.ft == typeLength && right.ft == typeLength:
+		switch op {
+		case "+", "-":
+			return simple(typeLength)
+		case "/":
+			return simple(typeNumber)
+		}
+	case left.ft == typeLength && right.ft == typeNumber:
+		if op == "*" || op == "/" {
+			return simple(typeLength)
+		}
+	case left.ft == typeNumber && right.ft == typeLength:
+		if op == "*" {
+			return simple(typeLength)
+		}
+	case left.ft == typeAngle && right.ft == typeAngle:
+		if op == "+" || op == "-" {
+			return simple(typeAngle)
+		}
+	case left.ft == typeAngle && right.ft == typeNumber:
+		if op == "*" || op == "/" {
+			return simple(typeAngle)
+		}
+	case left.ft == typeNumber && right.ft == typeAngle:
+		if op == "*" {
+			return simple(typeAngle)
+		}
+	}
+	c.addError(pos, fmt.Sprintf("operator %s: incompatible element/scalar types %s and %s",
+		op, left.displayName(), right.displayName()))
 	return unknown()
 }
 
