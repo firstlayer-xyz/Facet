@@ -45,4 +45,19 @@ static inline void wrap_cs(manifold::CrossSection* cs, FacetSketchRet* out) {
   out->size = sketch_size(cs);
 }
 
+// Construct a Solid from a triangle mesh, welding coincident vertices first.
+// MeshGL::Merge() fills the merge vectors for vertices that coincide within
+// tolerance along open edges, so a mesh assembled from independent per-face
+// vertices — e.g. a subdivision that computes each shared edge's midpoint once
+// per adjacent triangle — closes into a manifold. It is a no-op when the mesh
+// already carries merge vectors or is manifold. Welding joins coincident points
+// only: a genuinely non-manifold mesh still yields an empty Manifold, so this
+// does not paper over broken topology. The single entry point for turning raw
+// triangle data into a Solid (with or without face IDs).
+static inline void wrap_solid_from_mesh(manifold::MeshGL& mesh,
+                                        FacetSolidRet* out) {
+  mesh.Merge();
+  wrap(new manifold::Manifold(manifold::Manifold(mesh).AsOriginal()), out);
+}
+
 }  // namespace facet_cxx_internal
