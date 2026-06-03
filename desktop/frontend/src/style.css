@@ -1040,6 +1040,33 @@ canvas {
 #mini-preview #debug-bar,
 #mini-preview #compiling-overlay { display: none !important; }
 
+#mini-preview-resize {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 52;
+}
+#mini-preview:hover #mini-preview-resize { opacity: 1; }
+#mini-preview-resize::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid rgba(255,255,255,0.5);
+  border-bottom: 2px solid rgba(255,255,255,0.5);
+}
+
+/* CODE toggle — editor panel hidden */
+#editor-panel.code-hidden,
+#editor-panel.code-hidden + #divider { display: none; }
+
 #drawing-mode-btn {
   background: var(--ui-accent);
   color: #fff;
@@ -2280,6 +2307,26 @@ mark.search-highlight {
   color: var(--ui-text);
 }
 
+.assistant-close-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.assistant-close-btn:hover {
+  background: var(--ui-border);
+  color: var(--ui-text);
+}
+
 .assistant-messages {
   flex: 1;
   overflow-y: auto;
@@ -3439,13 +3486,8 @@ mark.search-highlight {
    their drawers and toggle in lockstep via the `.open` class.
 */
 #drawer-stack {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
   display: flex;
   flex-direction: row;
-  z-index: 30;
-  pointer-events: none;       /* gaps / empty container don't intercept clicks */
+  flex-shrink: 0;
+  height: 100%;
 }
-#drawer-stack > * { pointer-events: auto; }

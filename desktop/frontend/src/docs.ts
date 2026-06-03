@@ -430,10 +430,8 @@ function highlightText(el: HTMLElement, term: string): void {
 }
 
 export class DocsPanel {
-  private el: HTMLElement | null = null;
-  // Container is the docs slot inside #drawer-stack — a permanent DOM
-  // home that never gets reparented across mode changes.
-  private container: HTMLElement;
+  // Permanent panel element — always in the DOM, visibility via .open class.
+  private el: HTMLElement;
   private onClose: (() => void) | null;
   private currentView: DocsView = VIEW_GUIDES;
   private guides: DocGuide[] = [];
@@ -447,8 +445,10 @@ export class DocsPanel {
   private scrollCleanup: (() => void) | null = null;
 
   constructor(container: HTMLElement, onClose?: () => void) {
-    this.container = container;
     this.onClose = onClose ?? null;
+    this.el = document.createElement('div');
+    this.el.id = 'docs-panel';
+    container.appendChild(this.el);
   }
 
   show(entries: DocEntry[], guides?: DocGuide[]): void {
@@ -458,10 +458,10 @@ export class DocsPanel {
     this.currentView = VIEW_GUIDES;
     this.currentGuide = null;
 
-    const panel = document.createElement('div');
-    panel.id = 'docs-panel';
-    panel.classList.add('open');
-    this.el = panel;
+    this.el.innerHTML = '';
+    this.el.classList.add('open');
+
+    const panel = this.el;
 
     // Navigation tabs
     const nav = document.createElement('div');
@@ -556,8 +556,6 @@ export class DocsPanel {
 
     search.addEventListener('input', () => this.rerender());
     this.rerender();
-
-    this.container.appendChild(panel);
     search.focus();
   }
 
@@ -889,19 +887,17 @@ export class DocsPanel {
   }
 
   hide(): void {
-    if (this.el) {
-      this.scrollCleanup?.();
-      this.scrollCleanup = null;
-      this.el.remove();
-      this.el = null;
-      this.contentEl = null;
-      this.searchEl = null;
-      this.countEl = null;
-      this.sideNavEl = null;
-    }
+    if (!this.el.classList.contains('open')) return;
+    this.scrollCleanup?.();
+    this.scrollCleanup = null;
+    this.el.classList.remove('open');
+    this.contentEl = null;
+    this.searchEl = null;
+    this.countEl = null;
+    this.sideNavEl = null;
   }
 
   isVisible(): boolean {
-    return this.el !== null;
+    return this.el.classList.contains('open');
   }
 }
