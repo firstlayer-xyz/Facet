@@ -28,14 +28,15 @@ type ParamEntry struct {
 }
 
 // EntryPoint describes a runnable entry point function — a capitalized,
-// fully-constrained function that returns Solid.
+// fully-constrained function that returns Solid or Animation.
 type EntryPoint struct {
 	Name      string       `json:"name"`
 	Signature string       `json:"signature"`
 	Params    []ParamEntry `json:"params"`
-	LibPath   string       `json:"libPath"` // "" = main file; "facet/gears" etc. = library
-	LibVar    string       `json:"libVar"`  // variable name the lib is bound to in source
+	LibPath   string       `json:"libPath"`           // "" = main file; "facet/gears" etc. = library
+	LibVar    string       `json:"libVar"`            // variable name the lib is bound to in source
 	Doc       string       `json:"doc"`
+	Animated  bool         `json:"animated,omitempty"` // true when the entry returns Animation
 }
 
 // ParamConstraint describes the allowed values for a parameter.
@@ -56,7 +57,8 @@ func isValidEntryPoint(fn *parser.Function, inferredReturnTypes map[string]strin
 		return false
 	}
 	inferred := inferredReturnTypes[fn.Name]
-	if fn.Name != "Main" && fn.ReturnType != "Solid" && inferred != "Solid" {
+	isAnim := fn.ReturnType == "Animation" || inferred == "Animation"
+	if fn.Name != "Main" && fn.ReturnType != "Solid" && inferred != "Solid" && !isAnim {
 		return false
 	}
 	for _, p := range fn.Params {
@@ -118,6 +120,7 @@ func getEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) 
 			LibPath:   libPath,
 			LibVar:    libVar,
 			Doc:       parser.DocComment(fn.Comments),
+			Animated:  fn.ReturnType == "Animation" || inferredReturnTypes[fn.Name] == "Animation",
 		})
 	}
 
