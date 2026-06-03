@@ -1,0 +1,7 @@
+fn Main() Sketch {
+    return Polygon(
+        points: []Vec2[
+            {x: 0 mm, y: 0 mm}, {x: 10 mm, y: 0 mm}, {x: 5 mm, y: 8 mm}
+        ]
+    )
+}

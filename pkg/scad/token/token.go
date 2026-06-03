@@ -1,0 +1,79 @@
+// Package token defines OpenSCAD lexical tokens.
+package token
+
+// Kind identifies the category of a lexical token.
+type Kind int
+
+const (
+	EOF    Kind = iota
+	Ident       // foo, cube, $fn  (SpecialVar flag set for $-prefixed)
+	Number      // 10, 1.5, .5, 1e3
+	String      // "text"
+	True
+	False
+	Undef
+
+	// punctuation
+	LParen   // (
+	RParen   // )
+	LBrace   // {
+	RBrace   // }
+	LBracket // [
+	RBracket // ]
+	Semi     // ;
+	Comma    // ,
+	Colon    // :
+	Dot      // .
+	Question // ?
+	Hash     // #   (modifier)
+	Bang     // !   (modifier / logical not)
+	Percent  // %   (modifier / modulo)
+	Star     // *   (modifier / multiply)
+
+	// operators
+	Assign // =
+	Plus
+	Minus
+	Slash
+	Lt
+	Gt
+	Le
+	Ge
+	EqEq
+	NeEq
+	And // &&
+	Or  // ||
+
+	// keywords
+	Module
+	Function
+	For
+	If
+	Else
+	Let
+	Each
+	Use
+	Include
+)
+
+// Token is a single OpenSCAD lexical unit with source position.
+type Token struct {
+	Kind       Kind
+	Text       string // literal text (identifier name, number text, string value)
+	Line, Col  int
+	SpecialVar bool // true for $-prefixed identifiers ($fn, $fa, $t…)
+}
+
+var keywords = map[string]Kind{
+	"module": Module, "function": Function, "for": For, "if": If,
+	"else": Else, "let": Let, "each": Each, "use": Use, "include": Include,
+	"true": True, "false": False, "undef": Undef,
+}
+
+// Lookup returns the keyword kind for an identifier, or Ident.
+func Lookup(s string) Kind {
+	if k, ok := keywords[s]; ok {
+		return k
+	}
+	return Ident
+}

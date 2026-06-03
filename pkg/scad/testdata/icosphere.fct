@@ -1,0 +1,104 @@
+fn scad_v3(ps [][]Number) []Vec3 {
+    return for p ps {
+        yield Vec3{x: p[0] * 1 mm, y: p[1] * 1 mm, z: p[2] * 1 mm}
+    }
+}
+
+fn scad_faces(fs [][]Number) []Face {
+    const perFace = for f fs {
+        yield for i [1:<Size(of: f) - 1] {
+            yield Face{v0: f[0], v1: f[i], v2: f[i + 1]}
+        }
+    }
+
+    return fold acc, tris perFace { yield acc + tris }
+}
+
+fn icosphere(
+    radius Number = 10,
+    recursion Number = 2,
+    icoPnts Any = [],
+    icoTris Any = [],
+) Solid {
+    const t = Sqrt(n: (5 + Sqrt(n: 5)) / 10)
+    const s = Sqrt(n: (5 - Sqrt(n: 5)) / 10)
+    const init = Size(of: icoPnts) == 0 && Size(of: icoTris) == 0
+    const verts = [
+        [-s, t, 0], [s, t, 0], [-s, -t, 0], [s, -t, 0], [0, -s, t], [0, s, t],
+        [0, -s, -t], [0, s, -t], [t, 0, -s], [t, 0, s], [-t, 0, -s], [-t, 0, s]
+    ]
+    const tris = [
+        [0, 5, 11], [0, 1, 5], [0, 7, 1], [0, 10, 7], [0, 11, 10], [1, 9, 5],
+        [5, 4, 11], [11, 2, 10], [10, 6, 7], [7, 8, 1], [3, 4, 9], [3, 2, 4],
+        [3, 6, 2], [3, 8, 6], [3, 9, 8], [4, 5, 9], [2, 11, 4], [6, 10, 2],
+        [8, 7, 6], [9, 1, 8]
+    ]
+    if recursion > 0 {
+        const curVerts = init ? verts : icoPnts
+        const curTris = init ? tris : icoTris
+        const newSegments = recurseTris(verts: curVerts, tris: curTris)
+        const newVerts = newSegments[0]
+        const newTris = newSegments[1]
+        return icosphere(
+            radius: radius,
+            recursion: recursion - 1,
+            icoPnts: newVerts,
+            icoTris: newTris
+        )
+    } else if init {
+        return Mesh{vertices: scad_v3(ps: verts), indices: scad_faces(fs: tris)}
+            .Solid()
+    } else {
+        return Mesh{vertices: scad_v3(ps: icoPnts),
+            indices: scad_faces(fs: icoTris)}.Solid()
+    }
+}
+
+fn addTris(verts Any, tri []Number) Any {
+    const a = getMiddlePoint(p1: verts[tri[0]], p2: verts[tri[1]])
+    const b = getMiddlePoint(p1: verts[tri[1]], p2: verts[tri[2]])
+    const c = getMiddlePoint(p1: verts[tri[2]], p2: verts[tri[0]])
+    const l = Size(of: verts)
+    return [
+        verts + [a, b, c],
+        [
+            [tri[0], l, l + 2], [tri[1], l + 1, l], [tri[2], l + 2, l + 1],
+            [l, l + 1, l + 2]
+        ]
+    ]
+}
+
+fn recurseTris(
+    verts Any,
+    tris Any,
+    newTris Any = [],
+    steps Number = 0,
+    step Number = 0,
+) Any {
+    const stepsCnt = steps > 0 ? steps : Size(of: tris) - 1
+    const newSegment = addTris(verts: verts, tri: tris[step])
+    const newVerts = newSegment[0]
+    const newerTris = newTris + newSegment[1]
+    return stepsCnt == step ? [newVerts, newerTris] : recurseTris(
+        verts: newVerts,
+        tris: tris,
+        newTris: newerTris,
+        steps: stepsCnt,
+        step: step + 1
+    )
+}
+
+fn getMiddlePoint(p1, p2 []Number) []Number {
+    return fixPosition(
+        p: [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2, (p1[2] + p2[2]) / 2]
+    )
+}
+
+fn fixPosition(p []Number) []Number {
+    const l = Sqrt(n: p[0] * p[0] + p[1] * p[1] + p[2] * p[2])
+    return [p[0] / l, p[1] / l, p[2] / l]
+}
+
+fn Main() Solid {
+    return icosphere(radius: 10, recursion: 1)
+}

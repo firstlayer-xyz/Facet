@@ -1,0 +1,4 @@
+fn Main() Solid {
+    return Circle(r: 2 mm).Move(x: -2 mm, y: -2 mm).Move(x: 10 mm)
+        .Revolve(a: 360 deg)
+}

@@ -1,0 +1,3 @@
+fn Main() Sketch {
+    return Sphere(r: 5 mm).AlignCenter(pos: Vec3{}).Slice(z: 0 mm)
+}

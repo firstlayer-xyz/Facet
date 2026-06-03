@@ -1,0 +1,3 @@
+fn Main() Sketch {
+    return Square(x: 20 mm, y: 10 mm)
+}

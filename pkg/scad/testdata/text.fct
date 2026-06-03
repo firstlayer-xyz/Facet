@@ -1,0 +1,3 @@
+fn Main() Sketch {
+    return Text(text: "HI", s: 8 mm)
+}

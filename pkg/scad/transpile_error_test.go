@@ -1,0 +1,836 @@
+package scad
+
+import (
+	"strings"
+	"testing"
+)
+
+// An unsupported construct must fail the transpile with a located error and
+// produce no output — never a placeholder.
+func TestTranspileErrorsOnUnsupported(t *testing.T) {
+	src := "minkowski() {\n  cube(10);\n  sphere(2);\n}\n"
+	res, err := Transpile(src, "part.scad")
+	if err == nil {
+		t.Fatalf("expected an error for minkowski, got none; output:\n%s", res.Facet)
+	}
+	if res.Facet != "" {
+		t.Fatalf("expected no output on error, got:\n%s", res.Facet)
+	}
+	if !strings.Contains(err.Error(), "minkowski") || !strings.Contains(err.Error(), "1:1") {
+		t.Fatalf("error should name the construct and location, got: %v", err)
+	}
+}
+
+func TestTranspileErrorsOnOffsetR(t *testing.T) {
+	res, err := Transpile("offset(r=5) circle(r=3);\n", "part.scad")
+	if err == nil || res.Facet != "" {
+		t.Fatalf("offset(r=…) should fail with no output; err=%v out=%q", err, res.Facet)
+	}
+	if !strings.Contains(err.Error(), "offset") {
+		t.Fatalf("error should mention offset, got: %v", err)
+	}
+}
+
+func TestTranspileErrorsOnUnknownColor(t *testing.T) {
+	res, err := Transpile(`color("xyzzy") cube(10);`+"\n", "part.scad")
+	if err == nil || res.Facet != "" {
+		t.Fatalf("unknown color should fail with no output; err=%v out=%q", err, res.Facet)
+	}
+	if !strings.Contains(err.Error(), "xyzzy") {
+		t.Fatalf("error should mention the color name, got: %v", err)
+	}
+}
+
+// linear_extrude scale + center must be faithfully translated (taper / centering),
+// not silently dropped, and the result must type-check.
+func TestTranspileLinearExtrudeScaleAndCenter(t *testing.T) {
+	res, err := Transpile("linear_extrude(height=10, scale=0.5, center=true) square([4,4]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(res.Facet, "taperX: 0.5") || !strings.Contains(res.Facet, "taperY: 0.5") {
+		t.Fatalf("scale=0.5 not translated to taper:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "AlignCenter") {
+		t.Fatalf("center=true not translated:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// An argument the emitter does not translate must error, never be silently dropped.
+func TestTranspileLinearExtrudeUnknownArgErrors(t *testing.T) {
+	res, err := Transpile("linear_extrude(height=10, frobnicate=3) square([4,4]);\n", "part.scad")
+	if err == nil || res.Facet != "" {
+		t.Fatalf("unknown arg should fail with no output; err=%v out=%q", err, res.Facet)
+	}
+	if !strings.Contains(err.Error(), "frobnicate") {
+		t.Fatalf("error should name the unsupported argument, got: %v", err)
+	}
+}
+
+// rotate_extrude maps faithfully to Revolve (around Z) — it must NOT error.
+func TestTranspileRotateExtrudeNoError(t *testing.T) {
+	src := "rotate_extrude(angle=360) translate([10,0]) circle(2);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("rotate_extrude should transpile cleanly, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Revolve") {
+		t.Fatalf("expected a Revolve in output, got:\n%s", res.Facet)
+	}
+}
+
+// text(font=…) is faithfully translated to Facet's Text font parameter.
+func TestTranspileTextFont(t *testing.T) {
+	res, err := Transpile(`text("hi", font="Arial");`+"\n", "part.scad")
+	if err != nil {
+		t.Fatalf("text with font= should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, `font: "Arial"`) {
+		t.Fatalf("font not translated:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// The named vector forms (translate(v=…), mirror(v=…)) translate the same as the
+// positional forms — they must not be rejected as unsupported arguments.
+func TestTranspileNamedVectorForms(t *testing.T) {
+	res, err := Transpile("mirror(v=[1,0,0]) translate(v=[2,0,0]) cube(4);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("named v= forms should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Mirror(") || !strings.Contains(res.Facet, "Move(") {
+		t.Fatalf("expected Mirror and Move in output:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// Per-call $fa/$fs compute the segment count from the shape's radius via
+// OpenSCAD's fragment formula ceil(max(min(360/$fa, 2π·r/$fs), 5)).
+func TestTranspilePerCallFaFs(t *testing.T) {
+	res, err := Transpile("sphere(r=5, $fa=12);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("sphere($fa=…) should transpile, got: %v", err)
+	}
+	// min(360/12, 2π·5/2) = min(30, 15.7) = 15.7 → ceil = 16
+	if !strings.Contains(res.Facet, "segments: 16") {
+		t.Fatalf("per-call $fa not applied via fragment formula (expected 16):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// rotate_extrude($fn=…) maps to Revolve's segments parameter (added to the
+// stdlib in #38) — it must be translated, not rejected.
+func TestTranspileRotateExtrudeSegments(t *testing.T) {
+	res, err := Transpile("rotate_extrude(angle=270, $fn=64) translate([10,0]) circle(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rotate_extrude with $fn should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "segments: 64") {
+		t.Fatalf("$fn not translated to segments:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A top-level $fn sets a global segment count applied to every curved primitive.
+func TestTranspileGlobalFn(t *testing.T) {
+	res, err := Transpile("$fn=64;\nsphere(5);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("global $fn should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "segments: 64") {
+		t.Fatalf("global $fn not applied:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A top-level $fa sets a global resolution applied per shape via the fragment
+// formula (radius-dependent, honoring the default $fs=2).
+func TestTranspileGlobalFa(t *testing.T) {
+	res, err := Transpile("$fa=6;\ncircle(10);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("global $fa should transpile, got: %v", err)
+	}
+	// min(360/6, 2π·10/2) = min(60, 31.4) = 31.4 → ceil = 32
+	if !strings.Contains(res.Facet, "segments: 32") {
+		t.Fatalf("global $fa not applied via fragment formula (expected 32):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A per-call $fn overrides the global resolution.
+func TestTranspileLocalFnOverridesGlobal(t *testing.T) {
+	res, err := Transpile("$fn=64;\nsphere(r=5, $fn=8);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "segments: 8") || strings.Contains(res.Facet, "segments: 64") {
+		t.Fatalf("local $fn should override global:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// polygon(points, paths) maps to Facet's Polygon(points, holes): path[0] is the
+// outer outline; the rest are holes, resolved from index lists into points.
+func TestTranspilePolygonHoles(t *testing.T) {
+	src := "polygon(points=[[0,0],[10,0],[10,10],[0,10],[3,3],[7,3],[7,7],[3,7]], paths=[[0,1,2,3],[4,5,6,7]]);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("polygon with holes should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "holes:") {
+		t.Fatalf("expected holes in output:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// text(halign=, valign=) anchoring (stdlib #40) passes through to Facet's Text;
+// OpenSCAD's halign/valign vocabulary matches Facet's.
+func TestTranspileTextAlign(t *testing.T) {
+	res, err := Transpile(`text("hi", halign="center", valign="top");`+"\n", "part.scad")
+	if err != nil {
+		t.Fatalf("text halign/valign should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, `halign: "center"`) || !strings.Contains(res.Facet, `valign: "top"`) {
+		t.Fatalf("halign/valign not translated:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// color(...) with alpha uses Facet's [0,1] RGBA overload (stdlib #41 made
+// Solid.Color carry opacity); without alpha it keeps the hex form.
+func TestTranspileColorAlpha(t *testing.T) {
+	// 4th vector component is alpha
+	res, err := Transpile("color([1,0,0,0.5]) cube(10);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("color vector with alpha should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Color(r:") || !strings.Contains(res.Facet, "a: 0.5") {
+		t.Fatalf("rgba color (with alpha) not translated:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// named color + alpha argument
+	res2, err := Transpile(`color("red", alpha=0.3) cube(10);`+"\n", "part.scad")
+	if err != nil {
+		t.Fatalf("named color with alpha should transpile, got: %v", err)
+	}
+	if !strings.Contains(res2.Facet, "Color(r:") || !strings.Contains(res2.Facet, "a: 0.3") {
+		t.Fatalf("named-color alpha not translated:\n%s", res2.Facet)
+	}
+	assertTypeChecks(t, res2.Facet)
+}
+
+// A geometry module with scalar parameters becomes a Facet fn, and the call maps
+// positional args to the parameter names (Phase 2). Arithmetic on a parameter
+// stays unitless and coerces (base/2 → "base / 2", not "base / 2 mm").
+func TestTranspileGeometryModule(t *testing.T) {
+	src := "module halfpyramid(base, height) {\n" +
+		"    linear_extrude(height, scale=0.01)\n" +
+		"        translate([-base/2, 0, 0]) square([base, base/2]);\n" +
+		"}\n" +
+		"halfpyramid(20, 10);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("geometry module should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn halfpyramid(") {
+		t.Fatalf("expected a halfpyramid fn:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "halfpyramid(base: 20, height: 10)") {
+		t.Fatalf("expected positional args mapped to names:\n%s", res.Facet)
+	}
+	if strings.Contains(res.Facet, "/ 2 mm") {
+		t.Fatalf("unitless arithmetic wrongly tagged with mm:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A scalar value function with a let-chain and a math built-in becomes a Facet
+// fn; sin maps to Sin and the call maps positional args to names (Phase 2).
+func TestTranspileValueFunction(t *testing.T) {
+	src := "function f(x) = let(span=150, start=20) sin(x*span+start) / sin(start);\n" +
+		"cube(f(1));\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("value function should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn f(x Number) Number") {
+		t.Fatalf("expected value fn signature:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Sin(a:") {
+		t.Fatalf("expected sin->Sin mapping:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "f(x: 1)") {
+		t.Fatalf("expected mapped call f(x: 1):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// for(i=range) child -> Union(for-yield). SCAD inclusive ranges map directly.
+func TestTranspileForLoop(t *testing.T) {
+	src := "for (i = [0:3]) translate([i*5, 0, 0]) cube(2);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("for loop should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Union(arr: for i [0:3]") {
+		t.Fatalf("expected Union(for-yield):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// cube(size, center) accepts center as a positional argument (OpenSCAD form).
+func TestTranspileCubePositionalCenter(t *testing.T) {
+	res, err := Transpile("cube([2,3,4], true);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cube with positional center should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "AlignCenter") {
+		t.Fatalf("positional center not applied:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// Vector parameters are classified []Number (from [0,0] defaults or v[0]
+// indexing); .x/.y/.z map to [0]/[1]/[2]; atan2 gives an Angle return.
+func TestTranspileVectorParams(t *testing.T) {
+	src := "function length2D(v1, v2=[0,0]) = sqrt((v1[0]-v2[0])*(v1[0]-v2[0]) + (v1[1]-v2[1])*(v1[1]-v2[1]));\n" +
+		"function getAngle2D(v1, v2=[0,0]) = atan2(v2[0]-v1[0], v2[1]-v1[1]);\n" +
+		"module rod(v1=[0,0], v2=[0,0], t=6) {\n" +
+		"    ang = getAngle2D(v1, v2);\n" +
+		"    len = length2D(v1, v2);\n" +
+		"    translate([v1[0], v1[1]]) rotate([0,0,-ang]) cube([t, len, t]);\n" +
+		"}\n" +
+		"rod([0,0], [10,5], 3);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("vector-param module/functions should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "[]Number") {
+		t.Fatalf("vector params not classified []Number:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "v1[0]") {
+		t.Fatalf("expected v1[0] indexing in output:\n%s", res.Facet)
+	}
+	// Grouping must be preserved: (v1[0]-v2[0])*(v1[0]-v2[0]), not flattened.
+	if !strings.Contains(res.Facet, "(v1[0] - v2[0]) * (v1[0] - v2[0])") {
+		t.Fatalf("binary grouping not preserved:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A whole-body ternary becomes an if/else-if/else chain that returns in every
+// branch (the form Facet's conditional requires).
+func TestTranspileTernaryFunction(t *testing.T) {
+	src := "function clamp(x, lo, hi) = x < lo ? lo : (x > hi ? hi : x);\n" +
+		"cube(clamp(5, 0, 3));\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("ternary function should transpile, got: %v", err)
+	}
+	// OpenSCAD's ?: maps directly to Facet's ternary (Facet now has one). The
+	// formatter normalizes the redundant else-arm parens (right-associative).
+	if !strings.Contains(res.Facet, "return x < lo ? lo : x > hi ? hi : x") {
+		t.Fatalf("ternary not emitted as a Facet ternary:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A ternary in assignment position (not the whole function body) is now a
+// direct Facet ternary too — no var+if lowering needed.
+func TestTranspileTernaryInAssignment(t *testing.T) {
+	src := "module m(n) {\n" +
+		"    s = n > 0 ? 2 : 4;\n" +
+		"    cube(s);\n" +
+		"}\n" +
+		"m(1);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("assignment-position ternary should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "const s = n > 0 ? 2 : 4") {
+		t.Fatalf("assignment ternary not emitted directly:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// OpenSCAD search(match_value, vector) returns the LIST of matching indices, so
+// it maps to IndicesOf(arr: vector, value: match_value) (the arguments swap).
+// The list form keeps the idiomatic len(search(...)) / search(...)[0] working.
+// The list parameter is classified []Number from being passed as search's list.
+func TestTranspileSearch(t *testing.T) {
+	src := "function find(xs, x) = len(search(x, xs)) > 0 ? search(x, xs)[0] : -1;\n" +
+		"cube(find([1,2,3], 2));\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("search should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "IndicesOf(arr: xs, value: x)") {
+		t.Fatalf("search not mapped to IndicesOf with swapped args:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "fn find(xs []Number, x Number)") {
+		t.Fatalf("search's list parameter not classified []Number:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// The multi-argument search forms (num_returns_per_match, index_col_num) have no
+// IndexOf equivalent and must error rather than silently drop the extra args.
+func TestTranspileSearchMultiArgErrors(t *testing.T) {
+	res, err := Transpile("function f(xs, x) = search(x, xs, 1);\ncube(f([1,2,3], 2));\n", "part.scad")
+	if err == nil {
+		t.Fatalf("3-argument search should error; output:\n%s", res.Facet)
+	}
+	if !strings.Contains(err.Error(), "search") {
+		t.Fatalf("error should mention search: %v", err)
+	}
+}
+
+// A nested array parameter (a list of lists) exceeds the binary scalar/vector
+// model, so it's typed `Any` (dynamic). A directly double-indexed parameter
+// (pts[0][1]) is the simplest signal.
+func TestTranspileNestedArrayParam(t *testing.T) {
+	res, err := Transpile("function second(pts) = pts[0][1];\ncube(second([[1,2],[3,4]]));\n", "part.scad")
+	if err != nil {
+		t.Fatalf("nested array param should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn second(pts Any)") {
+		t.Fatalf("nested param not typed Any:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// Nestedness propagates across calls: passing an indexed parameter (rows[0]) to
+// a vector parameter makes the base nested (Any), while the flat callee param
+// stays []Number. This is the pattern icosphere uses (verts[i] -> getMiddlePoint).
+func TestTranspileNestedInterProcedural(t *testing.T) {
+	src := "function getX(p) = p[0];\n" +
+		"function firstX(rows) = getX(rows[0]);\n" +
+		"cube(firstX([[1,2],[3,4]]));\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("inter-procedural nesting should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn getX(p []Number)") {
+		t.Fatalf("flat param should stay []Number:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "fn firstX(rows Any)") {
+		t.Fatalf("base of an indexed-arg-to-vector should be Any:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// An accumulator parameter built by concat of a nested local is typed Any by
+// the unified (scope-aware) nested inference. The local `s = seg(...)` returns a
+// nested array (Any), so `nacc = concat(acc, s)` infers Any, and forwarding nacc
+// to `acc` in the recursive call propagates Any to the parameter — a flow only a
+// scope-aware pass (which tracks local-value types, not just parameters) can
+// see. `items`/`i` stay precise, so Any is not over-applied.
+func TestTranspileAccumulatorParamNested(t *testing.T) {
+	src := "function seg(x) = [[x, x], [x, x]];\n" +
+		"function accum(acc, items, i=0) =\n" +
+		"  let (s = seg(items[i]), nacc = concat(acc, s))\n" +
+		"  i >= len(items) - 1 ? nacc : accum(nacc, items, i + 1);\n" +
+		"cube(accum([], [1, 2, 3]));\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("accumulator program should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "acc Any") {
+		t.Fatalf("concat-accumulator parameter not typed Any:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "items []Number") {
+		t.Fatalf("items should stay []Number (Any not over-applied):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A parameter passed to polyhedron's points/faces is a nested array
+// ([][]Number), so it's typed Any. polyhedron is a built-in, handled separately
+// from the user-function nesting propagation.
+func TestTranspilePolyhedronParamNested(t *testing.T) {
+	src := "module shell(pts, fcs) { polyhedron(pts, fcs); }\n" +
+		"shell([[0,0,0],[1,0,0],[0,1,0],[0,0,1]], [[0,1,2],[0,2,3],[0,3,1],[1,3,2]]);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("polyhedron-param module should transpile, got: %v", err)
+	}
+	// The formatter groups same-typed adjacent params: `pts, fcs Any`.
+	if !strings.Contains(res.Facet, "fn shell(pts, fcs Any)") {
+		t.Fatalf("polyhedron points/faces params not typed Any:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A function returning a list of lists is typed Any (return-type nesting),
+// mirroring the parameter side — needed for icosphere's addTris/recurseTris,
+// which bundle (verts, tris) into a nested return.
+func TestTranspileNestedReturnType(t *testing.T) {
+	res, err := Transpile("function mk() = [[1,2],[3,4]];\ncube(mk()[0][0]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("nested return should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn mk() Any") {
+		t.Fatalf("nested return not typed Any:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A flat list return stays []Number — Any is not over-applied.
+func TestTranspileFlatReturnStaysVector(t *testing.T) {
+	res, err := Transpile("function flat() = [1,2,3];\ncube(flat()[0]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("flat return should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn flat() []Number") {
+		t.Fatalf("flat return should stay []Number:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// polyhedron(points, faces) becomes a Mesh{...}.Solid(); points/faces flow
+// through the scad_v3 and scad_faces helpers (the latter fan-triangulates).
+func TestTranspilePolyhedron(t *testing.T) {
+	src := "polyhedron(points=[[0,0,0],[1,0,0],[0,1,0],[0,0,1]], " +
+		"faces=[[0,1,2],[0,2,3],[0,3,1],[1,3,2]]);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("polyhedron should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn scad_v3(ps [][]Number) []Vec3") {
+		t.Fatalf("expected scad_v3 helper:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "fn scad_faces(fs [][]Number) []Face") {
+		t.Fatalf("expected scad_faces helper:\n%s", res.Facet)
+	}
+	// (The formatter may wrap long calls, so check the pieces, not exact spacing.)
+	if !strings.Contains(res.Facet, "Mesh{vertices: scad_v3(") ||
+		!strings.Contains(res.Facet, "scad_faces(") ||
+		!strings.Contains(res.Facet, ".Solid()") {
+		t.Fatalf("polyhedron not lowered to Mesh{...}.Solid():\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// polyhedron with points/faces held in variables routes the variables straight
+// through the helpers (which accept any runtime [][]Number).
+func TestTranspilePolyhedronVariables(t *testing.T) {
+	src := "pts=[[0,0,0],[1,0,0],[0,1,0],[0,0,1]];\n" +
+		"fcs=[[0,1,2],[0,2,3],[0,3,1],[1,3,2]];\n" +
+		"polyhedron(pts, fcs);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("polyhedron with variables should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "scad_v3(ps: pts)") || !strings.Contains(res.Facet, "scad_faces(fs: fcs)") {
+		t.Fatalf("variable points/faces not passed through:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// OpenSCAD lets a local shadow a parameter (radius = radius/4). Facet has no
+// shadowing, so the parameter is renamed and the reassignment becomes a const
+// of the original name whose RHS references the renamed parameter.
+func TestTranspileReassignedParam(t *testing.T) {
+	src := "module ring(radius=6) { radius = radius/4; circle(r=radius); }\nring();\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("reassigned param should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "radius_arg Number = 6") {
+		t.Fatalf("reassigned parameter not renamed:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "const radius = radius_arg / 4") {
+		t.Fatalf("reassignment not lowered to a const of the original name:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Circle(r: radius") {
+		t.Fatalf("body should reference the const, not the renamed parameter:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A module $fn parameter becomes the module-local segment count: it renames to
+// scad_fn, scopes curved primitives in the body (circle gets segments: scad_fn),
+// and a twisted linear_extrude derives its slices from $fn and the twist.
+func TestTranspileModuleFnScoping(t *testing.T) {
+	src := "module horn(twist=720, $fn=50) {\n" +
+		"  linear_extrude(height=10, twist=twist, $fn=$fn) circle(r=2);\n" +
+		"}\n" +
+		"horn();\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("module $fn should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "scad_fn Number = 50") {
+		t.Fatalf("$fn parameter not renamed to scad_fn:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Circle(r: 2 mm, segments: scad_fn)") {
+		t.Fatalf("circle did not inherit the module $fn:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "slices: Max(a: 1, b: Ceil(n: scad_fn * Abs(a: twist) / 360))") {
+		t.Fatalf("extrude slices not derived from $fn and twist:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A module that uses children() gains a `children []Solid` parameter;
+// children(0) indexes it and the call site binds the passed geometry as an
+// array.
+func TestTranspileChildrenIndexed(t *testing.T) {
+	src := "module twice() { children(0); translate([10,0,0]) children(0); }\n" +
+		"twice() cube(2);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("children(0) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn twice(children []Solid)") {
+		t.Fatalf("expected children []Solid parameter:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "children[0]") {
+		t.Fatalf("children(0) not lowered to indexing:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "twice(children: [Cube(") {
+		t.Fatalf("call site did not bind children array:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// children() with no index is the union of all passed children; multiple
+// children at the call site are bound as a multi-element array.
+func TestTranspileChildrenAll(t *testing.T) {
+	src := "module wrap() { children(); }\nwrap() { cube(2); sphere(1); }\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("children() should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Union(arr: children)") {
+		t.Fatalf("children() not lowered to Union(arr:):\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Cube(") || !strings.Contains(res.Facet, "Sphere(") {
+		t.Fatalf("both children not bound:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// Passing children to a module that does not use children() has no meaning and
+// must error rather than silently drop the geometry.
+func TestTranspileChildrenToNonChildrenModuleErrors(t *testing.T) {
+	res, err := Transpile("module plain() { cube(2); }\nplain() sphere(1);\n", "part.scad")
+	if err == nil {
+		t.Fatalf("children to a non-children module should error; output:\n%s", res.Facet)
+	}
+	if !strings.Contains(err.Error(), "children") {
+		t.Fatalf("error should mention children: %v", err)
+	}
+}
+
+// A transform applied to a user module resolves the module's dimensionality
+// from its body: a 2D module gets the 2D rotate form (Rotate(a:)), not the 3D
+// form (Rotate(z:)) which a Sketch has no parameter for.
+func TestTranspileUserModule2DDimensionality(t *testing.T) {
+	src := "module shape() { square([2, 3]); }\n" +
+		"rotate([0, 0, 45]) shape();\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("user-module rotate should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Rotate(a: 45 deg)") {
+		t.Fatalf("2D user module should use the 2D rotate form:\n%s", res.Facet)
+	}
+	// Would emit Rotate(z:) and fail type-check if dimensionality were unresolved.
+	assertTypeChecks(t, res.Facet)
+}
+
+// OpenSCAD angles are plain degree-numbers; Facet has a distinct Angle type.
+// Trig args convert to Angle (`* 1 deg` / `<n> deg`), inverse-trig results
+// convert back to a degree-number (`Number(from: ...)`) so angle arithmetic
+// stays in Number, and the geometry boundary (rotate) converts on the way out.
+func TestTranspileAngleModel(t *testing.T) {
+	src := "function bend(a, b) = atan2(b, a) + 90;\n" +
+		"rotate([0, 0, bend(3, 4)]) cube([sin(30), 2, 2]);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("angle model should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Number(from: Atan2(y: b, x: a))") {
+		t.Fatalf("atan2 result not converted to a degree-number:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Sin(a: 30 deg)") {
+		t.Fatalf("sin arg not converted to an Angle literal:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "* 1 deg") {
+		t.Fatalf("rotate angle not converted to an Angle at the boundary:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// polygon(points) where points is a variable (a runtime [][]Number) converts
+// to []Vec2 via the scad_v2 helper, which is emitted once and only when used.
+func TestTranspilePolygonVariablePoints(t *testing.T) {
+	src := "pts = [[0,0],[10,0],[0,10]];\n" +
+		"linear_extrude(height=2) polygon(pts);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("polygon with variable points should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn scad_v2(ps [][]Number) []Vec2") {
+		t.Fatalf("expected scad_v2 helper:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Polygon(points: scad_v2(ps: pts))") {
+		t.Fatalf("expected points routed through scad_v2:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// The scad_v2 helper is emitted only when referenced: a literal-points polygon
+// converts element-by-element and must not pull in the helper.
+func TestTranspileLiteralPolygonNoHelper(t *testing.T) {
+	res, err := Transpile("polygon([[0,0],[10,0],[0,10]]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("literal polygon should transpile, got: %v", err)
+	}
+	if strings.Contains(res.Facet, "scad_v2") {
+		t.Fatalf("literal polygon should not emit scad_v2 helper:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// Variable points combined with paths (holes) cannot resolve indices at
+// transpile time, so that combination errors rather than emit wrong geometry.
+func TestTranspilePolygonVariablePointsWithPathsErrors(t *testing.T) {
+	src := "pts = [[0,0],[10,0],[0,10]];\npolygon(pts, [[0,1,2]]);\n"
+	res, err := Transpile(src, "part.scad")
+	if err == nil {
+		t.Fatalf("variable points with paths should error; output:\n%s", res.Facet)
+	}
+	if !strings.Contains(err.Error(), "literal points") {
+		t.Fatalf("error should explain literal points are required: %v", err)
+	}
+}
+
+// A parameter never indexed in its own body, but forwarded to a helper whose
+// parameter is a vector, is itself classified []Number (inter-procedural
+// propagation), so the emitted call type-checks.
+func TestTranspilePassThroughVectorParam(t *testing.T) {
+	src := "function dist(a, b) = sqrt((a[0]-b[0])*(a[0]-b[0]) + (a[1]-b[1])*(a[1]-b[1]));\n" +
+		"function midDist(p, q) = dist(p, q) / 2;\n" +
+		"cube(midDist([0,0], [3,4]));\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("pass-through vector param should transpile, got: %v", err)
+	}
+	// p and q are never indexed in midDist, but flow into dist's vector params.
+	// (The formatter groups same-typed adjacent params: `p, q []Number`.)
+	if !strings.Contains(res.Facet, "fn midDist(p, q []Number)") {
+		t.Fatalf("pass-through params not propagated to []Number:\n%s", res.Facet)
+	}
+	// The real guarantee: passing a scalar to dist's []Number params would fail
+	// type-check, so this passing means both were classified []Number.
+	assertTypeChecks(t, res.Facet)
+}
+
+// $t (OpenSCAD's animation clock) maps to a `scad_t` const pinned at 0 (the
+// non-animating default); the name is reserved to avoid colliding with a user
+// `t`. A reference, e.g. in a parameter default, becomes `scad_t`.
+func TestTranspileAnimationTime(t *testing.T) {
+	src := "module spin(a = $t * 360) { rotate([0, 0, a]) cube(2); }\nspin();\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("$t should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "const scad_t = 0") {
+		t.Fatalf("expected scad_t const declaration:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "scad_t * 360") {
+		t.Fatalf("expected $t mapped to scad_t:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// An unsupported special variable (e.g. $vpr, the viewport rotation) has no
+// Facet meaning and must error rather than emit an invalid `$`-prefixed name.
+func TestTranspileUnsupportedSpecialVarErrors(t *testing.T) {
+	res, err := Transpile("cube($vpr);\n", "part.scad")
+	if err == nil {
+		t.Fatalf("$vpr should error; output:\n%s", res.Facet)
+	}
+	if !strings.Contains(err.Error(), "$vpr") {
+		t.Fatalf("error should name the special variable: %v", err)
+	}
+}
+
+// A geometry if/else-if/else in a module body becomes a return-bearing Facet
+// conditional: each branch returns its own geometry, and `else if` folds.
+func TestTranspileGeometryIf(t *testing.T) {
+	src := "module pick(n) {\n" +
+		"    if (n > 2) cube(3);\n" +
+		"    else if (n > 0) cube(2);\n" +
+		"    else sphere(1);\n" +
+		"}\n" +
+		"pick(1);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("geometry if should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "if n > 2 {") {
+		t.Fatalf("expected if-condition:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "else if n > 0 {") {
+		t.Fatalf("expected else-if branch:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "} else {") {
+		t.Fatalf("expected final else branch:\n%s", res.Facet)
+	}
+	if strings.Count(res.Facet, "return") < 4 { // 3 branches + Main
+		t.Fatalf("each branch must return:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A geometry `if` without an `else` leaves a path that returns nothing, so it
+// must error rather than emit a fn that does not return on every path.
+func TestTranspileGeometryIfWithoutElseErrors(t *testing.T) {
+	res, err := Transpile("module m(n) { if (n > 0) cube(2); }\nm(1);\n", "part.scad")
+	if err == nil {
+		t.Fatalf("if without else should error; output:\n%s", res.Facet)
+	}
+	if !strings.Contains(err.Error(), "else") {
+		t.Fatalf("error should mention the missing else: %v", err)
+	}
+}
+
+// OpenSCAD numeric truthiness `if (n)` (n a Number) becomes `if n != 0`; a Bool
+// local is used directly. The type is resolved from the definition's scope.
+func TestTranspileNumericTruthiness(t *testing.T) {
+	src := "module m(n) {\n" +
+		"    flag = n > 5;\n" +
+		"    if (n) cube(2);\n" +        // n is a Number param → n != 0
+		"    else if (flag) cube(3);\n" + // flag is a Bool local → used directly
+		"    else sphere(1);\n" +
+		"}\n" +
+		"m(1);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("numeric truthiness should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "if n != 0") {
+		t.Fatalf("numeric condition not converted to `!= 0`:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "else if flag {") {
+		t.Fatalf("Bool local condition should be used directly:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// OpenSCAD concat(a, b, ...) of lists maps to Facet's list + (which flattens).
+func TestTranspileConcat(t *testing.T) {
+	res, err := Transpile("function f() = concat([1,2], [3,4], [5]);\ncube(f()[0]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("concat should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "[1, 2] + [3, 4] + [5]") {
+		t.Fatalf("concat not mapped to + :\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}

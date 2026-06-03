@@ -1,0 +1,8 @@
+fn Main() Solid {
+    return Hull(
+        arr: [
+            Sphere(r: 1 mm).AlignCenter(pos: Vec3{}).Move(x: 0 mm),
+            Sphere(r: 1 mm).AlignCenter(pos: Vec3{}).Move(x: 10 mm)
+        ]
+    )
+}

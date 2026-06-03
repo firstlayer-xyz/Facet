@@ -1,0 +1,3 @@
+fn Main() Solid {
+    return Sphere(r: 10 mm).AlignCenter(pos: Vec3{})
+}

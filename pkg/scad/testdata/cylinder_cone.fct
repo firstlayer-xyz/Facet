@@ -1,0 +1,4 @@
+fn Main() Solid {
+    return Frustum(r1: 8 mm, r2: 3 mm, h: 20 mm)
+        .AlignCenter(pos: Vec3{}, z: false)
+}
