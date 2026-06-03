@@ -161,8 +161,6 @@ func typeFromName(name string) facetType {
 		return typeAngle
 	case "Number":
 		return typeNumber
-	case "var":
-		return typeVar
 	case "Bool":
 		return typeBool
 	case "String":
@@ -316,7 +314,7 @@ func typeDisplayName(t facetType) string {
 	case typeNumber:
 		return "Number"
 	case typeVar:
-		return "var"
+		return "Any"
 	case typeArray:
 		return "array"
 	case typeBool:

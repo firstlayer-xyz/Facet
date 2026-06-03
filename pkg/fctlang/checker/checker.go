@@ -277,9 +277,9 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog
 		}
 		pt := c.resolveParamType(fn, p.Type)
 		// `Any` is the explicit dynamic type: it resolves to the permissive
-		// typeUnknown on purpose (indexable, op-checks skipped, runtime-checked),
-		// so it is not an "unknown type" error. Other unrecognized names still
-		// error here, preserving typo detection.
+		// typeUnknown on purpose (indexable, op-checks skipped, runtime-
+		// checked), so it is not an "unknown type" error. Other unrecognized
+		// names still error here, preserving typo detection.
 		if pt.ft == typeUnknown && p.Type != "" && p.Type != "Any" && bareType != "Array" {
 			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q has unknown type %q", fn.Name, p.Name, p.Type))
 		}

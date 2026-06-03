@@ -144,10 +144,7 @@ func (p *parser) parseTypeStrBase() (string, error) {
 		return p.parseFuncTypeStr()
 	}
 	if p.cur.Type == TokenVar {
-		if err := p.next(); err != nil {
-			return "", err
-		}
-		return "var", nil
+		return "", p.errorf("`var` is not a type — use `Any` for the dynamic type, or a concrete type like `Number`, `Length`, etc.")
 	}
 	if p.cur.Type == TokenIdent {
 		tok, err := p.expect(TokenIdent)

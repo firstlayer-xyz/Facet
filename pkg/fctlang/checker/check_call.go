@@ -336,27 +336,23 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 		}
 	}
 
-	// Generic-group consistency check: params declared together as `a, b var`
-	// (or `a, b Any`) share a type slot via Param.GroupID and must resolve to
-	// the same concrete type. Singletons (GroupID == 0) get their own slot —
-	// two independent `var`/`Any` params can take different types.
-	var firstGroupConcreteType typeInfo
-	hasVarParams := false
+	// Generic-group consistency check: params declared together as `a, b Any`
+	// share a type slot via Param.GroupID and must resolve to the same
+	// concrete type. Singletons (GroupID == 0) get their own slot — two
+	// independent `Any` params can take different types.
 	if len(argTypes) > 0 && len(fn.Params) > 0 {
 		type varGroup struct {
-			typeStr string // "var", "[]var", "Any", or "[]Any"
+			typeStr string // "Any" or "[]Any"
 			indices []int  // param indices in this group
-			first   bool   // is this the first generic group?
 		}
 		var groups []varGroup
 		groupByID := map[int]int{} // Param.GroupID → index into groups (shared decls only)
 		for i, p := range fn.Params {
 			pType := p.Type
-			isVar := pType == "var" || pType == "[]var" || pType == "Any" || pType == "[]Any"
+			isVar := pType == "Any" || pType == "[]Any"
 			if !isVar {
 				continue
 			}
-			hasVarParams = true
 			if p.GroupID != 0 {
 				if existing, ok := groupByID[p.GroupID]; ok {
 					groups[existing].indices = append(groups[existing].indices, i)
@@ -364,11 +360,11 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 				}
 				groupByID[p.GroupID] = len(groups)
 			}
-			groups = append(groups, varGroup{typeStr: pType, indices: []int{i}, first: len(groups) == 0})
+			groups = append(groups, varGroup{typeStr: pType, indices: []int{i}})
 		}
 
 		for _, grp := range groups {
-			isArrayGroup := grp.typeStr == "[]var" || grp.typeStr == "[]Any"
+			isArrayGroup := grp.typeStr == "[]Any"
 			var groupType typeInfo
 			for _, idx := range grp.indices {
 				if idx >= len(argTypes) {
@@ -396,26 +392,22 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 					}
 				}
 			}
-			if grp.first {
-				firstGroupConcreteType = groupType
-			}
 		}
 	}
 
-	// Determine return type. A `var` / `[]var` return is generic and resolves
-	// to the first generic group's concrete type. `Any` returns stay opaque
-	// (typeUnknown) on purpose — the dynamic type doesn't carry inference.
-	retType := c.resolveReturnType(fn)
-	isGenericReturn := fn.ReturnType == "" || fn.ReturnType == "var"
-	if hasVarParams && (retType.ft == typeVar || (retType.ft == typeUnknown && isGenericReturn)) {
-		if fn.ReturnType == "[]var" {
-			return arrayOf(firstGroupConcreteType)
-		}
-		if firstGroupConcreteType.ft != typeUnknown {
-			return firstGroupConcreteType
-		}
+	// A declared `Any` (or `[]Any`) return stays opaque at the call site —
+	// coercion at the consumer's boundary handles the concrete type. We
+	// deliberately do not specialize from the first generic group's arg type:
+	// that's wrong for functions that index or reshape (e.g.
+	// `fn first(v Any) Any { return v[0] }` returns the element type, not v's
+	// type).
+	switch fn.ReturnType {
+	case "Any":
+		return unknown()
+	case "[]Any":
+		return arrayOf(unknown())
 	}
-	return retType
+	return c.resolveReturnType(fn)
 }
 
 // checkLibFuncArgs validates arguments against a library function and returns
@@ -478,12 +470,6 @@ func (c *checker) resolveReturnType(fn *parser.Function) typeInfo {
 // lookup so user-defined types like Vec3 resolve correctly. Also handles
 // the postfix `?` by recursively resolving the inner type and wrapping.
 func (c *checker) resolveTypeString(name string) typeInfo {
-	if name == "var" {
-		return simple(typeVar)
-	}
-	if name == "[]var" {
-		return arrayOf(simple(typeVar))
-	}
 	// `Any` is the dynamic type — resolves to typeUnknown so body checks
 	// (indexing, arithmetic) stay permissive. `[]Any` is array-of-unknown.
 	if name == "Any" {
