@@ -227,8 +227,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 		return
 	}
 
-	// Animation entry: render the initial frame so the viewer has something to
-	// show immediately; live playback uses /frame once the frontend starts ticking.
+	// Animation entry: render the initial frame.
 	if evalResult.Animation != nil {
 		solid, ferr := evalResult.Animation.Frame(initialFrameTimeMs())
 		if ferr != nil {

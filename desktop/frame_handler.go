@@ -41,7 +41,7 @@ func newSessionCache() *sessionCache { return &sessionCache{} }
 // sessionKey returns a stable hash over the inputs that uniquely identify a
 // compiled Animation: sorted source paths+contents, key, entry, and the
 // JSON-marshaled overrides. Any change to these inputs forces a rebuild.
-func sessionKey(sources map[string]string, key, entry string, overrides map[string]interface{}) string {
+func sessionKey(sources map[string]string, key, entry string, overrides map[string]interface{}) (string, error) {
 	h := sha256.New()
 
 	// Sort source paths so the hash is stable regardless of map iteration order.
@@ -57,11 +57,14 @@ func sessionKey(sources map[string]string, key, entry string, overrides map[stri
 	fmt.Fprintf(h, "key:%s\x00entry:%s\x00", key, entry)
 
 	if len(overrides) > 0 {
-		b, _ := json.Marshal(overrides)
+		b, err := json.Marshal(overrides)
+		if err != nil {
+			return "", fmt.Errorf("sessionKey: marshal overrides: %w", err)
+		}
 		h.Write(b)
 	}
 
-	return fmt.Sprintf("%x", h.Sum(nil))
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 // getOrBuild returns the cached Animation for these inputs, building it (full
@@ -69,7 +72,10 @@ func sessionKey(sources map[string]string, key, entry string, overrides map[stri
 // parsing, type-checking, or evaluation fails, or when the entry does not
 // return an Animation.
 func (c *sessionCache) getOrBuild(ctx context.Context, sources map[string]string, key, entry string, overrides map[string]interface{}) (*evaluator.Animation, error) {
-	k := sessionKey(sources, key, entry, overrides)
+	k, err := sessionKey(sources, key, entry, overrides)
+	if err != nil {
+		return nil, err
+	}
 
 	c.mu.Lock()
 	if c.key == k && c.anim != nil {
@@ -111,8 +117,7 @@ func (c *sessionCache) getOrBuild(ctx context.Context, sources map[string]string
 	return anim, nil
 }
 
-// initialFrameTimeMs is the time used for an animation's initial (static)
-// frame from /eval. v1 uses 0; live playback takes over once started.
+// initialFrameTimeMs is the time used to render an animation's first (static) frame.
 func initialFrameTimeMs() float64 { return 0 }
 
 // handleFrame serves POST /frame: build-or-reuse the session, render the
