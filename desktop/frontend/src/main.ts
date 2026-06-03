@@ -29,7 +29,7 @@ import { AssistantPanel, applyEdit } from './assistant';
 import {
   app, editorPanel, divider, viewportPanel, canvasContainer,
   centerBtn, autoRotateBtn, headTrackBtn, newBtn, openBtn, saveBtn, settingsBtn, docsBtn, runBtn,
-  debugBtn, assistantBtn, exportBtn, slicerBtn, fullCodeBtn, errorDiv, tabBar,
+  debugBtn, assistantBtn, exportBtn, slicerBtn, fullCodeBtn, codeBtn, errorDiv, tabBar,
   debugBar, debugPrevBtn, debugNextBtn, debugSlider, debugLabel, statsBar, compilingOverlay,
   debugRestartBtn, debugContinueBtn, debugStopBtn,
   vpPane, vpPaneSummary, hiddenLinesBtn, panelResizer, docsResizer, previewSelector,
@@ -59,7 +59,7 @@ let settings: Awaited<ReturnType<typeof loadSettings>>;
 let viewer: Viewer;
 
 import { promptNewLibrary, showSlicerPicker } from './dialogs';
-import { initFullCode, toggleFullCode } from './fullcode';
+import { initFullCode, toggleFullCode, isFullCode } from './fullcode';
 
 function buildViewerAppearance(
   palette: ReturnType<typeof resolveThemePalette>,
@@ -153,6 +153,8 @@ const assistantPanel = new AssistantPanel(
   // already runs WebGL with preserveDrawingBuffer; toDataURL is safe to
   // call any time without an extra render pass.
   () => viewer.captureScreenshot(),
+  // onClose: sync toolbar button state when closed via the × button.
+  syncAssistantState,
 );
 
 // Async init — loadSettings reads from Go backend
@@ -182,21 +184,6 @@ async function init() {
   // assert viewer state (mesh count, etc) without poking private
   // fields. Single property reference, code is in the bundle anyway.
   (window as unknown as { viewer: Viewer }).viewer = viewer;
-
-  // Right-edge drawers (docs + assistant + their resizers) are
-  // absolute overlays on top of the full-width canvas. Tell the viewer
-  // how many right-edge pixels are occluded so it re-centres the
-  // lookAt target in the *visible* portion of the canvas instead of
-  // the dead centre, which would land behind the drawer. The observer
-  // fires on every width change: drawer toggle, resize, or window
-  // resize that reflows the stack.
-  const updateRightInset = () => {
-    const rect = drawerStack.getBoundingClientRect();
-    viewer.setRightInset(rect.width);
-  };
-  new ResizeObserver(updateRightInset).observe(drawerStack);
-  // Initial sync — observer doesn't fire until next layout pass.
-  requestAnimationFrame(updateRightInset);
 
   // Gnomon — always-visible axis indicator bottom-left of viewport, drag to orbit
   const gnomon = new Gnomon(canvasContainer, (dTheta, dPhi) => viewer.orbitBy(dTheta, dPhi));
@@ -231,7 +218,7 @@ async function init() {
 
   initFullCode({
     viewer, editorPanel, viewportPanel, canvasContainer, divider,
-    app, fullCodeBtn, autoRotateBtn,
+    app, fullCodeBtn,
   });
 
   // Restore saved tab state or load default tutorial
@@ -692,13 +679,24 @@ function handleDebugToggle() {
 }
 debugBtn.addEventListener('click', handleDebugToggle);
 
+// CODE toggle — hides/shows the code editor panel.
+codeBtn.addEventListener('click', () => {
+  const hiding = !editorPanel.classList.contains('code-hidden');
+  editorPanel.classList.toggle('code-hidden', hiding);
+  codeBtn.classList.toggle('active', !hiding);
+  requestAnimationFrame(() => viewer.resize());
+});
+
 // Assistant toggle. AssistantPanel manages `.open` on its own panel;
 // the resizer's `.open` is in lockstep.
-assistantBtn.addEventListener('click', () => {
-  assistantPanel.toggle();
+function syncAssistantState() {
   const assistantVisible = assistantPanel.isVisible();
   assistantBtn.classList.toggle('active', assistantVisible);
   panelResizer.classList.toggle('open', assistantVisible);
+}
+assistantBtn.addEventListener('click', () => {
+  assistantPanel.toggle();
+  syncAssistantState();
 });
 
 // Docs toggle
@@ -834,6 +832,14 @@ divider.addEventListener('mousedown', (e) => {
 });
 
 // Panel resizer drag logic (canvas ↔ right panel)
+// The main stage must always keep at least this many pixels so the user
+// can't drag a drawer over the entire content area.
+const MIN_VP = 150;
+// Width of the flex-growing main stage that absorbs drawer resizing. In
+// fullcode mode the viewport is hidden (canvas floats in the mini-preview)
+// and the editor is the flex:1 stage; otherwise it's the viewport panel.
+const stageWidth = () =>
+  (isFullCode() ? editorPanel : viewportPanel).getBoundingClientRect().width;
 let panelDragging = false;
 let docsDragging = false;
 
@@ -856,25 +862,30 @@ window.addEventListener('mousemove', (e) => {
     const appRect = app.getBoundingClientRect();
     const x = e.clientX - appRect.left;
     const pct = (x / appRect.width) * 100;
-    const clamped = Math.min(Math.max(pct, 10), 90);
+    // 10% min for editor; right side: leave at least MIN_VP px for the viewport
+    // (drawer-stack is now a flex sibling so its width counts against available space).
+    const drawerW = drawerStack.getBoundingClientRect().width;
+    const maxPct = ((appRect.width - drawerW - MIN_VP) / appRect.width) * 100;
+    const clamped = Math.min(Math.max(pct, 10), Math.max(10, maxPct));
     editorPanel.style.flexBasis = `${clamped}%`;
   }
   if (panelDragging) {
-    const vpRect = viewportPanel.getBoundingClientRect();
-    const newWidth = vpRect.right - e.clientX;
-    const clamped = Math.min(Math.max(newWidth, 200), 700);
-    const activePanel = document.getElementById('assistant-panel');
-    if (activePanel) activePanel.style.width = `${clamped}px`;
+    const assistantEl = document.getElementById('assistant-panel');
+    if (assistantEl) {
+      const curW = assistantEl.getBoundingClientRect().width;
+      const newWidth = assistantEl.getBoundingClientRect().right - e.clientX;
+      // The main stage must keep at least MIN_VP pixels.
+      const maxAllowed = curW + Math.max(0, stageWidth() - MIN_VP);
+      assistantEl.style.width = `${Math.min(Math.max(newWidth, 200), Math.min(700, maxAllowed))}px`;
+    }
   }
   if (docsDragging) {
-    // Docs drawer sits to the LEFT of the assistant (if open), so the
-    // drawer's right edge depends on whether the assistant is showing.
     const docsEl = document.getElementById('docs-panel');
     if (docsEl) {
-      const docsRect = docsEl.getBoundingClientRect();
-      const newWidth = docsRect.right - e.clientX;
-      const clamped = Math.min(Math.max(newWidth, 240), 900);
-      docsEl.style.width = `${clamped}px`;
+      const curW = docsEl.getBoundingClientRect().width;
+      const newWidth = docsEl.getBoundingClientRect().right - e.clientX;
+      const maxAllowed = curW + Math.max(0, stageWidth() - MIN_VP);
+      docsEl.style.width = `${Math.min(Math.max(newWidth, 240), Math.min(900, maxAllowed))}px`;
     }
   }
 });

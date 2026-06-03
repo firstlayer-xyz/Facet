@@ -58,6 +58,7 @@ export class AssistantPanel {
     onSetEditorSilent: (newCode: string) => void,
     onNewFile: (name: string, code: string) => void,
     captureScreenshot?: () => string | null,
+    onClose?: () => void,
   ) {
     this.container = container;
     this.getEditorCode = getEditorCode;
@@ -91,6 +92,15 @@ export class AssistantPanel {
     clearBtn.textContent = 'Clear';
     clearBtn.addEventListener('click', () => this.clearHistory());
     header.appendChild(clearBtn);
+
+    if (onClose) {
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'assistant-close-btn';
+      closeBtn.innerHTML = '&times;';
+      closeBtn.title = 'Close assistant';
+      closeBtn.addEventListener('click', () => { this.hide(); onClose(); });
+      header.appendChild(closeBtn);
+    }
 
     this.panel.appendChild(header);
 
