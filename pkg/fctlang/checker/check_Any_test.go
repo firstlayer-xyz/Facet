@@ -35,6 +35,14 @@ func TestCheckUnknownParamTypeStillErrors(t *testing.T) {
 fn Main() Solid { return Cube(s: bad(v: 1)) }`, "unknown type")
 }
 
+// Symmetric check for the return position: only the literal `Any` is exempt
+// from the unknown-return-type error; any other unrecognized name still
+// errors so typos like `Anyy` or `Bogus` don't silently become dynamic.
+func TestCheckUnknownReturnTypeStillErrors(t *testing.T) {
+	expectError(t, `fn bad() Bogus { return 1 }
+fn Main() Solid { return Cube(s: 1 mm) }`, "unknown return type")
+}
+
 // `Any` participates in the generic-group rule: two `Any` params declared
 // separately (`a Any, b Any`) each get their own type slot, so they can take
 // different concrete types — Pair-shaped helpers work naturally.
