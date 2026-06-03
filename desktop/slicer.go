@@ -10,8 +10,8 @@ import (
 
 // SlicerInfo describes a detected slicer application.
 type SlicerInfo struct {
-	Name string `json:"name"` // "BambuStudio", "OrcaSlicer", "PrusaSlicer"
-	ID   string `json:"id"`   // "bambu", "orca", "prusa"
+	Name string `json:"name"` // e.g. "BambuStudio", "OrcaSlicer", "Snapmaker Orca"
+	ID   string `json:"id"`   // e.g. "bambu", "orca", "snapmaker-orca"
 }
 
 type slicerDef struct {
@@ -77,6 +77,25 @@ var slicerDefs = []slicerDef{
 		MacApp:   "QIDIStudio",
 		LinuxBin: "qidi-studio",
 		WinExe:   `QIDIStudio\QIDIStudio.exe`,
+	},
+	{
+		// Snapmaker Luban is the official Snapmaker slicer (Electron-based)
+		// covering the 2.0, Artisan, and Original Snapmaker machines.
+		Name:     "Snapmaker Luban",
+		ID:       "snapmaker-luban",
+		MacApp:   "Snapmaker Luban",
+		LinuxBin: "snapmaker-luban",
+		WinExe:   `Snapmaker Luban\Snapmaker Luban.exe`,
+	},
+	{
+		// Snapmaker Orca is Snapmaker's OrcaSlicer fork tuned for their J1,
+		// Artisan, 2.0, and U1 series. Asset filenames use underscores
+		// (Snapmaker_Orca_*); the installed bundle keeps that convention.
+		Name:     "Snapmaker Orca",
+		ID:       "snapmaker-orca",
+		MacApp:   "Snapmaker_Orca",
+		LinuxBin: "snapmaker-orca",
+		WinExe:   `Snapmaker_Orca\Snapmaker_Orca.exe`,
 	},
 }
 
