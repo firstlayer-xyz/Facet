@@ -26,7 +26,7 @@ void facet_solid_from_mesh_with_face_ids(
   if (face_ids && n_face_ids > 0) {
     mesh.faceID.assign(face_ids, face_ids + n_face_ids);
   }
-  wrap(new Manifold(Manifold(mesh).AsOriginal()), out);
+  wrap_solid_from_mesh(mesh, out);
 }
 
 void facet_extract_polymesh(

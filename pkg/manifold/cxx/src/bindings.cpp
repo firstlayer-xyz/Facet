@@ -1152,7 +1152,7 @@ void facet_solid_from_mesh(float* verts, size_t n_verts,
   mesh.numProp = 3;
   mesh.vertProperties.assign(verts, verts + n_verts * 3);
   mesh.triVerts.assign(indices, indices + n_tris * 3);
-  wrap(new Manifold(Manifold(mesh).AsOriginal()), out);
+  wrap_solid_from_mesh(mesh, out);
 }
 
 // ---------------------------------------------------------------------------
