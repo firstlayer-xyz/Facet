@@ -41,11 +41,6 @@ export function setPlaying(p: boolean): void {
   onStateChange?.(playing);
 }
 
-/** Seek to an explicit wall-clock time (in ms epoch) without changing play state. */
-export function seekTo(epochMs: number): void {
-  void issueFrame(epochMs);
-}
-
 /**
  * Registered with viewer.onFrame; called on every render tick (~60 Hz).
  * Issues a /frame for the current wall-clock time, dropping the tick

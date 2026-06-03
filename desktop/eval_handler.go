@@ -239,6 +239,14 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 		var binaryData []byte
 		meta, binaryData := appendMeshBinary(binaryData, merged)
 		header.Mesh = meta
+		animStats := evaluator.ModelStats{
+			Triangles:   merged.IndexCount / 3,
+			Vertices:    merged.VertexCount,
+			Volume:      solid.Volume(),
+			SurfaceArea: solid.SurfaceArea(),
+		}
+		animStats.BBoxMin, animStats.BBoxMax = solidBounds([]*manifold.Solid{solid})
+		header.Stats = &animStats
 		respond(&header, binaryData, []*manifold.Solid{solid})
 		return
 	}

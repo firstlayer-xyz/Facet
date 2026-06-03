@@ -147,7 +147,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 				return nil, e.errAt(entryFn.Pos, "Animation.frame must take exactly one parameter (time in ms), got %d", len(frameFn.params))
 			}
 			return &EvalResult{
-				Animation: &Animation{e: e, frame: frameFn, argName: frameFn.params[0].Name},
+				Animation: &Animation{e: e, frame: frameFn, argName: frameFn.params[0].Name, baseTracks: len(*e.solidTracks)},
 			}, nil
 		}
 		if r.typeName != "PolyMesh" {
