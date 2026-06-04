@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall/js"
+	"time"
 
 	"facet/pkg/fctlang/checker"
 	"facet/pkg/fctlang/evaluator"
@@ -215,7 +216,17 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 			return
 		}
 
-		dm := manifold.MergeExtractExpandedMeshes(result.Solids, 40)
+		// An Animation entry has no static solids; the web preview can't play it,
+		// but render a single-frame snapshot so the canvas isn't blank.
+		solids, err := result.StaticSolids(float64(time.Now().UnixMilli()))
+		if err != nil {
+			header.Errors = append(header.Errors, parser.SourceError{Message: err.Error()})
+			bin, _ := packResponse(header, nil)
+			resolve.Invoke(bytesToU8(bin))
+			return
+		}
+
+		dm := manifold.MergeExtractExpandedMeshes(solids, 40)
 		stats := result.Stats
 		var binData []byte
 		meta, binData := appendMeshBinary(binData, dm)

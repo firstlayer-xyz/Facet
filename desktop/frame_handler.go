@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -45,27 +46,63 @@ func newSessionCache() *sessionCache { return &sessionCache{} }
 func sessionKey(sources map[string]string, key, entry string, overrides map[string]interface{}) (string, error) {
 	h := sha256.New()
 
+	// Length-prefix every field and the source count so the serialization is
+	// injective — distinct inputs can never hash-collide by aligning on a
+	// separator. A literal separator byte (e.g. "\x00") is unsafe here because
+	// source contents may contain that byte, letting a path/content boundary
+	// masquerade as a field boundary.
+	var n [8]byte
+	writeField := func(s string) {
+		binary.LittleEndian.PutUint64(n[:], uint64(len(s)))
+		h.Write(n[:])
+		h.Write([]byte(s))
+	}
+
 	// Sort source paths so the hash is stable regardless of map iteration order.
 	paths := make([]string, 0, len(sources))
 	for p := range sources {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
+
+	binary.LittleEndian.PutUint64(n[:], uint64(len(paths)))
+	h.Write(n[:])
 	for _, p := range paths {
-		fmt.Fprintf(h, "%s\x00%s\x00", p, sources[p])
+		writeField(p)
+		writeField(sources[p])
 	}
 
-	fmt.Fprintf(h, "key:%s\x00entry:%s\x00", key, entry)
+	writeField(key)
+	writeField(entry)
 
 	if len(overrides) > 0 {
 		b, err := json.Marshal(overrides)
 		if err != nil {
 			return "", fmt.Errorf("sessionKey: marshal overrides: %w", err)
 		}
-		h.Write(b)
+		writeField(string(b))
+	} else {
+		writeField("")
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// put stores an already-built Animation under the key derived from these
+// inputs, so a subsequent getOrBuild with identical inputs reuses it instead
+// of re-running Load → Check → Eval. /eval calls this after building an
+// Animation's initial frame, priming the cache for the playback /frame calls
+// that immediately follow.
+func (c *sessionCache) put(sources map[string]string, key, entry string, overrides map[string]interface{}, anim *evaluator.Animation) error {
+	k, err := sessionKey(sources, key, entry, overrides)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.key = k
+	c.anim = anim
+	c.mu.Unlock()
+	return nil
 }
 
 // getOrBuild returns the cached Animation for these inputs, building it (full

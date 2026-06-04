@@ -30,7 +30,9 @@ export interface FacetSymbol {
 let currentController: AbortController | null = null;
 
 export interface EvalAuth {
-  url: string;
+  /** Server origin, e.g. "http://127.0.0.1:5173" — combine with an endpoint
+   *  path ("/eval", "/frame") to build a request URL. */
+  origin: string;
   token: string;
 }
 
@@ -40,7 +42,7 @@ export async function getEvalAuth(): Promise<EvalAuth> {
   if (!cachedAuth) {
     const auth = await GetHTTPAuth();
     cachedAuth = {
-      url: `http://127.0.0.1:${auth.port}/eval`,
+      origin: `http://127.0.0.1:${auth.port}`,
       token: auth.token,
     };
   }
@@ -133,7 +135,7 @@ export async function evalRequest(req: EvalRequest): Promise<EvalResponse> {
   currentController = new AbortController();
 
   const auth = await getEvalAuth();
-  const resp = await fetch(auth.url, {
+  const resp = await fetch(`${auth.origin}/eval`, {
     method: 'POST',
     body: JSON.stringify(req),
     signal: currentController.signal,

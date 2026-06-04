@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"facet/pkg/fctlang/checker"
 	"facet/pkg/fctlang/evaluator"
@@ -172,16 +173,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	// An Animation entry has no static solids; export a single-frame snapshot
+	// rather than silently writing an empty mesh.
+	if result.Animation != nil {
+		fmt.Fprintf(os.Stderr, "note: %s returns an Animation; exporting a single frame at the current time\n", entry)
+	}
+	solids, err := result.StaticSolids(float64(time.Now().UnixMilli()))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "eval error: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Use Go-native writers for 3MF/STL/OBJ; assimp for other formats.
 	switch strings.ToLower(ext) {
 	case ".3mf":
-		err = manifold.Export3MFMulti(result.Solids, output)
+		err = manifold.Export3MFMulti(solids, output)
 	case ".stl":
-		err = manifold.ExportSTLMulti(result.Solids, output)
+		err = manifold.ExportSTLMulti(solids, output)
 	case ".obj":
-		err = manifold.ExportOBJMulti(result.Solids, output)
+		err = manifold.ExportOBJMulti(solids, output)
 	default:
-		err = manifold.ExportMeshes(result.Solids, output)
+		err = manifold.ExportMeshes(solids, output)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "export error: %v\n", err)

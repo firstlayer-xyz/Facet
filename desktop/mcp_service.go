@@ -1094,7 +1094,7 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", handleMcp)
-	mux.Handle("/eval", m.eval.HTTPHandler())
+	mux.Handle("/eval", m.eval.HTTPHandler(frameSessions))
 	mux.HandleFunc("/check", handleCheck)
 	mux.HandleFunc("/frame", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

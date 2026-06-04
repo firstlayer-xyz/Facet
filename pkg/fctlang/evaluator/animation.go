@@ -21,7 +21,25 @@ type Animation struct {
 
 // Frame evaluates the model at timeMs (milliseconds; the frame lambda decides
 // how to interpret it) and returns the Solid for that instant.
+// StaticSolids returns the solids a one-shot consumer — file export, the CLI,
+// the web preview — should render for this result. For an Animation entry it
+// renders a single frame at timeMs (a static snapshot); otherwise it returns
+// the entry's solids unchanged. This keeps non-playback callers from silently
+// emitting an empty model when the entry is an Animation.
+func (r *EvalResult) StaticSolids(timeMs float64) ([]*manifold.Solid, error) {
+	if r.Animation != nil {
+		s, err := r.Animation.Frame(timeMs)
+		if err != nil {
+			return nil, err
+		}
+		return []*manifold.Solid{s}, nil
+	}
+	return r.Solids, nil
+}
+
 // Frame is concurrency-safe: concurrent calls on the same handle are serialized.
+// It is NOT re-entrant — the lock is held across the frame closure, so the
+// closure must not call back into Frame on the same handle.
 func (a *Animation) Frame(timeMs float64) (*manifold.Solid, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -29,7 +47,15 @@ func (a *Animation) Frame(timeMs float64) (*manifold.Solid, error) {
 	// Discard the previous frame's solidTracks so their C++ geometry is released.
 	// Invariant-setup tracks (accumulated before the Animation was built) are
 	// preserved; only per-frame tracks (indices >= baseTracks) are pruned.
-	*a.e.solidTracks = (*a.e.solidTracks)[:a.baseTracks]
+	// Zero the trailing slots before reslicing: reslicing alone leaves the
+	// per-frame *Solid pointers reachable in the backing array, so their
+	// finalizer-driven C++ release would never fire (a native-memory leak that
+	// grows whenever a later frame produces fewer tracks than an earlier one).
+	tracks := *a.e.solidTracks
+	for i := a.baseTracks; i < len(tracks); i++ {
+		tracks[i] = SolidTrack{}
+	}
+	*a.e.solidTracks = tracks[:a.baseTracks]
 
 	v, err := a.e.callFunctionVal(a.frame, map[string]value{a.argName: timeMs})
 	if err != nil {

@@ -44,3 +44,53 @@ func TestFrameSessionVariesAndReuses(t *testing.T) {
 		t.Fatalf("Frame(10) volume = %v, want ~8000", v)
 	}
 }
+
+// TestSessionKeyInjectiveOverSeparator guards against the hash collision a
+// naive separator scheme allows. These two inputs serialize to the SAME byte
+// stream under a "<path>\x00<content>\x00" scheme — config A's single source
+// content embeds the \x00 separators that, in config B, fall between two
+// distinct sources. Length-prefixing (and a leading source count) must keep
+// their keys distinct.
+func TestSessionKeyInjectiveOverSeparator(t *testing.T) {
+	a := map[string]string{"a": "b\x00c\x00"}
+	b := map[string]string{"a": "b", "c": ""}
+
+	ka, err := sessionKey(a, "", "", nil)
+	if err != nil {
+		t.Fatalf("sessionKey(a): %v", err)
+	}
+	kb, err := sessionKey(b, "", "", nil)
+	if err != nil {
+		t.Fatalf("sessionKey(b): %v", err)
+	}
+	if ka == kb {
+		t.Fatalf("distinct inputs collided to the same key %q — separator scheme is not injective", ka)
+	}
+}
+
+// TestSessionPutPrimesCache verifies put() stores a handle so a subsequent
+// getOrBuild with identical inputs reuses it instead of rebuilding — the
+// optimization that lets /eval hand its freshly built Animation to the
+// playback /frame requests that follow.
+func TestSessionPutPrimesCache(t *testing.T) {
+	sources := map[string]string{"main.fct": animSrc}
+
+	// Build a handle once (in its own cache) to use as the thing /eval would
+	// have produced.
+	built, err := newSessionCache().getOrBuild(context.Background(), sources, "main.fct", "Main", nil)
+	if err != nil {
+		t.Fatalf("getOrBuild (build handle): %v", err)
+	}
+
+	c := newSessionCache()
+	if err := c.put(sources, "main.fct", "Main", nil, built); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	got, err := c.getOrBuild(context.Background(), sources, "main.fct", "Main", nil)
+	if err != nil {
+		t.Fatalf("getOrBuild (after put): %v", err)
+	}
+	if got != built {
+		t.Fatal("getOrBuild after put rebuilt the Animation instead of reusing the primed handle")
+	}
+}

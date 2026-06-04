@@ -6,7 +6,7 @@
 // request is already in flight (frame-dropping).
 // Playback dependencies (getSources, applyFrame) are supplied by the host app.
 
-import { frameRequest, frameInFlight } from './frame-client';
+import { frameRequest, frameInFlight, cancelFrame } from './frame-client';
 import type { EvalResult } from './frame-client';
 import { tabStore } from './tabs';
 
@@ -38,6 +38,9 @@ export function isPlaying(): boolean {
 export function setPlaying(p: boolean): void {
   if (playing === p) return;
   playing = p;
+  // Pausing: abort any in-flight /frame so a late response can't apply a
+  // stale mesh after the user stopped, and the server is freed immediately.
+  if (!playing) cancelFrame();
   onStateChange?.(playing);
 }
 

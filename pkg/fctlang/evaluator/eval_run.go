@@ -151,6 +151,12 @@ func (e *evaluator) run() (*EvalResult, error) {
 			// long after this build's context is done (e.g. the HTTP request that
 			// built the session has returned). Detach from that context so later
 			// Frame calls aren't canceled along with it.
+			//
+			// This is the only write to e.ctx after construction, and it happens
+			// here on the single build goroutine before the handle is published to
+			// any caller. Frame readers observe it through whatever synchronization
+			// publishes the handle (the desktop session cache's mutex), so no
+			// additional locking is needed for the swap itself.
 			e.ctx = context.Background()
 			return &EvalResult{
 				Animation: &Animation{e: e, frame: frameFn, argName: frameFn.params[0].Name, baseTracks: len(*e.solidTracks)},

@@ -29,15 +29,19 @@ export function frameInFlight(): boolean {
   return frameController !== null;
 }
 
+/** Abort the in-flight /frame request, if any. The pending frameRequest
+ *  promise rejects with an AbortError, which the caller treats as a no-op. */
+export function cancelFrame(): void {
+  frameController?.abort();
+}
+
 /** Send a frame request. Only one may be in-flight at a time; the
  *  caller is responsible for checking frameInFlight() before calling. */
 export async function frameRequest(req: FrameRequest): Promise<FrameResponse> {
   frameController = new AbortController();
   try {
     const auth = await getEvalAuth();
-    // auth.url is "http://127.0.0.1:<port>/eval" — swap endpoint.
-    const frameURL = auth.url.replace(/\/eval$/, '/frame');
-    const resp = await fetch(frameURL, {
+    const resp = await fetch(`${auth.origin}/frame`, {
       method: 'POST',
       body: JSON.stringify(req),
       signal: frameController.signal,
