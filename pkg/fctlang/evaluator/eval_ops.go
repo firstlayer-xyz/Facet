@@ -34,6 +34,9 @@ func (e *evaluator) evalUnary(ex *parser.UnaryExpr, locals map[string]value) (va
 			return nil, e.errAt(ex.Pos, "unary minus not supported on %s", typeName(v))
 		}
 	case "!":
+		// `!` has no user-defined operator-function path today: the parser
+		// rejects `fn !` as an operator function name, so the only valid
+		// receiver is Bool.
 		b, ok := v.(bool)
 		if !ok {
 			return nil, e.errAt(ex.Pos, "operator ! requires Bool, got %s", typeName(v))
@@ -150,7 +153,8 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		}
 	}
 
-	// Solid boolean operations: +, -, &
+	// Solid boolean operations: +, -, &. Any other op falls through to the
+	// user-defined operator-function dispatch at the end of evalBinary.
 	lsf, lIsSolid := lv.(*manifold.Solid)
 	rsf, rIsSolid := rv.(*manifold.Solid)
 	if lIsSolid && rIsSolid {
@@ -158,25 +162,23 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		var opName string
 		switch ex.Op {
 		case "+":
-			result = lsf.Union(rsf)
-			opName = "Union"
+			result, opName = lsf.Union(rsf), "Union"
 		case "-":
-			result = lsf.Difference(rsf)
-			opName = "Difference"
+			result, opName = lsf.Difference(rsf), "Difference"
 		case "&":
-			result = lsf.Intersection(rsf)
-			opName = "Intersection"
-		default:
-			// Fall through to operator function dispatch (e.g. fn %(Solid,Solid))
-			goto solidOpFunc
+			result, opName = lsf.Intersection(rsf), "Intersection"
 		}
-		e.trackSolid(ex.Pos, result)
-		e.recordStep(opName, ex.Pos, debugEntry{"lhs", lsf}, debugEntry{"rhs", rsf}, debugEntry{"result", result})
-		return result, nil
-	solidOpFunc:
+		if result != nil {
+			e.trackSolid(ex.Pos, result)
+			e.recordStep(opName, ex.Pos, debugEntry{"lhs", lsf}, debugEntry{"rhs", rsf}, debugEntry{"result", result})
+			return result, nil
+		}
 	}
 
-	// Sketch boolean operations: +, -, &
+	// Sketch boolean operations: +, -, &. Any other op falls through to the
+	// user-defined operator-function dispatch at the end of evalBinary —
+	// symmetric with the Solid path above so a user-defined
+	// `fn %(s, t Sketch)` is reachable.
 	lpf, lIsProfile := lv.(*manifold.Sketch)
 	rpf, rIsProfile := rv.(*manifold.Sketch)
 	if lIsProfile && rIsProfile {
@@ -184,19 +186,16 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		var opName string
 		switch ex.Op {
 		case "+":
-			result = lpf.Union(rpf)
-			opName = "Union"
+			result, opName = lpf.Union(rpf), "Union"
 		case "-":
-			result = lpf.Difference(rpf)
-			opName = "Difference"
+			result, opName = lpf.Difference(rpf), "Difference"
 		case "&":
-			result = lpf.Intersection(rpf)
-			opName = "Intersection"
-		default:
-			return nil, e.errAt(ex.Pos, "operator %s not supported on Sketch values", ex.Op)
+			result, opName = lpf.Intersection(rpf), "Intersection"
 		}
-		e.recordStep(opName, ex.Pos, debugEntry{"lhs", lpf}, debugEntry{"rhs", rpf}, debugEntry{"result", result})
-		return result, nil
+		if result != nil {
+			e.recordStep(opName, ex.Pos, debugEntry{"lhs", lpf}, debugEntry{"rhs", rpf}, debugEntry{"result", result})
+			return result, nil
+		}
 	}
 
 	// Angle arithmetic
