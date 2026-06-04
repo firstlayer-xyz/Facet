@@ -52,6 +52,7 @@ func (e *evaluator) evalLibExpr(ex *parser.LibExpr) (value, error) {
 		stdFuncs:     e.stdFuncs,
 		stdMethods:   e.stdMethods,
 		structDecls:  buildStructDecls(e.prog, diskPath),
+		opFuncs:      buildOpFuncs(e.prog, diskPath),
 		solidTracks:  e.solidTracks,
 	}
 	libEval.globals = make(map[string]value)
