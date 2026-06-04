@@ -99,11 +99,6 @@ export class FunctionPreview {
     return { ...this.overrides };
   }
 
-  /** Re-render the current selection. No-op while a slider drag is in progress. */
-  refresh() {
-    if (!this.dragging) this.render();
-  }
-
   private render() {
     this.panel.innerHTML = '';
     if (!this.selected) {

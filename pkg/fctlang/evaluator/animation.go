@@ -19,8 +19,6 @@ type Animation struct {
 	baseTracks int    // len(*e.solidTracks) at construction; truncated to this before each frame
 }
 
-// Frame evaluates the model at timeMs (milliseconds; the frame lambda decides
-// how to interpret it) and returns the Solid for that instant.
 // StaticSolids returns the solids a one-shot consumer — file export, the CLI,
 // the web preview — should render for this result. For an Animation entry it
 // renders a single frame at timeMs (a static snapshot); otherwise it returns
@@ -37,6 +35,9 @@ func (r *EvalResult) StaticSolids(timeMs float64) ([]*manifold.Solid, error) {
 	return r.Solids, nil
 }
 
+// Frame evaluates the model at timeMs (milliseconds; the frame lambda decides
+// how to interpret it) and returns the Solid for that instant.
+//
 // Frame is concurrency-safe: concurrent calls on the same handle are serialized.
 // It is NOT re-entrant — the lock is held across the frame closure, so the
 // closure must not call back into Frame on the same handle.

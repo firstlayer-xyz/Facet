@@ -106,8 +106,6 @@ let onDebugFilesChangeCb: (() => void) | null = null;
 let onDebugExitCb: (() => void) | null = null;
 // Returns the picked entry point name (or null to skip running).
 let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } | null) | null = null;
-// Fired whenever playback state changes (play/pause).
-let onPlaybackStateChangeCb: (() => void) | null = null;
 
 
 // Entry-point overrides (slider values for constrained function params)
@@ -250,10 +248,7 @@ export function initApp(deps: AppDeps) {
       const decoded = header.mesh ? decodeBinaryMesh(binary, header.mesh) : null;
       viewer.applyEvalResult(decoded, header.posMap ?? [], { autofit: false });
     },
-    onStateChange: () => {
-      updateRunButtonForPlayback();
-      onPlaybackStateChangeCb?.();
-    },
+    onStateChange: () => updateRunButtonForPlayback(),
   });
   viewer.onFrame(() => onRenderTick());
 
@@ -1195,7 +1190,6 @@ export function setOnSourceChange(cb: (source: string) => void) { onSourceChange
 export function setOnDebugFilesChange(cb: () => void) { onDebugFilesChangeCb = cb; }
 export function setOnDebugExit(cb: () => void) { onDebugExitCb = cb; }
 export function setOnEntryPoints(cb: (fns: EntryPoint[]) => { name: string; libPath: string } | null) { onEntryPointsCb = cb; }
-export function setOnPlaybackStateChange(cb: () => void) { onPlaybackStateChangeCb = cb; }
 export function setEntryOverrides(overrides: Record<string, unknown>) {
   const active = tabStore.active();
   if (active) tabStore.setEntryOverrides(active, overrides);
