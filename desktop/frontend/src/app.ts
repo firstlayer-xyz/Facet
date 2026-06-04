@@ -718,7 +718,6 @@ export async function showDebugStep(index: number) {
   } else if (step.meshes && step.meshes.length > 0 && debugBinary) {
     viewer.loadDebugStep(step, debugBinary);
   }
-  viewer.centerOnBed();
   viewer.fitToView();
 
   const stepFile = debugSteps[index].file ?? '';
@@ -1072,7 +1071,6 @@ export function toggleDebug() {
     if (debugFinalMesh) {
       viewer.clearMeshes();
       viewer.loadDecodedMesh(debugFinalMesh);
-      viewer.centerOnBed();
       viewer.fitToView();
     }
     evalStore.set(null);
