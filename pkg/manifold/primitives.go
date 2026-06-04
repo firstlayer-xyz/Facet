@@ -70,20 +70,26 @@ func CreateCylinder(height, radiusLow, radiusHigh float64, segments int) (*Solid
 // ---------------------------------------------------------------------------
 
 // CreateSquare creates a 2D rectangle.
-func CreateSquare(x, y float64) *Sketch {
+func CreateSquare(x, y float64) (*Sketch, error) {
+	if x <= 0 || y <= 0 {
+		return nil, fmt.Errorf("Square: dimensions must be positive, got (%.4g, %.4g)", x, y)
+	}
 	var ret C.FacetSketchRet
 	C.facet_square(C.double(x), C.double(y), &ret)
-	return newSketch(ret)
+	return newSketch(ret), nil
 }
 
 // CreateCircle creates a 2D circle.
 // The circle's bounding box starts at (0, 0) and ends at (2r, 2r).
 // (The C side translates by (r, r) so a separate Go-side Translate cgo
 // crossing isn't needed.)
-func CreateCircle(radius float64, segments int) *Sketch {
+func CreateCircle(radius float64, segments int) (*Sketch, error) {
+	if radius <= 0 {
+		return nil, fmt.Errorf("Circle: radius must be positive, got %.4g", radius)
+	}
 	var ret C.FacetSketchRet
 	C.facet_circle(C.double(radius), C.int(segments), &ret)
-	return newSketch(ret)
+	return newSketch(ret), nil
 }
 
 // CreatePolygon creates a 2D sketch from an outer outline plus zero or

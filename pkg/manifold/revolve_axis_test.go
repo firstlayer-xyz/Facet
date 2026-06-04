@@ -26,7 +26,11 @@ func TestRevolveAxis(t *testing.T) {
 		degrees    = 360.0
 	)
 
-	sk := CreateSquare(sketchW, sketchH).Translate(translateX, 0)
+	sq, err := CreateSquare(sketchW, sketchH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk := sq.Translate(translateX, 0)
 	sol, err := sk.Revolve(segments, degrees)
 	if err != nil {
 		t.Fatalf("Revolve: %v", err)
@@ -73,7 +77,11 @@ func TestRevolveAxis(t *testing.T) {
 // way for callers to override.
 func TestRevolveSegmentsControlsResolution(t *testing.T) {
 	build := func(segments int) int {
-		sk := CreateSquare(1, 4).Translate(5, 0)
+		sq, err := CreateSquare(1, 4)
+		if err != nil {
+			t.Fatalf("CreateSquare: %v", err)
+		}
+		sk := sq.Translate(5, 0)
 		sol, err := sk.Revolve(segments, 360)
 		if err != nil {
 			t.Fatalf("Revolve(segments=%d): %v", segments, err)

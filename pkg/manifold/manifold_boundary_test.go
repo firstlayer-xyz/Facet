@@ -49,8 +49,11 @@ func TestLoftEmpty(t *testing.T) {
 }
 
 func TestLoftLengthMismatch(t *testing.T) {
-	sq := CreateSquare(10, 10)
-	_, err := Loft([]*Sketch{sq, sq}, []float64{0})
+	sq, err := CreateSquare(10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Loft([]*Sketch{sq, sq}, []float64{0})
 	if err == nil {
 		t.Fatal("expected error for mismatched Loft inputs, got nil")
 	}
@@ -60,8 +63,11 @@ func TestLoftLengthMismatch(t *testing.T) {
 }
 
 func TestLoftTooFewProfiles(t *testing.T) {
-	sq := CreateSquare(10, 10)
-	_, err := Loft([]*Sketch{sq}, []float64{0})
+	sq, err := CreateSquare(10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Loft([]*Sketch{sq}, []float64{0})
 	if err == nil {
 		t.Fatal("expected error for Loft with fewer than 2 profiles, got nil")
 	}
@@ -115,19 +121,22 @@ func TestSolidMirrorZeroNormal(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for Mirror with zero-length normal, got nil")
 	}
-	if !strings.Contains(err.Error(), "zero") {
-		t.Errorf("error should mention zero: %v", err)
+	if !strings.Contains(err.Error(), "degenerate") {
+		t.Errorf("error should mention degenerate: %v", err)
 	}
 }
 
 func TestSketchMirrorZeroAxis(t *testing.T) {
-	sq := CreateSquare(10, 10)
-	_, err := sq.Mirror(0, 0, 0)
+	sq, err := CreateSquare(10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = sq.Mirror(0, 0, 0)
 	if err == nil {
 		t.Fatal("expected error for Sketch.Mirror with zero-length axis, got nil")
 	}
-	if !strings.Contains(err.Error(), "zero") {
-		t.Errorf("error should mention zero: %v", err)
+	if !strings.Contains(err.Error(), "degenerate") {
+		t.Errorf("error should mention degenerate: %v", err)
 	}
 }
 
@@ -183,7 +192,10 @@ func TestSolidScaleNegativeFactorAllowed(t *testing.T) {
 }
 
 func TestSketchScaleZeroFactorRejected(t *testing.T) {
-	sq := CreateSquare(10, 10)
+	sq, err := CreateSquare(10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cases := [][2]float64{
 		{0, 1},
 		{1, 0},

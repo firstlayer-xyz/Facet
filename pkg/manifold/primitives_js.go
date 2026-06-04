@@ -37,15 +37,21 @@ func CreateCylinder(height, radiusLow, radiusHigh float64, segments int) (*Solid
 	return newSolidWithOrigin(id), nil
 }
 
-func CreateSquare(x, y float64) *Sketch {
+func CreateSquare(x, y float64) (*Sketch, error) {
+	if x <= 0 || y <= 0 {
+		return nil, fmt.Errorf("Square: dimensions must be positive, got (%.4g, %.4g)", x, y)
+	}
 	id := js.Global().Call("_mf_square", x, y).Int()
-	return newSketch(id)
+	return newSketch(id), nil
 }
 
-func CreateCircle(radius float64, segments int) *Sketch {
+func CreateCircle(radius float64, segments int) (*Sketch, error) {
+	if radius <= 0 {
+		return nil, fmt.Errorf("Circle: radius must be positive, got %.4g", radius)
+	}
 	// _mf_circle translates the circle in C so its bbox starts at (0,0).
 	id := js.Global().Call("_mf_circle", radius, segments).Int()
-	return newSketch(id)
+	return newSketch(id), nil
 }
 
 func CreatePolygon(outer []Point2D, holes [][]Point2D) (*Sketch, error) {

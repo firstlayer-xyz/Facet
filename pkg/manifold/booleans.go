@@ -16,8 +16,10 @@ import (
 // 3D Boolean Operations
 // ---------------------------------------------------------------------------
 
-// Union computes the boolean union of two solids.
+// Union computes the boolean union of two solids. Panics if either operand
+// is nil — a nil Solid here is an internal bug, not a recoverable input.
 func (a *Solid) Union(b *Solid) *Solid {
+	requireSolids("Union", a, b)
 	var ret C.FacetSolidRet
 	C.facet_union(a.ptr, b.ptr, &ret)
 	runtime.KeepAlive(a)
@@ -27,8 +29,10 @@ func (a *Solid) Union(b *Solid) *Solid {
 	return s
 }
 
-// Difference computes the boolean difference of two solids.
+// Difference computes the boolean difference of two solids. Panics if either
+// operand is nil.
 func (a *Solid) Difference(b *Solid) *Solid {
+	requireSolids("Difference", a, b)
 	var ret C.FacetSolidRet
 	C.facet_difference(a.ptr, b.ptr, &ret)
 	runtime.KeepAlive(a)
@@ -38,8 +42,10 @@ func (a *Solid) Difference(b *Solid) *Solid {
 	return s
 }
 
-// Intersection computes the boolean intersection of two solids.
+// Intersection computes the boolean intersection of two solids. Panics if
+// either operand is nil.
 func (a *Solid) Intersection(b *Solid) *Solid {
+	requireSolids("Intersection", a, b)
 	var ret C.FacetSolidRet
 	C.facet_intersection(a.ptr, b.ptr, &ret)
 	runtime.KeepAlive(a)
@@ -50,7 +56,9 @@ func (a *Solid) Intersection(b *Solid) *Solid {
 }
 
 // Insert cuts a hole in a for b, removes floating inner plugs, and seats b.
+// Panics if either operand is nil.
 func (a *Solid) Insert(b *Solid) *Solid {
+	requireSolids("Insert", a, b)
 	var ret C.FacetSolidRet
 	C.facet_insert(a.ptr, b.ptr, &ret)
 	runtime.KeepAlive(a)
@@ -61,6 +69,8 @@ func (a *Solid) Insert(b *Solid) *Solid {
 }
 
 // DecomposeSolid splits a solid into its disconnected connected components.
+// Entries that the kernel returns with a nil pointer are skipped — the caller
+// receives only well-formed components.
 func DecomposeSolid(s *Solid) []*Solid {
 	var outArr *C.FacetSolidRet
 	n := int(C.facet_decompose(s.ptr, &outArr))
@@ -69,10 +79,14 @@ func DecomposeSolid(s *Solid) []*Solid {
 		return nil
 	}
 	cSlice := unsafe.Slice(outArr, n)
-	result := make([]*Solid, n)
+	result := make([]*Solid, 0, n)
 	for i := range cSlice {
-		result[i] = newSolid(cSlice[i])
-		result[i].FaceMap = s.withFaceMap()
+		part := newSolid(cSlice[i])
+		if part == nil {
+			continue
+		}
+		part.FaceMap = s.withFaceMap()
+		result = append(result, part)
 	}
 	C.free(unsafe.Pointer(outArr))
 	return result
