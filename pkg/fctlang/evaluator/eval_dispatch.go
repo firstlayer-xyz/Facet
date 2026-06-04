@@ -102,6 +102,10 @@ func (e *evaluator) resolveOverload(
 }
 
 // newLibEval creates a sub-evaluator scoped to a library's program and globals.
+// opFuncs is rebuilt for the library's source (stdlib + the lib's own operator
+// functions) so a lib body that uses Vec3 + Vec3 or its own custom operators
+// dispatches correctly. libLoadStack is inherited so circular-import detection
+// survives nested method-triggered lib loads.
 func (e *evaluator) newLibEval(lib *libRef) *evaluator {
 	diskPath := e.prog.Resolve(lib.path)
 	return &evaluator{
@@ -111,11 +115,13 @@ func (e *evaluator) newLibEval(lib *libRef) *evaluator {
 		globals:      e.libEvalCache[lib.path],
 		debug:        e.debug,
 		libEvalCache: e.libEvalCache,
+		libLoadStack: e.libLoadStack,
 		file:         diskPath,
 		libSources:   e.libSources,
 		stdFuncs:     e.stdFuncs,
 		stdMethods:   e.stdMethods,
 		structDecls:  buildStructDecls(e.prog, diskPath),
+		opFuncs:      buildOpFuncs(e.prog, diskPath),
 		currentLib:   lib,
 		solidTracks:  e.solidTracks,
 	}
