@@ -401,9 +401,9 @@ export function resolveSnap(args: {
   camera: THREE.Camera;
   cursorPx: { x: number; y: number };
   viewportSize: { w: number; h: number };
-  /** Mesh world transform. Required when the hit mesh has been translated
-   *  (e.g. by `centerOnBed`) — without it snap points would be returned in
-   *  mesh-local space while the rendered geometry is in world space. */
+  /** Mesh world transform. Required when the hit mesh has been translated —
+   *  without it snap points would be returned in mesh-local space while the
+   *  rendered geometry is in world space. */
   matrixWorld?: THREE.Matrix4;
   tolPx?: number;
   /** First pick in a two-pick measurement. When supplied, edge candidates

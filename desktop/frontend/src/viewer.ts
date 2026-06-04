@@ -723,8 +723,7 @@ export class Viewer {
 
   /** Public: place an extents box around all loaded user meshes. */
   showExtents(): void {
-    // Use a world-space bounding box so the labels sit on the actual geometry
-    // (meshes may be offset by centerOnBed).
+    // Use a world-space bounding box so the labels sit on the actual geometry.
     const box = new THREE.Box3();
     let any = false;
     for (const obj of this.userMeshes) {
@@ -1064,11 +1063,15 @@ export class Viewer {
 
   /**
    * Load a fresh eval result. Owns the full sequence:
-   *   clearMeshes → loadDecodedMesh → setPosMap → centerOnBed → fitToView.
-   * Callers used to drive these five calls imperatively from app.ts —
+   *   clearMeshes → loadDecodedMesh → setPosMap → fitToView.
+   * Callers used to drive these calls imperatively from app.ts —
    * forgetting one in a new code path left the viewer in a partial
    * state. Now the viewer is the only place this sequence is spelled
    * out, and the order can't accidentally drift.
+   *
+   * The mesh is rendered at the world coordinates the kernel returned
+   * (the Solid's bounding box). The camera is fit to those coordinates;
+   * the geometry itself is not translated.
    *
    * Pass `decoded: null` for a no-mesh result (check-only / empty);
    * the viewer wipes its state without trying to load anything.
@@ -1084,7 +1087,6 @@ export class Viewer {
     }
     this.setPosMap(posMap, opts?.excludeFiles);
     if (decoded && (opts?.autofit ?? true)) {
-      this.centerOnBed();
       this.fitToView();
     }
   }
@@ -1099,38 +1101,6 @@ export class Viewer {
     this.clearMeshes();
     this.setPosMap([]);
     this.clearHighlight();
-  }
-
-  /** Center all user meshes on the bed. Bed-plane axes are centered; the "up" axis min is at 0. */
-  centerOnBed(): void {
-    if (this.userMeshes.length === 0) return;
-
-    // Compute combined bounding box of all user meshes
-    const box = new THREE.Box3();
-    for (const obj of this.userMeshes) {
-      box.expandByObject(obj);
-    }
-    if (box.isEmpty()) return;
-
-    const bedCenter = this.gridSize / 2;
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-
-    const offset = new THREE.Vector3();
-    if (this.bed === 'XY') {
-      // Bed axes: X, Y; up: Z
-      offset.set(bedCenter - center.x, bedCenter - center.y, -box.min.z);
-    } else if (this.bed === 'YZ') {
-      // Bed axes: Y, Z; up: X
-      offset.set(-box.min.x, bedCenter - center.y, bedCenter - center.z);
-    } else {
-      // XZ: Bed axes: X, Z; up: Y
-      offset.set(bedCenter - center.x, -box.min.y, bedCenter - center.z);
-    }
-
-    for (const obj of this.userMeshes) {
-      obj.position.add(offset);
-    }
   }
 
   applySettings(appearance: ViewerAppearance): void {
