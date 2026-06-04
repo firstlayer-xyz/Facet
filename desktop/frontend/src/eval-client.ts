@@ -66,6 +66,23 @@ export interface SourceError {
   source?: string;
 }
 
+/**
+ * Render every error as one located line, e.g. `[main.fct:12] expected ';'`.
+ * Used to hand the AI assistant the full error list — unlike the on-screen
+ * error bar, which only shows the first. Returns '' for an empty list.
+ */
+export function formatSourceErrors(errors: SourceError[]): string {
+  return errors
+    .map((e) => {
+      let loc = '';
+      if (e.file && e.line > 0) loc = `${e.file}:${e.line}`;
+      else if (e.file) loc = e.file;
+      else if (e.line > 0) loc = `line ${e.line}`;
+      return loc ? `[${loc}] ${e.message}` : e.message;
+    })
+    .join('\n');
+}
+
 /** One loaded source file in the eval response (mirrors main.SourceEntry on the Go side). */
 export interface SourceEntry {
   text: string;
