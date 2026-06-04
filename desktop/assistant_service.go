@@ -115,20 +115,30 @@ func (s *AssistantService) Send(userMessage, editorCode, errorsText, activeTabPa
 	s.mu.Unlock()
 
 	cliID := config.CLI
-	if cliID == "" || !enabledCLIs[cliID] {
-		// Only enabled providers run. An unset selection, or stale config
-		// pointing at a now-disabled provider, resolves to Claude rather than
-		// launching a CLI the UI no longer offers.
+	switch {
+	case cliID == "":
+		// No selection yet — first run, or never opened settings. Default to
+		// Claude, the only currently-enabled provider.
+		cliID = "claude"
+	case isKnownCLI(cliID) && !enabledCLIs[cliID]:
+		// Stale config pointing at a now-disabled provider (e.g. user picked
+		// "ollama" before this gating). Coerce to Claude rather than launch
+		// a CLI the UI no longer offers.
 		cliID = "claude"
 	}
+	// An unknown cliID (typo, future ID, etc.) is not coerced — let the
+	// binary lookup below surface an explicit "unknown CLI" error rather
+	// than silently running Claude.
 
-	// Find the CLI binary
+	// Find the CLI binary. Defensively re-check enabledCLIs so a disabled
+	// provider can't slip through if the guard above ever weakens.
 	var binName string
 	for _, cli := range knownCLIs {
-		if cli.ID == cliID {
-			binName = cli.Bin
-			break
+		if cli.ID != cliID || !enabledCLIs[cli.ID] {
+			continue
 		}
+		binName = cli.Bin
+		break
 	}
 	if binName == "" {
 		cancel()

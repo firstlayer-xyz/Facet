@@ -205,8 +205,11 @@ export function buildAssistantPage(ctx: SettingsPageContext): PageResult {
     });
     page.appendChild(resetBtn);
   }).catch((err) => {
-    loading.textContent = 'Failed to detect CLIs';
-    reportError('DetectAssistantCLIs', err);
+    // The Promise.all here is DetectAssistantCLIs + ComingSoonCLIs +
+    // GetDefaultSystemPrompt; any one of them can reject, so label the
+    // failure by the page that owns the call rather than picking one promise.
+    loading.textContent = 'Failed to load assistant settings';
+    reportError('AssistantSettings', err);
   });
 
   return { el: page };

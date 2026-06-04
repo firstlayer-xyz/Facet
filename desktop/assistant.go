@@ -127,36 +127,55 @@ func findBinary(name string) string {
 	return ""
 }
 
-// DetectAssistantCLIs returns the enabled AI CLIs found on the system. Only
-// providers in enabledCLIs are probed; disabled ones are reported separately by
-// ComingSoonCLIs.
+// DetectAssistantCLIs returns the enabled AI CLIs found on the system. The
+// receiver method is the Wails RPC entry point; the testable logic lives in
+// detectAssistantCLIs so the filter can be exercised with a fake probe.
 func (a *App) DetectAssistantCLIs() []CLIInfo {
+	return detectAssistantCLIs(findBinary, queryModels)
+}
+
+// detectAssistantCLIs is the package-level implementation of
+// DetectAssistantCLIs. probe locates a binary by name (empty = not found);
+// listModels returns the model list for a found binary (nil = unknown,
+// callers fall back to the hardcoded cliDef list). Only providers in
+// enabledCLIs are probed; disabled ones are reported separately by
+// comingSoonCLIs.
+func detectAssistantCLIs(probe func(string) string, listModels func(string, string) []string) []CLIInfo {
 	var result []CLIInfo
 	for _, cli := range knownCLIs {
 		if !enabledCLIs[cli.ID] {
 			continue
 		}
-		if p := findBinary(cli.Bin); p != "" {
-			models := queryModels(cli.ID, p)
-			if len(models) == 0 {
-				models = cli.Models
-			}
-			result = append(result, CLIInfo{
-				ID:           cli.ID,
-				Name:         cli.Name,
-				Models:       models,
-				DefaultModel: cli.DefaultModel,
-			})
+		p := probe(cli.Bin)
+		if p == "" {
+			continue
 		}
+		models := listModels(cli.ID, p)
+		if len(models) == 0 {
+			models = cli.Models
+		}
+		result = append(result, CLIInfo{
+			ID:           cli.ID,
+			Name:         cli.Name,
+			Models:       models,
+			DefaultModel: cli.DefaultModel,
+		})
 	}
 	return result
 }
 
 // ComingSoonCLIs returns the known providers that are not yet enabled, so the
-// settings picker can show them as greyed-out "(coming soon)" entries. Only ID
-// and Name are populated — these CLIs are display-only until added to
-// enabledCLIs.
+// settings picker can show them as greyed-out "(coming soon)" entries. The
+// receiver method is the Wails RPC entry point; the testable logic lives in
+// comingSoonCLIs so unit tests don't need a fully-initialised App.
 func (a *App) ComingSoonCLIs() []CLIInfo {
+	return comingSoonCLIs()
+}
+
+// comingSoonCLIs is the package-level implementation of ComingSoonCLIs. Only
+// ID and Name are populated — these CLIs are display-only until added to
+// enabledCLIs.
+func comingSoonCLIs() []CLIInfo {
 	var result []CLIInfo
 	for _, cli := range knownCLIs {
 		if enabledCLIs[cli.ID] {
@@ -165,6 +184,18 @@ func (a *App) ComingSoonCLIs() []CLIInfo {
 		result = append(result, CLIInfo{ID: cli.ID, Name: cli.Name})
 	}
 	return result
+}
+
+// isKnownCLI reports whether id matches an entry in knownCLIs. Used by Send()
+// to distinguish a stale-but-known provider (coerce to claude) from a
+// genuinely unknown id (surface the binary-lookup error).
+func isKnownCLI(id string) bool {
+	for _, cli := range knownCLIs {
+		if cli.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // queryModels attempts to list available models for a CLI.
