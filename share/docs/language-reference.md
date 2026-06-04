@@ -183,7 +183,7 @@ fn Missing() Number? {
 
 ### Working with Optionals
 
-The language provides one method, four sugar operators, and an extension to `for-yield`. Together they cover every common pattern; there is no raw "unwrap or crash" form, so the type system forces every caller to handle absence at the boundary.
+The language provides four sugar operators and an extension to `for-yield`. Together they cover every common pattern; there is no raw "unwrap or crash" form, so the type system forces every caller to handle absence at the boundary. Optionals have no methods — every access goes through one of the forms below.
 
 | Form | Purpose | Example |
 |------|---------|---------|
@@ -192,8 +192,6 @@ The language provides one method, four sugar operators, and an extension to `for
 | `opt == nil` / `opt != nil` | Presence check, returns Bool | `if Lookup() != nil { ... }` |
 | `if var name = opt { ... }` | Bind-and-narrow: enters the branch only when present, with `name` typed as the inner `T` | `if var i = Lookup() { return i }` |
 | `for v opt { yield expr }` | Map / Filter through Optional — the result is `?`-wrapped | `for n m { yield n * 2 }` |
-| `opt.IsSome()` / `opt.IsNone()` | Methods equivalent to `!= nil` / `== nil` | `if opt.IsSome() { ... }` |
-| `opt.Or(default: x)` | Method form of `??` | `Lookup().Or(default: 0)` |
 
 Optional chaining short-circuits: if the receiver is None, the whole `opt?.x.y.z` chain is None and no field access is attempted. `??` short-circuits too — the fallback is only evaluated when the left side is absent.
 

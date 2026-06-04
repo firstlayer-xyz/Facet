@@ -1,47 +1,30 @@
 package evaluator
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+)
 
-// Optional methods at runtime. We can't declare helper functions in
-// stdlibIfThenCubeWithSetup's `setup` block (it's spliced inside Main),
-// so each test defines its optional-producer as a zero-arg lambda. The
-// lambda's body returns the value under test; the predicate then exercises
-// the optional methods on the result.
+// Optional runtime semantics. The Optional API is closed and language-level:
+// `??` for fallback, `== nil` / `!= nil` for presence checks, and
+// `if var x = opt { … }` for scoped binding. Optionals deliberately have
+// no methods.
 
-// ── Or — extract with default ─────────────────────────────────────────────
+// ── ?? — fallback ─────────────────────────────────────────────────────────
 
-func TestEvalOptionalOrPresent(t *testing.T) {
+func TestEvalOptionalFallbackPresent(t *testing.T) {
 	stdlibIfThenCubeWithSetup(t, `
     var maybe = fn() Number? { return 42 };
-    var x = maybe().Or(default: 0);`,
+    var x = maybe() ?? 0;`,
 		`x == 42`)
 }
 
-func TestEvalOptionalOrAbsent(t *testing.T) {
+func TestEvalOptionalFallbackAbsent(t *testing.T) {
 	stdlibIfThenCubeWithSetup(t, `
     var maybe = fn() Number? { return nil };
-    var x = maybe().Or(default: 99);`,
+    var x = maybe() ?? 99;`,
 		`x == 99`)
-}
-
-// ── IsSome / IsNone ───────────────────────────────────────────────────────
-
-func TestEvalOptionalIsSomeTrue(t *testing.T) {
-	stdlibIfThenCubeWithSetup(t, `
-    var maybe = fn() Number? { return 5 };`,
-		`maybe().IsSome()`)
-}
-
-func TestEvalOptionalIsSomeFalse(t *testing.T) {
-	stdlibIfThenCubeWithSetup(t, `
-    var maybe = fn() Number? { return nil };`,
-		`!maybe().IsSome()`)
-}
-
-func TestEvalOptionalIsNoneFlipsIsSome(t *testing.T) {
-	stdlibIfThenCubeWithSetup(t, `
-    var maybe = fn() Number? { return nil };`,
-		`maybe().IsNone()`)
 }
 
 // ── Equality with nil ─────────────────────────────────────────────────────
@@ -63,6 +46,28 @@ func TestEvalOptionalEqualsNilWhenPresent(t *testing.T) {
 func TestEvalOptionalWidening(t *testing.T) {
 	stdlibIfThenCubeWithSetup(t, `
     var src = fn() Number? { return 100 };
-    var x = src().Or(default: -1);`,
+    var x = src() ?? -1;`,
 		`x == 100`)
+}
+
+// TestEvalOptionalHasNoMethods locks in that Optional values have no
+// method surface. The checker rejects the method call at compile time;
+// the evaluator carries the same error as a defence-in-depth path for
+// values that reach a method call via `Any`/`var` and bypass static
+// typing.
+func TestEvalOptionalHasNoMethods(t *testing.T) {
+	src := `fn Main() Solid {
+    var maybe = fn() Number? { return 5 };
+    var bad = maybe().IsSome();
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm})
+}
+`
+	prog := parseTestProg(t, src)
+	_, err := evalMerged(context.Background(), prog, nil)
+	if err == nil {
+		t.Fatal("expected error for Optional method call")
+	}
+	if !strings.Contains(err.Error(), "Optional") || !strings.Contains(err.Error(), "no method") {
+		t.Fatalf("expected 'Optional ... no methods' error, got: %v", err)
+	}
 }
