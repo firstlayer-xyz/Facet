@@ -39,23 +39,14 @@ func (e *evaluator) evalCompare(op string, lv, rv value, pos parser.Pos) (value,
 			}
 			return l != r, nil
 		}
-		// Bool vs Array: empty array is falsy, non-empty is truthy
-		if r, rok := rv.(array); rok && (op == "==" || op == "!=") {
-			truthy := len(r.elems) > 0
-			if op == "==" {
-				return l == truthy, nil
-			}
-			return l != truthy, nil
-		}
+		// Bool vs Array (and Array vs Bool below) used to coerce the array
+		// to a "truthy" Bool via len > 0. That implicit conversion was a
+		// footgun — `true == [1, 2, 3]` would silently succeed — and is
+		// also rejected by the checker for typed code, so the runtime path
+		// was effectively a backdoor for `Any`-typed values. Removed: cross-
+		// type Bool/Array comparisons fall through to the incompatible-type
+		// error like every other unrelated pair.
 	case array:
-		// Array vs Bool: empty array is falsy, non-empty is truthy
-		if r, rok := rv.(bool); rok && (op == "==" || op == "!=") {
-			truthy := len(l.elems) > 0
-			if op == "==" {
-				return truthy == r, nil
-			}
-			return truthy != r, nil
-		}
 	case string:
 		if r, rok := rv.(string); rok {
 			switch op {
@@ -125,6 +116,14 @@ func (e *evaluator) evalCompare(op string, lv, rv value, pos parser.Pos) (value,
 // near-zero values and relative epsilon otherwise. This handles both
 // unit-conversion drift (e.g. 1 fathom == 6 ft) and trig results
 // near zero (e.g. Cos(Acos(0)) == 0).
+//
+// 1e-12 is the threshold for both the absolute (near-zero) and the relative
+// case. It's tight enough to flag a genuine mismatch in any realistic CAD
+// model (mm precision is 12-15 significant digits below a 1-metre scale),
+// and loose enough to absorb the standard double-precision IEEE-754 rounding
+// from unit conversions and trig roundtrips. If accumulated trig error from
+// a long fold ever pushes past this, the right fix is usually to keep one
+// canonical unit (Angle / Length) rather than to widen the threshold.
 func floatEqual(a, b float64) bool {
 	if a == b {
 		return true

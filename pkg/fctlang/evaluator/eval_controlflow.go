@@ -111,9 +111,12 @@ func (e *evaluator) evalForYieldArray(ex *parser.ForYieldExpr, locals map[string
 	var results []value
 	prev := e.yieldTarget
 	e.yieldTarget = &results
-	err := e.evalForClauses(ex.Clauses, 0, ex.Body, locals, &results)
-	e.yieldTarget = prev
-	if err != nil {
+	// defer the restore so a panic inside the body (CGo invariant, ctx cancel
+	// via runtime panic, etc.) doesn't leave the global yieldTarget pointing
+	// at this stack-local slice — a later, unrelated yield would otherwise
+	// write to a freed slot.
+	defer func() { e.yieldTarget = prev }()
+	if err := e.evalForClauses(ex.Clauses, 0, ex.Body, locals, &results); err != nil {
 		return nil, err
 	}
 	return array{elems: results, elemType: inferElemType(results)}, nil
@@ -139,9 +142,8 @@ func (e *evaluator) evalForYieldOptional(ex *parser.ForYieldExpr, opt *optionalV
 	var results []value
 	prev := e.yieldTarget
 	e.yieldTarget = &results
-	err := e.evalForBody(ex.Body, iterLocals, &results)
-	e.yieldTarget = prev
-	if err != nil {
+	defer func() { e.yieldTarget = prev }()
+	if err := e.evalForBody(ex.Body, iterLocals, &results); err != nil {
 		return nil, err
 	}
 	switch len(results) {
@@ -197,10 +199,11 @@ func (e *evaluator) evalForBody(body []parser.Stmt, locals map[string]value, res
 	policy := &stmtPolicy{
 		context: "for-yield body",
 		onReturn: func(s *parser.ReturnStmt, locals map[string]value) (bool, value, error) {
-			// `return` inside for-yield is a static error — a for-yield
-			// produces an array, there is no function to return from at
-			// this level.
-			return false, nil, fmt.Errorf("use 'yield' instead of 'return' inside for-yield loops")
+			// Defence in depth: the parser rejects `return` inside a for-
+			// yield body before we get here. If we ever reach this code
+			// path, it's an evaluator bug rather than user input — surface
+			// the same hint the parser uses so the error is actionable.
+			return false, nil, fmt.Errorf("for-yield can only contribute via 'yield'; to exit the enclosing function, extract the loop into its own function and return from there")
 		},
 		onYield: func(s *parser.YieldStmt, locals map[string]value) error {
 			// Bare yield (no value) skips this iteration.
@@ -283,16 +286,20 @@ func (e *evaluator) evalFold(ex *parser.FoldExpr, locals map[string]value) (valu
 	// First element is the initial accumulator
 	acc := unwrap(arr.elems[0])
 
-	// Save and set foldAcc so yield writes to the accumulator.
+	// Save and set foldAcc so yield writes to the accumulator. defer the
+	// restores so a panic inside the body (CGo invariant, runtime panic)
+	// doesn't leave the globals pointing at this stack-local accumulator.
 	prevFoldAcc := e.foldAcc
 	e.foldAcc = &acc
 	prevYield := e.yieldTarget
 	e.yieldTarget = nil // prevent for-yield yield from firing inside fold
+	defer func() {
+		e.foldAcc = prevFoldAcc
+		e.yieldTarget = prevYield
+	}()
 
 	for _, elem := range arr.elems[1:] {
 		if err := e.ctx.Err(); err != nil {
-			e.foldAcc = prevFoldAcc
-			e.yieldTarget = prevYield
 			return nil, err
 		}
 		// Create iteration scope with named acc and elem vars
@@ -303,17 +310,12 @@ func (e *evaluator) evalFold(ex *parser.FoldExpr, locals map[string]value) (valu
 		iterLocals[ex.AccVar] = acc
 		iterLocals[ex.ElemVar] = elem
 
-		_, err := e.evalBlock(ex.Body, iterLocals)
-		if err != nil {
-			e.foldAcc = prevFoldAcc
-			e.yieldTarget = prevYield
-			// Propagate returnSignal — return inside fold exits the function.
+		// Propagate returnSignal — return inside fold exits the function.
+		if _, err := e.evalBlock(ex.Body, iterLocals); err != nil {
 			return nil, err
 		}
 	}
 
-	e.foldAcc = prevFoldAcc
-	e.yieldTarget = prevYield
 	return acc, nil
 }
 
