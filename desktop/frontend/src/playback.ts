@@ -48,6 +48,7 @@ export function setPlaying(p: boolean): void {
  */
 export function onRenderTick(): void {
   if (!playing || frameInFlight()) return;
+  // UTC epoch ms; a model applies any timezone offset itself.
   void issueFrame(Date.now());
 }
 

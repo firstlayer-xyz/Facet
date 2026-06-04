@@ -1,10 +1,15 @@
-# An analog clock whose hands track the real time of day.
-# t = Unix epoch ms (UTC); tzOffsetHours shifts to local time.
+# An analog clock whose hands track the time of day.
+# t = UTC epoch ms; tzOffsetHours shifts to local time.
+#
+# Built centred on the origin — the rotation pivot — so the hands sweep around
+# the face centre: the face is moved so its centre sits at (0,0), and each hand
+# is a bar growing along +y from the origin (12 o'clock at rest), centred on its
+# short axis. The whole assembly is then placed in the +X/+Y quadrant.
 fn Main(tzOffsetHours Number = 0) Animation {
-    var face   = Cylinder(r: 50 mm, h: 4 mm)
-    var hour   = Cube(x: 30 mm, y: 4 mm, z: 2 mm).Move(x: -2 mm,   y: -2 mm,   z: 4 mm)
-    var minute = Cube(x: 45 mm, y: 3 mm, z: 2 mm).Move(x: -1.5 mm, y: -1.5 mm, z: 4 mm)
-    var second = Cube(x: 48 mm, y: 1 mm, z: 1 mm).Move(x: -0.5 mm, y: -0.5 mm, z: 6 mm)
+    var face   = Cylinder(r: 50 mm, h: 4 mm).Move(x: -50 mm, y: -50 mm)
+    var hour   = Cube(x: 4 mm, y: 30 mm, z: 2 mm).Move(x: -2 mm,   z: 4 mm).Color(hex: "#222222")
+    var minute = Cube(x: 3 mm, y: 45 mm, z: 2 mm).Move(x: -1.5 mm, z: 4 mm).Color(hex: "#222222")
+    var second = Cube(x: 1 mm, y: 48 mm, z: 1 mm).Move(x: -0.5 mm, z: 6 mm).Color(hex: "#dd2222")
 
     return Animation{
         frame: fn(t Number) Solid {
@@ -17,7 +22,7 @@ fn Main(tzOffsetHours Number = 0) Animation {
                 hour.Rotate(z:   -hourDeg   * 1 deg),
                 minute.Rotate(z: -minuteDeg * 1 deg),
                 second.Rotate(z: -secondDeg * 1 deg),
-            ])
+            ]).Move(x: 50 mm, y: 50 mm)
         }
     }
 }

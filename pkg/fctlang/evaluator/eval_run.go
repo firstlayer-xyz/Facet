@@ -1,6 +1,7 @@
 package evaluator
 
 import (
+	"context"
 	"facet/pkg/fctlang/parser"
 	"fmt"
 	"math"
@@ -146,6 +147,11 @@ func (e *evaluator) run() (*EvalResult, error) {
 			if len(frameFn.params) != 1 {
 				return nil, e.errAt(entryFn.Pos, "Animation.frame must take exactly one parameter (time in ms), got %d", len(frameFn.params))
 			}
+			// The handle is retained and its frame closure runs per displayed frame,
+			// long after this build's context is done (e.g. the HTTP request that
+			// built the session has returned). Detach from that context so later
+			// Frame calls aren't canceled along with it.
+			e.ctx = context.Background()
 			return &EvalResult{
 				Animation: &Animation{e: e, frame: frameFn, argName: frameFn.params[0].Name, baseTracks: len(*e.solidTracks)},
 			}, nil

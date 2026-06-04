@@ -1,7 +1,5 @@
 // function-preview.ts — Bar for editing constrained params of the selected entry point function.
 
-import { isPlaying, setPlaying } from './playback';
-
 interface ParamConstraint {
   kind: string;
   min?: any;
@@ -115,12 +113,6 @@ export class FunctionPreview {
     }
     this.panel.style.display = 'flex';
 
-    if (this.selected.animated) {
-      this.renderPlaybackControls();
-      requestAnimationFrame(() => this.syncBarHeight());
-      return;
-    }
-
     // Function name header — only show for non-Main functions (library calls, etc.)
     if (this.selected.name !== 'Main') {
       const header = document.createElement('div');
@@ -153,22 +145,6 @@ export class FunctionPreview {
 
     // Ensure --fn-bar-h is set immediately (ResizeObserver may fire async)
     requestAnimationFrame(() => this.syncBarHeight());
-  }
-
-  private renderPlaybackControls(): void {
-    const bar = document.createElement('div');
-    bar.className = 'fn-preview-params-grid';
-
-    const playBtn = document.createElement('button');
-    playBtn.className = 'fn-preview-seg-btn';
-    playBtn.textContent = isPlaying() ? 'Pause' : 'Play';
-    playBtn.addEventListener('click', () => {
-      setPlaying(!isPlaying());
-      playBtn.textContent = isPlaying() ? 'Pause' : 'Play';
-    });
-
-    bar.appendChild(playBtn);
-    this.panel.appendChild(bar);
   }
 
   private makeParamInput(param: EntryPoint['params'][0]): HTMLElement {

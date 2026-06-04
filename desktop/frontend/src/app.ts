@@ -14,7 +14,7 @@ import { evalRequest, cancelEval } from './eval-client';
 import type { EvalResponse, EvalResult, SourceEntry, SourceError } from './eval-client';
 import { decodeBinaryMesh } from './mesh-decode';
 import type { BinaryMeshMeta } from './mesh-decode';
-import { initPlayback, onRenderTick } from './playback';
+import { initPlayback, onRenderTick, isPlaying, setPlaying } from './playback';
 
 // Source kind constants (mirrors parser.SourceKind in Go)
 const SOURCE_USER = 0;
@@ -188,6 +188,7 @@ let runState: RunState = 'idle';
 
 const PLAY_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
 const STOP_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12"/></svg>`;
+const PAUSE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
 
 function setRunState(state: RunState) {
   runState = state;
@@ -249,7 +250,10 @@ export function initApp(deps: AppDeps) {
       const decoded = header.mesh ? decodeBinaryMesh(binary, header.mesh) : null;
       viewer.applyEvalResult(decoded, header.posMap ?? [], { autofit: false });
     },
-    onStateChange: () => onPlaybackStateChangeCb?.(),
+    onStateChange: () => {
+      updateRunButtonForPlayback();
+      onPlaybackStateChangeCb?.();
+    },
   });
   viewer.onFrame(() => onRenderTick());
 
@@ -776,10 +780,37 @@ export function reeval(entry: string, libPath?: string) {
 }
 
 export function toggleRun() {
+  if (activeEntryIsAnimated()) {
+    setPlaying(!isPlaying());
+    return;
+  }
   if (runState === 'running') {
     cancelEval();
   } else {
     run();
+  }
+}
+
+// True when the active entry point returns an Animation (the run button then
+// toggles live playback instead of a one-shot eval).
+function activeEntryIsAnimated(): boolean {
+  const name = tabStore.activeState()?.pickedEntry?.name;
+  if (!name) return false;
+  return (evalStore.current()?.entryPoints ?? []).some(e => e.name === name && e.animated);
+}
+
+// Reflect playback state on the run button: pause icon while playing, play icon when stopped.
+function updateRunButtonForPlayback() {
+  const btn = document.getElementById('run-btn');
+  if (!btn) return;
+  if (isPlaying()) {
+    btn.innerHTML = PAUSE_ICON;
+    btn.title = 'Pause';
+    btn.classList.add('running');
+  } else {
+    btn.innerHTML = PLAY_ICON;
+    btn.title = 'Run';
+    btn.classList.remove('running');
   }
 }
 

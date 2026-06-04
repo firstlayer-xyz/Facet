@@ -43,6 +43,35 @@ func TestAnimationFrameDoesNotLeakTracks(t *testing.T) {
 	}
 }
 
+// A retained Animation must keep working after the context that built it is
+// canceled. Playback issues Frame() calls long after the building HTTP request
+// has ended (and its context canceled), so the handle must not stay bound to
+// that transient context — otherwise only the first frame renders.
+func TestAnimationFrameSurvivesBuildContextCancel(t *testing.T) {
+	prog := parseTestProg(t, `fn Main() Animation {
+    var base = Cube(s: 20 mm)
+    return Animation{frame: fn(t Number) Solid { return base.Rotate(z: t * 1 deg) }}
+}
+`)
+	ctx, cancel := context.WithCancel(context.Background())
+	res, err := Eval(ctx, prog, testMainKey, nil, "Main")
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	if res.Animation == nil {
+		t.Fatal("expected an Animation")
+	}
+	cancel() // the build request ends — its context is now canceled
+
+	s, err := res.Animation.Frame(90)
+	if err != nil {
+		t.Fatalf("Frame after build-context cancel: %v", err)
+	}
+	if v := s.Volume(); math.Abs(v-8000) > 1e-6 { // 20³, rotation-invariant
+		t.Fatalf("volume = %v, want 8000", v)
+	}
+}
+
 // The frame closure is callable with a time value and returns the Solid for
 // that instant — time genuinely varies the geometry, and the handle is reusable
 // across calls (the retained evaluator backs every call).

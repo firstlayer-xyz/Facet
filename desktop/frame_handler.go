@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"time"
 
 	"facet/pkg/fctlang/checker"
 	"facet/pkg/fctlang/evaluator"
@@ -117,8 +118,10 @@ func (c *sessionCache) getOrBuild(ctx context.Context, sources map[string]string
 	return anim, nil
 }
 
-// initialFrameTimeMs is the time used to render an animation's first (static) frame.
-func initialFrameTimeMs() float64 { return 0 }
+// initialFrameTimeMs is the current UTC time in ms, used for an animation's
+// first (static) frame so a clock-style model shows "now" (matching the
+// Date.now() the viewer sends per live frame) instead of the epoch.
+func initialFrameTimeMs() float64 { return float64(time.Now().UnixMilli()) }
 
 // handleFrame serves POST /frame: build-or-reuse the session, render the
 // frame at req.TimeMs, and write the SAME binary mesh framing /eval uses.
