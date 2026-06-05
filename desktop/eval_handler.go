@@ -103,10 +103,13 @@ func loaderOpts() (string, *loader.Options) {
 	return libDir, opts
 }
 
-// handleEval processes a stateless eval request: Load → Check → Eval → binary response.
+// handleEval processes an eval request: Load → Check → Eval → binary response.
 // recordRun may be nil; when set, it is invoked with a runSummary after every
 // response is written so the get_last_run MCP tool can read the latest stats.
-func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, recordRun func(runSummary)) {
+// sessions is the shared Animation session cache: when the entry evaluates to
+// an Animation, its handle is stored here so the playback /frame requests that
+// follow reuse it instead of rebuilding the model from scratch.
+func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, recordRun func(runSummary), sessions *sessionCache) {
 	start := time.Now()
 
 	// respond finalises header.Time, writes the binary response, and — if a
@@ -224,6 +227,37 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 		}
 		header.Errors = append(header.Errors, sourceErrorFromErr(err))
 		respond(&header, nil, nil)
+		return
+	}
+
+	// Animation entry: prime the frame session cache with this handle so the
+	// playback /frame requests that follow reuse it (no rebuild), then render
+	// the initial frame.
+	if evalResult.Animation != nil {
+		if perr := sessions.put(req.Sources, req.Key, req.Entry, req.Overrides, evalResult.Animation); perr != nil {
+			header.Errors = append(header.Errors, sourceErrorFromErr(perr))
+			respond(&header, nil, nil)
+			return
+		}
+		solid, ferr := evalResult.Animation.Frame(initialFrameTimeMs())
+		if ferr != nil {
+			header.Errors = append(header.Errors, sourceErrorFromErr(ferr))
+			respond(&header, nil, nil)
+			return
+		}
+		merged := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
+		var binaryData []byte
+		meta, binaryData := appendMeshBinary(binaryData, merged)
+		header.Mesh = meta
+		animStats := evaluator.ModelStats{
+			Triangles:   merged.IndexCount / 3,
+			Vertices:    merged.VertexCount,
+			Volume:      solid.Volume(),
+			SurfaceArea: solid.SurfaceArea(),
+		}
+		animStats.BBoxMin, animStats.BBoxMax = solidBounds([]*manifold.Solid{solid})
+		header.Stats = &animStats
+		respond(&header, binaryData, []*manifold.Solid{solid})
 		return
 	}
 
@@ -424,7 +458,9 @@ func evalSolids(ctx context.Context, req evalRequest) ([]*manifold.Solid, error)
 	if err != nil {
 		return nil, err
 	}
-	return result.Solids, nil
+	// An Animation entry has no static solids; export/slice a single-frame
+	// snapshot (the current frame) rather than producing nothing.
+	return result.StaticSolids(initialFrameTimeMs())
 }
 
 // sourceErrorFromErr converts a generic error into a parser.SourceError.

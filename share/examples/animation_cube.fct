@@ -1,0 +1,12 @@
+# A cube that spins once every 4 seconds, driven by the wall clock.
+# The cube is centred on the origin so it spins in place (rotation pivots on z
+# through the centre) rather than orbiting a corner.
+fn Main() Animation {
+    var base = Cube(s: 20 mm).Move(x: -10 mm, y: -10 mm, z: -10 mm)  # centred, built once
+    return Animation{
+        frame: fn(t Number) Solid {                  # t = Unix epoch ms
+            const deg = (t % 4000) / 4000 * 360      # one turn / 4 s
+            return base.Rotate(z: deg * 1 deg)
+        }
+    }
+}
