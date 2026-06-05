@@ -15,8 +15,8 @@ import (
 // non-empty geometry.
 func TestAnimationExamplesRenderAFrame(t *testing.T) {
 	examples := []string{
-		"../../../share/examples/animation_cube.fct",
-		"../../../share/examples/animation_clock.fct",
+		"../../../share/examples/Animation Cube.fct",
+		"../../../share/examples/Animation Clock.fct",
 	}
 
 	for _, rel := range examples {

@@ -5,7 +5,7 @@
 # the face centre: the face is moved so its centre sits at (0,0), and each hand
 # is a bar growing along +y from the origin (12 o'clock at rest), centred on its
 # short axis. The whole assembly is then placed in the +X/+Y quadrant.
-fn Main(tzOffsetHours Number = 0) Animation {
+fn Main(tzOffsetHours Number = 0 where [-12:14:1]) Animation {
     var face   = Cylinder(r: 50 mm, h: 4 mm).Move(x: -50 mm, y: -50 mm)
     var twelve = Text(text: "12", s: 14 mm, halign: "center", valign: "center")
         .Extrude(z: 2 mm).Move(y: 36 mm, z: 4 mm).Color(hex: "#222222")
