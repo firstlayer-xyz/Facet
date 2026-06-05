@@ -54,6 +54,10 @@ const (
 	Each
 	Use
 	Include
+
+	// Path is the `<...>` file reference that may follow `use`/`include`.
+	// Text holds the inner path (the angle brackets are stripped).
+	Path
 )
 
 // Token is a single OpenSCAD lexical unit with source position.

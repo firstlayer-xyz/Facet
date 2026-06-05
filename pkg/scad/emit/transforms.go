@@ -101,16 +101,22 @@ func (e *Emitter) childExpr(n *ast.ModuleCall) string {
 	return body
 }
 
+// childIs2D reports whether a wrapper's geometry is 2D, taken from its first
+// child (a wrapper's children share a dimensionality). False when childless.
+func (e *Emitter) childIs2D(n *ast.ModuleCall) bool {
+	if len(n.Children) > 0 {
+		return e.stmtIs2D(n.Children[0], map[string]bool{})
+	}
+	return false
+}
+
 // transform emits a child geometry followed by the Facet method for the
 // transform. The child is emitted first (inner geometry) and the method is
 // appended (outer transform), realizing OpenSCAD's outside-in nesting as
 // Facet's left-to-right method chain.
 func (e *Emitter) transform(n *ast.ModuleCall) string {
 	child := e.childExpr(n)
-	is2D := false
-	if len(n.Children) > 0 {
-		is2D = e.stmtIs2D(n.Children[0], map[string]bool{})
-	}
+	is2D := e.childIs2D(n)
 
 	var method string
 	switch n.Name {

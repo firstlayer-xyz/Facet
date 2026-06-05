@@ -69,6 +69,11 @@ type Emitter struct {
 	// bindings) to their Facet type, so cond() can apply OpenSCAD truthiness to
 	// a bare identifier (see buildScope / inferType).
 	scope map[string]string
+	// bosl2 is set when the program references the BOSL2 library via
+	// `include <BOSL2/...>` / `use <BOSL2/...>`. It switches on the BOSL2
+	// vocabulary (primitives, transforms, anchors) and emits its runtime
+	// preamble (see bosl2.go).
+	bosl2 bool
 }
 
 // animTimeVar is the Facet name $t is translated to. It is `scad_*`-prefixed to
@@ -107,6 +112,12 @@ func File(f *ast.File) (string, []TranspileError) {
 				e.errf(n.Pos(), "$t inside function %q is not supported; reference $t in module or top-level geometry instead", n.Name)
 			}
 			defs = append(defs, e.emitFunctionDef(n))
+		case *ast.Include:
+			e.libRef(n.Path, n.Pos())
+			continue
+		case *ast.Use:
+			e.libRef(n.Path, n.Pos())
+			continue
 		case *ast.Assign:
 			if isResolutionVar(n.Name) {
 				continue // captured as a global resolution by collectResolution

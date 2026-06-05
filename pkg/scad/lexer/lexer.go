@@ -11,6 +11,9 @@ type lexer struct {
 	src       string
 	pos       int
 	line, col int
+	// pathNext is set after emitting a `use`/`include` keyword so the following
+	// `<...>` is lexed as a single Path token rather than a `<` operator.
+	pathNext bool
 }
 
 // singleKind maps single-byte punctuation/operators to their token kinds.
@@ -96,6 +99,8 @@ func isIdentPart(c byte) bool {
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 func (l *lexer) next() token.Token {
+	wantPath := l.pathNext
+	l.pathNext = false
 	for {
 		l.skipTrivia()
 		line, col := l.line, l.col
@@ -103,6 +108,22 @@ func (l *lexer) next() token.Token {
 			return token.Token{Kind: token.EOF, Line: line, Col: col}
 		}
 		c := l.peek()
+
+		// A `<...>` file reference immediately after use/include is one Path
+		// token (the angle brackets are stripped). Only valid in that position,
+		// so a bare `<` elsewhere stays the less-than operator.
+		if wantPath && c == '<' {
+			l.advance() // <
+			start := l.pos
+			for l.pos < len(l.src) && l.peek() != '>' && l.peek() != '\n' {
+				l.advance()
+			}
+			text := l.src[start:l.pos]
+			if l.peek() == '>' {
+				l.advance()
+			}
+			return token.Token{Kind: token.Path, Text: text, Line: line, Col: col}
+		}
 
 		switch {
 		case isIdentStart(c):
@@ -116,6 +137,9 @@ func (l *lexer) next() token.Token {
 			k := token.Lookup(text)
 			if special {
 				k = token.Ident // $-vars are never keywords
+			}
+			if k == token.Use || k == token.Include {
+				l.pathNext = true
 			}
 			return token.Token{Kind: k, Text: text, Line: line, Col: col, SpecialVar: special}
 

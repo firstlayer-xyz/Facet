@@ -1,0 +1,12 @@
+fn Main() Solid {
+    return Cube(x: 30 mm, y: 30 mm, z: 12 mm).AlignCenter(pos: Vec3{}) + Cylinder(
+        r: 4 mm,
+        h: 16 mm
+    ).AlignCenter(pos: Vec3{}).Move(z: 12 mm / 2 + 16 mm / 2) + (Cube(
+        x: 20 mm,
+        y: 20 mm,
+        z: 20 mm
+    ).AlignCenter(pos: Vec3{}) + Cube(x: 4 mm, y: 4 mm, z: 4 mm)
+        .AlignCenter(pos: Vec3{}).Move(x: 20 mm / 2, z: 20 mm / 2))
+        .Move(x: 40 mm)
+}

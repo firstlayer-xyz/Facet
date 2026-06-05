@@ -56,6 +56,42 @@ func TestLex_NumbersAndOperators(t *testing.T) {
 	}
 }
 
+// `include <path>` lexes the angle-bracket file reference as a single Path
+// token whose Text is the inner path, so the parser can read it directly.
+func TestLex_IncludePath(t *testing.T) {
+	toks := Lex("include <BOSL2/std.scad>\n")
+	if toks[0].Kind != token.Include {
+		t.Fatalf("toks[0] = %v, want Include", toks[0].Kind)
+	}
+	if toks[1].Kind != token.Path {
+		t.Fatalf("toks[1] = %v, want Path", toks[1].Kind)
+	}
+	if toks[1].Text != "BOSL2/std.scad" {
+		t.Fatalf("path text = %q, want %q", toks[1].Text, "BOSL2/std.scad")
+	}
+}
+
+// `use <path>` is lexed the same way as include.
+func TestLex_UsePath(t *testing.T) {
+	toks := Lex("use <foo/bar.scad>\n")
+	if toks[0].Kind != token.Use || toks[1].Kind != token.Path {
+		t.Fatalf("kinds = %v %v, want Use Path", toks[0].Kind, toks[1].Kind)
+	}
+	if toks[1].Text != "foo/bar.scad" {
+		t.Fatalf("path text = %q, want %q", toks[1].Text, "foo/bar.scad")
+	}
+}
+
+// A `<` that is NOT preceded by use/include is still the less-than operator —
+// path mode is context-sensitive and must not swallow comparisons.
+func TestLex_LessThanStaysOperator(t *testing.T) {
+	toks := Lex("a < b")
+	want := []token.Kind{token.Ident, token.Lt, token.Ident, token.EOF}
+	if got := kinds(toks); !slices.Equal(got, want) {
+		t.Fatalf("kinds = %v, want %v", got, want)
+	}
+}
+
 func TestLex_MalformedInputNeverPanics(t *testing.T) {
 	// The lexer must never panic on malformed input ("never fail hard").
 	for _, src := range []string{`"\`, `"unterminated`, `/* unterminated`, `1.2.3`, `1e`, "\x00\x01"} {

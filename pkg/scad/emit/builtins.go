@@ -10,6 +10,11 @@ import (
 
 // moduleCall dispatches a SCAD instantiation to its Facet emission.
 func (e *Emitter) moduleCall(n *ast.ModuleCall) string {
+	if e.bosl2 {
+		if msg, blocked := e.bosl2AttachGuard(n); blocked {
+			return msg
+		}
+	}
 	if isTransform(n.Name) {
 		return e.transform(n)
 	}
@@ -46,6 +51,14 @@ func (e *Emitter) moduleCall(n *ast.ModuleCall) string {
 	case "polyhedron":
 		return e.polyhedron(n)
 	}
+	// BOSL2 vocabulary (primitives, transforms, anchors) is recognized only when
+	// the program included the BOSL2 library; otherwise these names are undefined
+	// and fall through to the unknown-module error below.
+	if e.bosl2 {
+		if out, ok := e.bosl2Call(n); ok {
+			return out
+		}
+	}
 	if sym, ok := e.syms[n.Name]; ok {
 		if sym.isFunc {
 			return e.errf(n.Pos(), "%s: calling a function as a module is not supported", n.Name)
@@ -72,11 +85,16 @@ func isDroppedBuiltin(name string) bool {
 }
 
 // arg returns the value for parameter `name` or the positional arg at `idx`.
-// A named match takes precedence over the positional fallback.
+// A named match takes precedence over the positional fallback. An empty `name`
+// means "positional only" — it must not match an (unnamed) positional argument
+// in the named phase, or `arg(n, "", k)` would always return the first
+// positional regardless of k.
 func arg(n *ast.ModuleCall, name string, idx int) (ast.Expr, bool) {
-	for _, a := range n.Args {
-		if a.Name == name {
-			return a.Value, true
+	if name != "" {
+		for _, a := range n.Args {
+			if a.Name == name {
+				return a.Value, true
+			}
 		}
 	}
 	pos := -1
@@ -163,17 +181,22 @@ func (e *Emitter) cube(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "cube without size")
 	}
-	var dims string
-	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) == 3 {
-		dims = fmt.Sprintf("Cube(x: %s, y: %s, z: %s)",
-			e.expr(v.Elems[0], kLength), e.expr(v.Elems[1], kLength), e.expr(v.Elems[2], kLength))
-	} else {
-		dims = fmt.Sprintf("Cube(s: %s)", e.expr(size, kLength))
-	}
+	dims := e.cubeCtor(size)
 	if boolArg(n, "center", 1) {
 		dims += ".AlignCenter(pos: Vec3{})"
 	}
 	return dims
+}
+
+// cubeCtor renders a box constructor from an OpenSCAD size: a 3-vector becomes
+// `Cube(x:, y:, z:)`, anything else the scalar `Cube(s:)` overload. The result
+// is corner-origin (the caller recenters when needed).
+func (e *Emitter) cubeCtor(size ast.Expr) string {
+	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) == 3 {
+		return fmt.Sprintf("Cube(x: %s, y: %s, z: %s)",
+			e.expr(v.Elems[0], kLength), e.expr(v.Elems[1], kLength), e.expr(v.Elems[2], kLength))
+	}
+	return fmt.Sprintf("Cube(s: %s)", e.expr(size, kLength))
 }
 
 // sphere emits Sphere(...).AlignCenter(...). OpenSCAD centers spheres at the

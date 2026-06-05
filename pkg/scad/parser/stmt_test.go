@@ -6,6 +6,41 @@ import (
 	"facet/pkg/scad/ast"
 )
 
+// `include <BOSL2/std.scad>` parses to an ast.Include carrying the inner path.
+func TestStmt_IncludePath(t *testing.T) {
+	f, err := Parse("include <BOSL2/std.scad>\ncube(10);\n")
+	if err != nil {
+		t.Fatalf("include should parse, got: %v", err)
+	}
+	inc, ok := f.Stmts[0].(*ast.Include)
+	if !ok {
+		t.Fatalf("Stmts[0] = %T, want *ast.Include", f.Stmts[0])
+	}
+	if inc.Path != "BOSL2/std.scad" {
+		t.Fatalf("include path = %q, want %q", inc.Path, "BOSL2/std.scad")
+	}
+	// The following statement must still parse (the include consumed its path,
+	// leaving no dangling `<` tokens).
+	if _, ok := f.Stmts[1].(*ast.ModuleCall); !ok {
+		t.Fatalf("Stmts[1] = %T, want *ast.ModuleCall", f.Stmts[1])
+	}
+}
+
+// `use <path>` parses to an ast.Use carrying the inner path.
+func TestStmt_UsePath(t *testing.T) {
+	f, err := Parse("use <BOSL2/std.scad>\n")
+	if err != nil {
+		t.Fatalf("use should parse, got: %v", err)
+	}
+	u, ok := f.Stmts[0].(*ast.Use)
+	if !ok {
+		t.Fatalf("Stmts[0] = %T, want *ast.Use", f.Stmts[0])
+	}
+	if u.Path != "BOSL2/std.scad" {
+		t.Fatalf("use path = %q, want %q", u.Path, "BOSL2/std.scad")
+	}
+}
+
 func TestStmt_ModuleCallWithChildren(t *testing.T) {
 	f, err := Parse("translate([1,0,0]) cube(10);")
 	if err != nil {
