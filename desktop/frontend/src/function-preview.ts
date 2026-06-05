@@ -25,6 +25,7 @@ export interface EntryPoint {
   libPath: string;
   libVar: string;
   doc: string;
+  animated?: boolean;
 }
 
 interface FunctionPreviewCallbacks {

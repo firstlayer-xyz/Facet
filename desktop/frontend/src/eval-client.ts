@@ -29,18 +29,20 @@ export interface FacetSymbol {
 
 let currentController: AbortController | null = null;
 
-interface EvalAuth {
-  url: string;
+export interface EvalAuth {
+  /** Server origin, e.g. "http://127.0.0.1:5173" — combine with an endpoint
+   *  path ("/eval", "/frame") to build a request URL. */
+  origin: string;
   token: string;
 }
 
 let cachedAuth: EvalAuth | null = null;
 
-async function getEvalAuth(): Promise<EvalAuth> {
+export async function getEvalAuth(): Promise<EvalAuth> {
   if (!cachedAuth) {
     const auth = await GetHTTPAuth();
     cachedAuth = {
-      url: `http://127.0.0.1:${auth.port}/eval`,
+      origin: `http://127.0.0.1:${auth.port}`,
       token: auth.token,
     };
   }
@@ -64,6 +66,23 @@ export interface SourceError {
   message: string;
   /** Library source text (for error navigation). */
   source?: string;
+}
+
+/**
+ * Render every error as one located line, e.g. `[main.fct:12] expected ';'`.
+ * Used to hand the AI assistant the full error list — unlike the on-screen
+ * error bar, which only shows the first. Returns '' for an empty list.
+ */
+export function formatSourceErrors(errors: SourceError[]): string {
+  return errors
+    .map((e) => {
+      let loc = '';
+      if (e.file && e.line > 0) loc = `${e.file}:${e.line}`;
+      else if (e.file) loc = e.file;
+      else if (e.line > 0) loc = `line ${e.line}`;
+      return loc ? `[${loc}] ${e.message}` : e.message;
+    })
+    .join('\n');
 }
 
 /** One loaded source file in the eval response (mirrors main.SourceEntry on the Go side). */
@@ -133,7 +152,7 @@ export async function evalRequest(req: EvalRequest): Promise<EvalResponse> {
   currentController = new AbortController();
 
   const auth = await getEvalAuth();
-  const resp = await fetch(auth.url, {
+  const resp = await fetch(`${auth.origin}/eval`, {
     method: 'POST',
     body: JSON.stringify(req),
     signal: currentController.signal,

@@ -124,10 +124,23 @@ func TestAllExamples(t *testing.T) {
 			if err != nil {
 				t.Fatalf("eval %s: %v", name, err)
 			}
-			if len(result.Solids) == 0 {
-				t.Errorf("%s: expected non-empty solids", name)
-			} else {
+			switch {
+			case result.Animation != nil:
+				// Animation examples produce no static solids; render one frame
+				// to verify the closure returns non-empty geometry.
+				solid, err := result.Animation.Frame(1700000000000)
+				if err != nil {
+					t.Fatalf("%s: Animation.Frame: %v", name, err)
+				}
+				if solid.Volume() <= 0 {
+					t.Errorf("%s: animation frame produced empty geometry", name)
+				} else {
+					t.Logf("%s: animation (frame volume=%.2f mm³)", name, solid.Volume())
+				}
+			case len(result.Solids) > 0:
 				t.Logf("%s: %d solids", name, len(result.Solids))
+			default:
+				t.Errorf("%s: expected non-empty solids or an Animation", name)
 			}
 		})
 	}

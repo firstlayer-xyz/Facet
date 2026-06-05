@@ -31,8 +31,10 @@ func (s *EvalService) SetRunRecorder(fn func(runSummary)) {
 
 // HTTPHandler returns the http.HandlerFunc for the /eval endpoint. It
 // decodes the JSON request body, cancels any previous eval, and dispatches
-// to handleEval with a fresh context derived from the HTTP request.
-func (s *EvalService) HTTPHandler() http.HandlerFunc {
+// to handleEval with a fresh context derived from the HTTP request. sessions
+// is the shared Animation session cache, also used by /frame, so an animated
+// entry built here is reused by the playback requests that follow.
+func (s *EvalService) HTTPHandler(sessions *sessionCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -55,6 +57,6 @@ func (s *EvalService) HTTPHandler() http.HandlerFunc {
 		s.mu.Unlock()
 		defer cancel()
 
-		handleEval(ctx, w, req, s.recordRun)
+		handleEval(ctx, w, req, s.recordRun, sessions)
 	}
 }
