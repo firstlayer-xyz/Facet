@@ -102,6 +102,10 @@ func (e *evaluator) resolveOverload(
 }
 
 // newLibEval creates a sub-evaluator scoped to a library's program and globals.
+// opFuncs is rebuilt for the library's source (stdlib + the lib's own operator
+// functions) so a lib body that uses Vec3 + Vec3 or its own custom operators
+// dispatches correctly. libLoadStack is inherited so circular-import detection
+// survives nested method-triggered lib loads.
 func (e *evaluator) newLibEval(lib *libRef) *evaluator {
 	diskPath := e.prog.Resolve(lib.path)
 	return &evaluator{
@@ -111,11 +115,13 @@ func (e *evaluator) newLibEval(lib *libRef) *evaluator {
 		globals:      e.libEvalCache[lib.path],
 		debug:        e.debug,
 		libEvalCache: e.libEvalCache,
+		libLoadStack: e.libLoadStack,
 		file:         diskPath,
 		libSources:   e.libSources,
 		stdFuncs:     e.stdFuncs,
 		stdMethods:   e.stdMethods,
 		structDecls:  buildStructDecls(e.prog, diskPath),
+		opFuncs:      buildOpFuncs(e.prog, diskPath),
 		currentLib:   lib,
 		solidTracks:  e.solidTracks,
 	}
@@ -165,9 +171,12 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 		chainOptionalWrap = true
 	}
 
-	// Methods on Optional outrank user methods.
-	if opt, ok := receiver.(*optionalVal); ok {
-		return e.evalOptionalMethod(mc, opt, argMap)
+	// Optional has no methods. The closed Optional API is the `??` operator,
+	// `== nil` / `!= nil` for presence checks, and `if var x = opt { … }` for
+	// scoped extraction — all three are language-level and don't need a
+	// method surface that could later drift out of sync with the checker.
+	if _, ok := receiver.(*optionalVal); ok {
+		return nil, e.errAt(mc.Pos, "Optional has no methods; use ?? for fallback, == nil / != nil for presence, or `if var x = opt { ... }` to bind the inner value")
 	}
 
 	// dispatch is the original method-lookup body; result is wrapped if
@@ -298,31 +307,3 @@ func (e *evaluator) dispatchMethodCall(
 	}
 }
 
-// evalOptionalMethod handles the closed set of methods on Optional values.
-// In sync with the checker's checkOptionalMethod — both must agree on which
-// method names exist and what shape they take.
-func (e *evaluator) evalOptionalMethod(mc *parser.MethodCallExpr, opt *optionalVal, argMap map[string]value) (value, error) {
-	switch mc.Method {
-	case "IsSome":
-		if len(argMap) != 0 {
-			return nil, e.errAt(mc.Pos, "%s.IsSome() takes no arguments, got %d", typeName(opt), len(argMap))
-		}
-		return opt.present, nil
-	case "IsNone":
-		if len(argMap) != 0 {
-			return nil, e.errAt(mc.Pos, "%s.IsNone() takes no arguments, got %d", typeName(opt), len(argMap))
-		}
-		return !opt.present, nil
-	case "Or":
-		def, ok := argMap["default"]
-		if !ok || len(argMap) != 1 {
-			return nil, e.errAt(mc.Pos, "%s.Or() requires a single 'default:' argument", typeName(opt))
-		}
-		if opt.present {
-			return opt.inner, nil
-		}
-		return def, nil
-	}
-	return nil, e.errAt(mc.Pos, "%s has no method %q (try .IsSome(), .IsNone(), or .Or(default:))",
-		typeName(opt), mc.Method)
-}

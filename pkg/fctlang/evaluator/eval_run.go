@@ -114,7 +114,11 @@ func (e *evaluator) run() (*EvalResult, error) {
 	args := make(map[string]value)
 	for _, p := range entryFn.Params {
 		if ov, ok := e.overrides[p.Name]; ok {
-			args[p.Name] = ov
+			// Slider overrides arrive as JSON-typed primitives (float64 for
+			// numbers, string, etc.). Coerce them to the param's declared
+			// type so a Number → Length param doesn't smuggle a bare float
+			// into the body where the checker expects a length.
+			args[p.Name] = e.coerceToType(p.Type, ov, e.globals)
 		} else if p.Default != nil {
 			v, err := e.evalExpr(p.Default, e.globals)
 			if err != nil {

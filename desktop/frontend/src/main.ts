@@ -51,7 +51,7 @@ import {
   getSources, getActiveTabValue, isActiveTabReadOnly, assistantCreateFile, getActiveLabel, addRestoredTab, renderTabs,
   isDebugStepping,
   setOnSourceChange, setOnDebugFilesChange, setOnDebugExit, setOnEntryPoints,
-  setEntryOverrides, refreshEditorUI, showError,
+  setEntryOverrides, refreshEditorUI, showError, currentEvalErrorsText,
 } from './app';
 import { resolveThemePalette, resolveUiTheme, resolveEditorTheme, applyUIPalette } from './themes';
 
@@ -125,7 +125,7 @@ let editorRef: EditorHandle | null = null;
 const assistantPanel = new AssistantPanel(
   drawerStack,
   () => editorRef?.getContent() ?? '',
-  () => errorDiv.textContent ?? '',
+  () => currentEvalErrorsText(),
   () => ({ path: getActiveTabValue(), readOnly: isActiveTabReadOnly() }),
   (newCode: string, searchFor?: string) => {
     if (editorRef) {

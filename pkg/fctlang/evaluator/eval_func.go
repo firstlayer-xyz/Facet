@@ -129,7 +129,15 @@ func (e *evaluator) evalFunction(fn *parser.Function, args map[string]value) (va
 		locals[k] = v
 	}
 	for _, param := range fn.Params {
-		v := unwrap(args[param.Name])
+		bound, ok := args[param.Name]
+		if !ok {
+			// Defence in depth: callers (resolveOverload, run) always pass a
+			// complete arg map. A missing entry here is an evaluator-internal
+			// bug — surface it loudly rather than binding nil and crashing
+			// further down with a less-actionable error.
+			return nil, e.errAt(fn.Pos, "%s() missing internal argument %q (evaluator bug — please report)", fn.Name, param.Name)
+		}
+		v := unwrap(bound)
 		if param.Constraint != nil {
 			if err := e.validateConstraint(param.Name, param.Constraint, v, locals); err != nil {
 				return nil, err
@@ -194,6 +202,23 @@ func (e *evaluator) callFunctionVal(fv *functionVal, args map[string]value) (val
 	if len(args) != len(fv.params) {
 		return nil, fmt.Errorf("function expects %d arguments, got %d", len(fv.params), len(args))
 	}
+	// Validate arg names match declared parameters before any coercion runs.
+	paramNames := make(map[string]bool, len(fv.params))
+	for _, p := range fv.params {
+		paramNames[p.Name] = true
+	}
+	for name := range args {
+		if !paramNames[name] {
+			return nil, fmt.Errorf("function has no parameter named %q", name)
+		}
+	}
+	// Coerce each arg to its declared parameter type — same rule as
+	// evalFunction / evalMethodFunction. Without this a lambda declared
+	// `fn(x Number)` called with a Length value would see a Length in the
+	// body and any numeric op would fail with a confusing type error.
+	if err := e.coerceArgs("lambda", fv.params, args, e.globals); err != nil {
+		return nil, err
+	}
 	scope := make(map[string]value, len(e.globals)+len(fv.captured)+len(fv.params))
 	for k, v := range e.globals {
 		scope[k] = v
@@ -201,15 +226,7 @@ func (e *evaluator) callFunctionVal(fv *functionVal, args map[string]value) (val
 	for k, v := range fv.captured {
 		scope[k] = v
 	}
-	// Validate and bind args by name
-	paramNames := make(map[string]bool, len(fv.params))
-	for _, p := range fv.params {
-		paramNames[p.Name] = true
-	}
 	for name, val := range args {
-		if !paramNames[name] {
-			return nil, fmt.Errorf("function has no parameter named %q", name)
-		}
 		scope[name] = val
 	}
 	return e.execBody(fv.body, fv.retType, scope)

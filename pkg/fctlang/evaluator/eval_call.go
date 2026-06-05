@@ -9,13 +9,17 @@ import (
 )
 
 // evalNamedArgs evaluates call arguments and builds a map[string]value keyed by
-// the NamedArg name. All arguments must be named (e.g. `name: value`).
+// the NamedArg name. All arguments must be named (e.g. `name: value`); a
+// repeated name is an error rather than a silent last-wins overwrite.
 func (e *evaluator) evalNamedArgs(args []parser.Expr, locals map[string]value) (map[string]value, error) {
 	result := make(map[string]value, len(args))
 	for _, argExpr := range args {
 		na, ok := argExpr.(*parser.NamedArg)
 		if !ok {
 			return nil, fmt.Errorf("arguments must be named (e.g. name: value)")
+		}
+		if _, dup := result[na.Name]; dup {
+			return nil, fmt.Errorf("duplicate argument %q", na.Name)
 		}
 		v, err := e.evalExpr(na.Value, locals)
 		if err != nil {

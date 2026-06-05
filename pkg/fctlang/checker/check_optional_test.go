@@ -22,34 +22,22 @@ fn Main() Number { return Maybe() }
 `, "returns Number?")
 }
 
-// TestCheckOptionalOrReturnsInner confirms .Or(default:) yields the inner
-// type, so the result can be used where the inner type is required.
-func TestCheckOptionalOrReturnsInner(t *testing.T) {
+// TestCheckOptionalFallbackReturnsInner confirms `opt ?? default` yields
+// the inner type, so the result can be used where the inner type is required.
+func TestCheckOptionalFallbackReturnsInner(t *testing.T) {
 	expectNoErrors(t, `
 fn Maybe() Number? { return 5 }
-fn Main() Number { return Maybe().Or(default: 0) }
+fn Main() Number { return Maybe() ?? 0 }
 `)
 }
 
-// TestCheckOptionalOrDefaultTypeMustMatch confirms the default's type is
-// checked against the inner type.
-func TestCheckOptionalOrDefaultTypeMustMatch(t *testing.T) {
+// TestCheckOptionalFallbackDefaultTypeMustMatch confirms the default's type
+// is checked against the inner type.
+func TestCheckOptionalFallbackDefaultTypeMustMatch(t *testing.T) {
 	expectError(t, `
 fn Maybe() Number? { return 5 }
-fn Main() Number { return Maybe().Or(default: "hi") }
-`, "Or() default must be Number")
-}
-
-// TestCheckOptionalIsSomeReturnsBool confirms .IsSome() and .IsNone()
-// return Bool — usable in if conditions.
-func TestCheckOptionalIsSomeReturnsBool(t *testing.T) {
-	expectNoErrors(t, `
-fn Maybe() Number? { return 5 }
-fn Main() Number {
-    if Maybe().IsSome() { return 1 }
-    return 0
-}
-`)
+fn Main() Number { return Maybe() ?? "hi" }
+`, "fallback")
 }
 
 // TestCheckOptionalEqualsNil confirms `opt == nil` typechecks as Bool.
@@ -63,13 +51,14 @@ fn Main() Number {
 `)
 }
 
-// TestCheckOptionalRejectsUnknownMethod confirms a typo on an Optional
-// surfaces the available-methods hint.
-func TestCheckOptionalRejectsUnknownMethod(t *testing.T) {
+// TestCheckOptionalHasNoMethods locks in that Optional values have no
+// method surface — every method call on a T? is a checker error pointing
+// the user at ??, ==/!= nil, or `if var x = opt`.
+func TestCheckOptionalHasNoMethods(t *testing.T) {
 	expectError(t, `
 fn Maybe() Number? { return 5 }
 fn Main() Number { return Maybe().Unwrap() }
-`, "no method")
+`, "no methods")
 }
 
 // (Double-nesting `Number??` is rejected at the parser layer — see

@@ -241,7 +241,7 @@ func (p *parser) parseBodyStmts(isForYield bool, context string) ([]Stmt, error)
 		if !isForYield {
 			isStmt = isStmt || p.cur.Type == TokenReturn
 		} else if p.cur.Type == TokenReturn {
-			return nil, p.errorf("return is not allowed inside for-yield; use yield instead")
+			return nil, p.errorf("for-yield can only contribute via 'yield'; to exit the enclosing function, extract the loop into its own function and return from there")
 		}
 
 		if isStmt {
