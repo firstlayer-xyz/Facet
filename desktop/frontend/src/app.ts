@@ -10,7 +10,7 @@ import { DocsPanel } from './docs';
 import { patchSettings } from './settings';
 import type { SavedTab } from './settings';
 import { reportError } from './toast';
-import { evalRequest, cancelEval } from './eval-client';
+import { evalRequest, cancelEval, formatSourceErrors } from './eval-client';
 import type { EvalResponse, EvalResult, SourceEntry, SourceError } from './eval-client';
 import { decodeBinaryMesh } from './mesh-decode';
 import type { BinaryMeshMeta } from './mesh-decode';
@@ -1026,6 +1026,13 @@ function clearError() {
   errorDiv.textContent = '';
   errorDiv.onclick = null;
   errorDiv.style.cursor = '';
+}
+
+// currentEvalErrorsText returns every error from the most recent evaluation,
+// one located line each. The AI assistant sends this so it sees the full list,
+// not just the first error the on-screen bar displays. '' when there are none.
+export function currentEvalErrorsText(): string {
+  return formatSourceErrors(evalStore.current()?.errors ?? []);
 }
 
 function currentEvalParams() {
