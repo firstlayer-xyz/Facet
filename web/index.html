@@ -78,6 +78,18 @@
       padding: 5px 8px;
       font-size: 13px;
     }
+    #play-btn {
+      width: 100%;
+      margin-top: 8px;
+      background: #3a7bd5;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #play-btn:hover { background: #4a8be5; }
     #params-section {
       padding: 10px 14px;
       flex: 1;
@@ -168,6 +180,7 @@
   <div id="entry-section">
     <div class="section-label">Entry Point</div>
     <select id="entry-select"><option>–</option></select>
+    <button id="play-btn" style="display:none">▶ Play</button>
   </div>
 
   <div id="params-section">
@@ -680,6 +693,7 @@ async function doParse() {
     currentEntryPoints = JSON.parse(r.entryPoints || '[]');
     rebuildEntrySelector();
     rebuildParams();
+    updatePlayUI();
     scheduleEval();
   } catch (e) {
     console.error('doParse failed:', e);
@@ -699,7 +713,12 @@ function rebuildEntrySelector() {
   else if (currentEntryPoints.some(e => e.name === 'Main')) entrySelect.value = 'Main';
 }
 
-entrySelect.addEventListener('change', () => { rebuildParams(); scheduleEval(); });
+entrySelect.addEventListener('change', () => {
+  setPlaying(false); // switching entries stops any in-progress playback
+  rebuildParams();
+  updatePlayUI();
+  scheduleEval();
+});
 
 function currentEntry() {
   return currentEntryPoints.find(e => e.name === entrySelect.value);
@@ -855,30 +874,31 @@ async function runEval() {
 }
 
 // ── Binary response parser ────────────────────────────────────────────────────
-function handleBinaryResponse(u8) {
+
+// Split the [4B LE header-len][JSON header][binary] frame into its header
+// object and binary payload.
+function parseBinaryResponse(u8) {
   const dv         = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
   const headerLen  = dv.getUint32(0, true);
   const headerJSON = new TextDecoder().decode(u8.subarray(4, 4 + headerLen));
   const header     = JSON.parse(headerJSON);
   const bin        = u8.subarray(4 + headerLen);
+  return { header, bin };
+}
 
-  // Update entry points from response (server may have found new ones)
-  if (header.entryPoints && header.entryPoints.length > 0) {
-    const prev = entrySelect.value;
-    currentEntryPoints = header.entryPoints;
-    rebuildEntrySelector();
-    if (header.entryPoints.some(e => e.name === prev)) entrySelect.value = prev;
-    rebuildParams();
-  }
-
+// Decode the mesh from a parsed response and render it. Returns false if the
+// response carried source/eval errors (so a playback loop can pause), true
+// otherwise. Does NOT touch entry points — that's eval-only (see
+// handleBinaryResponse), so it can run on every animation frame cheaply.
+function renderFromResponse(header, bin) {
   if (header.errors && header.errors.length > 0) {
     showError(header.errors.map(e => e.message || JSON.stringify(e)).join('\n'));
     setStatus('Error');
-    return;
+    return false;
   }
   showError(null);
 
-  if (!header.mesh) { setStatus('No geometry'); return; }
+  if (!header.mesh) { setStatus('No geometry'); return true; }
 
   const mesh  = header.mesh;
   const stats = header.stats;
@@ -916,6 +936,87 @@ function handleBinaryResponse(u8) {
     }
   } else {
     setStatus('No geometry');
+  }
+  return true;
+}
+
+function handleBinaryResponse(u8) {
+  const { header, bin } = parseBinaryResponse(u8);
+
+  // Update entry points from response (server may have found new ones)
+  if (header.entryPoints && header.entryPoints.length > 0) {
+    const prev = entrySelect.value;
+    currentEntryPoints = header.entryPoints;
+    rebuildEntrySelector();
+    if (header.entryPoints.some(e => e.name === prev)) entrySelect.value = prev;
+    rebuildParams();
+    updatePlayUI();
+  }
+
+  renderFromResponse(header, bin);
+}
+
+// ── Animation playback ──────────────────────────────────────────────────────
+// When the active entry returns an Animation, the wasm exposes facetFrame to
+// render one frame at a given time. We drive it from a requestAnimationFrame
+// loop with frame-dropping (skip a tick while a frame is still in flight) — the
+// browser analog of the desktop /frame playback loop.
+const playBtn = document.getElementById('play-btn');
+let playing = false;
+let frameInFlight = false;
+
+function activeEntryIsAnimated() {
+  const ep = currentEntry();
+  return !!(ep && ep.animated);
+}
+
+function updatePlayUI() {
+  if (activeEntryIsAnimated()) {
+    playBtn.style.display = '';
+    playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+  } else {
+    playBtn.style.display = 'none';
+    if (playing) setPlaying(false);
+  }
+}
+
+function setPlaying(p) {
+  if (playing === p) return;
+  playing = p;
+  updatePlayUI();
+  if (playing) requestAnimationFrame(playbackTick);
+}
+
+playBtn.addEventListener('click', () => setPlaying(!playing));
+
+function playbackTick() {
+  if (!playing) return;
+  if (!frameInFlight) void issueFrame(Date.now());
+  requestAnimationFrame(playbackTick);
+}
+
+// Render one animation frame for the wall-clock time (epoch ms; the model
+// applies any timezone offset itself, matching the desktop).
+async function issueFrame(timeMs) {
+  if (!wasmReady || typeof window.facetFrame !== 'function') return;
+  const entry = entrySelect.value || 'Main';
+  frameInFlight = true;
+  try {
+    const overrides = JSON.stringify(paramValues);
+    const result = await window.facetFrame(currentSource, entry, overrides, timeMs);
+    if (result instanceof Uint8Array) {
+      const { header, bin } = parseBinaryResponse(result);
+      if (!renderFromResponse(header, bin)) setPlaying(false); // pause on error
+    } else {
+      showError(result && result.error ? result.error : 'Frame error');
+      setPlaying(false);
+    }
+  } catch (e) {
+    console.error('frame request failed:', e);
+    showError(String(e));
+    setPlaying(false);
+  } finally {
+    frameInFlight = false;
   }
 }
 

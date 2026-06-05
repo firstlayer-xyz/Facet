@@ -17,37 +17,13 @@ import (
 	"time"
 
 	"facet/pkg/fctlang/checker"
+	"facet/pkg/fctlang/entrypoints"
 	"facet/pkg/fctlang/evaluator"
 	"facet/pkg/fctlang/loader"
 	"facet/pkg/fctlang/parser"
 	"facet/pkg/manifold"
 	"facet/share/examples"
 )
-
-// ── Parameter / entry-point types ─────────
-
-type ParamConstraint struct {
-	Kind      string        `json:"kind"`
-	Min       interface{}   `json:"min,omitempty"`
-	Max       interface{}   `json:"max,omitempty"`
-	Step      interface{}   `json:"step,omitempty"`
-	Exclusive bool          `json:"exclusive,omitempty"`
-	Values    []interface{} `json:"values,omitempty"`
-}
-
-type ParamEntry struct {
-	Name       string           `json:"name"`
-	Type       string           `json:"type"`
-	HasDefault bool             `json:"hasDefault"`
-	Default    interface{}      `json:"default"`
-	Unit       string           `json:"unit,omitempty"`
-	Constraint *ParamConstraint `json:"constraint,omitempty"`
-}
-
-type EntryPoint struct {
-	Name   string       `json:"name"`
-	Params []ParamEntry `json:"params"`
-}
 
 type blobRef struct {
 	Offset int `json:"offset"`
@@ -67,10 +43,10 @@ type meshMeta struct {
 }
 
 type evalResponseHeader struct {
-	Errors      []parser.SourceError  `json:"errors,omitempty"`
-	EntryPoints []EntryPoint          `json:"entryPoints,omitempty"`
-	Mesh        *meshMeta             `json:"mesh,omitempty"`
-	Stats       *evaluator.ModelStats `json:"stats,omitempty"`
+	Errors      []parser.SourceError     `json:"errors,omitempty"`
+	EntryPoints []entrypoints.EntryPoint `json:"entryPoints,omitempty"`
+	Mesh        *meshMeta                `json:"mesh,omitempty"`
+	Stats       *evaluator.ModelStats    `json:"stats,omitempty"`
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -78,6 +54,7 @@ type evalResponseHeader struct {
 func main() {
 	js.Global().Set("facetParse", js.FuncOf(jsParse))
 	js.Global().Set("facetEval", js.FuncOf(jsEval))
+	js.Global().Set("facetFrame", js.FuncOf(jsFrame))
 	js.Global().Set("facetExamples", js.FuncOf(jsExamples))
 	js.Global().Set("facetExample", js.FuncOf(jsExample))
 	// Block forever — WASM runtime must stay alive.
@@ -150,7 +127,7 @@ func jsParse(this js.Value, args []js.Value) interface{} {
 			resolve.Invoke(jsErrorObj(checked.Errors[0].Message))
 			return
 		}
-		eps := buildEntryPoints(checked.Prog, checked.InferredReturnTypes)
+		eps := entrypoints.Build(checked.Prog, checked.InferredReturnTypes)
 		epsJSON, _ := json.Marshal(eps)
 		result := js.Global().Get("Object").New()
 		result.Set("ok", true)
@@ -172,21 +149,12 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 	overridesJSON := args[2].String()
 
 	return newPromise(func(resolve js.Value) {
-		defer func() {
-			if r := recover(); r != nil {
-				msg := fmt.Sprintf("panic in facetEval: %v\n%s", r, debug.Stack())
-				fmt.Println(msg)
-				bin, _ := packErrorResponse(msg)
-				resolve.Invoke(bytesToU8(bin))
-			}
-		}()
+		defer recoverIntoPackedResolve(resolve, "facetEval")
 
-		var overrides map[string]interface{}
-		if overridesJSON != "" && overridesJSON != "{}" {
-			if err := json.Unmarshal([]byte(overridesJSON), &overrides); err != nil {
-				resolve.Invoke(jsErrorObj(fmt.Sprintf("invalid overrides JSON: %v", err)))
-				return
-			}
+		overrides, oerr := parseOverrides(overridesJSON)
+		if oerr != nil {
+			resolve.Invoke(jsErrorObj(oerr.Error()))
+			return
 		}
 
 		ctx := context.Background()
@@ -198,7 +166,7 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 		}
 
 		checked := checker.Check(prog)
-		eps := buildEntryPoints(checked.Prog, checked.InferredReturnTypes)
+		eps := entrypoints.Build(checked.Prog, checked.InferredReturnTypes)
 		header := evalResponseHeader{EntryPoints: eps}
 
 		if len(checked.Errors) > 0 {
@@ -216,8 +184,12 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 			return
 		}
 
-		// An Animation entry has no static solids; the web preview can't play it,
-		// but render a single-frame snapshot so the canvas isn't blank.
+		// An Animation entry has no static solids. Prime the retained session so
+		// the playback facetFrame calls that follow reuse this handle, then render
+		// a single-frame snapshot at the current time so the canvas isn't blank.
+		if result.Animation != nil {
+			animSession.store(source, entryName, overridesJSON, result.Animation)
+		}
 		solids, err := result.StaticSolids(float64(time.Now().UnixMilli()))
 		if err != nil {
 			header.Errors = append(header.Errors, parser.SourceError{Message: err.Error()})
@@ -239,6 +211,147 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 		}
 		resolve.Invoke(bytesToU8(bin))
 	})
+}
+
+// ── Animation playback ──────────────────────────────────────────────────────
+
+// webSession retains the most recently built Animation so each frame reuses its
+// invariant setup (globals, `var base = Expensive()` captures) instead of
+// re-running Load → Check → Eval. The browser runs the wasm single-threaded with
+// at most one frame in flight, so no locking is needed. A single entry bounds
+// memory; a changed key — edited source, different entry, or new overrides —
+// evicts and rebuilds.
+type webSession struct {
+	key  string
+	anim *evaluator.Animation
+}
+
+// animSession is the process-wide retained animation. A package global is safe
+// here because the wasm event loop serializes every JS→Go call.
+var animSession webSession
+
+// webSessionKey length-prefixes each field so the concatenation is injective: a
+// separator byte appearing inside the source can't forge a colliding key.
+func webSessionKey(source, entry, overridesJSON string) string {
+	var b strings.Builder
+	for _, f := range []string{source, entry, overridesJSON} {
+		fmt.Fprintf(&b, "%d:", len(f))
+		b.WriteString(f)
+	}
+	return b.String()
+}
+
+func (s *webSession) store(source, entry, overridesJSON string, a *evaluator.Animation) {
+	s.key = webSessionKey(source, entry, overridesJSON)
+	s.anim = a
+}
+
+// getOrBuild returns the retained Animation for these inputs, rebuilding via
+// Load → Check → Eval when the key changes. Errors if the entry is not an
+// Animation.
+func (s *webSession) getOrBuild(source, entry, overridesJSON string) (*evaluator.Animation, error) {
+	if s.anim != nil && s.key == webSessionKey(source, entry, overridesJSON) {
+		return s.anim, nil
+	}
+	overrides, err := parseOverrides(overridesJSON)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	prog, err := loader.Load(ctx, source, "model.fct", parser.SourceUser, "", wasmLoaderOpts())
+	if err != nil {
+		return nil, err
+	}
+	checked := checker.Check(prog)
+	if len(checked.Errors) > 0 {
+		return nil, fmt.Errorf("%s", checked.Errors[0].Message)
+	}
+	result, err := evaluator.Eval(ctx, prog, "model.fct", overrides, entry)
+	if err != nil {
+		return nil, err
+	}
+	if result.Animation == nil {
+		return nil, fmt.Errorf("entry %q is not an Animation", entry)
+	}
+	s.store(source, entry, overridesJSON, result.Animation)
+	return result.Animation, nil
+}
+
+// jsFrame renders one frame of an Animation entry at timeMs, reusing the
+// retained session so only the frame closure re-runs.
+//
+// JS signature: facetFrame(source, entryName, overridesJSON, timeMs) → Promise<Uint8Array | {ok:false, error:string}>
+func jsFrame(this js.Value, args []js.Value) interface{} {
+	if len(args) < 4 {
+		return resolvedPromise(jsErrorObj("facetFrame: expected (source, entryName, overridesJSON, timeMs)"))
+	}
+	source := args[0].String()
+	entryName := args[1].String()
+	overridesJSON := args[2].String()
+	timeMs := args[3].Float()
+
+	return newPromise(func(resolve js.Value) {
+		defer recoverIntoPackedResolve(resolve, "facetFrame")
+
+		anim, err := animSession.getOrBuild(source, entryName, overridesJSON)
+		if err != nil {
+			bin, _ := packErrorResponse(err.Error())
+			resolve.Invoke(bytesToU8(bin))
+			return
+		}
+		solid, err := anim.Frame(timeMs)
+		if err != nil {
+			bin, _ := packErrorResponse(err.Error())
+			resolve.Invoke(bytesToU8(bin))
+			return
+		}
+		bin, err := packSolidFrame(solid)
+		if err != nil {
+			resolve.Invoke(jsErrorObj(err.Error()))
+			return
+		}
+		resolve.Invoke(bytesToU8(bin))
+	})
+}
+
+// packSolidFrame builds the binary response (mesh + per-frame stats) for a
+// single Solid — the shape the viewer expects from a frame render.
+func packSolidFrame(solid *manifold.Solid) ([]byte, error) {
+	dm := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
+	var binData []byte
+	meta, binData := appendMeshBinary(binData, dm)
+	stats := evaluator.ModelStats{
+		Triangles:   dm.IndexCount / 3,
+		Vertices:    dm.VertexCount,
+		Volume:      solid.Volume(),
+		SurfaceArea: solid.SurfaceArea(),
+	}
+	return packResponse(evalResponseHeader{Mesh: meta, Stats: &stats}, binData)
+}
+
+// parseOverrides decodes the JSON overrides string shared by eval and frame
+// requests. An empty or "{}" payload yields a nil map (no overrides).
+func parseOverrides(overridesJSON string) (map[string]interface{}, error) {
+	if overridesJSON == "" || overridesJSON == "{}" {
+		return nil, nil
+	}
+	var overrides map[string]interface{}
+	if err := json.Unmarshal([]byte(overridesJSON), &overrides); err != nil {
+		return nil, fmt.Errorf("invalid overrides JSON: %v", err)
+	}
+	return overrides, nil
+}
+
+// recoverIntoPackedResolve turns a goroutine panic into a packed binary error
+// response on the Promise, so a panic surfaces as a normal eval/frame error
+// instead of leaving the Promise pending forever.
+func recoverIntoPackedResolve(resolve js.Value, fnName string) {
+	if r := recover(); r != nil {
+		msg := fmt.Sprintf("panic in %s: %v\n%s", fnName, r, debug.Stack())
+		fmt.Println(msg)
+		bin, _ := packErrorResponse(msg)
+		resolve.Invoke(bytesToU8(bin))
+	}
 }
 
 // jsExamples returns a JSON array of bundled example names, with Tutorial.fct
@@ -464,166 +577,6 @@ func jsErrorObj(msg string) js.Value {
 	return result
 }
 
-// ── Entry-point extraction ─────────────────
-
-func buildEntryPoints(prog loader.Program, inferredReturnTypes map[string]string) []EntryPoint {
-	var out []EntryPoint
-	for _, src := range prog.Sources {
-		for _, fn := range src.Functions() {
-			if !isEntryPoint(fn, inferredReturnTypes) {
-				continue
-			}
-			params := make([]ParamEntry, 0, len(fn.Params))
-			for _, p := range fn.Params {
-				pe := ParamEntry{
-					Name:       p.Name,
-					Type:       p.Type,
-					HasDefault: p.Default != nil,
-				}
-				if p.Default != nil {
-					pe.Default, _ = literalValue(p.Default)
-				}
-				pe.Constraint = extractConstraint(p.Constraint)
-				pe.Unit = constraintUnit(p.Constraint)
-				if pe.Unit == "" {
-					pe.Unit = defaultUnit(p.Default)
-				}
-				params = append(params, pe)
-			}
-			out = append(out, EntryPoint{Name: fn.Name, Params: params})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		a, b := out[i].Name, out[j].Name
-		if a == b {
-			return false
-		}
-		if a == "Main" {
-			return true
-		}
-		if b == "Main" {
-			return false
-		}
-		return a < b
-	})
-	return out
-}
-
-func isEntryPoint(fn *parser.Function, inferredReturnTypes map[string]string) bool {
-	if fn.ReceiverType != "" || len(fn.Name) == 0 {
-		return false
-	}
-	if fn.Name[0] < 'A' || fn.Name[0] > 'Z' {
-		return false
-	}
-	inferred := inferredReturnTypes[fn.Name]
-	if fn.Name != "Main" && fn.ReturnType != "Solid" && inferred != "Solid" {
-		return false
-	}
-	for _, p := range fn.Params {
-		if p.Default == nil {
-			return false
-		}
-	}
-	return true
-}
-
-func extractConstraint(c parser.Expr) *ParamConstraint {
-	switch c := c.(type) {
-	case *parser.ConstrainedRange:
-		pc := &ParamConstraint{Kind: "range", Exclusive: c.Range.Exclusive}
-		if min, ok := literalNumber(c.Range.Start); ok {
-			pc.Min = min
-		}
-		if max, ok := literalNumber(c.Range.End); ok {
-			pc.Max = max
-		}
-		if c.Range.Step != nil {
-			if step, ok := literalNumber(c.Range.Step); ok {
-				pc.Step = step
-			}
-		}
-		return pc
-	case *parser.RangeExpr:
-		pc := &ParamConstraint{Kind: "range", Exclusive: c.Exclusive}
-		if min, ok := literalValue(c.Start); ok {
-			pc.Min = min
-		}
-		if max, ok := literalValue(c.End); ok {
-			pc.Max = max
-		}
-		if c.Step != nil {
-			if step, ok := literalValue(c.Step); ok {
-				pc.Step = step
-			}
-		}
-		return pc
-	case *parser.ArrayLitExpr:
-		if len(c.Elems) == 0 {
-			return &ParamConstraint{Kind: "free"}
-		}
-		pc := &ParamConstraint{Kind: "enum"}
-		for _, elem := range c.Elems {
-			if v, ok := literalValue(elem); ok {
-				pc.Values = append(pc.Values, v)
-			}
-		}
-		return pc
-	}
-	return nil
-}
-
-func constraintUnit(c parser.Expr) string {
-	switch c := c.(type) {
-	case *parser.ConstrainedRange:
-		return c.Unit
-	case *parser.RangeExpr:
-		if u := exprUnit(c.End); u != "" {
-			return u
-		}
-		return exprUnit(c.Start)
-	}
-	return ""
-}
-
-func defaultUnit(e parser.Expr) string {
-	if u, ok := e.(*parser.UnitExpr); ok {
-		return u.Unit
-	}
-	return ""
-}
-
-func literalNumber(e parser.Expr) (float64, bool) {
-	switch v := e.(type) {
-	case *parser.NumberLit:
-		return v.Value, true
-	case *parser.UnitExpr:
-		if num, ok := v.Expr.(*parser.NumberLit); ok {
-			return num.Value * v.Factor, true
-		}
-	}
-	return 0, false
-}
-
-func literalValue(e parser.Expr) (interface{}, bool) {
-	switch v := e.(type) {
-	case *parser.NumberLit:
-		return v.Value, true
-	case *parser.UnitExpr:
-		if num, ok := v.Expr.(*parser.NumberLit); ok {
-			return num.Value * v.Factor, true
-		}
-	case *parser.StringLit:
-		return v.Value, true
-	case *parser.BoolLit:
-		return v.Value, true
-	}
-	return nil, false
-}
-
-func exprUnit(e parser.Expr) string {
-	if u, ok := e.(*parser.UnitExpr); ok {
-		return u.Unit
-	}
-	return ""
-}
+// Entry-point extraction lives in pkg/fctlang/entrypoints, shared with the
+// desktop app so both detect entries (including Animation) and present
+// parameters identically.
