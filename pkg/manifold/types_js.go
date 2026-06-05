@@ -11,12 +11,14 @@ import (
 // Solid wraps a JS-side manifold object by integer ID.
 type Solid struct {
 	id      int
+	memSize uint64 // C++ footprint registered with the GC via runtime.ExternalAlloc
 	FaceMap map[uint32]FaceInfo
 }
 
 // Sketch wraps a JS-side CrossSection object by integer ID.
 type Sketch struct {
-	id int
+	id      int
+	memSize uint64
 }
 
 // Mesh holds extracted triangle mesh data with Go typed slices.
@@ -59,15 +61,25 @@ type ExternalMemory interface {
 	ExternalMemSize() int
 }
 
-// ExternalMemSize returns 0 in WASM mode (memory managed by JS GC).
-func (s *Solid) ExternalMemSize() int { return 0 }
+// ExternalMemSize reports the approximate C++-side footprint registered with
+// the Go GC. The wasm geometry lives in the separate facet_cxx module's linear
+// memory, invisible to Go's heap accounting, so each object queries its size at
+// creation and reports it via runtime.ExternalAlloc; that lets the GC pace
+// collection against the real off-heap growth and free C++ memory promptly
+// (otherwise sustained per-frame solid creation during animation playback never
+// triggers a GC and native memory climbs without bound).
+func (s *Solid) ExternalMemSize() int { return int(s.memSize) }
 
-// ExternalMemSize returns 0 in WASM mode.
-func (sk *Sketch) ExternalMemSize() int { return 0 }
+func (sk *Sketch) ExternalMemSize() int { return int(sk.memSize) }
 
 func newSolid(id int) *Solid {
 	s := &Solid{id: id}
+	if id != 0 { // id 0 is a null handle (e.g. an empty boolean result)
+		s.memSize = uint64(js.Global().Call("_mf_solid_size", id).Float())
+		runtime.ExternalAlloc(s.memSize)
+	}
 	runtime.SetFinalizer(s, func(s *Solid) {
+		runtime.ExternalFree(s.memSize)
 		js.Global().Call("_mf_solid_free", s.id)
 	})
 	return s
@@ -75,7 +87,12 @@ func newSolid(id int) *Solid {
 
 func newSketch(id int) *Sketch {
 	sk := &Sketch{id: id}
+	if id != 0 {
+		sk.memSize = uint64(js.Global().Call("_mf_sketch_size", id).Float())
+		runtime.ExternalAlloc(sk.memSize)
+	}
 	runtime.SetFinalizer(sk, func(sk *Sketch) {
+		runtime.ExternalFree(sk.memSize)
 		js.Global().Call("_mf_sketch_free", sk.id)
 	})
 	return sk

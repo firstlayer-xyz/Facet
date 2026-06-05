@@ -320,12 +320,7 @@ func packSolidFrame(solid *manifold.Solid) ([]byte, error) {
 	dm := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
 	var binData []byte
 	meta, binData := appendMeshBinary(binData, dm)
-	stats := evaluator.ModelStats{
-		Triangles:   dm.IndexCount / 3,
-		Vertices:    dm.VertexCount,
-		Volume:      solid.Volume(),
-		SurfaceArea: solid.SurfaceArea(),
-	}
+	stats := evaluator.SolidFrameStats(solid, dm)
 	return packResponse(evalResponseHeader{Mesh: meta, Stats: &stats}, binData)
 }
 

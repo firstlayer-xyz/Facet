@@ -199,6 +199,14 @@ void facet_bounding_box(ManifoldPtr* m,
                         double* max_x, double* max_y, double* max_z);
 int facet_num_components(ManifoldPtr* m);
 
+// facet_solid_size / facet_sketch_size return the approximate Go-side memory
+// footprint in bytes — the same accounting the native build embeds in
+// FacetSolidRet.size / FacetSketchRet.size. The wasm build, which has no return
+// struct to carry it, queries these per object so Go's GC can track the
+// off-heap (C++) geometry via runtime.ExternalAlloc.
+size_t facet_solid_size(ManifoldPtr* m);
+size_t facet_sketch_size(ManifoldCrossSection* cs);
+
 // ---------------------------------------------------------------------------
 // 2D Measurements
 // ---------------------------------------------------------------------------

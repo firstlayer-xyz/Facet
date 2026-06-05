@@ -151,12 +151,29 @@ type DebugResult struct {
 
 // ModelStats holds computed model statistics from evaluation.
 type ModelStats struct {
-	Triangles   int     `json:"triangles"`
-	Vertices    int     `json:"vertices"`
-	Volume      float64 `json:"volume"`      // mm³
-	SurfaceArea float64 `json:"surfaceArea"` // mm²
-	BBoxMin     [3]float64 `json:"bboxMin"`  // [x, y, z] min corner in mm
-	BBoxMax     [3]float64 `json:"bboxMax"`  // [x, y, z] max corner in mm
+	Triangles   int        `json:"triangles"`
+	Vertices    int        `json:"vertices"`
+	Volume      float64    `json:"volume"`      // mm³
+	SurfaceArea float64    `json:"surfaceArea"` // mm²
+	BBoxMin     [3]float64 `json:"bboxMin"`     // [x, y, z] min corner in mm
+	BBoxMax     [3]float64 `json:"bboxMax"`     // [x, y, z] max corner in mm
+}
+
+// SolidFrameStats builds the ModelStats for a single rendered solid — one
+// animation frame, or any one-solid render. Triangle/vertex counts come from
+// the already-extracted display mesh; volume, surface area, and the bounding
+// box from the solid itself. Shared by the desktop /eval and /frame handlers
+// and the wasm preview so every per-solid frame reports stats identically
+// (including the bounding box, which the wasm path previously omitted).
+func SolidFrameStats(solid *manifold.Solid, mesh *manifold.DisplayMesh) ModelStats {
+	s := ModelStats{
+		Triangles:   mesh.IndexCount / 3,
+		Vertices:    mesh.VertexCount,
+		Volume:      solid.Volume(),
+		SurfaceArea: solid.SurfaceArea(),
+	}
+	s.BBoxMin, s.BBoxMax = manifold.SolidsBounds([]*manifold.Solid{solid})
+	return s
 }
 
 // PosEntry maps a source position (file+line+col) to the face IDs of solids

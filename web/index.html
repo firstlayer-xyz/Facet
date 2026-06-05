@@ -329,6 +329,9 @@ function setupBridge() {
   globalThis._mf_num_components = id => M._facet_num_components(id);
   globalThis._mf_genus          = id => M._facet_genus(id);
   globalThis._mf_min_gap        = (a, b, len) => M._facet_min_gap(a, b, len);
+  // `>>> 0` reinterprets the i32 the C ABI returns as an unsigned size_t.
+  globalThis._mf_solid_size     = id => M._facet_solid_size(id) >>> 0;
+  globalThis._mf_sketch_size    = id => M._facet_sketch_size(id) >>> 0;
 
   // ── 3D Operations ─────────────────────────────────────────────────────────
   globalThis._mf_hull            = id => (M._facet_hull(id, SOLID_RET), solidPtr());
