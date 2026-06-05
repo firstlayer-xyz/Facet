@@ -13,7 +13,7 @@ import (
 // translate by exactly -width/2 (center) and -width (right) relative to
 // the left-aligned baseline.
 func TestTextHalignShiftsBoundingBox(t *testing.T) {
-	font := DefaultFontPath()
+	font := DefaultFontData()
 	const sample = "ABC"
 	const size = 10.0
 
@@ -65,7 +65,7 @@ func TestTextHalignShiftsBoundingBox(t *testing.T) {
 // "top" puts the top of caps at or below y=0; "bottom" puts descender
 // bottom at or above y=0; "center" lands somewhere between the two.
 func TestTextValignShiftsBoundingBox(t *testing.T) {
-	font := DefaultFontPath()
+	font := DefaultFontData()
 	const sample = "Apg" // ascender, cap, descender
 	const size = 10.0
 
@@ -115,7 +115,7 @@ func TestTextValignShiftsBoundingBox(t *testing.T) {
 // TestTextRejectsUnknownAlign confirms that a bogus halign/valign value
 // produces an error rather than silently picking a default.
 func TestTextRejectsUnknownAlign(t *testing.T) {
-	font := DefaultFontPath()
+	font := DefaultFontData()
 	if _, err := CreateText(font, "X", 10.0, "middle", "baseline"); err == nil {
 		t.Error(`expected error for halign="middle", got nil`)
 	}
@@ -128,7 +128,7 @@ func TestTextRejectsUnknownAlign(t *testing.T) {
 // behaves the same as "left"/"baseline" — so callers that pass an empty
 // string get the documented default.
 func TestTextEmptyAlignMatchesDefault(t *testing.T) {
-	font := DefaultFontPath()
+	font := DefaultFontData()
 	a, err := CreateText(font, "X", 10.0, "", "")
 	if err != nil {
 		t.Fatal(err)

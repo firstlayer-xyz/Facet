@@ -2,11 +2,9 @@
 #include "internal.h"
 #include "manifold/cross_section.h"
 
-#ifndef FACET_WASM
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
-#endif
 
 #include <cstdlib>
 #include <cstring>
@@ -17,8 +15,6 @@
 
 using namespace manifold;
 using namespace facet_cxx_internal;  // wrap_cs
-
-#ifndef FACET_WASM
 
 // Linearize a single FreeType outline contour into a vector of vec2 points.
 // Returns false if fewer than 3 points were generated.
@@ -133,7 +129,7 @@ static double valign_offset(const char* valign, double ascender, double descende
 extern "C" {
 
 void facet_text_to_cross_section(
-    const char* font_path, const char* text, double size_mm,
+    const char* font_data, size_t font_len, const char* text, double size_mm,
     const char* halign, const char* valign, FacetSketchRet* out) {
 
   if (!text || text[0] == '\0') {
@@ -148,8 +144,11 @@ void facet_text_to_cross_section(
     return;
   }
 
+  // Load from the in-memory font bytes (no filesystem): the default font is
+  // embedded on the Go side and a future custom font is supplied as bytes too,
+  // so both native and wasm take the same path.
   FT_Face face;
-  if (FT_New_Face(library, font_path, 0, &face) != 0) {
+  if (FT_New_Memory_Face(library, (const FT_Byte*)font_data, (FT_Long)font_len, 0, &face) != 0) {
     FT_Done_FreeType(library);
     out->ptr = nullptr;
     out->size = 0;
@@ -241,19 +240,3 @@ void facet_text_to_cross_section(
 }
 
 }  // extern "C"
-
-#else  // FACET_WASM: text rendering needs JS-side glyph extraction (or
-       // freetype-via-emscripten); for now expose an empty stub so callers
-       // see a clean empty CrossSection instead of a wasm trap.
-
-extern "C" {
-
-void facet_text_to_cross_section(
-    const char* /*font_path*/, const char* /*text*/, double /*size_mm*/,
-    const char* /*halign*/, const char* /*valign*/, FacetSketchRet* out) {
-  wrap_cs(new CrossSection(), out);
-}
-
-}  // extern "C"
-
-#endif  // FACET_WASM

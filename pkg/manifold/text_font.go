@@ -1,41 +1,14 @@
-//go:build !js
-
 package manifold
 
-import (
-	_ "embed"
-	"log"
-	"os"
-	"sync"
-)
+import _ "embed"
 
 //go:embed fonts/Hack-Regular.ttf
 var defaultFontData []byte
 
-var defaultFontPath string
-var defaultFontOnce sync.Once
-
-// DefaultFontPath returns the filesystem path to the embedded default font.
-// The font is written to a temp file on first call and cached for the process lifetime.
-func DefaultFontPath() string {
-	defaultFontOnce.Do(func() {
-		f, err := os.CreateTemp("", "facet-font-*.ttf")
-		if err != nil {
-			log.Printf("warning: failed to initialize default font: %v", err)
-			return
-		}
-		if _, err := f.Write(defaultFontData); err != nil {
-			f.Close()
-			os.Remove(f.Name())
-			log.Printf("warning: failed to initialize default font: %v", err)
-			return
-		}
-		if err := f.Close(); err != nil {
-			os.Remove(f.Name())
-			log.Printf("warning: failed to initialize default font: %v", err)
-			return
-		}
-		defaultFontPath = f.Name()
-	})
-	return defaultFontPath
+// DefaultFontData returns the bytes of the embedded default font (Hack), used
+// when a Text call doesn't specify a custom font. CreateText takes font bytes
+// directly, so this is shared by the native and wasm builds (the latter has no
+// filesystem to write a temp font file to).
+func DefaultFontData() []byte {
+	return defaultFontData
 }
