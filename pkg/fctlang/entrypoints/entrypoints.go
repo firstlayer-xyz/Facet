@@ -228,17 +228,12 @@ func paramDefaultUnit(e parser.Expr) string {
 }
 
 func literalNumber(e parser.Expr) (float64, bool) {
-	switch v := e.(type) {
-	case *parser.NumberLit:
-		return v.Value, true
-	case *parser.UnitExpr:
-		if num, ok := v.Expr.(*parser.NumberLit); ok {
-			return num.Value * v.Factor, true
+	if v, ok := literalValue(e); ok {
+		if f, ok := v.(float64); ok {
+			return f, true
 		}
-		return 0, false
-	default:
-		return 0, false
 	}
+	return 0, false
 }
 
 func literalValue(e parser.Expr) (interface{}, bool) {
@@ -254,6 +249,18 @@ func literalValue(e parser.Expr) (interface{}, bool) {
 		return v.Value, true
 	case *parser.BoolLit:
 		return v.Value, true
+	case *parser.UnaryExpr:
+		// A negative literal (e.g. -12 in `where [-12:14]`, or a negative
+		// default) parses as unary minus over a number; fold it so the value
+		// is extracted rather than silently dropped.
+		if v.Op == "-" {
+			if inner, ok := literalValue(v.Operand); ok {
+				if f, ok := inner.(float64); ok {
+					return -f, true
+				}
+			}
+		}
+		return nil, false
 	default:
 		return nil, false
 	}

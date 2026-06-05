@@ -127,3 +127,39 @@ func TestBuildConvertsDisplayUnits(t *testing.T) {
 		t.Fatalf("constraint max = %v, want ~30 (cm, display units)", p.Constraint.Max)
 	}
 }
+
+// Mirrors the clock example: a Number parameter with a negative-range constraint
+// on an Animation-returning entry. Without the constraint the param renders no
+// slider in the function preview; with it, Build must extract the full [-12, 14]
+// range — including the negative lower bound, which no other example exercises.
+func TestBuildNegativeRangeConstraintOnAnimation(t *testing.T) {
+	src := `fn Main(tzOffsetHours Number = 0 where [-12:14:1]) Animation {
+    return Animation{frame: fn(t Number) Solid { return Cube(s: (10 + tzOffsetHours) * 1 mm) }}
+}
+`
+	prog, err := loader.Load(context.Background(), src, "main.fct", parser.SourceUser, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := checker.Check(prog)
+	if len(checked.Errors) > 0 {
+		t.Fatalf("check: %v", checked.Errors)
+	}
+	eps := Build(checked.Prog, checked.InferredReturnTypes)
+	if len(eps) == 0 || len(eps[0].Params) == 0 {
+		t.Fatal("expected one entry point with one parameter")
+	}
+	p := eps[0].Params[0]
+	if p.Constraint == nil {
+		t.Fatal("expected a range constraint (no constraint means no slider renders)")
+	}
+	if mn, ok := p.Constraint.Min.(float64); !ok || mn != -12 {
+		t.Fatalf("constraint min = %v, want -12", p.Constraint.Min)
+	}
+	if mx, ok := p.Constraint.Max.(float64); !ok || mx != 14 {
+		t.Fatalf("constraint max = %v, want 14", p.Constraint.Max)
+	}
+	if st, ok := p.Constraint.Step.(float64); !ok || st != 1 {
+		t.Fatalf("constraint step = %v, want 1 (slider increments by 1 hour)", p.Constraint.Step)
+	}
+}

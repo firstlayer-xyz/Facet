@@ -122,7 +122,7 @@ async function main() {
     };
 
     // Animation entry → Play button visible.
-    await loadExample('animation_cube.fct');
+    await loadExample('Animation Cube.fct');
     await page.waitForFunction(playVisible, null, { timeout: 30_000 });
     const label = await page.evaluate(() => document.getElementById('play-btn').textContent);
     if (!/play/i.test(label)) {
@@ -136,7 +136,7 @@ async function main() {
       return !!b && b.style.display === 'none';
     }, null, { timeout: 30_000 });
 
-    console.log('  play button shows for animation_cube.fct, hides for Color Cube.fct');
+    console.log('  play button shows for Animation Cube.fct, hides for Color Cube.fct');
   }, chromium);
 }
 
