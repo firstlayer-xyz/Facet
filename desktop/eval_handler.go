@@ -11,11 +11,20 @@ import (
 	"time"
 
 	"facet/pkg/fctlang/checker"
+	"facet/pkg/fctlang/entrypoints"
 	"facet/pkg/fctlang/evaluator"
 	"facet/pkg/fctlang/loader"
 	"facet/pkg/fctlang/parser"
 	"facet/pkg/manifold"
 )
+
+// SourceEntry describes a parsed source file with its text and origin, returned
+// to the frontend in the eval response.
+type SourceEntry struct {
+	Text       string            `json:"text"`
+	Kind       parser.SourceKind `json:"kind"`
+	ImportPath string            `json:"importPath,omitempty"` // e.g. "facet/gears"; empty for non-library sources
+}
 
 // evalRequest is the JSON body of a POST /eval request.
 type evalRequest struct {
@@ -64,12 +73,12 @@ type debugMeshMeta struct {
 
 // evalResponseHeader is the JSON header of a binary eval response.
 type evalResponseHeader struct {
-	Errors       []parser.SourceError   `json:"errors,omitempty"`
-	Sources      map[string]SourceEntry `json:"sources,omitempty"`
-	VarTypes     checker.VarTypeMap     `json:"varTypes,omitempty"`
-	Declarations *checker.DeclResult    `json:"declarations,omitempty"`
-	References   checker.References     `json:"references,omitempty"`
-	EntryPoints  []EntryPoint           `json:"entryPoints,omitempty"`
+	Errors       []parser.SourceError     `json:"errors,omitempty"`
+	Sources      map[string]SourceEntry   `json:"sources,omitempty"`
+	VarTypes     checker.VarTypeMap       `json:"varTypes,omitempty"`
+	Declarations *checker.DeclResult      `json:"declarations,omitempty"`
+	References   checker.References       `json:"references,omitempty"`
+	EntryPoints  []entrypoints.EntryPoint `json:"entryPoints,omitempty"`
 	// Symbols is the editor symbol table the checker built for this
 	// program — the source of truth for completion, signature-help,
 	// and hover. Replaces the older docIndex (which was a parallel
@@ -77,13 +86,13 @@ type evalResponseHeader struct {
 	Symbols []checker.Symbol `json:"symbols,omitempty"`
 
 	// Eval data
-	Mesh   *meshMeta            `json:"mesh,omitempty"`
+	Mesh   *meshMeta             `json:"mesh,omitempty"`
 	Stats  *evaluator.ModelStats `json:"stats,omitempty"`
 	Time   float64               `json:"time,omitempty"`
 	PosMap []evaluator.PosEntry  `json:"posMap,omitempty"`
 
 	// Debug data
-	DebugFinal []*meshMeta    `json:"debugFinal,omitempty"`
+	DebugFinal []*meshMeta     `json:"debugFinal,omitempty"`
 	DebugSteps []debugStepMeta `json:"debugSteps,omitempty"`
 }
 
@@ -144,9 +153,9 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 	sources := buildSourcesMap(prog)
 
 	// Build entry points
-	var entryPoints []EntryPoint
+	var entryPoints []entrypoints.EntryPoint
 	if checked.Prog.Sources != nil {
-		entryPoints = getEntryPoints(checked.Prog, checked.InferredReturnTypes)
+		entryPoints = entrypoints.Build(checked.Prog, checked.InferredReturnTypes)
 	}
 
 	header := evalResponseHeader{
@@ -249,13 +258,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 		var binaryData []byte
 		meta, binaryData := appendMeshBinary(binaryData, merged)
 		header.Mesh = meta
-		animStats := evaluator.ModelStats{
-			Triangles:   merged.IndexCount / 3,
-			Vertices:    merged.VertexCount,
-			Volume:      solid.Volume(),
-			SurfaceArea: solid.SurfaceArea(),
-		}
-		animStats.BBoxMin, animStats.BBoxMax = solidBounds([]*manifold.Solid{solid})
+		animStats := evaluator.SolidFrameStats(solid, merged)
 		header.Stats = &animStats
 		respond(&header, binaryData, []*manifold.Solid{solid})
 		return
@@ -265,7 +268,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 	stats := evalResult.Stats
 	stats.Triangles += merged.IndexCount / 3
 	stats.Vertices += merged.VertexCount
-	globalMin, globalMax := solidBounds(evalResult.Solids)
+	globalMin, globalMax := manifold.SolidsBounds(evalResult.Solids)
 	stats.BBoxMin = globalMin
 	stats.BBoxMax = globalMax
 
@@ -401,8 +404,8 @@ type checkRequest struct {
 
 // checkResult is the JSON response from /check and the check_syntax MCP tool.
 type checkResult struct {
-	Valid  bool                  `json:"valid"`
-	Errors []parser.SourceError  `json:"errors"`
+	Valid  bool                 `json:"valid"`
+	Errors []parser.SourceError `json:"errors"`
 }
 
 // checkSource parses and type-checks source code without evaluating it.

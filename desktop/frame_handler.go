@@ -188,13 +188,7 @@ func handleFrame(ctx context.Context, w http.ResponseWriter, req frameRequest, s
 	merged := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
 	var binaryData []byte
 	meta, binaryData := appendMeshBinary(binaryData, merged)
-	frameStats := evaluator.ModelStats{
-		Triangles:   merged.IndexCount / 3,
-		Vertices:    merged.VertexCount,
-		Volume:      solid.Volume(),
-		SurfaceArea: solid.SurfaceArea(),
-	}
-	frameStats.BBoxMin, frameStats.BBoxMax = solidBounds([]*manifold.Solid{solid})
+	frameStats := evaluator.SolidFrameStats(solid, merged)
 	header := evalResponseHeader{Mesh: meta, Stats: &frameStats}
 	writeBinaryResponse(w, header, binaryData)
 }

@@ -834,6 +834,14 @@ int facet_num_components(ManifoldPtr* m) {
   return static_cast<int>(comps.size());
 }
 
+size_t facet_solid_size(ManifoldPtr* m) {
+  return solid_size(as_cpp(m));
+}
+
+size_t facet_sketch_size(ManifoldCrossSection* cs) {
+  return sketch_size(as_cpp_cs(cs));
+}
+
 // ---------------------------------------------------------------------------
 // 2D Measurements
 // ---------------------------------------------------------------------------
