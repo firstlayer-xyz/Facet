@@ -610,6 +610,7 @@ dropZone.addEventListener('drop', e => {
 });
 
 function loadSource(text, name) {
+  setPlaying(false);   // a new model stops playback and invalidates any in-flight frame
   filenameEl.textContent = name;
   currentSource = text;
   needsFrame = true;   // re-fit the camera to each newly loaded model
@@ -837,6 +838,10 @@ function formatParamValue(v, unit) {
 
 // ── Eval ──────────────────────────────────────────────────────────────────────
 function scheduleEval() {
+  // During playback the rAF frame loop already re-renders with the current
+  // parameter values every tick, so a separate background eval would only flash
+  // the loading overlay and rebuild the session for nothing.
+  if (playing) return;
   clearTimeout(evalDebounceTimer);
   evalDebounceTimer = setTimeout(runEval, 120);
 }
@@ -890,7 +895,7 @@ function parseBinaryResponse(u8) {
 // response carried source/eval errors (so a playback loop can pause), true
 // otherwise. Does NOT touch entry points — that's eval-only (see
 // handleBinaryResponse), so it can run on every animation frame cheaply.
-function renderFromResponse(header, bin) {
+function renderFromResponse(header, bin, isFrame = false) {
   if (header.errors && header.errors.length > 0) {
     showError(header.errors.map(e => e.message || JSON.stringify(e)).join('\n'));
     setStatus('Error');
@@ -922,7 +927,7 @@ function renderFromResponse(header, bin) {
   }
 
   if (positions) {
-    renderMesh(positions, colors, edges);
+    renderMesh(positions, colors, edges, isFrame);
     const tris = mesh.expandedCount / 3;
     if (stats) {
       statsEl.style.display = 'block';
@@ -943,12 +948,17 @@ function renderFromResponse(header, bin) {
 function handleBinaryResponse(u8) {
   const { header, bin } = parseBinaryResponse(u8);
 
-  // Update entry points from response (server may have found new ones)
-  if (header.entryPoints && header.entryPoints.length > 0) {
+  // Rebuild the entry/param UI only when the set of entry points actually
+  // changed. A normal re-eval returns the same entries; rebuilding then would
+  // reset the user's parameter values to defaults. When the set changes to
+  // empty (no renderable entry), this also clears the selector and hides the
+  // Play button via updatePlayUI rather than leaving a stale control.
+  const newEPs = header.entryPoints || [];
+  if (JSON.stringify(newEPs) !== JSON.stringify(currentEntryPoints)) {
     const prev = entrySelect.value;
-    currentEntryPoints = header.entryPoints;
+    currentEntryPoints = newEPs;
     rebuildEntrySelector();
-    if (header.entryPoints.some(e => e.name === prev)) entrySelect.value = prev;
+    if (newEPs.some(e => e.name === prev)) entrySelect.value = prev;
     rebuildParams();
     updatePlayUI();
   }
@@ -964,6 +974,9 @@ function handleBinaryResponse(u8) {
 const playBtn = document.getElementById('play-btn');
 let playing = false;
 let frameInFlight = false;
+let frameGen = 0;            // bumped when playback stops or the model/entry changes; drops in-flight frames
+let lastFrameAt = 0;         // wall-clock (ms) of the last issued frame, for the ~60fps cap
+const MIN_FRAME_MS = 1000 / 60;
 
 function activeEntryIsAnimated() {
   const ep = currentEntry();
@@ -983,6 +996,7 @@ function updatePlayUI() {
 function setPlaying(p) {
   if (playing === p) return;
   playing = p;
+  if (!playing) frameGen++;   // invalidate any in-flight frame so a late response can't paint after stop
   updatePlayUI();
   if (playing) requestAnimationFrame(playbackTick);
 }
@@ -991,7 +1005,14 @@ playBtn.addEventListener('click', () => setPlaying(!playing));
 
 function playbackTick() {
   if (!playing) return;
-  if (!frameInFlight) void issueFrame(Date.now());
+  // Cap to ~60fps so a high-refresh display doesn't run the full geometry
+  // pipeline at the monitor rate; frame-dropping still skips ticks while a
+  // frame is in flight.
+  const now = Date.now();
+  if (!frameInFlight && now - lastFrameAt >= MIN_FRAME_MS) {
+    lastFrameAt = now;
+    void issueFrame(now);
+  }
   requestAnimationFrame(playbackTick);
 }
 
@@ -999,14 +1020,16 @@ function playbackTick() {
 // applies any timezone offset itself, matching the desktop).
 async function issueFrame(timeMs) {
   if (!wasmReady || typeof window.facetFrame !== 'function') return;
+  const gen = frameGen;
   const entry = entrySelect.value || 'Main';
   frameInFlight = true;
   try {
     const overrides = JSON.stringify(paramValues);
     const result = await window.facetFrame(currentSource, entry, overrides, timeMs);
+    if (gen !== frameGen) return; // paused or model/entry changed mid-flight — drop this stale frame
     if (result instanceof Uint8Array) {
       const { header, bin } = parseBinaryResponse(result);
-      if (!renderFromResponse(header, bin)) setPlaying(false); // pause on error
+      if (!renderFromResponse(header, bin, true)) setPlaying(false); // pause on error
     } else {
       showError(result && result.error ? result.error : 'Frame error');
       setPlaying(false);
@@ -1185,26 +1208,34 @@ function resizeCanvas() {
   if (gl) draw();
 }
 
-function renderMesh(positions, colors, edges) {
+function renderMesh(positions, colors, edges, isFrame = false) {
   if (!gl && !initGL()) return;
 
-  // Compute bounding box of expanded vertices for auto-framing
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (let i = 0; i < positions.length; i += 3) {
-    minX = Math.min(minX, positions[i]);   maxX = Math.max(maxX, positions[i]);
-    minY = Math.min(minY, positions[i+1]); maxY = Math.max(maxY, positions[i+1]);
-    minZ = Math.min(minZ, positions[i+2]); maxZ = Math.max(maxZ, positions[i+2]);
-  }
-  if (needsFrame) {
-    // Fit to the bounding sphere like the desktop's fitToView: distance =
-    // radius / sin(fov/2) * 1.2. Snap center+distance (keep current angle).
-    const cx = (minX+maxX)/2, cy = (minY+maxY)/2, cz = (minZ+maxZ)/2;
-    const radius = 0.5 * Math.hypot(maxX-minX, maxY-minY, maxZ-minZ) || 1;
-    const d = (radius / Math.sin(FOV * Math.PI / 360)) * 1.2;
-    goal.cx = cam.cx = cx; goal.cy = cam.cy = cy; goal.cz = cam.cz = cz;
-    goal.dist = cam.dist = d;
-    needsFrame = false;
+  // The bounding box is only needed to fit the camera on load and to size the
+  // ground grid — both eval-time concerns. Skip the per-vertex scan, the camera
+  // fit, and the grid rebuild on playback frames: the camera is already fitted
+  // and a fixed grid must not rescale every frame as a rotating model's
+  // axis-aligned box changes.
+  if (needsFrame || !isFrame) {
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < positions.length; i += 3) {
+      minX = Math.min(minX, positions[i]);   maxX = Math.max(maxX, positions[i]);
+      minY = Math.min(minY, positions[i+1]); maxY = Math.max(maxY, positions[i+1]);
+      minZ = Math.min(minZ, positions[i+2]); maxZ = Math.max(maxZ, positions[i+2]);
+    }
+    if (needsFrame) {
+      // Fit to the bounding sphere like the desktop's fitToView: distance =
+      // radius / sin(fov/2) * 1.2. Snap center+distance (keep current angle).
+      const cx = (minX+maxX)/2, cy = (minY+maxY)/2, cz = (minZ+maxZ)/2;
+      const radius = 0.5 * Math.hypot(maxX-minX, maxY-minY, maxZ-minZ) || 1;
+      const d = (radius / Math.sin(FOV * Math.PI / 360)) * 1.2;
+      goal.cx = cam.cx = cx; goal.cy = cam.cy = cy; goal.cz = cam.cz = cz;
+      goal.dist = cam.dist = d;
+      needsFrame = false;
+    }
+    // Ground grid in the XY plane (Z = 0 build plate), sized to the model.
+    buildGrid(minX, maxX, minY, maxY);
   }
 
   meshCount = positions.length / 3;
@@ -1225,9 +1256,6 @@ function renderMesh(positions, colors, edges) {
     gl.bindBuffer(gl.ARRAY_BUFFER, edgeBuf);
     gl.bufferData(gl.ARRAY_BUFFER, edges, gl.STATIC_DRAW);
   }
-
-  // Ground grid in the XY plane (Z = 0 build plate), sized to the model.
-  buildGrid(minX, maxX, minY, maxY);
 
   draw();
 }
