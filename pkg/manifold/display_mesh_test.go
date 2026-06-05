@@ -149,7 +149,10 @@ func Test_mergeDisplayMeshesSingle(t *testing.T) {
 
 func TestDisplayMeshSketch(t *testing.T) {
 	// Sketches should also produce valid DisplayMeshes
-	sq := CreateSquare(10, 10)
+	sq, err := CreateSquare(10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
 	dm := sq.ToDisplayMesh()
 
 	if dm.VertexCount == 0 {

@@ -17,7 +17,10 @@ func TestSolidExternalMemSize(t *testing.T) {
 }
 
 func TestSketchExternalMemSize(t *testing.T) {
-	sq := CreateSquare(10, 10)
+	sq, err := CreateSquare(10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
 	n := sq.ExternalMemSize()
 	if n <= 0 {
 		t.Fatalf("expected positive memory size for square sketch, got %d", n)

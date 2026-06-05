@@ -107,8 +107,7 @@ func (e *evaluator) builtinSquare(args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := manifold.CreateSquare(x, y)
-	return result, nil
+	return manifold.CreateSquare(x, y)
 }
 
 func (e *evaluator) builtinCircle(args []value) (value, error) {
@@ -127,8 +126,7 @@ func (e *evaluator) builtinCircle(args []value) (value, error) {
 		}
 		segments = int(n)
 	}
-	result := manifold.CreateCircle(radius, segments)
-	return result, nil
+	return manifold.CreateCircle(radius, segments)
 }
 
 // makePtVecStruct creates a 2-component Vec structVal with Length fields.

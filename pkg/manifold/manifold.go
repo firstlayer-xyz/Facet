@@ -29,6 +29,7 @@ package manifold
 */
 import "C"
 import (
+	"fmt"
 	"runtime"
 )
 
@@ -132,11 +133,25 @@ func (sk *Sketch) ExternalMemSize() int {
 }
 
 // mergeFaceMaps returns a new map containing entries from both inputs.
-// If both maps have the same key, a's value wins (with per-field merge:
-// color from a wins if set, source from a wins if set).
+// On a duplicate key, a's full FaceInfo wins (struct overwrite — not a
+// per-field merge).
 func mergeFaceMaps(a, b map[uint32]FaceInfo) map[uint32]FaceInfo {
 	if len(a) == 0 && len(b) == 0 {
 		return nil
+	}
+	if len(a) == 0 {
+		m := make(map[uint32]FaceInfo, len(b))
+		for k, v := range b {
+			m[k] = v
+		}
+		return m
+	}
+	if len(b) == 0 {
+		m := make(map[uint32]FaceInfo, len(a))
+		for k, v := range a {
+			m[k] = v
+		}
+		return m
 	}
 	m := make(map[uint32]FaceInfo, len(a)+len(b))
 	for k, v := range b {
@@ -146,6 +161,18 @@ func mergeFaceMaps(a, b map[uint32]FaceInfo) map[uint32]FaceInfo {
 		m[k] = v
 	}
 	return m
+}
+
+// requireSolids panics if any argument is nil. A nil Solid reaching a boolean
+// or hull op is a caller bug (forgot to check an earlier error return, passed
+// a slice with a nil entry); a clear panic at the entry point beats a
+// nil-deref deep inside the cgo wrapper or, worse, a SIGSEGV in C++.
+func requireSolids(op string, solids ...*Solid) {
+	for i, s := range solids {
+		if s == nil {
+			panic(fmt.Sprintf("manifold.%s: solid argument %d is nil", op, i))
+		}
+	}
 }
 
 // withFaceMap returns a copy of the Solid's FaceMap (or nil).
@@ -161,9 +188,15 @@ func (s *Solid) withFaceMap() map[uint32]FaceInfo {
 }
 
 // SetColor sets a uniform RGBA color on all faces. Alpha 1 is fully opaque.
+// Each channel is clamped to [0, 1] before quantization so out-of-range inputs
+// can't wrap into a wrong color through int conversion + bit shifts.
 // Face IDs are auto-assigned by C at creation time; no new IDs are created here.
+// Destructive: mutates the receiver's FaceMap entries in place.
 func (s *Solid) SetColor(r, g, b, a float64) *Solid {
-	color := uint32(int(r*255+0.5)<<16 | int(g*255+0.5)<<8 | int(b*255+0.5))
+	ri := uint32(clamp01(r)*255 + 0.5)
+	gi := uint32(clamp01(g)*255 + 0.5)
+	bi := uint32(clamp01(b)*255 + 0.5)
+	color := ri<<16 | gi<<8 | bi
 	alpha := uint8(clamp01(a)*255 + 0.5)
 	for id, fi := range s.FaceMap {
 		fi.Color = color
@@ -188,10 +221,11 @@ func newSolidWithOrigin(ret C.FacetSolidRet) *Solid {
 }
 
 // transformSolid wraps a unary C transform that produced a new Manifold.
-// Keeps the source alive, wraps the result, and copies the FaceMap so face
-// colors survive the transform.
+// Wraps the result and copies the FaceMap so face colors survive the
+// transform. Callers must runtime.KeepAlive(s) immediately after the C call
+// that produced ret — keeping it alive only here, after the C call has
+// returned, would not satisfy the cgo pointer-safety contract.
 func transformSolid(s *Solid, ret C.FacetSolidRet) *Solid {
-	runtime.KeepAlive(s)
 	r := newSolid(ret)
 	r.FaceMap = s.withFaceMap()
 	return r

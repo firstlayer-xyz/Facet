@@ -8,8 +8,15 @@ package manifold
 import "C"
 import (
 	"fmt"
+	"math"
 	"runtime"
 )
+
+// minNormalLengthSq is the squared-length threshold below which a mirror
+// normal vector is considered degenerate. ~1e-150 magnitude (1e-300 squared)
+// catches normals that pass the "any component is non-zero" check but
+// normalize to numerical noise on the C side.
+const minNormalLengthSq = 1e-300
 
 // ---------------------------------------------------------------------------
 // 3D Transforms
@@ -19,6 +26,7 @@ import (
 func (s *Solid) Translate(x, y, z float64) *Solid {
 	var ret C.FacetSolidRet
 	C.facet_translate(s.ptr, C.double(x), C.double(y), C.double(z), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret)
 }
 
@@ -27,35 +35,46 @@ func (s *Solid) Translate(x, y, z float64) *Solid {
 func (s *Solid) Rotate(x, y, z float64) *Solid {
 	var ret C.FacetSolidRet
 	C.facet_rotate_local(s.ptr, C.double(x), C.double(y), C.double(z), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret)
 }
 
 // Scale scales a solid by (x, y, z) around pivot point (ox, oy, oz).
-// Negative factors are permitted (they mirror along that axis). A zero
-// factor collapses a spatial dimension and produces a degenerate manifold,
-// so it is rejected up front rather than letting the kernel produce an
-// invalid mesh that fails much later with a confusing error.
+// Negative factors are permitted (they mirror along that axis). A zero,
+// NaN, or infinite factor collapses or invalidates a spatial dimension and
+// produces a degenerate manifold, so all three are rejected up front rather
+// than letting the kernel produce an invalid mesh that fails much later
+// with a confusing error.
 func (s *Solid) Scale(x, y, z, ox, oy, oz float64) (*Solid, error) {
-	if x == 0 || y == 0 || z == 0 {
-		return nil, fmt.Errorf("Scale: factors must be non-zero (got x=%g, y=%g, z=%g)", x, y, z)
+	if err := validateScaleFactor("x", x); err != nil {
+		return nil, err
+	}
+	if err := validateScaleFactor("y", y); err != nil {
+		return nil, err
+	}
+	if err := validateScaleFactor("z", z); err != nil {
+		return nil, err
 	}
 	var ret C.FacetSolidRet
 	C.facet_scale_at(s.ptr,
 		C.double(x), C.double(y), C.double(z),
 		C.double(ox), C.double(oy), C.double(oz), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret), nil
 }
 
 // Mirror mirrors a solid across the plane with normal (nx, ny, nz) at signed
 // distance offset from the world origin. The normal is normalized in C.
-// Returns an error if the normal has zero length (degenerate plane).
+// Returns an error if the normal vector's length is too small to normalize
+// stably (degenerate plane).
 func (s *Solid) Mirror(nx, ny, nz, offset float64) (*Solid, error) {
-	if nx == 0 && ny == 0 && nz == 0 {
-		return nil, fmt.Errorf("Mirror: normal vector has zero length")
+	if lenSq := nx*nx + ny*ny + nz*nz; lenSq < minNormalLengthSq || math.IsNaN(lenSq) {
+		return nil, fmt.Errorf("Mirror: normal vector is degenerate (got %g, %g, %g)", nx, ny, nz)
 	}
 	var ret C.FacetSolidRet
 	C.facet_mirror_at(s.ptr,
 		C.double(nx), C.double(ny), C.double(nz), C.double(offset), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret), nil
 }
 
@@ -65,7 +84,21 @@ func (s *Solid) RotateAt(rx, ry, rz, ox, oy, oz float64) *Solid {
 	C.facet_rotate_at(s.ptr,
 		C.double(rx), C.double(ry), C.double(rz),
 		C.double(ox), C.double(oy), C.double(oz), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret)
+}
+
+// validateScaleFactor rejects zero, NaN, and infinite scale factors. Zero
+// collapses a dimension; NaN/Inf invalidate the entire transform matrix
+// and would surface as a confusing C-side error.
+func validateScaleFactor(name string, v float64) error {
+	if v == 0 {
+		return fmt.Errorf("Scale: factor %s must be non-zero", name)
+	}
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return fmt.Errorf("Scale: factor %s must be finite, got %g", name, v)
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -97,11 +130,14 @@ func (p *Sketch) Rotate(degrees float64) *Sketch {
 }
 
 // Scale scales a sketch by (x, y) around pivot point (px, py).
-// Zero factors are rejected for the same reason as Solid.Scale — they
-// collapse the sketch to a line or point.
+// Zero, NaN, and infinite factors are rejected for the same reason as
+// Solid.Scale — they collapse or invalidate the transform.
 func (p *Sketch) Scale(x, y, px, py float64) (*Sketch, error) {
-	if x == 0 || y == 0 {
-		return nil, fmt.Errorf("Scale: factors must be non-zero (got x=%g, y=%g)", x, y)
+	if err := validateScaleFactor("x", x); err != nil {
+		return nil, err
+	}
+	if err := validateScaleFactor("y", y); err != nil {
+		return nil, err
 	}
 	var ret C.FacetSketchRet
 	C.facet_cs_scale_at(p.ptr, C.double(x), C.double(y), C.double(px), C.double(py), &ret)
@@ -113,8 +149,8 @@ func (p *Sketch) Scale(x, y, px, py float64) (*Sketch, error) {
 // signed distance offset from the world origin. So Mirror(1, 0, 0)
 // flips across the Y axis (X coords negate). The normal is normalized in C.
 func (p *Sketch) Mirror(ax, ay, offset float64) (*Sketch, error) {
-	if ax == 0 && ay == 0 {
-		return nil, fmt.Errorf("Mirror: normal vector has zero length")
+	if lenSq := ax*ax + ay*ay; lenSq < minNormalLengthSq || math.IsNaN(lenSq) {
+		return nil, fmt.Errorf("Mirror: normal vector is degenerate (got %g, %g)", ax, ay)
 	}
 	var ret C.FacetSketchRet
 	C.facet_cs_mirror_at(p.ptr, C.double(ax), C.double(ay), C.double(offset), &ret)

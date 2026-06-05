@@ -18,6 +18,7 @@ import (
 
 // Hull computes the convex hull of a solid.
 func (s *Solid) Hull() *Solid {
+	requireSolids("Hull", s)
 	var ret C.FacetSolidRet
 	C.facet_hull(s.ptr, &ret)
 	runtime.KeepAlive(s)
@@ -30,7 +31,11 @@ func (s *Solid) Hull() *Solid {
 			break
 		}
 	}
-	r.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): fi}
+	// Skip FaceMap seeding when the kernel didn't assign an originalID —
+	// uint32(negative) would otherwise wrap into a garbage key.
+	if ret.original_id >= 0 {
+		r.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): fi}
+	}
 	return r
 }
 
@@ -40,6 +45,7 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 	if len(solids) == 0 {
 		return nil, fmt.Errorf("BatchHull: solids is empty")
 	}
+	requireSolids("BatchHull", solids...)
 	ptrs := make([]*C.ManifoldPtr, len(solids))
 	for i, s := range solids {
 		ptrs[i] = s.ptr
@@ -61,7 +67,9 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 			break
 		}
 	}
-	r.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): fi}
+	if ret.original_id >= 0 {
+		r.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): fi}
+	}
 	return r, nil
 }
 
@@ -87,6 +95,7 @@ func HullPoints(points []Point3D) (*Solid, error) {
 func (s *Solid) TrimByPlane(nx, ny, nz, offset float64) *Solid {
 	var ret C.FacetSolidRet
 	C.facet_trim_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret)
 }
 
@@ -94,6 +103,7 @@ func (s *Solid) TrimByPlane(nx, ny, nz, offset float64) *Solid {
 func (s *Solid) SmoothOut(minSharpAngle, minSmoothness float64) *Solid {
 	var ret C.FacetSolidRet
 	C.facet_smooth_out(s.ptr, C.double(minSharpAngle), C.double(minSmoothness), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret)
 }
 
@@ -101,6 +111,7 @@ func (s *Solid) SmoothOut(minSharpAngle, minSmoothness float64) *Solid {
 func (s *Solid) Refine(n int) *Solid {
 	var ret C.FacetSolidRet
 	C.facet_refine(s.ptr, C.int(n), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret)
 }
 
@@ -108,6 +119,7 @@ func (s *Solid) Refine(n int) *Solid {
 func (s *Solid) Simplify(tolerance float64) *Solid {
 	var ret C.FacetSolidRet
 	C.facet_simplify(s.ptr, C.double(tolerance), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret)
 }
 
@@ -115,33 +127,44 @@ func (s *Solid) Simplify(tolerance float64) *Solid {
 func (s *Solid) RefineToLength(length float64) *Solid {
 	var ret C.FacetSolidRet
 	C.facet_refine_to_length(s.ptr, C.double(length), &ret)
+	runtime.KeepAlive(s)
 	return transformSolid(s, ret)
 }
 
-// SplitSolid splits m by cutter, returning [inside, outside].
+// SplitSolid splits m by cutter, returning [inside, outside]. Both halves
+// originate from m's geometry, so both carry m's FaceMap; cutter's FaceMap is
+// intentionally not propagated — its faces don't appear in either result.
 func SplitSolid(m, cutter *Solid) [2]*Solid {
+	requireSolids("SplitSolid", m, cutter)
 	var pair C.FacetSolidPair
 	C.facet_split(m.ptr, cutter.ptr, &pair)
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(cutter)
-	fm := mergeFaceMaps(m.FaceMap, cutter.FaceMap)
 	first := newSolid(pair.first)
-	first.FaceMap = fm
+	if first != nil {
+		first.FaceMap = m.withFaceMap()
+	}
 	second := newSolid(pair.second)
-	second.FaceMap = fm
+	if second != nil {
+		second.FaceMap = m.withFaceMap()
+	}
 	return [2]*Solid{first, second}
 }
 
 // SplitSolidByPlane splits a solid by an infinite plane, returning [above, below].
 func SplitSolidByPlane(s *Solid, nx, ny, nz, offset float64) [2]*Solid {
+	requireSolids("SplitSolidByPlane", s)
 	var pair C.FacetSolidPair
 	C.facet_split_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset), &pair)
 	runtime.KeepAlive(s)
-	fm := s.withFaceMap()
 	first := newSolid(pair.first)
-	first.FaceMap = fm
+	if first != nil {
+		first.FaceMap = s.withFaceMap()
+	}
 	second := newSolid(pair.second)
-	second.FaceMap = fm
+	if second != nil {
+		second.FaceMap = s.withFaceMap()
+	}
 	return [2]*Solid{first, second}
 }
 
@@ -151,6 +174,7 @@ func ComposeSolids(solids []*Solid) (*Solid, error) {
 	if len(solids) == 0 {
 		return nil, fmt.Errorf("ComposeSolids: solids is empty")
 	}
+	requireSolids("ComposeSolids", solids...)
 	ptrs := make([]*C.ManifoldPtr, len(solids))
 	for i, s := range solids {
 		ptrs[i] = s.ptr
