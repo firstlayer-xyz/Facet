@@ -499,6 +499,37 @@ func TestBOSL2_GridCopies(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// zcyl/xcyl/ycyl are cylinders oriented along Z/X/Y, centered. zcyl is the
+// default (no rotation); xcyl spins the Z-axis cylinder onto X, ycyl onto Y.
+func TestBOSL2_OrientedCylinders(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nzcyl(h=10, r=2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("zcyl should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Cylinder(r: 2 mm, h: 10 mm") || strings.Contains(res.Facet, ".Rotate(") {
+		t.Fatalf("zcyl should be an unrotated centered cylinder:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nxcyl(h=10, r=2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("xcyl should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Rotate(y: 90 deg)") {
+		t.Fatalf("xcyl should rotate the cylinder onto X:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nycyl(h=10, d=4);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("ycyl should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Rotate(x: -90 deg)") {
+		t.Fatalf("ycyl should rotate the cylinder onto Y:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

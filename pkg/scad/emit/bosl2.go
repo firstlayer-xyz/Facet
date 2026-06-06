@@ -36,6 +36,12 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Cyl(n), true
 	case "tube":
 		return e.bosl2Tube(n), true
+	case "zcyl":
+		return e.bosl2OrientedCyl(n, ""), true
+	case "xcyl":
+		return e.bosl2OrientedCyl(n, "Rotate(y: 90 deg)"), true
+	case "ycyl":
+		return e.bosl2OrientedCyl(n, "Rotate(x: -90 deg)"), true
 	case "rect_tube":
 		return e.bosl2RectTube(n), true
 	case "position", "attach":
@@ -329,18 +335,40 @@ func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
 	}
+	s, _ := e.cylCentered(n)
+	return s
+}
+
+// cylCentered renders a BOSL2 cylinder centered on the origin in every axis (the
+// shared body of cyl/xcyl/ycyl/zcyl). ok is false on a missing height/radius
+// (an error is already recorded).
+func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
-		return e.errf(n.Pos(), "cyl without height")
+		return e.errf(n.Pos(), "cyl without height"), false
 	}
 	key, val, rok := e.radiusArg(n, 1)
 	if !rok {
-		return e.errf(n.Pos(), "cyl without radius")
+		return e.errf(n.Pos(), "cyl without radius"), false
 	}
 	rMM, rMMok := cylinderRadiusMM(n)
 	return fmt.Sprintf("Cylinder(%s: %s, h: %s%s).AlignCenter(pos: Vec3{})",
-		key, val, e.expr(h, kLength), e.segmentsSuffix(n, rMM, rMMok))
+		key, val, e.expr(h, kLength), e.segmentsSuffix(n, rMM, rMMok)), true
+}
+
+// bosl2OrientedCyl renders a BOSL2 axis-oriented cylinder (xcyl/ycyl/zcyl): the
+// centered cylinder with its Z axis rotated onto the target axis. zcyl passes ""
+// (Z is the default, no rotation).
+func (e *Emitter) bosl2OrientedCyl(n *ast.ModuleCall, rotate string) string {
+	s, ok := e.cylCentered(n)
+	if !ok {
+		return s
+	}
+	if rotate == "" {
+		return s
+	}
+	return s + "." + rotate
 }
 
 // bosl2Tube emits BOSL2's tube — a hollow cylinder, centered on the origin —
