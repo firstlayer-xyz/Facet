@@ -191,20 +191,51 @@ func TestBOSL2_AttachTopBottom(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// The single-anchor attach(TOP) shorthand resolves the child anchor to the
-// opposite of the parent anchor (BOTTOM) — same B2 attach as attach(TOP, BOTTOM).
+// The single-anchor attach(P) reorients the child to point out of the parent's
+// P face (its +Z axis is rotated to P). For TOP that rotation is the identity,
+// so it still stacks on top — emitted as a B2 attachReorient.
 func TestBOSL2_AttachTopShorthand(t *testing.T) {
 	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 10]) attach(TOP) cyl(h=8, r=3);\n"
 	res, err := Transpile(src, "part.scad")
 	if err != nil {
 		t.Fatalf("attach(TOP) should transpile, got: %v", err)
 	}
-	for _, want := range []string{".attach(", "pa: B2Anchor{x: 0, y: 0, z: 1}", "ca: B2Anchor{x: 0, y: 0, z: -1}", "child: b2_cyl(h: 8 mm, r: 3 mm)"} {
+	for _, want := range []string{".attachReorient(", "pa: B2Anchor{x: 0, y: 0, z: 1}", "child: b2_cyl(h: 8 mm, r: 3 mm)"} {
 		if !strings.Contains(res.Facet, want) {
 			t.Fatalf("expected %q (shorthand) in:\n%s", want, res.Facet)
 		}
 	}
 	assertTypeChecks(t, res.Facet)
+}
+
+// attach(RIGHT) reorients the child so its axis points out the +X face — the
+// case the no-reorientation path couldn't express. Emitted as attachReorient
+// with the parent anchor RIGHT; the runtime applies the +Z->+X rotation.
+func TestBOSL2_AttachReorientRight(t *testing.T) {
+	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 20]) attach(RIGHT) cyl(h=10, r=2);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("attach(RIGHT) should transpile, got: %v", err)
+	}
+	for _, want := range []string{".attachReorient(", "pa: B2Anchor{x: 1, y: 0, z: 0}", "child: b2_cyl(h: 10 mm, r: 2 mm)"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A single-anchor attach with a combined (non-axis) anchor has no single
+// out-pointing direction, so it is a located error rather than a wrong guess.
+func TestBOSL2_AttachReorientCombinedErrors(t *testing.T) {
+	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 20]) attach(RIGHT+TOP) cyl(h=10, r=2);\n"
+	res, err := Transpile(src, "part.scad")
+	if err == nil {
+		t.Fatalf("1-arg attach with a combined anchor should error, got:\n%s", res.Facet)
+	}
+	if !strings.Contains(err.Error(), "attach") {
+		t.Fatalf("error should mention attach, got: %v", err)
+	}
 }
 
 // An attach that needs the child reoriented (child anchor not anti-parallel to

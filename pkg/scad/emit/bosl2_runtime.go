@@ -60,4 +60,29 @@ fn B2.attach(pa B2Anchor, ca B2Anchor, child B2) B2 {
     var c = child.anchorPoint(a: ca)
     return B2{solid: self.solid + child.solid.Move(v: Vec3{x: p.x - c.x, y: p.y - c.y, z: p.z - c.z}), size: self.size}
 }
+
+# Rotates a solid so its +Z (UP) axis points along the axis direction dir (one
+# of the six ±X/±Y/±Z). The caller guarantees dir is a single axis.
+fn b2_orient_up_to(solid Solid, dir B2Anchor) Solid {
+    if dir.z == 1 { return solid }
+    if dir.z == -1 { return solid.Rotate(y: 180 deg) }
+    if dir.x == 1 { return solid.Rotate(y: 90 deg) }
+    if dir.x == -1 { return solid.Rotate(y: -90 deg) }
+    if dir.y == 1 { return solid.Rotate(x: -90 deg) }
+    return solid.Rotate(x: 90 deg)
+}
+
+# Single-anchor attach: reorients child so its +Z axis points out the pa face,
+# then sits its base on that face, centered on the anchor. The child's mating
+# face lies on its rotation axis, so placement is anchorPoint(pa) plus a push of
+# half the child's height along pa — no point rotation needed. pa is a pure axis.
+fn B2.attachReorient(pa B2Anchor, child B2) B2 {
+    var oriented = b2_orient_up_to(solid: child.solid, dir: pa)
+    var ap = self.anchorPoint(a: pa)
+    var hz = child.size.z / 2
+    return B2{
+        solid: self.solid + oriented.Move(v: Vec3{x: ap.x + pa.x * hz, y: ap.y + pa.y * hz, z: ap.z + pa.z * hz}),
+        size: self.size,
+    }
+}
 `

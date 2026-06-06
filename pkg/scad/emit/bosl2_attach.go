@@ -136,10 +136,12 @@ func (e *Emitter) b2PositionLink(n *ast.ModuleCall) string {
 	return ".position(a: " + anchorLit(dir) + ", child: " + child + ")"
 }
 
-// b2AttachLink emits `.attach(pa: <P>, ca: <C>, child: <B2>)`. v1 supports only
-// the no-reorientation case — the child anchor anti-parallel to the parent
-// anchor (e.g. attach(TOP, BOTTOM)), plus the single-anchor attach(TOP)/attach(UP)
-// shorthand. Cases that would need the child rotated are located errors.
+// b2AttachLink emits one attach link. The two-anchor form attach(P, C) is the
+// no-reorientation case — C must be anti-parallel to P (e.g. attach(TOP, BOTTOM))
+// — and emits B2.attach. The single-anchor form attach(P) reorients the child to
+// point out the P face and emits B2.attachReorient; P must be a single axis.
+// Cases needing a general child rotation (non-opposite two-anchor attach) are
+// located errors.
 func (e *Emitter) b2AttachLink(n *ast.ModuleCall) string {
 	pa, ok := arg(n, "", 0)
 	if !ok {
@@ -149,23 +151,42 @@ func (e *Emitter) b2AttachLink(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "attach: unsupported parent anchor")
 	}
-	cdir := negDir(pdir)
+	child, ok := e.b2ChildOf(n)
+	if !ok {
+		return e.errf(n.Pos(), "attach: child is not an attachable shape")
+	}
+
 	if ca, has := arg(n, "", 1); has {
-		cdir, ok = anchorVec(ca)
+		cdir, ok := anchorVec(ca)
 		if !ok {
 			return e.errf(n.Pos(), "attach: unsupported child anchor")
 		}
 		if cdir != negDir(pdir) {
 			return e.errf(n.Pos(), "attach: reorienting the child (non-opposite anchors) is not yet supported")
 		}
-	} else if pdir != ([3]int{0, 0, 1}) {
-		return e.errf(n.Pos(), "attach: single-anchor attach is only supported for TOP/UP")
+		return ".attach(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ")"
 	}
-	child, ok := e.b2ChildOf(n)
-	if !ok {
-		return e.errf(n.Pos(), "attach: child is not an attachable shape")
+
+	if !isPureAxis(pdir) {
+		return e.errf(n.Pos(), "attach: single-anchor attach needs a single-axis anchor, not a combined one")
 	}
-	return ".attach(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ")"
+	return ".attachReorient(pa: " + anchorLit(pdir) + ", child: " + child + ")"
+}
+
+// isPureAxis reports whether a direction vector points along exactly one axis
+// with unit magnitude (one of ±X/±Y/±Z).
+func isPureAxis(d [3]int) bool {
+	nonzero := 0
+	for _, v := range d {
+		switch v {
+		case 0:
+		case 1, -1:
+			nonzero++
+		default:
+			return false
+		}
+	}
+	return nonzero == 1
 }
 
 // b2ChildOf emits the single geometry child of a position/attach node as a B2.
