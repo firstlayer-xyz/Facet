@@ -2012,11 +2012,11 @@ func TestLibReturnStructMethodDispatch(t *testing.T) {
 	// the variable a qualified struct name, so method dispatch works.
 	c, env := setupNonCollidingChecker()
 
-	// Simulate: var w = T.MakeWidget(10 mm);
+	// Simulate: var w = T.MakeWidget(s: 10 mm);
 	mcExpr := &parser.MethodCallExpr{
 		Receiver: &parser.IdentExpr{Name: "T"},
 		Method:   "MakeWidget",
-		Args:     []parser.Expr{&parser.NumberLit{Value: 10}},
+		Args:     []parser.Expr{&parser.NamedArg{Name: "s", Value: &parser.NumberLit{Value: 10}}},
 		Pos:      parser.Pos{1, 1},
 	}
 	retType := c.checkMethodCall(mcExpr, env)
