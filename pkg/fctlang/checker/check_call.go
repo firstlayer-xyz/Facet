@@ -21,6 +21,22 @@ func promoteVarGroupType(a, b typeInfo) (typeInfo, bool) {
 	return typeInfo{}, false
 }
 
+// requireNamedArgs enforces the rule that every argument to a user-facing call
+// must be named (e.g. `name: value`). It reports the first positional argument
+// and returns false so the caller can bail. Shared by the free-function
+// (checkCall) and method (checkMethodCall) paths so the rule lives in one place
+// and applies to both. Internal _-prefixed builtins use a separate positional
+// path (checkBuiltinCall) and never reach here.
+func (c *checker) requireNamedArgs(name string, pos parser.Pos, args []parser.Expr) bool {
+	for _, arg := range args {
+		if _, ok := arg.(*parser.NamedArg); !ok {
+			c.addError(pos, fmt.Sprintf("%s() arguments must be named (e.g. name: value)", name))
+			return false
+		}
+	}
+	return true
+}
+
 // checkCall checks a function call and returns its inferred return type.
 func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 	// Infer argument types
@@ -29,12 +45,9 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 		argTypes[i] = c.inferExpr(arg, env)
 	}
 
-	// Require named arguments for all function calls
-	for _, arg := range call.Args {
-		if _, ok := arg.(*parser.NamedArg); !ok {
-			c.addError(call.Pos, fmt.Sprintf("%s() arguments must be named (e.g. name: value)", call.Name))
-			return unknown()
-		}
+	// All user-facing calls require named arguments.
+	if !c.requireNamedArgs(call.Name, call.Pos, call.Args) {
+		return unknown()
 	}
 
 	// Check if the callee is a function-typed variable (e.g., lambda in scope).
@@ -505,6 +518,11 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 	argTypes := make([]typeInfo, len(mc.Args))
 	for i, arg := range mc.Args {
 		argTypes[i] = c.inferExpr(arg, env)
+	}
+
+	// Method calls require named arguments, same as free-function calls.
+	if !c.requireNamedArgs(mc.Method, mc.Pos, mc.Args) {
+		return unknown()
 	}
 
 	if recvType.ft == typeUnknown {
