@@ -367,6 +367,76 @@ func TestBOSL2_TubeRadii(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// rot(a) is BOSL2's general rotation: a scalar spins about Z, a vector is an
+// euler rotation (same mapping as OpenSCAD rotate).
+func TestBOSL2_Rot(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrot(45) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rot(scalar) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Rotate(z: 45 deg)") {
+		t.Fatalf("expected scalar rot about Z in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nrot([90, 0, 45]) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rot(vector) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "x: 90 deg") || !strings.Contains(res.Facet, "z: 45 deg") {
+		t.Fatalf("expected euler rot in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// zrot_copies(n) makes n copies evenly rotated about Z; with r, the copies sit
+// on a circle of that radius (moved out, then rotated).
+func TestBOSL2_ZrotCopies(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nzrot_copies(n=4) cuboid([2, 6, 2]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("zrot_copies(n) should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Union(", "[0:4 - 1]", ".Rotate(z:", "* 360 / 4"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nzrot_copies(n=6, r=20) cyl(h=5, r=1);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("zrot_copies(n,r) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(x: 20 mm)") || !strings.Contains(res.Facet, ".Rotate(z:") {
+		t.Fatalf("expected radial copies (Move then Rotate) in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// rect_tube is a hollow rectangular tube: an outer box minus an inner one, both
+// centered. The inner footprint comes from isize, or from size minus 2*wall.
+func TestBOSL2_RectTube(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrect_tube(h=10, size=[20, 16], isize=[14, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rect_tube(isize) should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Cube(", "x: 20 mm", "y: 16 mm", "x: 14 mm", "y: 10 mm", " - "} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nrect_tube(h=8, size=16, wall=2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rect_tube(wall) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "16 mm - 2 *") {
+		t.Fatalf("expected inner = size - 2*wall in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

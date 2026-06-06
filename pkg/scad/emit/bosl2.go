@@ -36,6 +36,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Cyl(n), true
 	case "tube":
 		return e.bosl2Tube(n), true
+	case "rect_tube":
+		return e.bosl2RectTube(n), true
 	case "position", "attach":
 		// Reached only outside a supported parent (top level, or under a
 		// transform); inside cuboid/cyl these are handled by withAttachments.
@@ -63,6 +65,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2AxisRot(n, "y"), true
 	case "zrot":
 		return e.bosl2AxisRot(n, "z"), true
+	case "rot":
+		return e.bosl2Rot(n), true
 	// linear distributors (n copies spaced along one axis, centered)
 	case "xcopies":
 		return e.bosl2LinearCopies(n, "x"), true
@@ -70,8 +74,85 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2LinearCopies(n, "y"), true
 	case "zcopies":
 		return e.bosl2LinearCopies(n, "z"), true
+	case "zrot_copies", "rot_copies":
+		return e.bosl2RotCopies(n), true
 	}
 	return "", false
+}
+
+// bosl2Rot emits BOSL2's general rotation rot(): a scalar spins about Z, a
+// vector is an euler rotation. It reuses the OpenSCAD rotate mapping, so the
+// axis-angle (v=) and pivot (cp=) forms are located errors, same as rotate.
+func (e *Emitter) bosl2Rot(n *ast.ModuleCall) string {
+	child := e.childExpr(n)
+	m := e.rotateMethod(n, e.childIs2D(n))
+	if m == "" {
+		return child
+	}
+	return child + "." + m
+}
+
+// bosl2RotCopies emits BOSL2's zrot_copies: n copies of the child spaced evenly
+// about Z (copy i at i·360/n degrees). With a radius r, each copy is first moved
+// out to that radius, producing a ring. The explicit `rots` angle-list form is
+// not supported (n is required).
+func (e *Emitter) bosl2RotCopies(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 0, "n", "r")
+	count, ok := arg(n, "n", -1)
+	if !ok {
+		return e.errf(n.Pos(), "zrot_copies needs a count n")
+	}
+	cnt := e.expr(count, kNumber)
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "zrot_copies has no child geometry")
+	}
+	inner := child
+	if r, ok := arg(n, "r", -1); ok {
+		inner = child + ".Move(x: " + e.expr(r, kLength) + ")"
+	}
+	v := e.freshLoopVar()
+	angle := "(" + v + " * 360 / " + cnt + ") * 1 deg"
+	return "Union(arr: for " + v + " [0:" + cnt + " - 1] { yield " + inner + ".Rotate(z: " + angle + ") })"
+}
+
+// bosl2RectTube emits BOSL2's rect_tube — a hollow rectangular tube, centered —
+// as an outer box minus an inner one of equal height. The outer footprint is
+// `size` ([x,y] or scalar); the inner is `isize`, or `size` minus 2·`wall`.
+func (e *Emitter) bosl2RectTube(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 1, "h", "l", "height", "size", "isize", "wall", "$fn", "$fa", "$fs")
+	h, ok := cylHeightArg(n)
+	if !ok {
+		return e.errf(n.Pos(), "rect_tube without height")
+	}
+	size, ok := arg(n, "size", -1)
+	if !ok {
+		return e.errf(n.Pos(), "rect_tube without size")
+	}
+	ox, oy := e.rect2Components(size)
+	var ix, iy string
+	if isize, ok := arg(n, "isize", -1); ok {
+		ix, iy = e.rect2Components(isize)
+	} else if wall, ok := arg(n, "wall", -1); ok {
+		w := e.expr(wall, kLength)
+		ix = ox + " - 2 * (" + w + ")"
+		iy = oy + " - 2 * (" + w + ")"
+	} else {
+		return e.errf(n.Pos(), "rect_tube needs an inner size (isize) or a wall thickness (wall)")
+	}
+	hStr := e.expr(h, kLength)
+	return fmt.Sprintf("(Cube(x: %s, y: %s, z: %s).AlignCenter(pos: Vec3{}) - Cube(x: %s, y: %s, z: %s).AlignCenter(pos: Vec3{}))",
+		ox, oy, hStr, ix, iy, hStr)
+}
+
+// rect2Components renders a 2D footprint size into (x, y) Length expressions: a
+// 2-vector gives per-axis lengths; a scalar repeats across both.
+func (e *Emitter) rect2Components(size ast.Expr) (x, y string) {
+	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) >= 2 {
+		return e.expr(v.Elems[0], kLength), e.expr(v.Elems[1], kLength)
+	}
+	s := e.expr(size, kLength)
+	return s, s
 }
 
 // bosl2LinearCopies emits a BOSL2 linear distributor (xcopies/ycopies/zcopies):
