@@ -76,8 +76,76 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2LinearCopies(n, "z"), true
 	case "zrot_copies", "rot_copies":
 		return e.bosl2RotCopies(n), true
+	case "grid_copies", "grid2d":
+		return e.bosl2GridCopies(n), true
+	// mirror-and-keep copies
+	case "xflip_copy":
+		return e.bosl2FlipCopy(n, "x"), true
+	case "yflip_copy":
+		return e.bosl2FlipCopy(n, "y"), true
+	case "zflip_copy":
+		return e.bosl2FlipCopy(n, "z"), true
+	case "mirror_copy":
+		return e.bosl2MirrorCopy(n), true
 	}
 	return "", false
+}
+
+// bosl2FlipCopy emits a BOSL2 single-axis mirror-and-keep (xflip_copy/yflip_copy/
+// zflip_copy): the child plus a copy mirrored across the plane normal to `axis`.
+// An `offset` shifts the mirror plane (reflection across axis = offset).
+func (e *Emitter) bosl2FlipCopy(n *ast.ModuleCall, axis string) string {
+	e.rejectExtraArgs(n, 1, "offset")
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
+	}
+	mirror := child + ".Mirror(" + axis + ": 1)"
+	if off, ok := arg(n, "offset", 0); ok {
+		mirror += ".Move(" + axis + ": 2 * (" + e.expr(off, kLength) + "))"
+	}
+	return "(" + child + " + " + mirror + ")"
+}
+
+// bosl2MirrorCopy emits BOSL2's mirror_copy(v): the child plus a copy mirrored
+// across the plane with normal v. Reuses the OpenSCAD mirror mapping.
+func (e *Emitter) bosl2MirrorCopy(n *ast.ModuleCall) string {
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "mirror_copy has no child geometry")
+	}
+	m := e.mirrorMethod(n, e.childIs2D(n))
+	if m == "" {
+		return child
+	}
+	return "(" + child + " + " + child + "." + m + ")"
+}
+
+// bosl2GridCopies emits BOSL2's grid_copies: an n-by-n (or [nx,ny]) grid of the
+// child on the XY plane, centered, as a nested for-comprehension. spacing and n
+// accept a scalar (both axes) or a 2-vector (per axis).
+func (e *Emitter) bosl2GridCopies(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 2, "spacing", "n", "size")
+	cnt, ok := arg(n, "n", 1)
+	if !ok {
+		return e.errf(n.Pos(), "grid_copies needs a count n")
+	}
+	sp, ok := arg(n, "spacing", 0)
+	if !ok {
+		return e.errf(n.Pos(), "grid_copies needs a spacing")
+	}
+	nx, ny := e.pair2(cnt, kNumber)
+	sx, sy := e.pair2(sp, kLength)
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "grid_copies has no child geometry")
+	}
+	vi := e.freshLoopVar()
+	vj := e.freshLoopVar()
+	ox := "(" + vi + " - (" + nx + " - 1) / 2) * " + sx
+	oy := "(" + vj + " - (" + ny + " - 1) / 2) * " + sy
+	return "Union(arr: for " + vi + " [0:" + nx + " - 1], " + vj + " [0:" + ny +
+		" - 1] { yield " + child + ".Move(x: " + ox + ", y: " + oy + ") })"
 }
 
 // bosl2Rot emits BOSL2's general rotation rot(): a scalar spins about Z, a
@@ -148,10 +216,16 @@ func (e *Emitter) bosl2RectTube(n *ast.ModuleCall) string {
 // rect2Components renders a 2D footprint size into (x, y) Length expressions: a
 // 2-vector gives per-axis lengths; a scalar repeats across both.
 func (e *Emitter) rect2Components(size ast.Expr) (x, y string) {
-	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) >= 2 {
-		return e.expr(v.Elems[0], kLength), e.expr(v.Elems[1], kLength)
+	return e.pair2(size, kLength)
+}
+
+// pair2 renders a scalar-or-2-vector argument into two component expressions of
+// kind k: a 2-vector gives its first two elements; a scalar repeats across both.
+func (e *Emitter) pair2(v ast.Expr, k kind) (a, b string) {
+	if vec, isVec := v.(*ast.Vector); isVec && len(vec.Elems) >= 2 {
+		return e.expr(vec.Elems[0], k), e.expr(vec.Elems[1], k)
 	}
-	s := e.expr(size, kLength)
+	s := e.expr(v, k)
 	return s, s
 }
 

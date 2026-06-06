@@ -437,6 +437,68 @@ func TestBOSL2_RectTube(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// xflip_copy/yflip_copy/zflip_copy keep the child and add a copy mirrored
+// across the corresponding plane (normal X/Y/Z).
+func TestBOSL2_FlipCopies(t *testing.T) {
+	cases := []struct{ name, mirror string }{
+		{"xflip_copy", ".Mirror(x: 1)"},
+		{"yflip_copy", ".Mirror(y: 1)"},
+		{"zflip_copy", ".Mirror(z: 1)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.name+"() cuboid([2, 4, 6]);\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%s should transpile, got: %v", c.name, err)
+		}
+		if !strings.Contains(res.Facet, c.mirror) || !strings.Contains(res.Facet, " + ") {
+			t.Fatalf("%s: expected child + %s in:\n%s", c.name, c.mirror, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
+
+// mirror_copy(v) keeps the child and adds a copy mirrored across the plane with
+// normal v.
+func TestBOSL2_MirrorCopy(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nmirror_copy([1, 1, 0]) cuboid([2, 4, 6]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("mirror_copy should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Mirror(x: 1, y: 1)") || !strings.Contains(res.Facet, " + ") {
+		t.Fatalf("expected mirror across [1,1,0] in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// grid_copies(spacing, n) tiles the child in an NxM grid on XY, centered, as a
+// nested for-comprehension. Scalar spacing/n apply to both axes; vectors give
+// per-axis values.
+func TestBOSL2_GridCopies(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ngrid_copies(spacing=10, n=3) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("grid_copies should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Union(", ".Move(", "y: (scad_i1", "(3 - 1) / 2) * 10 mm"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	// Two distinct loop ranges for the 3x3 grid.
+	if strings.Count(res.Facet, "[0:3 - 1]") < 2 {
+		t.Fatalf("expected two grid iterators in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\ngrid_copies(spacing=[10, 20], n=[2, 3]) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("grid_copies(vectors) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "[0:2 - 1]") || !strings.Contains(res.Facet, "[0:3 - 1]") {
+		t.Fatalf("expected per-axis counts 2 and 3 in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {
