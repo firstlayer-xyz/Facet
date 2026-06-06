@@ -587,6 +587,25 @@ func TestBOSL2_TagWithoutDiffIsInert(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// xscale/yscale/zscale scale the child along a single axis (the others by 1).
+func TestBOSL2_AxisScales(t *testing.T) {
+	cases := []struct{ name, want string }{
+		{"xscale", ".Scale(x: 2, y: 1, z: 1)"},
+		{"yscale", ".Scale(x: 1, y: 2, z: 1)"},
+		{"zscale", ".Scale(x: 1, y: 1, z: 2)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.name+"(2) cuboid(10);\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%s should transpile, got: %v", c.name, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%s: expected %q in:\n%s", c.name, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

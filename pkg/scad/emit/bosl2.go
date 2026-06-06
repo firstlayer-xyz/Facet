@@ -73,6 +73,12 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2AxisRot(n, "z"), true
 	case "rot":
 		return e.bosl2Rot(n), true
+	case "xscale":
+		return e.bosl2AxisScale(n, "x"), true
+	case "yscale":
+		return e.bosl2AxisScale(n, "y"), true
+	case "zscale":
+		return e.bosl2AxisScale(n, "z"), true
 	// linear distributors (n copies spaced along one axis, centered)
 	case "xcopies":
 		return e.bosl2LinearCopies(n, "x"), true
@@ -295,6 +301,31 @@ func (e *Emitter) bosl2AxisMove(n *ast.ModuleCall, axis string, sign int) string
 		return e.errf(n.Pos(), "%s without distance", n.Name)
 	}
 	return e.childExpr(n) + ".Move(" + axis + ": " + e.signedLen(d, sign) + ")"
+}
+
+// bosl2AxisScale emits a BOSL2 single-axis scale (xscale/yscale/zscale): the
+// child scaled by a factor along one axis, with the other axes left at 1.
+func (e *Emitter) bosl2AxisScale(n *ast.ModuleCall, axis string) string {
+	e.rejectExtraArgs(n, 1)
+	f, ok := arg(n, "", 0)
+	if !ok {
+		return e.errf(n.Pos(), "%s without a factor", n.Name)
+	}
+	fStr := e.expr(f, kNumber)
+	sx, sy, sz := "1", "1", "1"
+	switch axis {
+	case "x":
+		sx = fStr
+	case "y":
+		sy = fStr
+	case "z":
+		sz = fStr
+	}
+	child := e.childExpr(n)
+	if e.childIs2D(n) {
+		return child + ".Scale(x: " + sx + ", y: " + sy + ")"
+	}
+	return child + ".Scale(x: " + sx + ", y: " + sy + ", z: " + sz + ")"
 }
 
 // bosl2AxisRot emits a BOSL2 single-axis rotation (xrot/yrot/zrot): a scalar
