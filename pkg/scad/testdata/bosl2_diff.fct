@@ -109,11 +109,11 @@ fn B2.attachReorientRemove(pa B2Anchor, child B2) B2 {
 }
 
 fn Main() Solid {
-    return b2_cuboid(size: Vec3{x: 30 mm, y: 30 mm, z: 12 mm}).attachReorient(
-        pa: B2Anchor{x: 0, y: 0, z: 1},
-        child: b2_cyl(h: 16 mm, r: 4 mm)
-    ).Solid() + b2_cuboid(size: Vec3{x: 20 mm, y: 20 mm, z: 20 mm}).position(
-        a: B2Anchor{x: 1, y: 0, z: 1},
-        child: b2_cuboid(size: Vec3{x: 4 mm, y: 4 mm, z: 4 mm})
-    ).Solid().Move(x: 40 mm)
+    return b2_cuboid(size: Vec3{x: 40 mm, y: 24 mm, z: 10 mm}).positionRemove(
+        a: B2Anchor{x: 0, y: 0, z: 0},
+        child: b2_cyl(h: 30 mm, r: 8 mm / 2)
+    ).positionRemove(
+        a: B2Anchor{x: 0, y: 0, z: 1},
+        child: b2_cyl(h: 6 mm, r: 16 mm / 2)
+    ).Solid()
 }

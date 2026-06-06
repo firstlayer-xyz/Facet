@@ -48,17 +48,32 @@ fn B2.Solid() Solid {
     return self.solid
 }
 
-# Places child so its origin sits at this shape's anchor point a.
-fn B2.position(a B2Anchor, child B2) B2 {
-    return B2{solid: self.solid + child.solid.Move(v: self.anchorPoint(a: a)), size: self.size}
+# The child solid placed at this shape's anchor point a (origin on the anchor).
+fn B2.positionPlaced(a B2Anchor, child B2) Solid {
+    return child.solid.Move(v: self.anchorPoint(a: a))
 }
 
-# Mates child's ca anchor onto this shape's pa anchor (no reorientation: the
-# caller guarantees ca is anti-parallel to pa).
-fn B2.attach(pa B2Anchor, ca B2Anchor, child B2) B2 {
+# Places child at this shape's anchor a; the Remove form subtracts it instead
+# (BOSL2 diff() with a "remove" tag).
+fn B2.position(a B2Anchor, child B2) B2 {
+    return B2{solid: self.solid + self.positionPlaced(a: a, child: child), size: self.size}
+}
+fn B2.positionRemove(a B2Anchor, child B2) B2 {
+    return B2{solid: self.solid - self.positionPlaced(a: a, child: child), size: self.size}
+}
+
+# The child solid placed so its ca anchor lands on this shape's pa anchor (no
+# reorientation: the caller guarantees ca is anti-parallel to pa).
+fn B2.attachPlaced(pa B2Anchor, ca B2Anchor, child B2) Solid {
     var p = self.anchorPoint(a: pa)
     var c = child.anchorPoint(a: ca)
-    return B2{solid: self.solid + child.solid.Move(v: Vec3{x: p.x - c.x, y: p.y - c.y, z: p.z - c.z}), size: self.size}
+    return child.solid.Move(v: Vec3{x: p.x - c.x, y: p.y - c.y, z: p.z - c.z})
+}
+fn B2.attach(pa B2Anchor, ca B2Anchor, child B2) B2 {
+    return B2{solid: self.solid + self.attachPlaced(pa: pa, ca: ca, child: child), size: self.size}
+}
+fn B2.attachRemove(pa B2Anchor, ca B2Anchor, child B2) B2 {
+    return B2{solid: self.solid - self.attachPlaced(pa: pa, ca: ca, child: child), size: self.size}
 }
 
 # Rotates a solid so its +Z (UP) axis points along the axis direction dir (one
@@ -72,17 +87,20 @@ fn b2_orient_up_to(solid Solid, dir B2Anchor) Solid {
     return solid.Rotate(x: 90 deg)
 }
 
-# Single-anchor attach: reorients child so its +Z axis points out the pa face,
-# then sits its base on that face, centered on the anchor. The child's mating
-# face lies on its rotation axis, so placement is anchorPoint(pa) plus a push of
-# half the child's height along pa — no point rotation needed. pa is a pure axis.
-fn B2.attachReorient(pa B2Anchor, child B2) B2 {
+# The child solid for a single-anchor attach: reoriented so its +Z axis points
+# out the pa face, then its base sits on that face, centered on the anchor. The
+# child's mating face lies on its rotation axis, so placement is anchorPoint(pa)
+# plus a push of half the child's height along pa. pa is a pure axis.
+fn B2.attachReorientPlaced(pa B2Anchor, child B2) Solid {
     var oriented = b2_orient_up_to(solid: child.solid, dir: pa)
     var ap = self.anchorPoint(a: pa)
     var hz = child.size.z / 2
-    return B2{
-        solid: self.solid + oriented.Move(v: Vec3{x: ap.x + pa.x * hz, y: ap.y + pa.y * hz, z: ap.z + pa.z * hz}),
-        size: self.size,
-    }
+    return oriented.Move(v: Vec3{x: ap.x + pa.x * hz, y: ap.y + pa.y * hz, z: ap.z + pa.z * hz})
+}
+fn B2.attachReorient(pa B2Anchor, child B2) B2 {
+    return B2{solid: self.solid + self.attachReorientPlaced(pa: pa, child: child), size: self.size}
+}
+fn B2.attachReorientRemove(pa B2Anchor, child B2) B2 {
+    return B2{solid: self.solid - self.attachReorientPlaced(pa: pa, child: child), size: self.size}
 }
 `

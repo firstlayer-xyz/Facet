@@ -80,6 +80,9 @@ type Emitter struct {
 	// loopVarSeq names fresh loop variables for emitted for-comprehensions (BOSL2
 	// distributors), so nested distributors don't collide.
 	loopVarSeq int
+	// inDiff is true while emitting inside a BOSL2 diff(): a `tag("remove")`
+	// attachment is then subtracted from its parent instead of unioned.
+	inDiff bool
 }
 
 // freshLoopVar returns a unique, reserved-prefix loop variable name for an

@@ -530,6 +530,63 @@ func TestBOSL2_OrientedCylinders(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// mainBody returns the `fn Main` portion of transpiled output, excluding the
+// injected runtime preamble (whose definitions name the *Remove methods).
+func mainBody(t *testing.T, facet string) string {
+	t.Helper()
+	i := strings.Index(facet, "fn Main(")
+	if i < 0 {
+		t.Fatalf("no Main in output:\n%s", facet)
+	}
+	return facet[i:]
+}
+
+// diff() with a tag("remove") plain child subtracts that child from the parent
+// — a through-hole drilled at the center.
+func TestBOSL2_DiffRemovePlain(t *testing.T) {
+	src := "include <BOSL2/std.scad>\ndiff() cuboid([20, 20, 20]) tag(\"remove\") cyl(h=30, d=6);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("diff+tag should transpile, got: %v", err)
+	}
+	if !strings.Contains(mainBody(t, res.Facet), ".positionRemove(") {
+		t.Fatalf("expected a subtractive positionRemove in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// diff() with a tag("remove") attach child subtracts the attached shape (a
+// pocket on a face) — emitted via attachReorientRemove for a 1-anchor attach.
+func TestBOSL2_DiffRemoveAttach(t *testing.T) {
+	src := "include <BOSL2/std.scad>\ndiff() cuboid([20, 20, 20]) attach(TOP) tag(\"remove\") cyl(h=10, d=6);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("diff+attach+tag should transpile, got: %v", err)
+	}
+	if !strings.Contains(mainBody(t, res.Facet), ".attachReorientRemove(") {
+		t.Fatalf("expected a subtractive attachReorientRemove in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// Without diff(), a tag("remove") is inert: the child is unioned normally (the
+// Main body uses .position, not the subtractive form).
+func TestBOSL2_TagWithoutDiffIsInert(t *testing.T) {
+	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 20]) tag(\"remove\") cyl(h=30, d=6);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("tag without diff should transpile, got: %v", err)
+	}
+	body := mainBody(t, res.Facet)
+	if strings.Contains(body, "Remove(") {
+		t.Fatalf("tag outside diff() must not subtract:\n%s", res.Facet)
+	}
+	if !strings.Contains(body, ".position(") {
+		t.Fatalf("expected a normal union .position in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

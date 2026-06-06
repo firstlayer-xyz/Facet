@@ -69,8 +69,13 @@ func (e *Emitter) bosl2AttachGuard(n *ast.ModuleCall) (string, bool) {
 		return "", false
 	}
 	for _, c := range n.Children {
-		if mc, ok := c.(*ast.ModuleCall); ok && (mc.Name == "position" || mc.Name == "attach") {
-			return e.errf(mc.Pos(), "%s: attachments (position/attach) are only supported on cuboid and cyl", mc.Name), true
+		mc, ok := c.(*ast.ModuleCall)
+		if !ok {
+			continue
+		}
+		inner, _ := e.unwrapTags(mc)
+		if inner != nil && (inner.Name == "position" || inner.Name == "attach") {
+			return e.errf(inner.Pos(), "%s: attachments (position/attach) are only supported on cuboid and cyl", inner.Name), true
 		}
 	}
 	return "", false
@@ -96,31 +101,74 @@ func (e *Emitter) bosl2AttachChain(n *ast.ModuleCall) string {
 	return chain + ".Solid()"
 }
 
+// tagValue returns the string tag of a tag()/tag_this()/force_tag() call.
+func tagValue(mc *ast.ModuleCall) string {
+	if v, ok := arg(mc, "tag", 0); ok {
+		if s, ok := v.(*ast.Str); ok {
+			return s.Value
+		}
+	}
+	return ""
+}
+
+// unwrapTags peels any leading tag() wrappers off a call, returning the inner
+// geometry call and whether a "remove" tag was seen while inside a diff() (which
+// means the geometry should be subtracted). Outside diff(), tags are inert.
+func (e *Emitter) unwrapTags(mc *ast.ModuleCall) (*ast.ModuleCall, bool) {
+	removed := false
+	for mc != nil && (mc.Name == "tag" || mc.Name == "tag_this" || mc.Name == "force_tag") {
+		if e.inDiff && tagValue(mc) == "remove" {
+			removed = true
+		}
+		inner, ok := singleChildCall(mc)
+		if !ok {
+			return nil, removed
+		}
+		mc = inner
+	}
+	return mc, removed
+}
+
 // b2Link emits one attachment-chain link for a child of an attachment parent:
 // `.position(...)` / `.attach(...)`, or — for a plain (non-position/attach)
 // child — `.position(...)` at the CENTER anchor (BOSL2 places bare children at
-// the parent origin).
+// the parent origin). A leading `tag("remove")` inside diff() turns the union
+// into a subtraction (the *Remove variants).
 func (e *Emitter) b2Link(c ast.Stmt) string {
-	mc, ok := c.(*ast.ModuleCall)
+	raw, ok := c.(*ast.ModuleCall)
 	if !ok {
 		return e.errf(c.Pos(), "attachment child must be a shape")
 	}
+	mc, removed := e.unwrapTags(raw)
+	if mc == nil {
+		return e.errf(raw.Pos(), "tag without a child shape")
+	}
 	switch mc.Name {
 	case "position":
-		return e.b2PositionLink(mc)
+		return e.b2PositionLink(mc, removed)
 	case "attach":
-		return e.b2AttachLink(mc)
+		return e.b2AttachLink(mc, removed)
 	default:
-		child, ok := e.b2Child(mc)
+		child, ok := e.bosl2PrimitiveB2(mc)
 		if !ok {
 			return e.errf(mc.Pos(), "%s: not an attachable shape", mc.Name)
 		}
-		return ".position(a: B2Anchor{x: 0, y: 0, z: 0}, child: " + child + ")"
+		return "." + pick(removed, "positionRemove", "position") +
+			"(a: B2Anchor{x: 0, y: 0, z: 0}, child: " + child + ")"
 	}
 }
 
-// b2PositionLink emits `.position(a: <anchor>, child: <B2>)`.
-func (e *Emitter) b2PositionLink(n *ast.ModuleCall) string {
+// pick returns r when cond is true, else u — chooses the Remove vs union method.
+func pick(cond bool, r, u string) string {
+	if cond {
+		return r
+	}
+	return u
+}
+
+// b2PositionLink emits `.position(a: <anchor>, child: <B2>)` (or .positionRemove
+// when the child is remove-tagged inside a diff()).
+func (e *Emitter) b2PositionLink(n *ast.ModuleCall, removedOuter bool) string {
 	a, ok := arg(n, "", 0)
 	if !ok {
 		return e.errf(n.Pos(), "position without an anchor")
@@ -129,11 +177,12 @@ func (e *Emitter) b2PositionLink(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "position: unsupported anchor expression")
 	}
-	child, ok := e.b2ChildOf(n)
+	child, removedChild, ok := e.b2ChildOf(n)
 	if !ok {
 		return e.errf(n.Pos(), "position: child is not an attachable shape")
 	}
-	return ".position(a: " + anchorLit(dir) + ", child: " + child + ")"
+	return "." + pick(removedOuter || removedChild, "positionRemove", "position") +
+		"(a: " + anchorLit(dir) + ", child: " + child + ")"
 }
 
 // b2AttachLink emits one attach link. The two-anchor form attach(P, C) is the
@@ -142,7 +191,7 @@ func (e *Emitter) b2PositionLink(n *ast.ModuleCall) string {
 // point out the P face and emits B2.attachReorient; P must be a single axis.
 // Cases needing a general child rotation (non-opposite two-anchor attach) are
 // located errors.
-func (e *Emitter) b2AttachLink(n *ast.ModuleCall) string {
+func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 	pa, ok := arg(n, "", 0)
 	if !ok {
 		return e.errf(n.Pos(), "attach without an anchor")
@@ -151,10 +200,11 @@ func (e *Emitter) b2AttachLink(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "attach: unsupported parent anchor")
 	}
-	child, ok := e.b2ChildOf(n)
+	child, removedChild, ok := e.b2ChildOf(n)
 	if !ok {
 		return e.errf(n.Pos(), "attach: child is not an attachable shape")
 	}
+	removed := removedOuter || removedChild
 
 	if ca, has := arg(n, "", 1); has {
 		cdir, ok := anchorVec(ca)
@@ -164,13 +214,15 @@ func (e *Emitter) b2AttachLink(n *ast.ModuleCall) string {
 		if cdir != negDir(pdir) {
 			return e.errf(n.Pos(), "attach: reorienting the child (non-opposite anchors) is not yet supported")
 		}
-		return ".attach(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ")"
+		return "." + pick(removed, "attachRemove", "attach") +
+			"(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ")"
 	}
 
 	if !isPureAxis(pdir) {
 		return e.errf(n.Pos(), "attach: single-anchor attach needs a single-axis anchor, not a combined one")
 	}
-	return ".attachReorient(pa: " + anchorLit(pdir) + ", child: " + child + ")"
+	return "." + pick(removed, "attachReorientRemove", "attachReorient") +
+		"(pa: " + anchorLit(pdir) + ", child: " + child + ")"
 }
 
 // isPureAxis reports whether a direction vector points along exactly one axis
@@ -189,19 +241,21 @@ func isPureAxis(d [3]int) bool {
 	return nonzero == 1
 }
 
-// b2ChildOf emits the single geometry child of a position/attach node as a B2.
-func (e *Emitter) b2ChildOf(n *ast.ModuleCall) (string, bool) {
-	mc, ok := singleChildCall(n)
+// b2ChildOf emits the single geometry child of a position/attach node as a B2,
+// peeling any tag() wrappers. It returns the emitted child, whether a "remove"
+// tag (inside diff()) applied to it, and ok=false if it is not an attachable
+// shape.
+func (e *Emitter) b2ChildOf(n *ast.ModuleCall) (child string, removed bool, ok bool) {
+	raw, ok := singleChildCall(n)
 	if !ok {
-		return "", false
+		return "", false, false
 	}
-	return e.b2Child(mc)
-}
-
-// b2Child emits an attachable shape as a B2 value, or ok=false if the shape has
-// no known attachment geometry.
-func (e *Emitter) b2Child(mc *ast.ModuleCall) (string, bool) {
-	return e.bosl2PrimitiveB2(mc)
+	mc, removed := e.unwrapTags(raw)
+	if mc == nil {
+		return "", removed, false
+	}
+	child, ok = e.bosl2PrimitiveB2(mc)
+	return child, removed, ok
 }
 
 // singleChildCall returns the single child geometry call of an attachment node,
