@@ -325,10 +325,6 @@ func typeDisplayName(t facetType) string {
 		return "Library"
 	case typeStruct:
 		return "type"
-	case typeFunc:
-		return "fn"
-	case typeOptional:
-		return "Optional"
 	default:
 		return "unknown"
 	}

@@ -80,43 +80,42 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 	// Arity filtering here would incorrectly exclude overloads when fewer args
 	// are provided than the overload requires (e.g. Frustum(r1:..., h:...)
 	// with only 2 args should still reach the 3-required r1/r2/h overload).
-	userCandidates, userFallback := parser.CollectCandidates(
+	userCandidates, _ := parser.CollectCandidates(
 		c.prog.Sources[c.currentSrcKey].Functions(), call.Name, -1, true)
-	if len(userCandidates) == 1 {
-		return c.checkFuncArgs(call.Name, call.Pos, userCandidates[0], call.Args, argTypes)
-	} else if len(userCandidates) > 1 {
-		if fn := c.findOverload(userCandidates, call.Args, argTypes); fn != nil {
-			return c.checkFuncArgs(call.Name, call.Pos, fn, call.Args, argTypes)
-		} else {
-			c.reportOverloadFailure(call.Name, call.Pos, userCandidates, call.Args, argTypes)
-		}
-		return unknown()
+	if t, ok := c.resolveCandidates(call.Name, call.Pos, userCandidates, call.Args, argTypes); ok {
+		return t
 	}
 
 	// Check stdlib functions (type-based overload resolution)
-	stdCandidates, stdFallback := parser.CollectCandidates(c.stdFuncs, call.Name, -1, false)
-	if len(stdCandidates) == 1 {
-		return c.checkFuncArgs(call.Name, call.Pos, stdCandidates[0], call.Args, argTypes)
-	} else if len(stdCandidates) > 1 {
-		if fn := c.findOverload(stdCandidates, call.Args, argTypes); fn != nil {
-			return c.checkFuncArgs(call.Name, call.Pos, fn, call.Args, argTypes)
-		} else {
-			c.reportOverloadFailure(call.Name, call.Pos, stdCandidates, call.Args, argTypes)
-		}
-		return unknown()
-	}
-
-	// No candidates matched — use fallback for arity error reporting
-	fb := userFallback
-	if fb == nil {
-		fb = stdFallback
-	}
-	if fb != nil {
-		return c.checkFuncArgs(call.Name, call.Pos, fb, call.Args, argTypes)
+	stdCandidates, _ := parser.CollectCandidates(c.stdFuncs, call.Name, -1, false)
+	if t, ok := c.resolveCandidates(call.Name, call.Pos, stdCandidates, call.Args, argTypes); ok {
+		return t
 	}
 
 	c.addError(call.Pos, fmt.Sprintf("unknown function %q", call.Name))
 	return unknown()
+}
+
+// resolveCandidates dispatches a call against a set of overload candidates,
+// shared by every name-based call site (free functions, stdlib, struct methods).
+// It returns (type, true) whenever there was at least one candidate — a unique
+// match, the best overload, or a reported overload failure — and (unknown,
+// false) only when there were no candidates, so the caller can try the next
+// source. The fallback-for-arity path that once followed these blocks was dead:
+// the candidate lists here are collected with nArgs=-1, so a non-empty fallback
+// implies non-empty candidates, which these branches have already handled.
+func (c *checker) resolveCandidates(name string, pos parser.Pos, cands []*parser.Function, args []parser.Expr, argTypes []typeInfo) (typeInfo, bool) {
+	switch {
+	case len(cands) == 1:
+		return c.checkFuncArgs(name, pos, cands[0], args, argTypes), true
+	case len(cands) > 1:
+		if fn := c.findOverload(cands, args, argTypes); fn != nil {
+			return c.checkFuncArgs(name, pos, fn, args, argTypes), true
+		}
+		c.reportOverloadFailure(name, pos, cands, args, argTypes)
+		return unknown(), true
+	}
+	return unknown(), false
 }
 
 // checkBuiltinCall checks an internal _-prefixed builtin call and returns its inferred return type.
@@ -644,15 +643,8 @@ func (c *checker) checkMethodOnRecvType(mc *parser.MethodCallExpr, env *typeEnv,
 				structMethodCandidates = append(structMethodCandidates, fn)
 			}
 		}
-		if len(structMethodCandidates) == 1 {
-			return c.checkFuncArgs(mc.Method, mc.Pos, structMethodCandidates[0], mc.Args, argTypes)
-		} else if len(structMethodCandidates) > 1 {
-			if fn := c.findOverload(structMethodCandidates, mc.Args, argTypes); fn != nil {
-				return c.checkFuncArgs(mc.Method, mc.Pos, fn, mc.Args, argTypes)
-			} else {
-				c.reportOverloadFailure(mc.Method, mc.Pos, structMethodCandidates, mc.Args, argTypes)
-			}
-			return unknown()
+		if t, ok := c.resolveCandidates(mc.Method, mc.Pos, structMethodCandidates, mc.Args, argTypes); ok {
+			return t
 		}
 		// Check stdlib/library methods for this struct type (type-based overload resolution)
 		if methods, ok := c.stdMethods[structName]; ok {
@@ -662,14 +654,8 @@ func (c *checker) checkMethodOnRecvType(mc *parser.MethodCallExpr, env *typeEnv,
 					stdMethodCandidates = append(stdMethodCandidates, fn)
 				}
 			}
-			if len(stdMethodCandidates) == 1 {
-				return c.checkFuncArgs(mc.Method, mc.Pos, stdMethodCandidates[0], mc.Args, argTypes)
-			} else if len(stdMethodCandidates) > 1 {
-				if fn := c.findOverload(stdMethodCandidates, mc.Args, argTypes); fn != nil {
-					return c.checkFuncArgs(mc.Method, mc.Pos, fn, mc.Args, argTypes)
-				}
-				c.reportOverloadFailure(mc.Method, mc.Pos, stdMethodCandidates, mc.Args, argTypes)
-				return unknown()
+			if t, ok := c.resolveCandidates(mc.Method, mc.Pos, stdMethodCandidates, mc.Args, argTypes); ok {
+				return t
 			}
 		}
 		// Method exists but with wrong arity?
@@ -689,15 +675,8 @@ func (c *checker) checkMethodOnRecvType(mc *parser.MethodCallExpr, env *typeEnv,
 				stdMethodCandidates = append(stdMethodCandidates, fn)
 			}
 		}
-		if len(stdMethodCandidates) == 1 {
-			return c.checkFuncArgs(mc.Method, mc.Pos, stdMethodCandidates[0], mc.Args, argTypes)
-		} else if len(stdMethodCandidates) > 1 {
-			if fn := c.findOverload(stdMethodCandidates, mc.Args, argTypes); fn != nil {
-				return c.checkFuncArgs(mc.Method, mc.Pos, fn, mc.Args, argTypes)
-			} else {
-				c.reportOverloadFailure(mc.Method, mc.Pos, stdMethodCandidates, mc.Args, argTypes)
-			}
-			return unknown()
+		if t, ok := c.resolveCandidates(mc.Method, mc.Pos, stdMethodCandidates, mc.Args, argTypes); ok {
+			return t
 		}
 	}
 

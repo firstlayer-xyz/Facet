@@ -93,58 +93,6 @@ func (p *parser) parseStructLit(typeName string, exprStart, typeNamePos Pos) (Ex
 	return &StructLitExpr{TypeName: typeName, Fields: fields, Pos: exprStart, TypeNamePos: typeNamePos}, nil
 }
 
-// isTypedArrayStart peeks ahead to check if the current position begins a
-// typed array constructor: Name[ expr, expr, ... ].
-// Scans tokens after [, tracking ()[]{}  depth. At depth 0 a comma → true
-// (typed array); hitting ] without a comma → false (regular indexing).
-func (p *parser) isTypedArrayStart() bool {
-	snap := p.lex.snapshot()
-	savedCur := p.cur
-	defer func() {
-		p.lex.restore(snap)
-		p.cur = savedCur
-	}()
-	// Consume [
-	if err := p.next(); err != nil {
-		return false
-	}
-	// Empty typed array: Name[]
-	if p.cur.Type == TokenRBracket {
-		return true
-	}
-	depth := 0
-	for {
-		switch p.cur.Type {
-		case TokenLParen, TokenLBrace:
-			depth++
-		case TokenLBracket:
-			depth++
-		case TokenRParen, TokenRBrace:
-			depth--
-			if depth < 0 {
-				return false
-			}
-		case TokenRBracket:
-			if depth == 0 {
-				return false // hit ] without seeing , → indexing
-			}
-			depth--
-			if depth < 0 {
-				return false
-			}
-		case TokenComma:
-			if depth == 0 {
-				return true
-			}
-		case TokenEOF:
-			return false
-		}
-		if err := p.next(); err != nil {
-			return false
-		}
-	}
-}
-
 // parseTypedArrayLit → "[" elem { "," elem } "]"
 // Parses elements for a typed array constructor (TypeName already consumed).
 // Bare { ... } elements are parsed as named struct literals of the given type.

@@ -6,16 +6,6 @@ import (
 )
 
 func init() {
-	structMethod := func(name string, body func(*structVal, []value) (value, error)) builtinFn {
-		return func(e *evaluator, args []value) (value, error) {
-			sv, ok := args[0].(*structVal)
-			if !ok {
-				return nil, fmt.Errorf("%s: expected struct, got %s", name, typeName(args[0]))
-			}
-			return body(sv, args[1:])
-		}
-	}
-
 	// Zero-arg PolyMesh → PolyMesh Conway operators.
 	// Each entry names a builtin and the corresponding PolyMesh method.
 	for _, m := range []struct {
@@ -143,21 +133,13 @@ func init() {
 
 	// Color methods
 
-	builtinRegistry["_color_to_hex"] = func(e *evaluator, args []value) (value, error) {
-		const name = "_color_to_hex"
-		sv, ok := args[0].(*structVal)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected struct, got %s", name, typeName(args[0]))
-		}
-		if len(args[1:]) != 0 {
-			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args[1:]))
+	builtinRegistry["_color_to_hex"] = structMethod("_color_to_hex", func(sv *structVal, args []value) (value, error) {
+		if len(args) != 0 {
+			return nil, fmt.Errorf("_color_to_hex() expects 0 arguments, got %d", len(args))
 		}
 		r, _ := sv.fields["r"].(float64)
 		g, _ := sv.fields["g"].(float64)
 		b, _ := sv.fields["b"].(float64)
-		ri := clampByte(r)
-		gi := clampByte(g)
-		bi := clampByte(b)
-		return fmt.Sprintf("#%02X%02X%02X", ri, gi, bi), nil
-	}
+		return fmt.Sprintf("#%02X%02X%02X", clampByte(r), clampByte(g), clampByte(b)), nil
+	})
 }
