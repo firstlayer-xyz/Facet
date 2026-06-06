@@ -407,9 +407,15 @@ function setupBridge() {
     const textPtr   = cStringToHeap(text);
     const halignPtr = cStringToHeap(halign);
     const valignPtr = cStringToHeap(valign);
-    M._facet_text_to_cross_section(fontPtr, fontU8.length, textPtr, sizeMm, halignPtr, valignPtr, SKETCH_RET);
-    M._free(fontPtr); M._free(textPtr); M._free(halignPtr); M._free(valignPtr);
-    return sketchPtr();
+    // try/finally so a C++ throw (e.g. a degenerate glyph outline) can't leak
+    // these buffers — the font copy alone is ~300K, re-created every frame for
+    // an animated text model.
+    try {
+      M._facet_text_to_cross_section(fontPtr, fontU8.length, textPtr, sizeMm, halignPtr, valignPtr, SKETCH_RET);
+      return sketchPtr();
+    } finally {
+      M._free(fontPtr); M._free(textPtr); M._free(halignPtr); M._free(valignPtr);
+    }
   };
 
   // ── 2D Booleans ───────────────────────────────────────────────────────────
@@ -875,6 +881,11 @@ function scheduleEval() {
 
 async function runEval() {
   if (!wasmReady || !currentSource) return;
+  // A debounced eval scheduled just before playback started would otherwise
+  // fire mid-animation — flashing the loading overlay and painting a stale
+  // static frame over the live one. The rAF frame loop already renders the
+  // current parameter values, so skip the one-shot eval while playing.
+  if (playing) return;
   const entry = entrySelect.value || 'Main';
   loadingEl.style.display = 'flex';
 
@@ -1024,6 +1035,7 @@ function setPlaying(p) {
   if (playing === p) return;
   playing = p;
   if (!playing) frameGen++;   // invalidate any in-flight frame so a late response can't paint after stop
+  if (playing) clearTimeout(evalDebounceTimer); // cancel a pending one-shot eval so it can't fire mid-playback
   updatePlayUI();
   if (playing) requestAnimationFrame(playbackTick);
 }
