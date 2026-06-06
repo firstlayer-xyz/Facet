@@ -42,9 +42,9 @@ func (e *Emitter) expr(x ast.Expr, k kind) string {
 		if strings.HasPrefix(n.Name, "$") {
 			switch n.Name {
 			case "$t":
-				// $t is OpenSCAD's animation clock (0..1, default 0). Facet has no
-				// animation, so it maps to a const pinned at 0 (the non-animating
-				// default). See File for the declaration.
+				// $t is OpenSCAD's animation clock (0..1). It maps to scad_t, which
+				// File derives per frame inside a Facet Animation and threads through
+				// $t-using definitions as a parameter (see anim.go).
 				e.usesAnimTime = true
 				return animTimeVar
 			case "$children":

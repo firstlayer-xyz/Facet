@@ -13,6 +13,9 @@ import (
 func (e *Emitter) emitModuleDef(m *ast.ModuleDef) string {
 	e.paramRenames = reassignedParamRenames(m.Params, m.Body)
 	params := make([]string, 0, len(m.Params))
+	if e.animUse[m.Name] {
+		params = append(params, animTimeVar+" Number")
+	}
 	localFn := ""
 	for _, p := range m.Params {
 		if isResolutionVar(p.Name) {
@@ -36,7 +39,10 @@ func (e *Emitter) emitModuleDef(m *ast.ModuleDef) string {
 			name = r
 		}
 		decl := name + " " + e.paramType(m.Name, p)
-		if p.Default != nil {
+		// A $t-bearing default can't live on a Facet parameter (defaults can't
+		// reference scad_t); it is injected at call sites instead, so the
+		// parameter is emitted without a default. See injectedAnimDefaults.
+		if p.Default != nil && !exprHasAnimTime(p.Default) {
 			decl += " = " + e.expr(p.Default, kNumber)
 		}
 		params = append(params, decl)
@@ -250,11 +256,22 @@ func (e *Emitter) emitFunctionDef(d *ast.FunctionDef) string {
 // arguments to the definition's parameter names (named args pass through).
 func (e *Emitter) userModuleCall(n *ast.ModuleCall, sym *symbol) string {
 	args := e.mapArgs(n.Name, n.Args, paramNames(sym.params))
-	if cu := e.childUse[n.Name]; cu.uses {
+	add := func(arg string) {
 		if args != "" {
 			args += ", "
 		}
-		args += "children: " + e.childrenArray(n.Children, cu)
+		args += arg
+	}
+	if e.animUse[n.Name] {
+		add(animTimeVar + ": " + animTimeVar)
+	}
+	// Supply $t-bearing defaults the call omits, evaluated here in the caller's
+	// scope where scad_t is live (Facet defaults can't reference it).
+	for _, p := range e.injectedAnimDefaults(n, sym) {
+		add(p.Name + ": " + e.expr(p.Default, kNumber))
+	}
+	if cu := e.childUse[n.Name]; cu.uses {
+		add("children: " + e.childrenArray(n.Children, cu))
 	} else if len(n.Children) > 0 {
 		return e.errf(n.Pos(), "%s: passing children to a module that does not use children()", n.Name)
 	}

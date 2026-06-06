@@ -31,8 +31,11 @@ type Emitter struct {
 	hasGlobalFa bool
 	hasGlobalFs bool
 	// usesAnimTime is set when the program references $t (OpenSCAD's animation
-	// clock); File then emits `const scad_t = 0`, the non-animating default.
+	// clock); File then emits a Facet Animation whose frame derives scad_t.
 	usesAnimTime bool
+	// animUse is the set of user modules that need a `scad_t` parameter because
+	// their body references $t (transitively); see analyzeAnimTime.
+	animUse map[string]bool
 	// usesV2/usesV3/usesFaces/usesV2Path are set when the corresponding emitted
 	// helper is referenced (scad_v2 for polygon points, scad_v3 + scad_faces
 	// for polyhedron, scad_v2_path for polygon-with-paths whose points are
@@ -72,6 +75,10 @@ type Emitter struct {
 // avoid colliding with a user variable named `t` (distinct from $t in OpenSCAD).
 const animTimeVar = "scad_t"
 
+// animFrameVar is the Animation frame parameter: wall-clock milliseconds, from
+// which scad_t (the normalized 0..1 clock) is derived once per frame.
+const animFrameVar = "scad_ms"
+
 // File emits a whole program as `fn Main() Solid { return <expr> }` plus any
 // module/function definitions, and returns the source text + any errors.
 func File(f *ast.File) (string, []TranspileError) {
@@ -81,8 +88,13 @@ func File(f *ast.File) (string, []TranspileError) {
 	e.vecParams = classifyVectorParams(e.syms)
 	e.classifyNestedParams()
 	e.childUse = e.analyzeChildren(f)
+	e.animUse = e.analyzeAnimTime()
 	var defs []string
-	var consts []string
+	type topAssign struct {
+		name  string
+		value ast.Expr
+	}
+	var assigns []topAssign
 	varIdx := map[string]int{} // last top-level assignment of a name wins
 	var top []ast.Stmt
 	for _, s := range f.Stmts {
@@ -90,6 +102,9 @@ func File(f *ast.File) (string, []TranspileError) {
 		case *ast.ModuleDef:
 			defs = append(defs, e.emitModuleDef(n))
 		case *ast.FunctionDef:
+			if exprHasAnimTime(n.Body) || paramsHaveAnimTimeDefault(n.Params) {
+				e.errf(n.Pos(), "$t inside function %q is not supported; reference $t in module or top-level geometry instead", n.Name)
+			}
 			defs = append(defs, e.emitFunctionDef(n))
 		case *ast.Assign:
 			if isResolutionVar(n.Name) {
@@ -99,12 +114,11 @@ func File(f *ast.File) (string, []TranspileError) {
 				e.errf(n.Pos(), "special variable %q is not supported", n.Name)
 				continue
 			}
-			decl := "const " + n.Name + " = " + e.expr(n.Value, kNumber)
 			if i, ok := varIdx[n.Name]; ok {
-				consts[i] = decl
+				assigns[i] = topAssign{n.Name, n.Value}
 			} else {
-				varIdx[n.Name] = len(consts)
-				consts = append(consts, decl)
+				varIdx[n.Name] = len(assigns)
+				assigns = append(assigns, topAssign{n.Name, n.Value})
 			}
 		default:
 			top = append(top, s)
@@ -113,11 +127,33 @@ func File(f *ast.File) (string, []TranspileError) {
 	if len(top) == 0 {
 		e.errf(f.Pos(), "no top-level geometry to render")
 	}
+	// A top-level const is frame-local (recomputed per frame) if it depends on
+	// $t, directly or by referencing another frame-local const. The rest are
+	// invariant and stay at module scope where definitions can read them.
+	frameLocal := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, a := range assigns {
+			if frameLocal[a.name] {
+				continue
+			}
+			if exprHasAnimTime(a.value) || exprRefsAny(a.value, frameLocal) {
+				frameLocal[a.name] = true
+				changed = true
+			}
+		}
+	}
+	var consts, frameConsts []string
+	for _, a := range assigns {
+		decl := "const " + a.name + " = " + e.expr(a.value, kNumber)
+		if frameLocal[a.name] {
+			frameConsts = append(frameConsts, decl)
+		} else {
+			consts = append(consts, decl)
+		}
+	}
 	body := e.unionStmts(top)
 	var w writer
-	if e.usesAnimTime {
-		w.writef("const %s = 0\n", animTimeVar)
-	}
 	for _, c := range consts {
 		w.write(c)
 		w.write("\n")
@@ -127,7 +163,20 @@ func File(f *ast.File) (string, []TranspileError) {
 		w.write(d)
 		w.write("\n")
 	}
-	w.writef("fn Main() %s { return %s }\n", e.topReturnType(top), body)
+	if e.usesAnimTime {
+		if rt := e.topReturnType(top); rt != "Solid" {
+			e.errf(f.Pos(), "$t animation requires 3D geometry (a Solid result), but the model is %s", rt)
+		}
+		w.writef("fn Main() Animation {\nreturn Animation{\nframe: fn(%s Number) Solid {\n", animFrameVar)
+		w.writef("const %s = (%s %% %d) / %d\n", animTimeVar, animFrameVar, scadAnimPeriodMs, scadAnimPeriodMs)
+		for _, c := range frameConsts {
+			w.write(c)
+			w.write("\n")
+		}
+		w.writef("return %s\n}\n}\n}\n", body)
+	} else {
+		w.writef("fn Main() %s { return %s }\n", e.topReturnType(top), body)
+	}
 	return w.str(), e.errs
 }
 
