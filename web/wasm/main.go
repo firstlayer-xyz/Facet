@@ -219,40 +219,39 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 // invariant setup (globals, `var base = Expensive()` captures) instead of
 // re-running Load → Check → Eval. The browser runs the wasm single-threaded with
 // at most one frame in flight, so no locking is needed. A single entry bounds
-// memory; a changed key — edited source, different entry, or new overrides —
-// evicts and rebuilds.
+// memory; any changed input — edited source, different entry, or new overrides
+// — evicts and rebuilds.
 type webSession struct {
-	key  string
-	anim *evaluator.Animation
+	source        string
+	entry         string
+	overridesJSON string
+	anim          *evaluator.Animation
 }
 
 // animSession is the process-wide retained animation. A package global is safe
 // here because the wasm event loop serializes every JS→Go call.
 var animSession webSession
 
-// webSessionKey length-prefixes each field so the concatenation is injective: a
-// separator byte appearing inside the source can't forge a colliding key.
-func webSessionKey(source, entry, overridesJSON string) string {
-	var b strings.Builder
-	for _, f := range []string{source, entry, overridesJSON} {
-		fmt.Fprintf(&b, "%d:", len(f))
-		b.WriteString(f)
-	}
-	return b.String()
-}
-
 func (s *webSession) store(source, entry, overridesJSON string, a *evaluator.Animation) {
-	s.key = webSessionKey(source, entry, overridesJSON)
+	s.source = source
+	s.entry = entry
+	s.overridesJSON = overridesJSON
 	s.anim = a
 }
 
 // getOrBuild returns the retained Animation for these inputs, rebuilding via
-// Load → Check → Eval when the key changes. Errors if the entry is not an
-// Animation.
+// Load → Check → Eval whenever any input differs. Comparing the inputs directly
+// (rather than rebuilding a hash key) keeps the per-frame hot path
+// allocation-free. Errors if the entry is not an Animation.
 func (s *webSession) getOrBuild(source, entry, overridesJSON string) (*evaluator.Animation, error) {
-	if s.anim != nil && s.key == webSessionKey(source, entry, overridesJSON) {
+	if s.anim != nil && s.source == source && s.entry == entry && s.overridesJSON == overridesJSON {
 		return s.anim, nil
 	}
+	// Inputs changed (or first build): drop the old Animation up front so a
+	// failed rebuild leaves an empty session rather than one still bound to the
+	// previous inputs.
+	s.anim = nil
+
 	overrides, err := parseOverrides(overridesJSON)
 	if err != nil {
 		return nil, err
