@@ -74,6 +74,9 @@ type Emitter struct {
 	// vocabulary (primitives, transforms, anchors) and emits its runtime
 	// preamble (see bosl2.go).
 	bosl2 bool
+	// usesBosl2Runtime is set when an attachment is emitted as a B2 chain, so
+	// File injects the BOSL2 attachment runtime (see bosl2_runtime.go).
+	usesBosl2Runtime bool
 }
 
 // animTimeVar is the Facet name $t is translated to. It is `scad_*`-prefixed to
@@ -171,6 +174,10 @@ func File(f *ast.File) (string, []TranspileError) {
 		w.write("\n")
 	}
 	w.write(e.helperPreamble())
+	if e.usesBosl2Runtime {
+		w.write(bosl2Runtime)
+		w.write("\n")
+	}
 	for _, d := range defs {
 		w.write(d)
 		w.write("\n")

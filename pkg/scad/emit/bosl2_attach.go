@@ -1,7 +1,7 @@
 package emit
 
 import (
-	"strings"
+	"fmt"
 
 	"facet/pkg/scad/ast"
 )
@@ -52,38 +52,18 @@ func anchorVec(x ast.Expr) ([3]int, bool) {
 	return [3]int{}, false
 }
 
-// boxGeom is the attachment geometry of a centered box: each axis spans
-// ±half[i], so an anchor in direction d sits at d[i]·half[i]. half holds the
-// rendered half-extent Length expressions ("20 mm / 2").
-type boxGeom struct {
-	half [3]string
-}
+// negDir returns the opposite direction vector.
+func negDir(d [3]int) [3]int { return [3]int{-d[0], -d[1], -d[2]} }
 
-// newBoxGeom builds a boxGeom from rendered full-size Length components.
-func newBoxGeom(x, y, z string) boxGeom {
-	return boxGeom{half: [3]string{x + " / 2", y + " / 2", z + " / 2"}}
-}
-
-// anchorPoint renders the (x, y, z) Length offsets of an anchor direction on the
-// box. A zero component renders "" so callers can drop it from a Move.
-func (g boxGeom) anchorPoint(dir [3]int) (x, y, z string) {
-	axis := func(i int) string {
-		switch dir[i] {
-		case 1:
-			return g.half[i]
-		case -1:
-			return "-(" + g.half[i] + ")"
-		default:
-			return ""
-		}
-	}
-	return axis(0), axis(1), axis(2)
+// anchorLit renders a direction vector as a B2Anchor literal for the runtime.
+func anchorLit(d [3]int) string {
+	return fmt.Sprintf("B2Anchor{x: %d, y: %d, z: %d}", d[0], d[1], d[2])
 }
 
 // bosl2AttachGuard blocks a shape that has position/attach children but is not a
-// supported attachment parent (only cuboid/cyl route children through
-// withAttachments). Without this, such children would be silently dropped — the
-// guard turns that into a located error instead (no fallbacks).
+// supported attachment parent (only cuboid/cyl carry a known attachment
+// geometry). Without this, such children would be silently dropped — the guard
+// turns that into a located error instead (no fallbacks).
 func (e *Emitter) bosl2AttachGuard(n *ast.ModuleCall) (string, bool) {
 	if n.Name == "cuboid" || n.Name == "cyl" {
 		return "", false
@@ -96,35 +76,51 @@ func (e *Emitter) bosl2AttachGuard(n *ast.ModuleCall) (string, bool) {
 	return "", false
 }
 
-// withAttachments emits a parent shape unioned with its attachment children.
-// `position`/`attach` children are placed relative to the parent geometry `g`;
-// any other child is plain geometry placed at the parent origin (anchor CENTER)
-// and unioned as-is. With no children the base is returned unchanged.
-func (e *Emitter) withAttachments(base string, g boxGeom, children []ast.Stmt) string {
-	if len(children) == 0 {
-		return base
+// bosl2AttachChain emits a parent shape with attachment children as a B2 method
+// chain into the BOSL2 runtime, extracted to a Solid at the end:
+//
+//	b2_cuboid(size: …).attach(…).position(…).Solid()
+//
+// The geometry math (anchor points, placement) lives in the Facet runtime; the
+// transpiler only resolves anchors and wires up the calls.
+func (e *Emitter) bosl2AttachChain(n *ast.ModuleCall) string {
+	parent, ok := e.bosl2PrimitiveB2(n)
+	if !ok {
+		return e.errf(n.Pos(), "%s cannot carry attachments", n.Name)
 	}
-	parts := []string{base}
-	for _, c := range children {
-		if mc, ok := c.(*ast.ModuleCall); ok {
-			switch mc.Name {
-			case "position":
-				parts = append(parts, e.bosl2Position(mc, g))
-				continue
-			case "attach":
-				parts = append(parts, e.bosl2Attach(mc, g))
-				continue
-			}
-		}
-		parts = append(parts, e.stmt(c))
+	e.usesBosl2Runtime = true
+	chain := parent
+	for _, c := range n.Children {
+		chain += e.b2Link(c)
 	}
-	return unionParts(parts)
+	return chain + ".Solid()"
 }
 
-// bosl2Position emits `position(anchor) child`: the child's origin is moved to
-// the parent's anchor point. No reorientation (that is attach's role).
-func (e *Emitter) bosl2Position(n *ast.ModuleCall, g boxGeom) string {
-	e.rejectExtraArgs(n, 1)
+// b2Link emits one attachment-chain link for a child of an attachment parent:
+// `.position(...)` / `.attach(...)`, or — for a plain (non-position/attach)
+// child — `.position(...)` at the CENTER anchor (BOSL2 places bare children at
+// the parent origin).
+func (e *Emitter) b2Link(c ast.Stmt) string {
+	mc, ok := c.(*ast.ModuleCall)
+	if !ok {
+		return e.errf(c.Pos(), "attachment child must be a shape")
+	}
+	switch mc.Name {
+	case "position":
+		return e.b2PositionLink(mc)
+	case "attach":
+		return e.b2AttachLink(mc)
+	default:
+		child, ok := e.b2Child(mc)
+		if !ok {
+			return e.errf(mc.Pos(), "%s: not an attachable shape", mc.Name)
+		}
+		return ".position(a: B2Anchor{x: 0, y: 0, z: 0}, child: " + child + ")"
+	}
+}
+
+// b2PositionLink emits `.position(a: <anchor>, child: <B2>)`.
+func (e *Emitter) b2PositionLink(n *ast.ModuleCall) string {
 	a, ok := arg(n, "", 0)
 	if !ok {
 		return e.errf(n.Pos(), "position without an anchor")
@@ -133,17 +129,18 @@ func (e *Emitter) bosl2Position(n *ast.ModuleCall, g boxGeom) string {
 	if !ok {
 		return e.errf(n.Pos(), "position: unsupported anchor expression")
 	}
-	x, y, z := g.anchorPoint(dir)
-	return e.childExpr(n) + moveSuffix(x, y, z)
+	child, ok := e.b2ChildOf(n)
+	if !ok {
+		return e.errf(n.Pos(), "position: child is not an attachable shape")
+	}
+	return ".position(a: " + anchorLit(dir) + ", child: " + child + ")"
 }
 
-// bosl2Attach emits `attach(parent_anchor[, child_anchor]) child`: the child's
-// child_anchor point is moved onto the parent's parent_anchor point. v1 supports
-// only the no-reorientation case — child_anchor anti-parallel to parent_anchor
-// (e.g. attach(TOP, BOTTOM)), and the single-anchor shorthand attach(TOP)/attach(UP)
-// — so the move is a pure translation. Cases needing the child rotated, and
-// children whose size isn't known, are located errors (no fallbacks).
-func (e *Emitter) bosl2Attach(n *ast.ModuleCall, parent boxGeom) string {
+// b2AttachLink emits `.attach(pa: <P>, ca: <C>, child: <B2>)`. v1 supports only
+// the no-reorientation case — the child anchor anti-parallel to the parent
+// anchor (e.g. attach(TOP, BOTTOM)), plus the single-anchor attach(TOP)/attach(UP)
+// shorthand. Cases that would need the child rotated are located errors.
+func (e *Emitter) b2AttachLink(n *ast.ModuleCall) string {
 	pa, ok := arg(n, "", 0)
 	if !ok {
 		return e.errf(n.Pos(), "attach without an anchor")
@@ -152,7 +149,6 @@ func (e *Emitter) bosl2Attach(n *ast.ModuleCall, parent boxGeom) string {
 	if !ok {
 		return e.errf(n.Pos(), "attach: unsupported parent anchor")
 	}
-
 	cdir := negDir(pdir)
 	if ca, has := arg(n, "", 1); has {
 		cdir, ok = anchorVec(ca)
@@ -165,24 +161,27 @@ func (e *Emitter) bosl2Attach(n *ast.ModuleCall, parent boxGeom) string {
 	} else if pdir != ([3]int{0, 0, 1}) {
 		return e.errf(n.Pos(), "attach: single-anchor attach is only supported for TOP/UP")
 	}
-
-	mc, ok := singleChildCall(n)
+	child, ok := e.b2ChildOf(n)
 	if !ok {
-		return e.errf(n.Pos(), "attach: child must be a single shape")
+		return e.errf(n.Pos(), "attach: child is not an attachable shape")
 	}
-	child, ok := e.childBoxGeom(mc)
-	if !ok {
-		return e.errf(n.Pos(), "attach: child '%s' has no known size", mc.Name)
-	}
-
-	x := combineOffset(pdir[0], parent.half[0], cdir[0], child.half[0])
-	y := combineOffset(pdir[1], parent.half[1], cdir[1], child.half[1])
-	z := combineOffset(pdir[2], parent.half[2], cdir[2], child.half[2])
-	return e.childExpr(n) + moveSuffix(x, y, z)
+	return ".attach(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ")"
 }
 
-// negDir returns the opposite direction vector.
-func negDir(d [3]int) [3]int { return [3]int{-d[0], -d[1], -d[2]} }
+// b2ChildOf emits the single geometry child of a position/attach node as a B2.
+func (e *Emitter) b2ChildOf(n *ast.ModuleCall) (string, bool) {
+	mc, ok := singleChildCall(n)
+	if !ok {
+		return "", false
+	}
+	return e.b2Child(mc)
+}
+
+// b2Child emits an attachable shape as a B2 value, or ok=false if the shape has
+// no known attachment geometry.
+func (e *Emitter) b2Child(mc *ast.ModuleCall) (string, bool) {
+	return e.bosl2PrimitiveB2(mc)
+}
 
 // singleChildCall returns the single child geometry call of an attachment node,
 // or ok=false when there is not exactly one child module call.
@@ -194,36 +193,40 @@ func singleChildCall(n *ast.ModuleCall) (*ast.ModuleCall, bool) {
 	return mc, ok
 }
 
-// childBoxGeom returns the axis-aligned attachment geometry of a BOSL2 child
-// primitive (its bounding half-extents), used to find the child's anchor point.
-// ok is false for shapes whose size we can't determine.
-func (e *Emitter) childBoxGeom(mc *ast.ModuleCall) (boxGeom, bool) {
+// bosl2PrimitiveB2 emits a BOSL2 primitive as a B2 constructor call
+// (b2_cuboid/b2_cyl/b2_sphere). ok is false for shapes with no attachment
+// geometry. Options we don't translate (cones, rounding, chamfer, anchors) are
+// located errors via rejectExtraArgs.
+func (e *Emitter) bosl2PrimitiveB2(mc *ast.ModuleCall) (string, bool) {
 	switch mc.Name {
 	case "cuboid":
+		e.rejectExtraArgs(mc, 1, "size")
 		size, ok := arg(mc, "size", 0)
 		if !ok {
-			return boxGeom{}, false
+			return e.errf(mc.Pos(), "cuboid without size"), true
 		}
 		x, y, z := e.boxSizeComponents(size)
-		return newBoxGeom(x, y, z), true
+		return fmt.Sprintf("b2_cuboid(size: Vec3{x: %s, y: %s, z: %s})", x, y, z), true
 	case "cyl":
+		e.rejectExtraArgs(mc, 2, "h", "l", "height", "r", "d", "$fn", "$fa", "$fs")
 		h, ok := cylHeightArg(mc)
 		if !ok {
-			return boxGeom{}, false
+			return e.errf(mc.Pos(), "cyl without height"), true
 		}
 		r, ok := e.radiusHalf(mc, 1)
 		if !ok {
-			return boxGeom{}, false
+			return e.errf(mc.Pos(), "cyl without radius"), true
 		}
-		return boxGeom{half: [3]string{r, r, e.expr(h, kLength) + " / 2"}}, true
+		return fmt.Sprintf("b2_cyl(h: %s, r: %s)", e.expr(h, kLength), r), true
 	case "sphere":
+		e.rejectExtraArgs(mc, 1, "r", "d", "$fn", "$fa", "$fs")
 		r, ok := e.radiusHalf(mc, 0)
 		if !ok {
-			return boxGeom{}, false
+			return e.errf(mc.Pos(), "sphere without radius"), true
 		}
-		return boxGeom{half: [3]string{r, r, r}}, true
+		return fmt.Sprintf("b2_sphere(r: %s)", r), true
 	}
-	return boxGeom{}, false
+	return "", false
 }
 
 // radiusHalf renders a primitive's radial half-extent (its r, or d/2) as a
@@ -237,45 +240,4 @@ func (e *Emitter) radiusHalf(n *ast.ModuleCall, posIdx int) (string, bool) {
 		return val + " / 2", true
 	}
 	return val, true
-}
-
-// combineOffset renders the per-axis translation that moves the child's anchor
-// point onto the parent's: parentSign·parentHalf − childSign·childHalf. A zero
-// result renders "" so moveSuffix can drop the axis.
-func combineOffset(parentSign int, parentHalf string, childSign int, childHalf string) string {
-	var b strings.Builder
-	switch parentSign {
-	case 1:
-		b.WriteString(parentHalf)
-	case -1:
-		b.WriteString("-(" + parentHalf + ")")
-	}
-	// Subtract childSign·childHalf, i.e. add (−childSign)·childHalf.
-	switch add := -childSign; {
-	case add == 0:
-	case b.Len() == 0 && add == 1:
-		b.WriteString(childHalf)
-	case b.Len() == 0 && add == -1:
-		b.WriteString("-(" + childHalf + ")")
-	case add == 1:
-		b.WriteString(" + " + childHalf)
-	case add == -1:
-		b.WriteString(" - " + childHalf)
-	}
-	return b.String()
-}
-
-// moveSuffix renders a `.Move(...)` for the non-empty axis offsets, or "" when
-// every offset is empty (the anchor is CENTER — no move needed).
-func moveSuffix(x, y, z string) string {
-	var parts []string
-	for _, p := range []struct{ name, val string }{{"x", x}, {"y", y}, {"z", z}} {
-		if p.val != "" {
-			parts = append(parts, p.name+": "+p.val)
-		}
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return ".Move(" + strings.Join(parts, ", ") + ")"
 }

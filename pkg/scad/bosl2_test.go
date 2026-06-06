@@ -135,66 +135,74 @@ func TestBOSL2_AxisRotations(t *testing.T) {
 	}
 }
 
-// position(anchor) on a box parent places the child's origin at the parent's
-// anchor point, computed from the parent's (centered) size. The parent and the
-// positioned child are unioned. TOP of a [20,20,10] cuboid is z = 10/2.
+// position(anchor) on a box parent emits a B2 chain into the attachment runtime:
+// the parent becomes a b2_cuboid and the child a positioned b2_cyl, with the
+// anchor resolved to a B2Anchor literal (TOP -> z:1). The geometry math lives in
+// the runtime; the runtime typecheck (emit package) covers its correctness.
 func TestBOSL2_PositionTop(t *testing.T) {
 	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 10]) position(TOP) cyl(h=4, r=2);\n"
 	res, err := Transpile(src, "part.scad")
 	if err != nil {
 		t.Fatalf("position(TOP) should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, "Cube(x: 20 mm, y: 20 mm, z: 10 mm).AlignCenter(pos: Vec3{})") {
-		t.Fatalf("expected base cuboid in:\n%s", res.Facet)
-	}
-	if !strings.Contains(res.Facet, ".Move(z: 10 mm / 2)") {
-		t.Fatalf("expected child positioned at top (z: 10 mm / 2) in:\n%s", res.Facet)
-	}
-	if !strings.Contains(res.Facet, " + ") {
-		t.Fatalf("expected parent + child union in:\n%s", res.Facet)
+	// Fragments are checked individually because the formatter may wrap a long
+	// call across lines.
+	for _, want := range []string{
+		"b2_cuboid(size: Vec3{x: 20 mm, y: 20 mm, z: 10 mm})",
+		".position(",
+		"a: B2Anchor{x: 0, y: 0, z: 1}",
+		"child: b2_cyl(h: 4 mm, r: 2 mm)",
+		".Solid()",
+		"type B2", // runtime preamble injected
+	} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
 	}
 	assertTypeChecks(t, res.Facet)
 }
 
-// A combined anchor (RIGHT+TOP) sums its component directions, so the child is
-// positioned at x = 20/2 and z = 10/2.
+// A combined anchor (RIGHT+TOP) sums its component directions into one B2Anchor.
 func TestBOSL2_PositionCombinedAnchor(t *testing.T) {
 	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 10]) position(RIGHT+TOP) cyl(h=4, r=2);\n"
 	res, err := Transpile(src, "part.scad")
 	if err != nil {
 		t.Fatalf("position(RIGHT+TOP) should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, ".Move(x: 20 mm / 2, z: 10 mm / 2)") {
-		t.Fatalf("expected child at right+top corner in:\n%s", res.Facet)
+	if !strings.Contains(res.Facet, "a: B2Anchor{x: 1, y: 0, z: 1}") {
+		t.Fatalf("expected combined anchor B2Anchor{x:1,y:0,z:1} in:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 }
 
-// attach(TOP, BOTTOM) sits the child's BOTTOM on the parent's TOP with no
-// reorientation (the anchors are anti-parallel). The child moves by the sum of
-// the two half-heights: parent 10/2 + child 8/2.
+// attach(TOP, BOTTOM) mates the child's BOTTOM onto the parent's TOP with no
+// reorientation, emitted as a B2 .attach with both anchors resolved.
 func TestBOSL2_AttachTopBottom(t *testing.T) {
 	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 10]) attach(TOP, BOTTOM) cyl(h=8, r=3);\n"
 	res, err := Transpile(src, "part.scad")
 	if err != nil {
 		t.Fatalf("attach(TOP, BOTTOM) should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, ".Move(z: 10 mm / 2 + 8 mm / 2)") {
-		t.Fatalf("expected child stacked on top in:\n%s", res.Facet)
+	for _, want := range []string{".attach(", "pa: B2Anchor{x: 0, y: 0, z: 1}", "ca: B2Anchor{x: 0, y: 0, z: -1}", "child: b2_cyl(h: 8 mm, r: 3 mm)"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
 	}
 	assertTypeChecks(t, res.Facet)
 }
 
-// The single-anchor attach(TOP) is the top-mount shorthand: same result as
-// attach(TOP, BOTTOM).
+// The single-anchor attach(TOP) shorthand resolves the child anchor to the
+// opposite of the parent anchor (BOTTOM) — same B2 attach as attach(TOP, BOTTOM).
 func TestBOSL2_AttachTopShorthand(t *testing.T) {
 	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 10]) attach(TOP) cyl(h=8, r=3);\n"
 	res, err := Transpile(src, "part.scad")
 	if err != nil {
 		t.Fatalf("attach(TOP) should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, ".Move(z: 10 mm / 2 + 8 mm / 2)") {
-		t.Fatalf("expected child stacked on top in:\n%s", res.Facet)
+	for _, want := range []string{".attach(", "pa: B2Anchor{x: 0, y: 0, z: 1}", "ca: B2Anchor{x: 0, y: 0, z: -1}", "child: b2_cyl(h: 8 mm, r: 3 mm)"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q (shorthand) in:\n%s", want, res.Facet)
+		}
 	}
 	assertTypeChecks(t, res.Facet)
 }

@@ -106,14 +106,15 @@ func (e *Emitter) signedLen(d ast.Expr, sign int) string {
 // edge selection, and explicit anchors are not yet translated; rejectExtraArgs
 // turns any such argument into a located error rather than dropping it.
 func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
+	if len(n.Children) > 0 {
+		return e.bosl2AttachChain(n)
+	}
 	e.rejectExtraArgs(n, 1, "size")
 	size, ok := arg(n, "size", 0)
 	if !ok {
 		return e.errf(n.Pos(), "cuboid without size")
 	}
-	base := e.cubeCtor(size) + ".AlignCenter(pos: Vec3{})"
-	x, y, z := e.boxSizeComponents(size)
-	return e.withAttachments(base, newBoxGeom(x, y, z), n.Children)
+	return e.cubeCtor(size) + ".AlignCenter(pos: Vec3{})"
 }
 
 // boxSizeComponents renders the three side-length Length expressions of an
@@ -133,6 +134,9 @@ func (e *Emitter) boxSizeComponents(size ast.Expr) (x, y, z string) {
 // (r1/r2/d1/d2), chamfer, rounding, and anchors are not yet translated and
 // error via rejectExtraArgs.
 func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
+	if len(n.Children) > 0 {
+		return e.bosl2AttachChain(n)
+	}
 	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
