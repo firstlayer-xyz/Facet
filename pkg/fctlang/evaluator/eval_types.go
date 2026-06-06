@@ -63,14 +63,8 @@ func typeName(v value) string {
 		if v.elemType != "" {
 			return "[]" + v.elemType
 		}
-		if len(v.elems) > 0 {
-			elem0 := typeName(v.elems[0])
-			for _, el := range v.elems[1:] {
-				if typeName(el) != elem0 {
-					return "Array"
-				}
-			}
-			return "[]" + elem0
+		if et := inferElemType(v.elems); et != "" {
+			return "[]" + et
 		}
 		return "Array"
 	case float64:

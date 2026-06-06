@@ -101,21 +101,12 @@ func (p *parser) parseConstraint() (Expr, error) {
 		return nil, err
 	}
 	// Check for unit suffix: [1:100] mm or [0:360] deg
-	if rng, ok := constraint.(*RangeExpr); ok && p.cur.Type == TokenIdent {
-		if _, isAngle := AngleFactors[p.cur.Text]; isAngle {
-			unit := p.cur.Text
-			if err := p.next(); err != nil {
-				return nil, err
-			}
-			return &ConstrainedRange{Range: rng, Unit: unit}, nil
+	if rng, ok := constraint.(*RangeExpr); ok && p.isUnitSuffix() {
+		unit := p.cur.Text
+		if err := p.next(); err != nil {
+			return nil, err
 		}
-		if _, isUnit := UnitFactors[p.cur.Text]; isUnit {
-			unit := p.cur.Text
-			if err := p.next(); err != nil {
-				return nil, err
-			}
-			return &ConstrainedRange{Range: rng, Unit: unit}, nil
-		}
+		return &ConstrainedRange{Range: rng, Unit: unit}, nil
 	}
 	return constraint, nil
 }

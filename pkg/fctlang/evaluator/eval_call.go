@@ -35,20 +35,15 @@ func (e *evaluator) evalNamedArgs(args []parser.Expr, locals map[string]value) (
 func (e *evaluator) evalPositionalArgs(args []parser.Expr, locals map[string]value) ([]value, error) {
 	result := make([]value, len(args))
 	for i, argExpr := range args {
-		// If it's a NamedArg, evaluate just the value (builtins are positional).
+		// Builtins are positional; strip a NamedArg wrapper to its value.
 		if na, ok := argExpr.(*parser.NamedArg); ok {
-			v, err := e.evalExpr(na.Value, locals)
-			if err != nil {
-				return nil, err
-			}
-			result[i] = v
-		} else {
-			v, err := e.evalExpr(argExpr, locals)
-			if err != nil {
-				return nil, err
-			}
-			result[i] = v
+			argExpr = na.Value
 		}
+		v, err := e.evalExpr(argExpr, locals)
+		if err != nil {
+			return nil, err
+		}
+		result[i] = v
 	}
 	return result, nil
 }
