@@ -77,6 +77,17 @@ type Emitter struct {
 	// usesBosl2Runtime is set when an attachment is emitted as a B2 chain, so
 	// File injects the BOSL2 attachment runtime (see bosl2_runtime.go).
 	usesBosl2Runtime bool
+	// loopVarSeq names fresh loop variables for emitted for-comprehensions (BOSL2
+	// distributors), so nested distributors don't collide.
+	loopVarSeq int
+}
+
+// freshLoopVar returns a unique, reserved-prefix loop variable name for an
+// emitted for-comprehension.
+func (e *Emitter) freshLoopVar() string {
+	v := fmt.Sprintf("scad_i%d", e.loopVarSeq)
+	e.loopVarSeq++
+	return v
 }
 
 // animTimeVar is the Facet name $t is translated to. It is `scad_*`-prefixed to

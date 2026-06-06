@@ -300,6 +300,73 @@ func TestBOSL2_UnsupportedConstructErrors(t *testing.T) {
 	}
 }
 
+// xcopies(spacing, n) makes n copies of the child along X, centered on the
+// origin, emitted as a unioned for-comprehension with a per-copy Move.
+func TestBOSL2_Xcopies(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nxcopies(10, 3) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("xcopies should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Union(", "[0:3 - 1]", ".Move(x:", "(3 - 1) / 2) * 10 mm"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// ycopies/zcopies distribute along Y/Z; the count defaults to 2 when n is
+// omitted, and a total length `l` is an alternative to spacing.
+func TestBOSL2_CopiesAxisAndDefaults(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nzcopies(5) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("zcopies should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(z:") || !strings.Contains(res.Facet, "[0:2 - 1]") {
+		t.Fatalf("expected z-axis copies with default n=2 in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nycopies(n=4, l=30) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("ycopies(n,l) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(y:") || !strings.Contains(res.Facet, "30 mm") {
+		t.Fatalf("expected y-axis copies spaced over l=30 in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// tube is a hollow cylinder: an outer cylinder minus an inner one, both
+// centered. od/id give the outer/inner diameters (or/ir give radii).
+func TestBOSL2_TubeDiameters(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ntube(h=10, od=8, id=4);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("tube should transpile, got: %v", err)
+	}
+	// Fragments checked individually — the formatter may wrap each Cylinder call.
+	for _, want := range []string{"Cylinder(", "r: 8 mm / 2", "r: 4 mm / 2", " - "} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// tube with or/ir radii subtracts inner from outer at those radii.
+func TestBOSL2_TubeRadii(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ntube(h=6, or=5, ir=3);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("tube(or,ir) should transpile, got: %v", err)
+	}
+	for _, want := range []string{"r: 5 mm", "r: 3 mm", "h: 6 mm", " - "} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

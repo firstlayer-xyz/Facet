@@ -34,6 +34,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Cuboid(n), true
 	case "cyl":
 		return e.bosl2Cyl(n), true
+	case "tube":
+		return e.bosl2Tube(n), true
 	case "position", "attach":
 		// Reached only outside a supported parent (top level, or under a
 		// transform); inside cuboid/cyl these are handled by withAttachments.
@@ -61,8 +63,43 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2AxisRot(n, "y"), true
 	case "zrot":
 		return e.bosl2AxisRot(n, "z"), true
+	// linear distributors (n copies spaced along one axis, centered)
+	case "xcopies":
+		return e.bosl2LinearCopies(n, "x"), true
+	case "ycopies":
+		return e.bosl2LinearCopies(n, "y"), true
+	case "zcopies":
+		return e.bosl2LinearCopies(n, "z"), true
 	}
 	return "", false
+}
+
+// bosl2LinearCopies emits a BOSL2 linear distributor (xcopies/ycopies/zcopies):
+// n copies of the child spaced along one axis and centered on the origin. It
+// becomes a unioned for-comprehension; copy i sits at (i - (n-1)/2)·spacing.
+// Spacing is the `spacing` argument (or positional 0); alternatively a total
+// length `l` gives spacing = l/(n-1). The count `n` (positional 1) defaults to 2.
+func (e *Emitter) bosl2LinearCopies(n *ast.ModuleCall, axis string) string {
+	e.rejectExtraArgs(n, 2, "spacing", "n", "l")
+	count := "2"
+	if c, ok := arg(n, "n", 1); ok {
+		count = e.expr(c, kNumber)
+	}
+	var spacing string
+	if s, ok := arg(n, "spacing", 0); ok {
+		spacing = e.expr(s, kLength)
+	} else if l, ok := arg(n, "l", -1); ok {
+		spacing = "(" + e.expr(l, kLength) + ") / (" + count + " - 1)"
+	} else {
+		return e.errf(n.Pos(), "%s needs a spacing or a total length l", n.Name)
+	}
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
+	}
+	v := e.freshLoopVar()
+	offset := "(" + v + " - (" + count + " - 1) / 2) * " + spacing
+	return "Union(arr: for " + v + " [0:" + count + " - 1] { yield " + child + ".Move(" + axis + ": " + offset + ") })"
 }
 
 // bosl2AxisMove emits a BOSL2 single-axis translation (up/down/left/right/
@@ -149,6 +186,41 @@ func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 	rMM, rMMok := cylinderRadiusMM(n)
 	return fmt.Sprintf("Cylinder(%s: %s, h: %s%s).AlignCenter(pos: Vec3{})",
 		key, val, e.expr(h, kLength), e.segmentsSuffix(n, rMM, rMMok))
+}
+
+// bosl2Tube emits BOSL2's tube — a hollow cylinder, centered on the origin —
+// as an outer cylinder minus an inner one of equal height. The outer wall comes
+// from or/od and the inner bore from ir/id. Wall-thickness forms and rounding
+// are not yet translated and error via rejectExtraArgs.
+func (e *Emitter) bosl2Tube(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 1, "h", "l", "height", "or", "ir", "od", "id", "$fn", "$fa", "$fs")
+	h, ok := cylHeightArg(n)
+	if !ok {
+		return e.errf(n.Pos(), "tube without height")
+	}
+	outer, ok := e.tubeRadius(n, "or", "od")
+	if !ok {
+		return e.errf(n.Pos(), "tube without an outer radius (or/od)")
+	}
+	inner, ok := e.tubeRadius(n, "ir", "id")
+	if !ok {
+		return e.errf(n.Pos(), "tube without an inner radius (ir/id)")
+	}
+	hStr := e.expr(h, kLength)
+	return fmt.Sprintf("(Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}) - Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}))",
+		outer, hStr, inner, hStr)
+}
+
+// tubeRadius renders a tube radius from a radius arg (rName) or a diameter arg
+// (dName, halved). ok is false if neither is present.
+func (e *Emitter) tubeRadius(n *ast.ModuleCall, rName, dName string) (string, bool) {
+	if v, ok := arg(n, rName, -1); ok {
+		return e.expr(v, kLength), true
+	}
+	if v, ok := arg(n, dName, -1); ok {
+		return e.expr(v, kLength) + " / 2", true
+	}
+	return "", false
 }
 
 // cylHeightArg resolves a BOSL2 cyl's length: named h/l/height, else the first
