@@ -302,7 +302,7 @@ void facet_merge_extract_expanded_mesh(
 //   ascender), "center" (y=0 is mid-cap-height), "bottom" (y=0 is at
 //   descender bottom). Empty string means default.
 void facet_text_to_cross_section(
-    const char* font_path, const char* text, double size_mm,
+    const char* font_data, size_t font_len, const char* text, double size_mm,
     const char* halign, const char* valign, FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------

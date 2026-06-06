@@ -418,21 +418,14 @@ func (e *evaluator) builtinNewText(args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
-	// No font (None) selects the built-in font; a relative path resolves
-	// against the working directory.
-	var fontPath string
-	if font == nil {
-		fontPath = manifold.DefaultFontPath()
-	} else if filepath.IsAbs(*font) {
-		fontPath = *font
-	} else {
-		cwd, cwdErr := os.Getwd()
-		if cwdErr != nil {
-			return nil, fmt.Errorf("_text(): failed to get working directory: %w", cwdErr)
-		}
-		fontPath = filepath.Join(cwd, *font)
+	// No font (None) selects the built-in font; a custom path is read into
+	// bytes by resolveFontBytes (which errors in the browser, where there is no
+	// filesystem). CreateText then takes the font bytes directly.
+	fontData, err := resolveFontBytes(font)
+	if err != nil {
+		return nil, err
 	}
-	return manifold.CreateText(fontPath, text, size, halign, valign)
+	return manifold.CreateText(fontData, text, size, halign, valign)
 }
 
 // ---------------------------------------------------------------------------
@@ -465,7 +458,6 @@ func coerceNumericArgs(args []value) {
 		}
 	}
 }
-
 
 // ---------------------------------------------------------------------------
 // SolidFromMesh builtin

@@ -8,9 +8,10 @@
 # Requires:
 #   emsdk active in PATH (emcc, emcmake)
 #
-# Builds against Manifold's first-class Emscripten support. Assimp +
-# FreeType paths in our cxx layer are excluded via -DFACET_WASM (mesh I/O
-# moves JS-side, text rendering is stubbed for now).
+# Builds against Manifold's first-class Emscripten support. Assimp is excluded
+# via -DFACET_WASM (mesh I/O moves JS-side); FreeType is linked through
+# Emscripten's port (-sUSE_FREETYPE) so text.cpp renders glyphs identically to
+# the native build, from in-memory font bytes.
 
 set -euo pipefail
 
@@ -98,6 +99,7 @@ emcc \
   -Oz \
   -flto \
   -fexceptions \
+  -sUSE_FREETYPE=1 \
   -sALLOW_MEMORY_GROWTH=1 \
   -sMAXIMUM_MEMORY=4294967296 \
   -sINITIAL_MEMORY=32MB \
@@ -111,12 +113,18 @@ emcc \
   -o "$OUT_DIR/facet_cxx.js"
 
 # Post-link size pass — wasm-opt finds opportunities Emscripten misses.
+# --enable-threads: the FreeType port emits atomic instructions (refcount
+# guards); wasm-opt must accept them. The module's memory is NOT shared (no
+# -sUSE_PTHREADS), so these atomics run single-threaded on regular memory and
+# need no SharedArrayBuffer / COOP+COEP headers — the static-hosting story is
+# unchanged.
 echo "Running wasm-opt -Oz on facet_cxx.wasm..."
 wasm-opt -Oz \
   --enable-bulk-memory \
   --enable-sign-ext \
   --enable-nontrapping-float-to-int \
   --enable-mutable-globals \
+  --enable-threads \
   --strip-debug --strip-producers \
   -o "$OUT_DIR/facet_cxx.wasm" "$OUT_DIR/facet_cxx.wasm"
 

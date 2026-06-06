@@ -233,6 +233,18 @@ function copyU32ArrayToHeap(arr) {
   return ptr;
 }
 
+// Copy a JS string into a NUL-terminated UTF-8 buffer on the wasm heap and
+// return the pointer (a C `const char*`). Caller must Module._free() it.
+// TextEncoder gives exact UTF-8 bytes without needing emscripten's
+// lengthBytesUTF8 (which this build doesn't export).
+function cStringToHeap(s) {
+  const bytes = new TextEncoder().encode(s);
+  const ptr = M._malloc(bytes.length + 1);
+  M.HEAPU8.set(bytes, ptr);
+  M.HEAPU8[ptr + bytes.length] = 0;
+  return ptr;
+}
+
 // Read a uint32 / int32 / pointer at an absolute byte address.
 const u32at = p => M.HEAPU32[p >>> 2];
 const i32at = p => M.HEAP32[p >>> 2];
@@ -385,6 +397,18 @@ function setupBridge() {
     M._facet_polygon(coordsPtr, outerN, holesPtr, sizesPtr, nHoles, SKETCH_RET);
     if (sizesPtr) M._free(sizesPtr);
     M._free(coordsPtr);
+    return sketchPtr();
+  };
+
+  // Text → CrossSection via FreeType (Emscripten port). fontU8 is the font
+  // file's bytes; text/halign/valign are JS strings copied as C strings.
+  globalThis._mf_text = (fontU8, text, sizeMm, halign, valign) => {
+    const fontPtr   = copyTypedArrayToHeap(fontU8);
+    const textPtr   = cStringToHeap(text);
+    const halignPtr = cStringToHeap(halign);
+    const valignPtr = cStringToHeap(valign);
+    M._facet_text_to_cross_section(fontPtr, fontU8.length, textPtr, sizeMm, halignPtr, valignPtr, SKETCH_RET);
+    M._free(fontPtr); M._free(textPtr); M._free(halignPtr); M._free(valignPtr);
     return sketchPtr();
   };
 
