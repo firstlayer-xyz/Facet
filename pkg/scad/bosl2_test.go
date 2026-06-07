@@ -798,6 +798,18 @@ func TestBOSL2_WedgeCentered(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// cyl with r1/r2 (or d1/d2) is a cone/frustum, centered, via Facet's Frustum.
+func TestBOSL2_CylCone(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncyl(h=10, r1=5, r2=2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cyl cone should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Frustum(r1: 5 mm, r2: 2 mm, h: 10 mm") || !strings.Contains(res.Facet, ".AlignCenter(pos: Vec3{})") {
+		t.Fatalf("expected centered Frustum in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

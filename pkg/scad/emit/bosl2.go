@@ -674,21 +674,37 @@ func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 }
 
 // cylCentered renders a BOSL2 cylinder centered on the origin in every axis (the
-// shared body of cyl/xcyl/ycyl/zcyl). ok is false on a missing height/radius
-// (an error is already recorded).
+// shared body of cyl/xcyl/ycyl/zcyl). r1/r2 (or d1/d2) make a cone/frustum; a
+// single r/d makes a plain cylinder. ok is false on a missing height/radius (an
+// error is already recorded).
 func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
-	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
 		return e.errf(n.Pos(), "cyl without height"), false
 	}
-	key, val, rok := e.radiusArg(n, 1)
-	if !rok {
-		return e.errf(n.Pos(), "cyl without radius"), false
-	}
+	hStr := e.expr(h, kLength)
 	rMM, rMMok := cylinderRadiusMM(n)
-	return fmt.Sprintf("Cylinder(%s: %s, h: %s%s).AlignCenter(pos: Vec3{})",
-		key, val, e.expr(h, kLength), e.segmentsSuffix(n, rMM, rMMok)), true
+	segs := e.segmentsSuffix(n, rMM, rMMok)
+
+	r1, hasR1 := arg(n, "r1", -1)
+	r2, hasR2 := arg(n, "r2", -1)
+	d1, hasD1 := arg(n, "d1", -1)
+	d2, hasD2 := arg(n, "d2", -1)
+	var ctor string
+	switch {
+	case hasR1 && hasR2:
+		ctor = fmt.Sprintf("Frustum(r1: %s, r2: %s, h: %s%s)", e.expr(r1, kLength), e.expr(r2, kLength), hStr, segs)
+	case hasD1 && hasD2:
+		ctor = fmt.Sprintf("Frustum(d1: %s, d2: %s, h: %s%s)", e.expr(d1, kLength), e.expr(d2, kLength), hStr, segs)
+	default:
+		key, val, rok := e.radiusArg(n, 1)
+		if !rok {
+			return e.errf(n.Pos(), "cyl without radius"), false
+		}
+		ctor = fmt.Sprintf("Cylinder(%s: %s, h: %s%s)", key, val, hStr, segs)
+	}
+	return ctor + ".AlignCenter(pos: Vec3{})", true
 }
 
 // bosl2OrientedCyl renders a BOSL2 axis-oriented cylinder (xcyl/ycyl/zcyl): the
