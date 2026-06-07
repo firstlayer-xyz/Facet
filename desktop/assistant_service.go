@@ -216,6 +216,15 @@ func (s *AssistantService) Send(userMessage, editorCode, errorsText, activeTabPa
 	return nil
 }
 
+// mcpToolTimeoutMS is the per-tool-call timeout the Claude CLI (acting as our
+// MCP client) applies while waiting for one of our MCP tools to return. The
+// interactive tools — ask_user_question, request_permission,
+// screenshot_viewport — block until the human responds, which has no natural
+// upper bound, so this is set far beyond any real session. The CLI has no
+// "infinite" setting, so an effectively-forever ceiling stands in for "never
+// time out on user input".
+const mcpToolTimeoutMS int64 = 365 * 24 * 60 * 60 * 1000 // 1 year
+
 // runClaudeStream runs the claude CLI with --output-format stream-json and
 // parses the NDJSON output line by line, emitting text deltas as they arrive.
 func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt, sessionID string, imagePaths []string, model, sysPrompt string, mcpPort int, mcpToken string) (streamResult, error) {
@@ -243,6 +252,10 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 					"type":    "http",
 					"url":     fmt.Sprintf("http://127.0.0.1:%d/mcp", mcpPort),
 					"headers": map[string]string{"Authorization": "Bearer " + mcpToken},
+					// Per-server tool-call timeout (ms). Overrides MCP_TOOL_TIMEOUT
+					// for this server where the CLI honors it, so the interactive
+					// tools can block on the human without the client giving up.
+					"timeout": mcpToolTimeoutMS,
 				},
 			},
 		}
@@ -274,8 +287,16 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Dir = os.TempDir() // Prevent access to user directories (Photos, Desktop, etc.)
 
-	// Unset CLAUDECODE so a nested Claude Code session doesn't crash.
-	cmd.Env = filterEnv(os.Environ(), "CLAUDECODE", "CLAUDE_CODE")
+	// Unset CLAUDECODE so a nested Claude Code session doesn't crash. Drop any
+	// inherited MCP_TOOL_TIMEOUT so the value set below — not the developer's
+	// shell — governs the spawned CLI.
+	env := filterEnv(os.Environ(), "CLAUDECODE", "CLAUDE_CODE", "MCP_TOOL_TIMEOUT")
+	// The interactive MCP tools block until the human responds, so the CLI
+	// (the MCP client) must not abandon a tool call while waiting. The env var
+	// sets the tool-call timeout ceiling on every CLI version; the per-server
+	// "timeout" in --mcp-config above overrides it where supported.
+	env = append(env, fmt.Sprintf("MCP_TOOL_TIMEOUT=%d", mcpToolTimeoutMS))
+	cmd.Env = env
 
 	log.Printf("[assistant] running: %s %v", binPath, args)
 
