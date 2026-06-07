@@ -42,6 +42,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2OrientedCyl(n, "Rotate(y: 90 deg)"), true
 	case "ycyl":
 		return e.bosl2OrientedCyl(n, "Rotate(x: -90 deg)"), true
+	case "torus":
+		return e.bosl2Torus(n), true
 	case "rect_tube":
 		return e.bosl2RectTube(n), true
 	case "rect":
@@ -526,6 +528,38 @@ func (e *Emitter) bosl2Tube(n *ast.ModuleCall) string {
 	hStr := e.expr(h, kLength)
 	return fmt.Sprintf("(Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}) - Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}))",
 		outer, hStr, inner, hStr)
+}
+
+// bosl2Torus emits BOSL2's torus by revolving a minor-radius circle, offset to
+// the major radius, around Z. Major/minor radii come from r_maj/r_min (or
+// d_maj/d_min), or are derived from outer/inner radii or/ir (or od/id):
+// r_maj = (or+ir)/2, r_min = (or-ir)/2.
+func (e *Emitter) bosl2Torus(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 0, "r_maj", "r_min", "d_maj", "d_min", "or", "ir", "od", "id", "$fn", "$fa", "$fs")
+	rmaj, rmin, ok := e.torusRadii(n)
+	if !ok {
+		return e.errf(n.Pos(), "torus needs major/minor radii (r_maj/r_min, d_maj/d_min, or or/ir)")
+	}
+	// A circle of r_min, recentered onto (r_maj, 0) in the profile plane, then
+	// revolved about Z. Facet's Circle is corner-origin, so the move is
+	// (r_maj - r_min, -r_min).
+	return fmt.Sprintf("Circle(r: %s).Move(x: %s - %s, y: -%s).Revolve()", rmin, rmaj, rmin, rmin)
+}
+
+// torusRadii resolves a torus's (major, minor) radii from r_maj/r_min,
+// d_maj/d_min, or the outer/inner pair or/ir (od/id).
+func (e *Emitter) torusRadii(n *ast.ModuleCall) (rmaj, rmin string, ok bool) {
+	rmaj, mok := e.tubeRadius(n, "r_maj", "d_maj")
+	rmin, nok := e.tubeRadius(n, "r_min", "d_min")
+	if mok && nok {
+		return rmaj, rmin, true
+	}
+	or, ook := e.tubeRadius(n, "or", "od")
+	ir, iok := e.tubeRadius(n, "ir", "id")
+	if ook && iok {
+		return "(" + or + " + " + ir + ") / 2", "(" + or + " - " + ir + ") / 2", true
+	}
+	return "", "", false
 }
 
 // tubeRadius renders a tube radius from a radius arg (rName) or a diameter arg

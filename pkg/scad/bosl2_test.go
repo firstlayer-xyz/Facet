@@ -668,6 +668,32 @@ func TestBOSL2_NamedNgons(t *testing.T) {
 	}
 }
 
+// torus revolves a minor-radius circle, offset by the major radius, around Z.
+func TestBOSL2_Torus(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ntorus(r_maj=20, r_min=3);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("torus should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Circle(r: 3 mm)", ".Revolve()", "20 mm - 3 mm"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// torus also accepts outer/inner radii: r_maj=(or+ir)/2, r_min=(or-ir)/2.
+func TestBOSL2_TorusOuterInner(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ntorus(or=23, ir=17);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("torus(or,ir) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "(23 mm - 17 mm) / 2") || !strings.Contains(res.Facet, ".Revolve()") {
+		t.Fatalf("expected or/ir-derived radii in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {
