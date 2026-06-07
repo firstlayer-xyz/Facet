@@ -96,6 +96,16 @@ fn Cross(a, b Vec3) Vec3 {
         )}
 }
 
+# Euclidean length of a vector. Dot strips mm, so the result is re-attached to mm.
+fn Length(v Vec3) Length {
+    return Sqrt(n: Dot(a: v, b: v)) * 1 mm
+}
+
+# Unit vector pointing the same way as v. v must be non-zero.
+fn Normalize(v Vec3) Vec3 {
+    return v / Sqrt(n: Dot(a: v, b: v))
+}
+
 # Comparison operators
 fn ==(a, b Vec3) Bool {
     return a.x == b.x && a.y == b.y && a.z == b.z

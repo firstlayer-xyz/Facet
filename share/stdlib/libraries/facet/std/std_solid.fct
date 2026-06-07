@@ -224,6 +224,46 @@ fn Solid.Rotate(
     return _rotate(self, x, y, z, around.x, around.y, around.z)
 }
 
+# Rotates the solid by `angle` about an arbitrary `axis` (need not be unit
+# length) through the origin. Right-handed: a positive angle turns
+# counter-clockwise looking down the axis toward the origin. Implemented by
+# aligning the axis to +Z with the euler Rotate above, spinning about Z, then
+# undoing the alignment — so the net transform is Rz(φ)·Ry(ψ)·Rz(angle)·Ry(-ψ)·Rz(-φ).
+fn Solid.Rotate(axis Vec3, angle Angle) Solid {
+    var n = Normalize(v: axis)
+    var phi = Atan2(y: Number(from: n.y), x: Number(from: n.x))
+    var psi = Acos(n: Number(from: n.z))
+    return self.Rotate(z: -phi).Rotate(y: -psi).Rotate(z: angle).Rotate(y: psi)
+        .Rotate(z: phi)
+}
+
+# Rotates the solid so the `from` direction points along `to` (shortest arc,
+# about the origin). Identical directions are a no-op; opposite directions flip
+# 180° about an axis perpendicular to `from`.
+fn Solid.Rotate(from, to Vec3) Solid {
+    var cos = Dot(a: from, b: to) / (Sqrt(n: Dot(a: from, b: from)) * Sqrt(
+        n: Dot(a: to, b: to)
+    ))
+
+    if cos >= 1 {
+        return self
+    }
+    if cos <= -1 {
+        return self.Rotate(axis: perpendicular(v: from), angle: 180 deg)
+    }
+    return self.Rotate(axis: Cross(a: from, b: to), angle: Acos(n: cos))
+}
+
+# Some vector perpendicular to v: cross with +X, falling back to +Z when v is
+# parallel to +X (a vector can't be parallel to both).
+fn perpendicular(v Vec3) Vec3 {
+    var p = Cross(a: v, b: Vec3{x: 1 mm})
+    if Dot(a: p, b: p) == 0 {
+        return Cross(a: v, b: Vec3{z: 1 mm})
+    }
+    return p
+}
+
 # Scales a solid around a pivot point. `Scale(v, around)` uses the same factor for all axes.
 # `Resize(s, around)` scales to exact target dimensions.
 fn Solid.Scale(
