@@ -781,7 +781,7 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 		if input.Name == "" {
 			return nil, nil, fmt.Errorf("name must not be empty")
 		}
-		if strings.Contains(input.Name, "..") || strings.ContainsAny(input.Name, "/\\") {
+		if !validExampleName(input.Name) {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("invalid example name: %q", input.Name)}},

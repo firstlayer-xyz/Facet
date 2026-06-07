@@ -143,6 +143,24 @@ func detectSlicers() []SlicerInfo {
 	return found
 }
 
+// findWinSlicer returns the full path to the slicer's Windows executable under
+// the Program Files directories, or "" if not installed.
+func findWinSlicer(d slicerDef) string {
+	for _, base := range []string{
+		os.Getenv("ProgramFiles"),
+		os.Getenv("ProgramFiles(x86)"),
+	} {
+		if base == "" {
+			continue
+		}
+		p := filepath.Join(base, d.WinExe)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
 func slicerExists(d slicerDef) bool {
 	switch runtime.GOOS {
 	case "darwin":
@@ -151,18 +169,7 @@ func slicerExists(d slicerDef) bool {
 		_, err := exec.LookPath(d.LinuxBin)
 		return err == nil
 	case "windows":
-		for _, base := range []string{
-			os.Getenv("ProgramFiles"),
-			os.Getenv("ProgramFiles(x86)"),
-		} {
-			if base == "" {
-				continue
-			}
-			if _, err := os.Stat(filepath.Join(base, d.WinExe)); err == nil {
-				return true
-			}
-		}
-		return false
+		return findWinSlicer(d) != ""
 	}
 	return false
 }
@@ -193,20 +200,7 @@ func launchSlicer(id string, filePath string) error {
 	case "linux":
 		cmd = exec.Command(d.LinuxBin, filePath)
 	case "windows":
-		var bin string
-		for _, base := range []string{
-			os.Getenv("ProgramFiles"),
-			os.Getenv("ProgramFiles(x86)"),
-		} {
-			if base == "" {
-				continue
-			}
-			p := filepath.Join(base, d.WinExe)
-			if _, err := os.Stat(p); err == nil {
-				bin = p
-				break
-			}
-		}
+		bin := findWinSlicer(d)
 		if bin == "" {
 			return fmt.Errorf("%s not found", d.Name)
 		}

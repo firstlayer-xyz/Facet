@@ -514,21 +514,6 @@ func formatStdlibCatalog(entries []doc.DocEntry) string {
 		sortByName(methodsByReceiver[recv])
 	}
 
-	writeEntry := func(sb *strings.Builder, e doc.DocEntry) {
-		sb.WriteString("- `")
-		sb.WriteString(e.Signature)
-		sb.WriteString("`")
-		if e.Doc != "" {
-			d := e.Doc
-			if idx := strings.IndexByte(d, '\n'); idx >= 0 {
-				d = d[:idx]
-			}
-			sb.WriteString(" — ")
-			sb.WriteString(d)
-		}
-		sb.WriteByte('\n')
-	}
-
 	var sb strings.Builder
 	sb.WriteString("## Stdlib API Reference (auto-generated)\n\n")
 	sb.WriteString("Generated from `std.fct` source comments — always in sync with the evaluator.\n")
@@ -536,13 +521,13 @@ func formatStdlibCatalog(entries []doc.DocEntry) string {
 	if len(types) > 0 {
 		sb.WriteString("\n### Types\n\n")
 		for _, e := range types {
-			writeEntry(&sb, e)
+			writeDocEntry(&sb, e)
 		}
 	}
 	if len(funcs) > 0 {
 		sb.WriteString("\n### Functions\n\n")
 		for _, e := range funcs {
-			writeEntry(&sb, e)
+			writeDocEntry(&sb, e)
 		}
 	}
 	if len(receiverOrder) > 0 {
@@ -552,14 +537,14 @@ func formatStdlibCatalog(entries []doc.DocEntry) string {
 			sb.WriteString(recv)
 			sb.WriteString("\n\n")
 			for _, e := range methodsByReceiver[recv] {
-				writeEntry(&sb, e)
+				writeDocEntry(&sb, e)
 			}
 		}
 	}
 	if len(keywords) > 0 {
 		sb.WriteString("\n### Keywords\n\n")
 		for _, e := range keywords {
-			writeEntry(&sb, e)
+			writeDocEntry(&sb, e)
 		}
 	}
 
@@ -610,21 +595,27 @@ func formatLibraryCatalog(libEntries []doc.DocEntry) string {
 			sb.WriteString("\";`\n")
 		}
 		for _, e := range g.entries {
-			sb.WriteString("- `")
-			sb.WriteString(e.Signature)
-			sb.WriteString("`")
-			if e.Doc != "" {
-				sb.WriteString(" — ")
-				d := e.Doc
-				if idx := strings.IndexByte(d, '\n'); idx >= 0 {
-					d = d[:idx]
-				}
-				sb.WriteString(d)
-			}
-			sb.WriteByte('\n')
+			writeDocEntry(&sb, e)
 		}
 	}
 	return sb.String()
+}
+
+// writeDocEntry renders one doc entry as a Markdown bullet: the signature in
+// backticks, then the first line of its doc comment.
+func writeDocEntry(sb *strings.Builder, e doc.DocEntry) {
+	sb.WriteString("- `")
+	sb.WriteString(e.Signature)
+	sb.WriteString("`")
+	if e.Doc != "" {
+		d := e.Doc
+		if idx := strings.IndexByte(d, '\n'); idx >= 0 {
+			d = d[:idx]
+		}
+		sb.WriteString(" — ")
+		sb.WriteString(d)
+	}
+	sb.WriteByte('\n')
 }
 
 // gitCacheNSToImportPath converts a library namespace derived from the git cache

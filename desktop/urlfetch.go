@@ -57,13 +57,12 @@ const (
 // fetchedContent is the routed result of a fetch_url GET. Exactly one of the
 // image branch (IsImage + Data + MIME) or the text branch (Text) is populated.
 type fetchedContent struct {
-	FinalURL    string
-	Status      int
-	ContentType string
-	IsImage     bool
-	MIME        string
-	Data        []byte
-	Text        string
+	FinalURL string
+	Status   int
+	IsImage  bool
+	MIME     string
+	Data     []byte
+	Text     string
 }
 
 // newFetchClient builds the production HTTP client whose dialer rejects any
@@ -157,9 +156,8 @@ func fetchContent(ctx context.Context, client *http.Client, rawURL string) (*fet
 	}
 
 	out := &fetchedContent{
-		FinalURL:    resp.Request.URL.String(),
-		Status:      resp.StatusCode,
-		ContentType: mt,
+		FinalURL: resp.Request.URL.String(),
+		Status:   resp.StatusCode,
 	}
 
 	// Sniff when the server gave no usable content type.
@@ -172,7 +170,6 @@ func fetchContent(ctx context.Context, client *http.Client, rawURL string) (*fet
 			sniffed = strings.TrimSpace(sniffed[:i])
 		}
 		mt = sniffed
-		out.ContentType = mt
 		// Reconstruct the body = already-read head + remaining stream.
 		resp.Body = io.NopCloser(io.MultiReader(strings.NewReader(string(head)), resp.Body))
 	}
