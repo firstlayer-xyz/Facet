@@ -284,10 +284,10 @@ func TestBOSL2_TopLevelAttachErrors(t *testing.T) {
 	}
 }
 
-// A BOSL2 construct we haven't implemented (here prismoid) is a located error
+// A BOSL2 construct we haven't implemented (here teardrop) is a located error
 // with no output — never a placeholder or silent drop (no fallbacks).
 func TestBOSL2_UnsupportedConstructErrors(t *testing.T) {
-	src := "include <BOSL2/std.scad>\nprismoid(size1=[10, 10], size2=[5, 5], h=8);\n"
+	src := "include <BOSL2/std.scad>\nteardrop(r=5, h=10);\n"
 	res, err := Transpile(src, "part.scad")
 	if err == nil {
 		t.Fatalf("unsupported BOSL2 construct should error, got:\n%s", res.Facet)
@@ -295,7 +295,7 @@ func TestBOSL2_UnsupportedConstructErrors(t *testing.T) {
 	if res.Facet != "" {
 		t.Fatalf("expected no output on error, got:\n%s", res.Facet)
 	}
-	if !strings.Contains(err.Error(), "prismoid") || !strings.Contains(err.Error(), "2:1") {
+	if !strings.Contains(err.Error(), "teardrop") || !strings.Contains(err.Error(), "2:1") {
 		t.Fatalf("error should name the construct and location, got: %v", err)
 	}
 }
@@ -690,6 +690,21 @@ func TestBOSL2_TorusOuterInner(t *testing.T) {
 	}
 	if !strings.Contains(res.Facet, "(23 mm - 17 mm) / 2") || !strings.Contains(res.Facet, ".Revolve()") {
 		t.Fatalf("expected or/ir-derived radii in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// prismoid lofts between a bottom and top rectangle, centered, giving a tapered
+// box.
+func TestBOSL2_Prismoid(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nprismoid(size1=[20, 20], size2=[10, 10], h=15);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("prismoid should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Loft(", "Square(x: 20 mm", "Square(x: 10 mm", "heights: [0 mm, 15 mm]", ".AlignCenter(pos: Vec3{})"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
 	}
 	assertTypeChecks(t, res.Facet)
 }

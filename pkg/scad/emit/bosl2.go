@@ -48,6 +48,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2RectTube(n), true
 	case "rect":
 		return e.bosl2Rect(n), true
+	case "prismoid":
+		return e.bosl2Prismoid(n), true
 	case "regular_ngon":
 		return e.bosl2RegularNgon(n, "", 1), true
 	case "hexagon":
@@ -269,7 +271,46 @@ func (e *Emitter) bosl2Rect(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "rect without size")
 	}
 	x, y := e.pair2(size, kLength)
+	return e.centeredSquare(x, y)
+}
+
+// centeredSquare renders a Square of the given side-length expressions recentered
+// on the origin (Facet's Square is corner-origin).
+func (e *Emitter) centeredSquare(x, y string) string {
 	return fmt.Sprintf("Square(x: %s, y: %s).Move(x: -%s / 2, y: -%s / 2)", x, y, x, y)
+}
+
+// bosl2Prismoid emits BOSL2's prismoid — a box that tapers from a bottom
+// rectangle (size1) to a top one (size2) over height h — by lofting the two
+// centered rectangles and recentering on the origin. `shift` (an off-axis top)
+// is not yet supported and errors via rejectExtraArgs.
+func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 3, "size1", "size2", "h", "l", "height", "$fn", "$fa", "$fs")
+	s1, ok := arg(n, "size1", 0)
+	if !ok {
+		return e.errf(n.Pos(), "prismoid without size1")
+	}
+	s2, ok := arg(n, "size2", 1)
+	if !ok {
+		return e.errf(n.Pos(), "prismoid without size2")
+	}
+	h, ok := arg(n, "h", -1)
+	if !ok {
+		h, ok = arg(n, "l", -1)
+	}
+	if !ok {
+		h, ok = arg(n, "height", -1)
+	}
+	if !ok {
+		h, ok = arg(n, "", 2)
+	}
+	if !ok {
+		return e.errf(n.Pos(), "prismoid without height")
+	}
+	x1, y1 := e.pair2(s1, kLength)
+	x2, y2 := e.pair2(s2, kLength)
+	return "Loft(profiles: [" + e.centeredSquare(x1, y1) + ", " + e.centeredSquare(x2, y2) +
+		"], heights: [0 mm, " + e.expr(h, kLength) + "]).AlignCenter(pos: Vec3{})"
 }
 
 // isBosl22D reports whether a BOSL2 shape name yields a 2D Sketch.
