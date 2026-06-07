@@ -285,133 +285,105 @@ func init() {
 	// Solid-only methods
 	// ---------------------------------------------------------------------------
 
-	builtinRegistry["_trim"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_trim"] = solidMethod("_trim", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_trim"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+		if len(args) != 4 {
+			return nil, fmt.Errorf("%s() expects 4 arguments, got %d", name, len(args))
 		}
-		if len(args) != 5 {
-			return nil, fmt.Errorf("%s() expects 4 arguments, got %d", name, len(args)-1)
-		}
-		nx, err := requireNumber(name, 1, args[1])
+		nx, err := requireNumber(name, 1, args[0])
 		if err != nil {
 			return nil, err
 		}
-		ny, err := requireNumber(name, 2, args[2])
+		ny, err := requireNumber(name, 2, args[1])
 		if err != nil {
 			return nil, err
 		}
-		nz, err := requireNumber(name, 3, args[3])
+		nz, err := requireNumber(name, 3, args[2])
 		if err != nil {
 			return nil, err
 		}
-		offset, err := requireLength(name, 4, args[4])
+		offset, err := requireLength(name, 4, args[3])
 		if err != nil {
 			return nil, err
 		}
 		return r.TrimByPlane(nx, ny, nz, offset), nil
-	}
+	})
 
-	builtinRegistry["_smooth"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_smooth"] = solidMethod("_smooth", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_smooth"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+		if len(args) != 2 {
+			return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args))
 		}
-		if len(args) != 3 {
-			return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args)-1)
-		}
-		minSharpAngle, err := requireAngle(name, 1, args[1])
+		minSharpAngle, err := requireAngle(name, 1, args[0])
 		if err != nil {
 			return nil, err
 		}
-		minSmoothness, err := requireNumber(name, 2, args[2])
+		minSmoothness, err := requireNumber(name, 2, args[1])
 		if err != nil {
 			return nil, err
 		}
 		return r.SmoothOut(minSharpAngle, minSmoothness), nil
-	}
+	})
 
-	builtinRegistry["_refine"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_refine"] = solidMethod("_refine", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_refine"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args))
 		}
-		if len(args) != 2 {
-			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args)-1)
-		}
-		n, err := requireNumber(name, 1, args[1])
+		n, err := requireNumber(name, 1, args[0])
 		if err != nil {
 			return nil, err
 		}
 		return r.Refine(int(n)), nil
-	}
+	})
 
-	builtinRegistry["_simplify"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_simplify"] = solidMethod("_simplify", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_simplify"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args))
 		}
-		if len(args) != 2 {
-			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args)-1)
-		}
-		tol, err := requireLength(name, 1, args[1])
+		tol, err := requireLength(name, 1, args[0])
 		if err != nil {
 			return nil, err
 		}
 		return r.Simplify(tol), nil
-	}
+	})
 
-	builtinRegistry["_refine_to_length"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_refine_to_length"] = solidMethod("_refine_to_length", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_refine_to_length"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args))
 		}
-		if len(args) != 2 {
-			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args)-1)
-		}
-		l, err := requireLength(name, 1, args[1])
+		l, err := requireLength(name, 1, args[0])
 		if err != nil {
 			return nil, err
 		}
 		return r.RefineToLength(l), nil
-	}
+	})
 
-	builtinRegistry["_genus"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_genus"] = solidMethod("_genus", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_genus"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
-		}
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
+		if len(args) != 0 {
+			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
 		}
 		return float64(r.Genus()), nil
-	}
+	})
 
-	builtinRegistry["_min_gap"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_min_gap"] = solidMethod("_min_gap", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_min_gap"
-		r, ok := args[0].(*manifold.Solid)
+		if len(args) != 2 {
+			return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args))
+		}
+		other, ok := args[0].(*manifold.Solid)
 		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+			return nil, fmt.Errorf("%s() expects Solid as first argument, got %s", name, typeName(args[0]))
 		}
-		if len(args) != 3 {
-			return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args)-1)
-		}
-		other, ok := args[1].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s() expects Solid as first argument, got %s", name, typeName(args[1]))
-		}
-		searchLen, err := requireLength(name, 2, args[2])
+		searchLen, err := requireLength(name, 2, args[1])
 		if err != nil {
 			return nil, err
 		}
 		return length{mm: r.MinGap(other, searchLen)}, nil
-	}
+	})
 
 	builtinRegistry["_split"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_split"
@@ -445,86 +417,66 @@ func init() {
 		}
 	}
 
-	builtinRegistry["_split_plane"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_split_plane"] = solidMethod("_split_plane", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_split_plane"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+		if len(args) != 4 {
+			return nil, fmt.Errorf("%s() expects 4 arguments, got %d", name, len(args))
 		}
-		if len(args) != 5 {
-			return nil, fmt.Errorf("%s() expects 4 arguments, got %d", name, len(args)-1)
-		}
-		nx, err := requireNumber(name, 1, args[1])
+		nx, err := requireNumber(name, 1, args[0])
 		if err != nil {
 			return nil, err
 		}
-		ny, err := requireNumber(name, 2, args[2])
+		ny, err := requireNumber(name, 2, args[1])
 		if err != nil {
 			return nil, err
 		}
-		nz, err := requireNumber(name, 3, args[3])
+		nz, err := requireNumber(name, 3, args[2])
 		if err != nil {
 			return nil, err
 		}
-		offset, err := requireLength(name, 4, args[4])
+		offset, err := requireLength(name, 4, args[3])
 		if err != nil {
 			return nil, err
 		}
 		pair := manifold.SplitSolidByPlane(r, nx, ny, nz, offset)
 		return array{elems: []value{pair[0], pair[1]}, elemType: "Solid"}, nil
-	}
+	})
 
-	builtinRegistry["_volume"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_volume"] = solidMethod("_volume", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_volume"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
-		}
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
+		if len(args) != 0 {
+			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
 		}
 		return float64(r.Volume()), nil
-	}
+	})
 
-	builtinRegistry["_surface_area"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_surface_area"] = solidMethod("_surface_area", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_surface_area"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
-		}
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
+		if len(args) != 0 {
+			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
 		}
 		return float64(r.SurfaceArea()), nil
-	}
+	})
 
-	builtinRegistry["_slice"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_slice"] = solidMethod("_slice", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_slice"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args))
 		}
-		if len(args) != 2 {
-			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args)-1)
-		}
-		height, err := requireLength(name, 1, args[1])
+		height, err := requireLength(name, 1, args[0])
 		if err != nil {
 			return nil, err
 		}
 		return r.Slice(height), nil
-	}
+	})
 
-	builtinRegistry["_project"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_project"] = solidMethod("_project", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_project"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
-		}
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
+		if len(args) != 0 {
+			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
 		}
 		return r.Project(), nil
-	}
+	})
 
 	builtinRegistry["_warp"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_warp"
@@ -563,44 +515,36 @@ func init() {
 		return result, nil
 	}
 
-	builtinRegistry["_color"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_color"] = solidMethod("_color", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_color"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+		if len(args) != 4 {
+			return nil, fmt.Errorf("%s() expects 4 arguments (r, g, b, a), got %d", name, len(args))
 		}
-		if len(args) != 5 {
-			return nil, fmt.Errorf("%s() expects 4 arguments (r, g, b, a), got %d", name, len(args)-1)
-		}
-		rv, err := requireNumber(name, 1, args[1])
+		rv, err := requireNumber(name, 1, args[0])
 		if err != nil {
 			return nil, err
 		}
-		g, err := requireNumber(name, 2, args[2])
+		g, err := requireNumber(name, 2, args[1])
 		if err != nil {
 			return nil, err
 		}
-		b, err := requireNumber(name, 3, args[3])
+		b, err := requireNumber(name, 3, args[2])
 		if err != nil {
 			return nil, err
 		}
-		a, err := requireNumber(name, 4, args[4])
+		a, err := requireNumber(name, 4, args[3])
 		if err != nil {
 			return nil, err
 		}
 		return r.SetColor(rv, g, b, a), nil
-	}
+	})
 
-	builtinRegistry["_color_hex"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_color_hex"] = solidMethod("_color_hex", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_color_hex"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() expects 1 argument (hex string), got %d", name, len(args))
 		}
-		if len(args) != 2 {
-			return nil, fmt.Errorf("%s() expects 1 argument (hex string), got %d", name, len(args)-1)
-		}
-		hex, err := requireString(name, 1, args[1])
+		hex, err := requireString(name, 1, args[0])
 		if err != nil {
 			return nil, err
 		}
@@ -609,28 +553,20 @@ func init() {
 			return nil, fmt.Errorf("%s(): %w", name, err)
 		}
 		return r.SetColor(rv, g, b, a), nil
-	}
+	})
 
-	builtinRegistry["_polymesh"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_polymesh"] = solidMethod("_polymesh", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_polymesh"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
-		}
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
+		if len(args) != 0 {
+			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
 		}
 		return polyMeshToStructVal(manifold.ExtractPolyMesh(r)), nil
-	}
+	})
 
-	builtinRegistry["_mesh"] = func(e *evaluator, args []value) (value, error) {
+	builtinRegistry["_mesh"] = solidMethod("_mesh", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_mesh"
-		r, ok := args[0].(*manifold.Solid)
-		if !ok {
-			return nil, fmt.Errorf("%s: expected Solid, got %s", name, typeName(args[0]))
-		}
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
+		if len(args) != 0 {
+			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
 		}
 		m := manifold.ExtractMeshShared(r)
 		// Build vertices array of Vec3
@@ -662,5 +598,5 @@ func init() {
 				"indices":  array{elems: tris, elemType: "Face"},
 			},
 		}, nil
-	}
+	})
 }

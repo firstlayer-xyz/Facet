@@ -395,12 +395,10 @@ func (r *resolver) annotateResolved(le *parser.LibExpr, pctx parentCtx) error {
 	}
 	if pctx.tree != nil {
 		// Virtual parent — resolve within the tree.
-		subDir, err := resolveRelativeVirtual(pctx, lp.SubPath)
+		_, subPath, err := virtualRelTarget(pctx, lp.SubPath)
 		if err != nil {
 			return err
 		}
-		name := path.Base(subDir)
-		subPath := subDir + "/" + name + ".fct"
 		le.Resolved = pctx.tree.SourceKey(subPath)
 		return nil
 	}
@@ -412,6 +410,17 @@ func (r *resolver) annotateResolved(le *parser.LibExpr, pctx parentCtx) error {
 	name := filepath.Base(abs)
 	le.Resolved = filepath.Join(abs, name+".fct")
 	return nil
+}
+
+// virtualRelTarget maps a virtual relative import to its tree-relative directory
+// and .fct path, applying the convention that a module named X lives at X/X.fct.
+func virtualRelTarget(pctx parentCtx, sub string) (subDir, subPath string, err error) {
+	subDir, err = resolveRelativeVirtual(pctx, sub)
+	if err != nil {
+		return "", "", err
+	}
+	name := path.Base(subDir)
+	return subDir, subDir + "/" + name + ".fct", nil
 }
 
 // resolveRelativeDir joins subPath onto pctx.dir, cleans the result, and
@@ -482,12 +491,10 @@ func (r *resolver) loadRelativeLib(le *parser.LibExpr, lp *LibPath, pctx parentC
 	if pctx.tree != nil {
 		// Virtual parent — read through the same tree so all relatives in
 		// the same repo share the single bare clone.
-		subDir, err := resolveRelativeVirtual(pctx, lp.SubPath)
+		subDir, subPath, err := virtualRelTarget(pctx, lp.SubPath)
 		if err != nil {
 			return nil, err
 		}
-		name := path.Base(subDir)
-		subPath := subDir + "/" + name + ".fct"
 		data, err := pctx.tree.ReadFile(subPath)
 		if err != nil {
 			return nil, fmt.Errorf("relative import %q: %w", le.Path, err)
@@ -598,13 +605,13 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 		return nil, err
 	}
 	subDir := strings.Trim(lp.SubPath, "/")
-	name := lp.Repo
-	if subDir != "" {
-		name = path.Base(subDir)
-	}
-	subPath := name + ".fct"
-	if subDir != "" {
-		subPath = subDir + "/" + name + ".fct"
+	// A module named X lives at X/X.fct; at the repo root the module name
+	// defaults to the repo name.
+	var subPath string
+	if subDir == "" {
+		subPath = lp.Repo + ".fct"
+	} else {
+		subPath = subDir + "/" + path.Base(subDir) + ".fct"
 	}
 	data, err := tree.ReadFile(subPath)
 	if err != nil {

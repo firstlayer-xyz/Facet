@@ -201,10 +201,6 @@ func (t *LibTree) DiskDir() string { return t.diskDir }
 // physical.
 func (t *LibTree) Origin() string { return t.origin }
 
-// SHA returns the resolved commit SHA for virtual trees, or the zero hash for
-// physical.
-func (t *LibTree) SHA() plumbing.Hash { return t.sha }
-
 // SourceKey returns the canonical identifier for the file at subPath. For
 // virtual trees this is a URI (git+host/user/repo@<sha>/subpath); for
 // physical trees it is an absolute filesystem path.
@@ -263,24 +259,6 @@ func (t *LibTree) ReadFile(subPath string) ([]byte, error) {
 		return []byte(s), nil
 	}
 	return os.ReadFile(filepath.Join(t.diskDir, filepath.FromSlash(subPath)))
-}
-
-// HasFile reports whether subPath exists in the tree.
-func (t *LibTree) HasFile(subPath string) bool {
-	if t.IsHTTP() {
-		_, err := t.httpFetch(subPath)
-		return err == nil
-	}
-	if t.IsVirtual() {
-		tree, err := t.gitTree()
-		if err != nil {
-			return false
-		}
-		_, err = tree.File(subPath)
-		return err == nil
-	}
-	_, err := os.Stat(filepath.Join(t.diskDir, filepath.FromSlash(subPath)))
-	return err == nil
 }
 
 // Walk invokes visit for every regular file in the tree. Paths are slash-
@@ -388,19 +366,6 @@ func (t *LibTree) ExtractTo(destDir string) error {
 	}
 	cleanup = false
 	return nil
-}
-
-// EnsureLib guarantees the bare clone exists, resolves lp.Ref to a SHA, and
-// returns a virtual tree handle. The bare clone is the only on-disk footprint.
-func EnsureLib(ctx context.Context, gitCacheDir string, lp *LibPath) (*LibTree, error) {
-	return ensureLib(ctx, NativeCache(), gitCacheDir, lp, false /*forceFetch*/)
-}
-
-// RefreshLib is EnsureLib but forces a fetch from origin even for immutable
-// refs. Use for explicit user-triggered updates.
-func RefreshLib(ctx context.Context, gitCacheDir string, lp *LibPath) error {
-	_, err := ensureLib(ctx, NativeCache(), gitCacheDir, lp, true /*forceFetch*/)
-	return err
 }
 
 // EnsureRepoClone guarantees the bare clone for the repo lp points at exists
