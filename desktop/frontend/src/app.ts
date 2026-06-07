@@ -4,7 +4,7 @@ import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, Expo
 import type { EntryPoint } from './function-preview';
 import { on } from './events';
 import { Viewer } from './viewer';
-import type { DecodedMesh, DebugStepData } from './viewer';
+import type { DecodedMesh } from './viewer';
 import type { EditorHandle } from './editor';
 import { DocsPanel } from './docs';
 import { patchSettings } from './settings';
@@ -43,7 +43,6 @@ let errorDiv: HTMLElement;
 let debugBar: HTMLElement;
 let debugSlider: HTMLInputElement;
 let debugLabel: HTMLElement;
-let hudTools: HTMLElement;
 let tabBar: HTMLElement;
 let statsBar: HTMLElement;
 let compilingOverlay: HTMLElement;
@@ -213,7 +212,6 @@ export interface AppDeps {
   debugBar: HTMLElement;
   debugSlider: HTMLInputElement;
   debugLabel: HTMLElement;
-  hudTools: HTMLElement;
   tabBar: HTMLElement;
   statsBar: HTMLElement;
   compilingOverlay: HTMLElement;
@@ -231,7 +229,6 @@ export function initApp(deps: AppDeps) {
   debugBar = deps.debugBar;
   debugSlider = deps.debugSlider;
   debugLabel = deps.debugLabel;
-  hudTools = deps.hudTools;
   tabBar = deps.tabBar;
   statsBar = deps.statsBar;
   compilingOverlay = deps.compilingOverlay;
@@ -394,7 +391,7 @@ function syncTabsWithSources(data: EvalResult) {
   if (tabsClosed) renderTabs();
 }
 
-function handleCheckOnly(_data: EvalResult, errors: SourceError[], fns: EntryPoint[]) {
+function handleCheckOnly(errors: SourceError[], fns: EntryPoint[]) {
   viewer.setPosMap([]);
 
   // Sync entry points first — even when there are errors — so callers like
@@ -882,7 +879,7 @@ function handleHTTPResult(resp: EvalResponse) {
 
   // Check-only response (no mesh, no debug)
   if (!data.mesh && !data.debugFinal) {
-    handleCheckOnly(data, errors, fns);
+    handleCheckOnly(errors, fns);
     return;
   }
 

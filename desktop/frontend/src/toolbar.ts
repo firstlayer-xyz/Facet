@@ -17,7 +17,7 @@ canvasContainer.id = 'canvas-container';
 viewportPanel.appendChild(canvasContainer);
 
 // ── Bottom-left HUD tool cluster ──
-export const hudTools = document.createElement('div');
+const hudTools = document.createElement('div');
 hudTools.id = 'hud-tools';
 hudTools.className = 'hud';
 

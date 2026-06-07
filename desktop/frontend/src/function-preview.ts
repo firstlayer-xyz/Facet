@@ -72,10 +72,6 @@ export class FunctionPreview {
     this.resizeObserver.observe(this.panel);
   }
 
-  get element(): HTMLElement { return this.panel; }
-
-  getSelected(): EntryPoint | null { return this.selected; }
-
   /** Previous param defaults — used to detect when a default changes across re-renders. */
   private prevDefaults: Record<string, any> = {};
 
