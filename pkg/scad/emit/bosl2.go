@@ -51,6 +51,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Rect(n), true
 	case "prismoid":
 		return e.bosl2Prismoid(n), true
+	case "wedge":
+		return e.bosl2Wedge(n), true
 	case "regular_ngon":
 		return e.bosl2RegularNgon(n, "", 1), true
 	case "hexagon":
@@ -614,6 +616,37 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "cuboid without size")
 	}
 	return e.cubeCtor(size) + ".AlignCenter(pos: Vec3{})"
+}
+
+// bosl2Wedge emits BOSL2's wedge — a triangular ramp — as its exact VNF (the
+// six vertices and eight faces BOSL2 builds, scaled by size/2). BOSL2's default
+// anchor is the min corner, so the centered mesh is shifted by size/2 unless
+// center=true.
+func (e *Emitter) bosl2Wedge(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 2, "size", "center")
+	size, ok := arg(n, "size", 0)
+	if !ok {
+		return e.errf(n.Pos(), "wedge without size")
+	}
+	x, y, z := e.boxSizeComponents(size)
+	hx, hy, hz := x+" / 2", y+" / 2", z+" / 2"
+	nx, ny, nz := "-("+x+" / 2)", "-("+y+" / 2)", "-("+z+" / 2)"
+	v := func(px, py, pz string) string {
+		return fmt.Sprintf("Vec3{x: %s, y: %s, z: %s}", px, py, pz)
+	}
+	verts := strings.Join([]string{
+		v(hx, hy, nz), v(hx, ny, nz), v(hx, ny, hz),
+		v(nx, hy, nz), v(nx, ny, nz), v(nx, ny, hz),
+	}, ", ")
+	faces := "Face{v0: 0, v1: 1, v2: 2}, Face{v0: 3, v1: 5, v2: 4}, " +
+		"Face{v0: 0, v1: 3, v2: 1}, Face{v0: 1, v1: 3, v2: 4}, " +
+		"Face{v0: 1, v1: 4, v2: 2}, Face{v0: 2, v1: 4, v2: 5}, " +
+		"Face{v0: 2, v1: 5, v2: 3}, Face{v0: 0, v1: 2, v2: 3}"
+	mesh := "Mesh{vertices: []Vec3[" + verts + "], indices: []Face[" + faces + "]}.Solid()"
+	if boolArg(n, "center", 1) {
+		return mesh
+	}
+	return mesh + ".Move(x: " + hx + ", y: " + hy + ", z: " + hz + ")"
 }
 
 // boxSizeComponents renders the three side-length Length expressions of an

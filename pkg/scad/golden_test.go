@@ -59,6 +59,7 @@ var goldenCases = []string{
 	"bosl2_torus",
 	"bosl2_prismoid",
 	"bosl2_star",
+	"bosl2_wedge",
 }
 
 func TestGolden(t *testing.T) {

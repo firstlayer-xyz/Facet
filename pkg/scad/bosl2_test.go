@@ -771,6 +771,33 @@ func TestBOSL2_ArcCopiesPartial(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// wedge emits BOSL2's triangular ramp as its exact VNF (a Mesh). By default the
+// min corner sits at the origin (a trailing Move by size/2).
+func TestBOSL2_Wedge(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nwedge([10, 8, 6]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("wedge should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Mesh{vertices:", "[]Face[", ".Solid()", ".Move(x: 10 mm / 2"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// wedge(center=true) keeps the VNF centered (no trailing Move).
+func TestBOSL2_WedgeCentered(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nwedge([10, 8, 6], center=true);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("centered wedge should transpile, got: %v", err)
+	}
+	if strings.Contains(res.Facet, ".Solid().Move(") {
+		t.Fatalf("centered wedge should not be shifted:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {
