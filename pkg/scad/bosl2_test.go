@@ -709,6 +709,21 @@ func TestBOSL2_Prismoid(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// star(n, r, ir) is a centered 2n-point star (Sketch): outer radius r at even
+// indices, inner radius ir at odd ones, at angle 180*i/n.
+func TestBOSL2_Star(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nstar(n=5, r=10, ir=4);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("star should transpile, got: %v", err)
+	}
+	for _, want := range []string{"fn Main() Sketch", "Polygon(", "[1:2 * 5]", "% 2 == 1 ? 4 mm : 10 mm", "180 * ", "Cos("} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

@@ -58,6 +58,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2RegularNgon(n, "5", 0), true
 	case "octagon":
 		return e.bosl2RegularNgon(n, "8", 0), true
+	case "star":
+		return e.bosl2Star(n), true
 	case "position", "attach":
 		// Reached only outside a supported parent (top level, or under a
 		// transform); inside cuboid/cyl these are handled by withAttachments.
@@ -316,10 +318,41 @@ func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
 // isBosl22D reports whether a BOSL2 shape name yields a 2D Sketch.
 func isBosl22D(name string) bool {
 	switch name {
-	case "rect", "regular_ngon", "hexagon", "pentagon", "octagon":
+	case "rect", "regular_ngon", "hexagon", "pentagon", "octagon", "star":
 		return true
 	}
 	return false
+}
+
+// bosl2Star emits BOSL2's 2D star — a centered 2n-point star (Sketch). Points
+// alternate the outer radius r (r/or/d/od) and inner radius ir (ir/id) at
+// angle 180*i/n, matching BOSL2's vertex placement. The `step` form (star
+// polygons), realign, and align_tip are not supported and error.
+func (e *Emitter) bosl2Star(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 3, "n", "r", "or", "d", "od", "ir", "id", "$fn", "$fa", "$fs")
+	nArg, ok := arg(n, "n", 0)
+	if !ok {
+		return e.errf(n.Pos(), "star without a point count n")
+	}
+	nStr := e.expr(nArg, kNumber)
+	r, ok := e.ngonRadius(n, 1)
+	if !ok {
+		return e.errf(n.Pos(), "star without an outer radius (r/or/d/od)")
+	}
+	ir, iok := e.tubeRadius(n, "ir", "id")
+	if !iok {
+		if v, ok := arg(n, "", 2); ok {
+			ir, iok = e.expr(v, kLength), true
+		}
+	}
+	if !iok {
+		return e.errf(n.Pos(), "star without an inner radius (ir/id)")
+	}
+	v := e.freshLoopVar()
+	radius := "(" + v + " % 2 == 1 ? " + ir + " : " + r + ")"
+	ang := "(180 * " + v + " / " + nStr + ") * 1 deg"
+	return "Polygon(points: for " + v + " [1:2 * " + nStr + "] { yield Vec2{x: " +
+		radius + " * Cos(a: " + ang + "), y: " + radius + " * Sin(a: " + ang + ")} })"
 }
 
 // bosl2RegularNgon emits a BOSL2 regular polygon (regular_ngon, or the named
