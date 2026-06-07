@@ -53,6 +53,10 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Prismoid(n), true
 	case "wedge":
 		return e.bosl2Wedge(n), true
+	case "spheroid":
+		// BOSL2's preferred sphere; the OpenSCAD sphere emitter already centers
+		// and handles r/d, so reuse it (circum/style options error as extras).
+		return e.sphere(n), true
 	case "regular_ngon":
 		return e.bosl2RegularNgon(n, "", 1), true
 	case "hexagon":

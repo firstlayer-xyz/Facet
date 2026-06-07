@@ -810,6 +810,19 @@ func TestBOSL2_CylCone(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// spheroid is BOSL2's preferred sphere; r/d map to a centered Sphere (the
+// circum/style tessellation options are not supported and error).
+func TestBOSL2_Spheroid(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nspheroid(r=5);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("spheroid should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Sphere(r: 5 mm)") || !strings.Contains(res.Facet, ".AlignCenter(pos: Vec3{})") {
+		t.Fatalf("expected centered Sphere in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {
