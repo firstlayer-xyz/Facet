@@ -6,50 +6,50 @@
 # Use .Move() or .AlignCenter() to reposition.
 # 
 # Axis-aligned box with bounding-box min corner at (0,0,0) and max at (x,y,z).
-# Optional `r` rounds every edge with a fillet of that radius — the corners
-# become spherical and the edges quarter-cylindrical, while the bounding
-# box still spans (0,0,0)..(x,y,z). `r` must be at most half the smallest
+# Optional `fillet` rounds every edge by that radius — the
+# corners become spherical and the edges quarter-cylindrical, while the bounding
+# box still spans (0,0,0)..(x,y,z). `fillet` must be at most half the smallest
 # dimension; the rounded form is built as the convex hull of eight spheres
 # placed at the inset corners.
 # ```
 # fn Main() { Cube(s: Vec3{x: 20 mm, y: 10 mm, z: 5 mm}) }
-# fn Main() { Cube(s: 20 mm, r: 2 mm) }
+# fn Main() { Cube(s: 20 mm, fillet: 2 mm) }
 # ```
 fn Cube(
     x Length,
     y Length,
     z Length,
-    r Length = 0 mm,
+    fillet Length = 0 mm,
 ) Solid {
-    if r == 0 mm { return _cube(x, y, z) }
-    assert 2 * r <= x, "Cube: radius too large for x dimension"
-    assert 2 * r <= y, "Cube: radius too large for y dimension"
-    assert 2 * r <= z, "Cube: radius too large for z dimension"
+    if fillet == 0 mm { return _cube(x, y, z) }
+    assert 2 * fillet <= x, "Cube: fillet too large for x dimension"
+    assert 2 * fillet <= y, "Cube: fillet too large for y dimension"
+    assert 2 * fillet <= z, "Cube: fillet too large for z dimension"
 
-    var s = Sphere(r: r)
+    var s = Sphere(r: fillet)
     return Hull(
         arr: [
-            s, s.Move(x: x - 2 * r), s.Move(y: y - 2 * r),
-            s.Move(x: x - 2 * r, y: y - 2 * r), s.Move(z: z - 2 * r),
-            s.Move(x: x - 2 * r, z: z - 2 * r),
-            s.Move(y: y - 2 * r, z: z - 2 * r),
-            s.Move(x: x - 2 * r, y: y - 2 * r, z: z - 2 * r)
+            s, s.Move(x: x - 2 * fillet), s.Move(y: y - 2 * fillet),
+            s.Move(x: x - 2 * fillet, y: y - 2 * fillet), s.Move(z: z - 2 * fillet),
+            s.Move(x: x - 2 * fillet, z: z - 2 * fillet),
+            s.Move(y: y - 2 * fillet, z: z - 2 * fillet),
+            s.Move(x: x - 2 * fillet, y: y - 2 * fillet, z: z - 2 * fillet)
         ]
     )
 }
 
 fn Cube(
     s Vec3,
-    r Length = 0 mm,
+    fillet Length = 0 mm,
 ) Solid {
-    return Cube(x: s.x, y: s.y, z: s.z, r: r)
+    return Cube(x: s.x, y: s.y, z: s.z, fillet: fillet)
 }
 
 fn Cube(
     s Length,
-    r Length = 0 mm,
+    fillet Length = 0 mm,
 ) Solid {
-    return Cube(x: s, y: s, z: s, r: r)
+    return Cube(x: s, y: s, z: s, fillet: fillet)
 }
 
 # UV sphere with bounding-box min corner at (0,0,0) (diameter extends from
@@ -72,41 +72,81 @@ fn Sphere(
     return _sphere(d / 2, segments)
 }
 
+# Torus centered on the origin: a circle of radius `r_min` swept around the Z
+# axis at major radius `r_maj`. Outer radius is `r_maj + r_min`; the tube spans
+# Z from -`r_min` to +`r_min`. Also accepts diameters `d_maj`/`d_min`. Optional
+# `segments` controls the circumferential resolution.
+# ```
+# fn Main() { Torus(r_maj: 20 mm, r_min: 4 mm) }
+# ```
+fn Torus(
+    r_maj Length,
+    r_min Length,
+    segments Number = 0,
+) Solid {
+    return Circle(r: r_min).Move(x: r_maj - r_min, y: -r_min).Revolve(segments: segments)
+}
+
+fn Torus(
+    d_maj Length,
+    d_min Length,
+    segments Number = 0,
+) Solid {
+    return Torus(r_maj: d_maj / 2, r_min: d_min / 2, segments: segments)
+}
+
 # Uniform cylinder with bounding-box min corner at (0,0,0): axis runs along Z
 # from Z=0 to Z=`h`. Also accepts diameter `d`. Optional `segments` controls
-# smoothness (default 32); use 6 for a hexagonal prism.
+# smoothness (default 32); use 6 for a hexagonal prism. `fillet` rounds the
+# top and bottom rims (0 = sharp edges).
 # ```
-# fn Main() { Cylinder(r: 5 mm, h: 20 mm) }
+# fn Main() { Cylinder(r: 5 mm, h: 20 mm, fillet: 1 mm) }
 # ```
 fn Cylinder(
     r Length,
     h Length,
     segments Number = 0,
+    fillet Length = 0 mm,
 ) Solid {
-    return _cylinder(h, r, r, segments)
+    if fillet == 0 mm { return _cylinder(h, r, r, segments) }
+    return Frustum(r1: r, r2: r, h: h, segments: segments, fillet: fillet)
 }
 
 fn Cylinder(
     d Length,
     h Length,
     segments Number = 0,
+    fillet Length = 0 mm,
 ) Solid {
-    return _cylinder(h, d / 2, d / 2, segments)
+    if fillet == 0 mm { return _cylinder(h, d / 2, d / 2, segments) }
+    return Frustum(r1: d / 2, r2: d / 2, h: h, segments: segments, fillet: fillet)
 }
 
 # Frustum (truncated cone) along Z from Z=0 to Z=`h`. `r1` is the bottom
 # radius, `r2` the top; set either to 0 for a true cone. Also accepts diameters
-# `d1`/`d2`. Optional `segments` controls smoothness (default 32).
+# `d1`/`d2`. Optional `segments` controls smoothness (default 32). `fillet`
+# rounds the top and bottom rims (0 = sharp edges); it must not exceed either
+# radius or half the height, and a rounded end needs a non-zero radius.
 # ```
-# fn Main() { Frustum(r1: 8 mm, r2: 3 mm, h: 20 mm) }
+# fn Main() { Frustum(r1: 8 mm, r2: 3 mm, h: 20 mm, fillet: 1 mm) }
 # ```
 fn Frustum(
     r1 Length,
     r2 Length,
     h Length,
     segments Number = 0,
+    fillet Length = 0 mm,
 ) Solid {
-    return _cylinder(h, r1, r2, segments)
+    if fillet == 0 mm { return _cylinder(h, r1, r2, segments) }
+    assert fillet <= r1, "Frustum: fillet too large for r1"
+    assert fillet <= r2, "Frustum: fillet too large for r2"
+    assert 2 * fillet <= h, "Frustum: fillet too large for height"
+    # The rim tori are centered on the Z axis; shift so the bounding box's min
+    # corner sits at the origin, matching the plain _cylinder convention.
+    var rmax = Max(a: r1, b: r2)
+    var tb = Torus(r_maj: r1 - fillet, r_min: fillet, segments: segments)
+    var tt = Torus(r_maj: r2 - fillet, r_min: fillet, segments: segments)
+    return Hull(arr: [tb.Move(z: fillet), tt.Move(z: h - fillet)]).Move(x: rmax, y: rmax)
 }
 
 fn Frustum(
@@ -114,8 +154,10 @@ fn Frustum(
     d2 Length,
     h Length,
     segments Number = 0,
+    fillet Length = 0 mm,
 ) Solid {
-    return _cylinder(h, d1 / 2, d2 / 2, segments)
+    if fillet == 0 mm { return _cylinder(h, d1 / 2, d2 / 2, segments) }
+    return Frustum(r1: d1 / 2, r2: d2 / 2, h: h, segments: segments, fillet: fillet)
 }
 
 # Cone along Z from Z=0 to Z=`h` with base radius `r`.
