@@ -156,20 +156,36 @@ void facet_intersection(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out) {
   wrap(new Manifold(*as_cpp(a) ^ *as_cpp(b)), out);
 }
 
+// Insert seats b into a: cut b's shape out of a, drop any piece of a that b
+// traps inside itself (a "plug"), then union b back in. A piece is a plug iff
+// it lies entirely within b's convex hull, tested by exact boolean
+// containment: (piece - hull) is empty. The hull is rotation-invariant and
+// tight to b's geometry.
+//
+// When every piece is a plug there is no outer shell and seating b would
+// discard all of a, which is never a valid result. out->ptr is left null to
+// signal this; the Go layer reports it as errInsertNoShell.
 void facet_insert(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out) {
   Manifold diff = *as_cpp(a) - *as_cpp(b);
   auto components = diff.Decompose();
   Manifold pierced;
   if (components.size() <= 1) {
+    // b severed nothing, so there is no plug to remove.
     pierced = std::move(diff);
   } else {
-    Box b_bbox = as_cpp(b)->BoundingBox();
+    Manifold b_hull = as_cpp(b)->Hull();
     std::vector<Manifold> outer;
     for (auto& comp : components) {
-      if (!b_bbox.Contains(comp.BoundingBox()))
+      if (!(comp - b_hull).IsEmpty())  // escapes b's hull -> outer shell, keep
         outer.push_back(std::move(comp));
     }
-    pierced = outer.empty() ? std::move(diff) : Manifold::Compose(outer);
+    if (outer.empty()) {
+      out->ptr = nullptr;
+      out->size = 0;
+      out->original_id = -1;
+      return;
+    }
+    pierced = Manifold::Compose(outer);
   }
   wrap(new Manifold(pierced + *as_cpp(b)), out);
 }

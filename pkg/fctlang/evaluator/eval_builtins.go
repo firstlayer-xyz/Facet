@@ -44,7 +44,7 @@ func init() {
 			if !oka || !okb {
 				return nil, fmt.Errorf("_insert() expects Solid, Solid")
 			}
-			return sa.Insert(sb), nil
+			return sa.Insert(sb)
 		},
 		"_decompose": func(e *evaluator, args []value) (value, error) {
 			if len(args) != 1 {

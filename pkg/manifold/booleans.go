@@ -56,16 +56,21 @@ func (a *Solid) Intersection(b *Solid) *Solid {
 }
 
 // Insert cuts a hole in a for b, removes floating inner plugs, and seats b.
-// Panics if either operand is nil.
-func (a *Solid) Insert(b *Solid) *Solid {
+// Panics if either operand is nil. Returns an error if every piece of a is
+// enclosed by b's convex hull, leaving no outer shell to seat b into — see
+// errInsertNoShell.
+func (a *Solid) Insert(b *Solid) (*Solid, error) {
 	requireSolids("Insert", a, b)
 	var ret C.FacetSolidRet
 	C.facet_insert(a.ptr, b.ptr, &ret)
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
 	s := newSolid(ret)
+	if s == nil {
+		return nil, errInsertNoShell
+	}
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
-	return s
+	return s, nil
 }
 
 // DecomposeSolid splits a solid into its disconnected connected components.

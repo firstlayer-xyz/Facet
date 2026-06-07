@@ -30,12 +30,16 @@ func (a *Solid) Intersection(b *Solid) *Solid {
 
 // Insert cuts a hole in a for b, removes floating inner plugs, and seats b.
 // Calls the same C++ facet_insert as the native build (via the _mf_insert
-// bridge) so web and desktop produce identical geometry.
-func (a *Solid) Insert(b *Solid) *Solid {
+// bridge) so web and desktop produce identical geometry. A null (id 0) result
+// signals the no-shell condition — see errInsertNoShell.
+func (a *Solid) Insert(b *Solid) (*Solid, error) {
 	id := js.Global().Call("_mf_insert", a.id, b.id).Int()
+	if id == 0 {
+		return nil, errInsertNoShell
+	}
 	s := newSolid(id)
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
-	return s
+	return s, nil
 }
 
 func DecomposeSolid(s *Solid) []*Solid {
