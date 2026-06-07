@@ -200,8 +200,7 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 
 		dm := manifold.MergeExtractExpandedMeshes(solids, 40)
 		stats := result.Stats
-		var binData []byte
-		meta, binData := appendMeshBinary(binData, dm)
+		meta, binData := appendMeshBinary(nil, dm)
 		header.Mesh = meta
 		header.Stats = &stats
 		bin, err := packResponse(header, binData)
@@ -317,8 +316,7 @@ func jsFrame(this js.Value, args []js.Value) interface{} {
 // single Solid — the shape the viewer expects from a frame render.
 func packSolidFrame(solid *manifold.Solid) ([]byte, error) {
 	dm := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
-	var binData []byte
-	meta, binData := appendMeshBinary(binData, dm)
+	meta, binData := appendMeshBinary(nil, dm)
 	stats := evaluator.SolidFrameStats(solid, dm)
 	return packResponse(evalResponseHeader{Mesh: meta, Stats: &stats}, binData)
 }
@@ -360,7 +358,7 @@ func jsExamples(this js.Value, args []js.Value) any {
 	}
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && len(e.Name()) > 4 && e.Name()[len(e.Name())-4:] == ".fct" {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".fct") {
 			names = append(names, e.Name())
 		}
 	}
