@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"facet/pkg/fctlang/parser"
 	"facet/pkg/manifold"
 )
 
@@ -204,7 +203,7 @@ func (e *evaluator) builtinNewPolygon(args []value) (value, error) {
 	return result, nil
 }
 
-func (e *evaluator) builtinHull(_ *parser.CallExpr, args []value) (value, error) {
+func (e *evaluator) builtinHull(args []value) (value, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("_hull() expects 1 argument (an Array), got %d", len(args))
 	}
