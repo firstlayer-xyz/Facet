@@ -356,6 +356,12 @@ jobs:
         # on Linux/macOS runners, so disabling here just brings Windows
         # in line with the existing trust model. Requires admin which
         # the github-hosted runner has.
+        #
+        # Best-effort: Set-MpPreference intermittently fails with a transient
+        # service error (0x800106ba) on the ephemeral runner. This step is a
+        # speed optimization, not a correctness input, so a flake here must not
+        # fail the build — continue-on-error surfaces it without blocking.
+        continue-on-error: true
         shell: pwsh
         run: Set-MpPreference -DisableRealtimeMonitoring $true
 
