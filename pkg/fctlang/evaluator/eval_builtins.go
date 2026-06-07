@@ -31,7 +31,7 @@ func init() {
 		// Constructors
 		"_polygon": func(e *evaluator, args []value) (value, error) { return e.builtinNewPolygon(args) },
 		// Aggregate
-		"_hull":         func(e *evaluator, args []value) (value, error) { return e.builtinHull(nil, args) },
+		"_hull":         func(e *evaluator, args []value) (value, error) { return e.builtinHull(args) },
 		"_union":        func(e *evaluator, args []value) (value, error) { return e.builtinBatchBool("_union", args) },
 		"_difference":   func(e *evaluator, args []value) (value, error) { return e.builtinBatchBool("_difference", args) },
 		"_intersection": func(e *evaluator, args []value) (value, error) { return e.builtinBatchBool("_intersection", args) },
