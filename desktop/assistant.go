@@ -16,10 +16,11 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// AssistantConfig holds the user's chosen AI CLI and model.
+// AssistantConfig holds the user's chosen AI CLI, model, and effort.
 type AssistantConfig struct {
 	CLI          string `json:"cli"`
 	Model        string `json:"model"`
+	Effort       string `json:"effort"` // Claude CLI --effort level ("" = CLI default; low/medium/high/xhigh/max)
 	SystemPrompt string `json:"systemPrompt"`
 	MaxTurns     int    `json:"maxTurns"` // max tool-use turns for Claude CLI (0 = default 10)
 }

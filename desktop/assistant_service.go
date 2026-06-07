@@ -180,15 +180,15 @@ func (s *AssistantService) Send(userMessage, editorCode, errorsText, activeTabPa
 
 	fullPrompt := buildPrompt(userMessage, editorCode, errorsText, imagePaths)
 
-	log.Printf("[assistant] starting %s CLI, model=%q, images=%d, prompt length=%d",
-		cliID, config.Model, len(imagePaths), len(fullPrompt))
+	log.Printf("[assistant] starting %s CLI, model=%q, effort=%q, images=%d, prompt length=%d",
+		cliID, config.Model, config.Effort, len(imagePaths), len(fullPrompt))
 
 	go func() {
 		defer cancel()
 		var err error
 		if cliID == "claude" {
 			var result streamResult
-			result, err = s.runClaudeStream(ctx, binPath, fullPrompt, sessionID, imagePaths, config.Model, sysPrompt, mcpPort, mcpToken)
+			result, err = s.runClaudeStream(ctx, binPath, fullPrompt, sessionID, imagePaths, config.Model, config.Effort, sysPrompt, mcpPort, mcpToken)
 			// Store the session ID regardless of err: partial-failure
 			// results (notably error_max_turns) still carry a valid
 			// session_id, and dropping it would force the next user
@@ -227,7 +227,7 @@ const mcpToolTimeoutMS int64 = 365 * 24 * 60 * 60 * 1000 // 1 year
 
 // runClaudeStream runs the claude CLI with --output-format stream-json and
 // parses the NDJSON output line by line, emitting text deltas as they arrive.
-func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt, sessionID string, imagePaths []string, model, sysPrompt string, mcpPort int, mcpToken string) (streamResult, error) {
+func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt, sessionID string, imagePaths []string, model, effort, sysPrompt string, mcpPort int, mcpToken string) (streamResult, error) {
 	s.mu.Lock()
 	maxTurns := s.config.MaxTurns
 	s.mu.Unlock()
@@ -277,6 +277,12 @@ func (s *AssistantService) runClaudeStream(ctx context.Context, binPath, prompt,
 
 	if model != "" {
 		args = append(args, "--model", model)
+	}
+
+	// --effort sets the reasoning effort for the session (low/medium/high/
+	// xhigh/max). Empty means the user picked "Default" — let the CLI decide.
+	if effort != "" {
+		args = append(args, "--effort", effort)
 	}
 
 	if sessionID != "" {

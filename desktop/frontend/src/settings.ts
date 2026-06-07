@@ -38,6 +38,7 @@ export interface AppSettings {
   assistant: {
     cli: string;
     model: string;
+    effort: string;
     systemPrompt: string;
     maxTurns: number;
   };
@@ -95,6 +96,7 @@ const defaults: AppSettings = {
   assistant: {
     cli: '',
     model: '',
+    effort: '',
     systemPrompt: '',
     maxTurns: 10,
   },
