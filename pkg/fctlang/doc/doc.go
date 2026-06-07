@@ -187,6 +187,26 @@ func extractDocEntries(src *parser.Source, library string) []DocEntry {
 	return entries
 }
 
+// isModuleFile reports whether a path names a library's <name>/<name>.fct module
+// file — a .fct file whose base name matches its parent directory. fileBase is
+// Base(p) and dirBase is Base(Dir(p)); callers split with filepath (OS paths) or
+// path (slash paths) as appropriate.
+func isModuleFile(fileBase, dirBase string) bool {
+	name := strings.TrimSuffix(fileBase, ".fct")
+	return name != fileBase && name == dirBase
+}
+
+// parseLibDocEntries parses library source bytes and extracts its doc entries
+// under namespace ns. A parse error yields no entries — a malformed library must
+// not break the whole doc index.
+func parseLibDocEntries(data []byte, ns string) []DocEntry {
+	libProg, err := parser.Parse(string(data), "", parser.SourceUser)
+	if err != nil {
+		return nil
+	}
+	return extractDocEntries(libProg, ns)
+}
+
 // BuildLibDocEntries extracts doc entries from .fct files in a filesystem
 // library directory (user-local libs). It walks libDir looking for
 // <name>/<name>.fct files and parses their doc comments. For virtualized
@@ -197,8 +217,7 @@ func BuildLibDocEntries(libDir string) []DocEntry {
 		if err != nil || d.IsDir() {
 			return nil
 		}
-		base := strings.TrimSuffix(filepath.Base(p), ".fct")
-		if base == filepath.Base(p) || base != filepath.Base(filepath.Dir(p)) {
+		if !isModuleFile(filepath.Base(p), filepath.Base(filepath.Dir(p))) {
 			return nil
 		}
 		// Skip std — handled separately
@@ -209,17 +228,11 @@ func BuildLibDocEntries(libDir string) []DocEntry {
 		if err != nil {
 			return nil
 		}
-		libProg, err := parser.Parse(string(data), "", parser.SourceUser)
-		if err != nil {
-			return nil
-		}
-		dir := filepath.Dir(p)
-		ns, _ := filepath.Rel(libDir, dir)
 		// Lib namespaces are URL-style (slash-separated) regardless of
-		// host OS — filepath.Rel returns backslashes on Windows, so
-		// normalise.
+		// host OS — filepath.Rel returns backslashes on Windows, so normalise.
+		ns, _ := filepath.Rel(libDir, filepath.Dir(p))
 		ns = filepath.ToSlash(ns)
-		entries = append(entries, extractDocEntries(libProg, ns)...)
+		entries = append(entries, parseLibDocEntries(data, ns)...)
 		return nil
 	})
 	return entries
@@ -267,12 +280,8 @@ func buildCachedRepoDocEntries(ctx context.Context, cacheDir, host, user, repo s
 		return nil
 	}
 	_ = tree.Walk(func(subPath string, r io.Reader) error {
-		base := strings.TrimSuffix(path.Base(subPath), ".fct")
-		if base == path.Base(subPath) {
-			return nil // not a .fct file
-		}
-		if base != path.Base(path.Dir(subPath)) {
-			return nil // not <name>/<name>.fct
+		if !isModuleFile(path.Base(subPath), path.Base(path.Dir(subPath))) {
+			return nil // not a <name>/<name>.fct module file
 		}
 		// Skip embedded facet/std (handled separately).
 		if strings.HasPrefix(subPath, "facet/std/") {
@@ -282,13 +291,8 @@ func buildCachedRepoDocEntries(ctx context.Context, cacheDir, host, user, repo s
 		if err != nil {
 			return nil
 		}
-		libProg, err := parser.Parse(string(data), "", parser.SourceUser)
-		if err != nil {
-			return nil
-		}
-		dir := path.Dir(subPath)
-		ns := path.Join(host, user, repo, dir)
-		entries = append(entries, extractDocEntries(libProg, ns)...)
+		ns := path.Join(host, user, repo, path.Dir(subPath))
+		entries = append(entries, parseLibDocEntries(data, ns)...)
 		return nil
 	})
 	return entries
@@ -310,8 +314,7 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 		if err != nil || d.IsDir() {
 			return nil
 		}
-		base := strings.TrimSuffix(filepath.Base(path), ".fct")
-		if base == filepath.Base(path) || base != filepath.Base(filepath.Dir(path)) {
+		if !isModuleFile(filepath.Base(path), filepath.Base(filepath.Dir(path))) {
 			return nil
 		}
 		// Skip std — already indexed above
@@ -322,14 +325,9 @@ func BuildDocIndex(source string, stdlibSrc *parser.Source) []DocEntry {
 		if err != nil {
 			return nil
 		}
-		libProg, err := parser.Parse(string(data), "", parser.SourceUser)
-		if err != nil {
-			return nil
-		}
 		// Derive library namespace from path: "libraries/facet/gears" → "facet/gears"
-		dir := filepath.Dir(path)
-		ns, _ := filepath.Rel("libraries", dir)
-		entries = append(entries, extractDocEntries(libProg, ns)...)
+		ns, _ := filepath.Rel("libraries", filepath.Dir(path))
+		entries = append(entries, parseLibDocEntries(data, ns)...)
 		return nil
 	})
 
