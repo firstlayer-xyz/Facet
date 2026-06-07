@@ -65,7 +65,7 @@ Lowercase functions are helpers:
 
 ```
 fn rounded_box(w, d, h, r Length) Solid {
-    return Cube(s: Vec3{x: w, y: d, z: h}, r: r)
+    return Cube(s: Vec3{x: w, y: d, z: h}, fillet: r)
 }
 ```
 

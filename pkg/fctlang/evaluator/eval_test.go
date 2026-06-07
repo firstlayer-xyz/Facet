@@ -47,7 +47,7 @@ func TestEvalCubeWithUnits(t *testing.T) {
 }
 
 func TestEvalRoundedCube(t *testing.T) {
-	src := `fn Main() Solid { return Cube(s: 20 mm, r: 2 mm); }`
+	src := `fn Main() Solid { return Cube(s: 20 mm, fillet: 2 mm); }`
 	prog := parseTestProg(t, src)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestEvalRoundedCube(t *testing.T) {
 }
 
 func TestEvalRoundedCubeNonUniform(t *testing.T) {
-	src := `fn Main() Solid { return Cube(x: 20 mm, y: 10 mm, z: 5 mm, r: 1 mm); }`
+	src := `fn Main() Solid { return Cube(x: 20 mm, y: 10 mm, z: 5 mm, fillet: 1 mm); }`
 	prog := parseTestProg(t, src)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
@@ -141,7 +141,7 @@ func TestEvalRoundedCubeNonUniform(t *testing.T) {
 
 func TestEvalRoundedCubeZeroRadiusFallback(t *testing.T) {
 	// r == 0 short-circuits to the sharp-edged cube; mesh should look like a plain cube.
-	src := `fn Main() Solid { return Cube(s: 10 mm, r: 0 mm); }`
+	src := `fn Main() Solid { return Cube(s: 10 mm, fillet: 0 mm); }`
 	prog := parseTestProg(t, src)
 	mesh, err := evalMerged(context.Background(), prog, nil)
 	if err != nil {
@@ -153,14 +153,14 @@ func TestEvalRoundedCubeZeroRadiusFallback(t *testing.T) {
 }
 
 func TestEvalRoundedCubeRadiusTooLarge(t *testing.T) {
-	src := `fn Main() Solid { return Cube(s: 10 mm, r: 6 mm); }`
+	src := `fn Main() Solid { return Cube(s: 10 mm, fillet: 6 mm); }`
 	prog := parseTestProg(t, src)
 	_, err := evalMerged(context.Background(), prog, nil)
 	if err == nil {
 		t.Fatal("expected assertion failure for r > s/2")
 	}
-	if !strings.Contains(err.Error(), "radius too large") {
-		t.Fatalf("expected 'radius too large' in error, got: %v", err)
+	if !strings.Contains(err.Error(), "fillet too large") {
+		t.Fatalf("expected 'fillet too large' in error, got: %v", err)
 	}
 }
 
