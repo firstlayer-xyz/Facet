@@ -62,9 +62,16 @@ func (a *App) GetExampleList() []string {
 	return names
 }
 
+// validExampleName rejects path traversal in an example filename: examples are
+// flat files in the embedded FS, so no path separators or ".." are allowed.
+// Shared by App.GetExample and the get_example MCP tool so the guard can't drift.
+func validExampleName(name string) bool {
+	return !strings.Contains(name, "..") && !strings.ContainsAny(name, "/\\")
+}
+
 // GetExample returns the source code of the named embedded example.
 func (a *App) GetExample(name string) (string, error) {
-	if strings.Contains(name, "..") || strings.ContainsAny(name, "/\\") {
+	if !validExampleName(name) {
 		return "", fmt.Errorf("invalid example name: %s", name)
 	}
 	data, err := examples.FS.ReadFile(name)
