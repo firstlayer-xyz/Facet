@@ -35,6 +35,10 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.14.1
+          # Don't persist zig's cache across runs — it desyncs from the
+          # manifold build cache and poisons clean builds with stale
+          # manifests (see the build-linux job in ci.yml for the full why).
+          use-cache: false
 
       - name: Cache custom Go toolchain
         id: cache-go
