@@ -34,7 +34,7 @@ import {
   debugRestartBtn, debugContinueBtn, debugStopBtn,
   vpPane, vpPaneSummary, hiddenLinesBtn, panelResizer, docsResizer, previewSelector,
   previewFileBtn, previewFileMenu,
-  measureBtn, extentsBtn, clearDimsBtn, hudTools,
+  measureBtn, extentsBtn, clearDimsBtn,
   drawerStack,
 } from './toolbar';
 import { FunctionPreview } from './function-preview';
@@ -216,7 +216,6 @@ async function init() {
     debugBar,
     debugSlider,
     debugLabel,
-    hudTools,
     tabBar,
     statsBar,
     compilingOverlay,

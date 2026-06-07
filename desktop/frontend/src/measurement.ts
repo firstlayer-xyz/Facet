@@ -875,10 +875,10 @@ export function formatAngle(deg: number): string {
 
 export function formatMeasurementLabel(m: Measurement, fmt: MeasurementFormat = DEFAULT_MEASUREMENT_FORMAT): string {
   switch (m.kind) {
-    case 'linear':     return formatLength(m.distance, fmt);
+    case 'linear':
     case 'faceToFace': return formatLength(m.distance, fmt);
     case 'radial':     return `\u2300 ${formatLength(m.diameter, fmt)}`;
-    case 'angular':    return formatAngle(m.degrees);
+    case 'angular':
     case 'cornerAngle': return formatAngle(m.degrees);
     case 'extents': {
       const dx = m.max[0] - m.min[0];
