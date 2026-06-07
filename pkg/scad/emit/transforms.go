@@ -71,6 +71,9 @@ func (e *Emitter) stmtIs2D(s ast.Stmt, seen map[string]bool) bool {
 			seen[n.Name] = true
 			return e.firstGeomIs2D(sym.moduleBody, seen)
 		}
+		if e.bosl2 && isBosl22D(n.Name) {
+			return true
+		}
 		return is2D(n.Name)
 	case *ast.If:
 		// A conditional's dimensionality is that of its then-branch geometry;

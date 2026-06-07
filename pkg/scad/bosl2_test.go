@@ -606,6 +606,68 @@ func TestBOSL2_AxisScales(t *testing.T) {
 	}
 }
 
+// rect([x,y]) is BOSL2's 2D rectangle, centered on the origin (a Sketch). The
+// result type must be Sketch — assertTypeChecks confirms the dimensionality.
+func TestBOSL2_Rect(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrect([20, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rect should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn Main() Sketch") {
+		t.Fatalf("rect should yield a Sketch:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Square(x: 20 mm, y: 10 mm)") {
+		t.Fatalf("expected centered square in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// rect extruded becomes a centered solid, exercising the 2D-under-extrude path.
+func TestBOSL2_RectExtruded(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nlinear_extrude(3) rect(8);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("extruded rect should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn Main() Solid") {
+		t.Fatalf("extruded rect should yield a Solid:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// regular_ngon(n, r) is a centered regular polygon (a Sketch), vertices at
+// a = 360 - i*360/n from +X (BOSL2's default orientation).
+func TestBOSL2_RegularNgon(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nregular_ngon(n=6, r=10);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("regular_ngon should transpile, got: %v", err)
+	}
+	for _, want := range []string{"fn Main() Sketch", "Polygon(", "points: for scad_i", "Cos(a:", "Sin(a:", "360 / 6"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// hexagon/pentagon/octagon are regular_ngon with a fixed side count.
+func TestBOSL2_NamedNgons(t *testing.T) {
+	cases := []struct{ name, sides string }{
+		{"hexagon", "360 / 6"},
+		{"pentagon", "360 / 5"},
+		{"octagon", "360 / 8"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.name+"(r=8);\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%s should transpile, got: %v", c.name, err)
+		}
+		if !strings.Contains(res.Facet, c.sides) || !strings.Contains(res.Facet, "fn Main() Sketch") {
+			t.Fatalf("%s: expected %q (2D ngon) in:\n%s", c.name, c.sides, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

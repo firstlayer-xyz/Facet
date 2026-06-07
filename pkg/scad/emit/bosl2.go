@@ -44,6 +44,16 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2OrientedCyl(n, "Rotate(x: -90 deg)"), true
 	case "rect_tube":
 		return e.bosl2RectTube(n), true
+	case "rect":
+		return e.bosl2Rect(n), true
+	case "regular_ngon":
+		return e.bosl2RegularNgon(n, "", 1), true
+	case "hexagon":
+		return e.bosl2RegularNgon(n, "6", 0), true
+	case "pentagon":
+		return e.bosl2RegularNgon(n, "5", 0), true
+	case "octagon":
+		return e.bosl2RegularNgon(n, "8", 0), true
 	case "position", "attach":
 		// Reached only outside a supported parent (top level, or under a
 		// transform); inside cuboid/cyl these are handled by withAttachments.
@@ -246,6 +256,76 @@ func (e *Emitter) bosl2RectTube(n *ast.ModuleCall) string {
 	hStr := e.expr(h, kLength)
 	return fmt.Sprintf("(Cube(x: %s, y: %s, z: %s).AlignCenter(pos: Vec3{}) - Cube(x: %s, y: %s, z: %s).AlignCenter(pos: Vec3{}))",
 		ox, oy, hStr, ix, iy, hStr)
+}
+
+// bosl2Rect emits BOSL2's 2D rect — a rectangle centered on the origin (a
+// Sketch). size is [x,y] or a scalar (square).
+func (e *Emitter) bosl2Rect(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 1, "size")
+	size, ok := arg(n, "size", 0)
+	if !ok {
+		return e.errf(n.Pos(), "rect without size")
+	}
+	x, y := e.pair2(size, kLength)
+	return fmt.Sprintf("Square(x: %s, y: %s).Move(x: -%s / 2, y: -%s / 2)", x, y, x, y)
+}
+
+// isBosl22D reports whether a BOSL2 shape name yields a 2D Sketch.
+func isBosl22D(name string) bool {
+	switch name {
+	case "rect", "regular_ngon", "hexagon", "pentagon", "octagon":
+		return true
+	}
+	return false
+}
+
+// bosl2RegularNgon emits a BOSL2 regular polygon (regular_ngon, or the named
+// hexagon/pentagon/octagon) as a centered Polygon. Vertices follow BOSL2's
+// default orientation: a = 360 - i*360/n from +X, at the circumradius. fixedN is
+// the side count for the named shapes ("" reads the n argument); rPos is the
+// positional index of the radius. side/ir/realign/rounding are not supported and
+// error via rejectExtraArgs.
+func (e *Emitter) bosl2RegularNgon(n *ast.ModuleCall, fixedN string, rPos int) string {
+	nStr := fixedN
+	if fixedN == "" {
+		e.rejectExtraArgs(n, 2, "n", "r", "d", "or", "od", "$fn", "$fa", "$fs")
+		nArg, ok := arg(n, "n", 0)
+		if !ok {
+			return e.errf(n.Pos(), "regular_ngon without a side count n")
+		}
+		nStr = e.expr(nArg, kNumber)
+	} else {
+		e.rejectExtraArgs(n, 1, "r", "d", "or", "od", "$fn", "$fa", "$fs")
+	}
+	r, ok := e.ngonRadius(n, rPos)
+	if !ok {
+		return e.errf(n.Pos(), "%s without a radius (r/d/or/od)", n.Name)
+	}
+	v := e.freshLoopVar()
+	ang := "(360 - " + v + " * 360 / " + nStr + ") * 1 deg"
+	return "Polygon(points: for " + v + " [0:" + nStr + " - 1] { yield Vec2{x: " +
+		r + " * Cos(a: " + ang + "), y: " + r + " * Sin(a: " + ang + ")} })"
+}
+
+// ngonRadius renders a polygon's circumradius from r/or, or d/od (halved), or
+// the positional arg at rPos.
+func (e *Emitter) ngonRadius(n *ast.ModuleCall, rPos int) (string, bool) {
+	for _, name := range []string{"r", "or"} {
+		if v, ok := arg(n, name, -1); ok {
+			return e.expr(v, kLength), true
+		}
+	}
+	for _, name := range []string{"d", "od"} {
+		if v, ok := arg(n, name, -1); ok {
+			return e.expr(v, kLength) + " / 2", true
+		}
+	}
+	if rPos >= 0 {
+		if v, ok := arg(n, "", rPos); ok {
+			return e.expr(v, kLength), true
+		}
+	}
+	return "", false
 }
 
 // rect2Components renders a 2D footprint size into (x, y) Length expressions: a
