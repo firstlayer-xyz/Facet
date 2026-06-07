@@ -149,6 +149,14 @@ const assistantPanel = new AssistantPanel(
   (name: string, code: string) => {
     assistantCreateFile(name, code).catch(err => showError(err));
   },
+  // Read the persisted assistant config for the panel's model/effort selector.
+  () => settings.assistant,
+  // Persist a model/effort change and push it to the backend for the next send.
+  (cfg) => {
+    settings.assistant = cfg;
+    saveSettings(settings);
+    SetAssistantConfig(settings.assistant);
+  },
   // Viewport capture for the screenshot_viewport MCP tool. When the model
   // requests an explicit camera pose, render off-screen so the user's view
   // is untouched; otherwise grab the live canvas (preserveDrawingBuffer is

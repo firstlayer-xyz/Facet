@@ -8,8 +8,11 @@ import type {
   AssistantTaskPlanPayload,
   AssistantTaskStatus,
 } from './events';
-import { SendAssistantMessage, CancelAssistant, ClearAssistantHistory, PickImageFile, DetectAssistantCLIs, AnswerAssistantQuestion, DeliverViewportScreenshot, AnswerToolPermission }
+import { SendAssistantMessage, CancelAssistant, ClearAssistantHistory, PickImageFile, DetectAssistantCLIs, GetAssistantEffortLevels, AnswerAssistantQuestion, DeliverViewportScreenshot, AnswerToolPermission }
   from '../wailsjs/go/main/App';
+import type { AppSettings } from './settings';
+
+type AssistantConfig = AppSettings['assistant'];
 
 export class AssistantPanel {
   private container: HTMLElement;
@@ -48,6 +51,10 @@ export class AssistantPanel {
   private offPermission: (() => void) | null = null;
   private taskPlanDiv: HTMLElement | null = null;
   private captureScreenshot: ((opts?: AssistantScreenshotRequest) => string | null) | null = null;
+  private getAssistantConfig: () => AssistantConfig;
+  private onAssistantConfigChange: (cfg: AssistantConfig) => void;
+  private modelSelect!: HTMLSelectElement;
+  private effortSelect!: HTMLSelectElement;
 
   constructor(
     container: HTMLElement,
@@ -57,6 +64,8 @@ export class AssistantPanel {
     onApplyCode: (newCode: string, searchFor?: string) => void,
     onSetEditorSilent: (newCode: string) => void,
     onNewFile: (name: string, code: string) => void,
+    getAssistantConfig: () => AssistantConfig,
+    onAssistantConfigChange: (cfg: AssistantConfig) => void,
     captureScreenshot?: (opts?: AssistantScreenshotRequest) => string | null,
     onClose?: () => void,
   ) {
@@ -67,6 +76,8 @@ export class AssistantPanel {
     this.onApplyCode = onApplyCode;
     this.onSetEditorSilent = onSetEditorSilent;
     this.onNewFile = onNewFile;
+    this.getAssistantConfig = getAssistantConfig;
+    this.onAssistantConfigChange = onAssistantConfigChange;
     this.captureScreenshot = captureScreenshot ?? null;
 
     this.panel = document.createElement('div');
@@ -103,6 +114,10 @@ export class AssistantPanel {
     }
 
     this.panel.appendChild(header);
+
+    // Model + effort quick selector. Reads and writes the same persisted
+    // assistant config the Settings page uses, so the two stay in sync.
+    this.panel.appendChild(this.buildControls());
 
     // Messages area
     this.messagesDiv = document.createElement('div');
@@ -161,12 +176,118 @@ export class AssistantPanel {
     container.appendChild(this.panel);
   }
 
+  private buildControls(): HTMLElement {
+    const controls = document.createElement('div');
+    controls.className = 'assistant-controls';
+    controls.style.display = 'flex';
+    controls.style.gap = '6px';
+    controls.style.alignItems = 'center';
+    controls.style.padding = '4px 8px';
+
+    const styleSelect = (sel: HTMLSelectElement) => {
+      sel.style.flex = '1';
+      sel.style.minWidth = '0';
+      sel.style.background = '#1a1a2e';
+      sel.style.color = '#ccc';
+      sel.style.border = '1px solid #444';
+      sel.style.borderRadius = '4px';
+      sel.style.padding = '2px 4px';
+      sel.style.fontSize = '11px';
+    };
+
+    this.modelSelect = document.createElement('select');
+    this.modelSelect.title = 'Model';
+    styleSelect(this.modelSelect);
+    this.modelSelect.addEventListener('change', () => this.applyConfigChange());
+
+    this.effortSelect = document.createElement('select');
+    this.effortSelect.title = 'Reasoning effort';
+    styleSelect(this.effortSelect);
+    this.effortSelect.addEventListener('change', () => this.applyConfigChange());
+
+    controls.appendChild(this.modelSelect);
+    controls.appendChild(this.effortSelect);
+    // Selected values + model options are filled lazily in show(); `settings`
+    // (which getAssistantConfig reads) isn't loaded yet at construction time.
+    return controls;
+  }
+
+  // syncControlsFromConfig sets the selector to the persisted model + effort.
+  // Called from show() rather than the constructor because the settings the
+  // callbacks read are loaded after the panel is built.
+  private syncControlsFromConfig(): void {
+    void this.populateEffortSelect();
+    void this.populateModelSelect();
+  }
+
+  // populateEffortSelect fills the effort dropdown from the levels the claude
+  // CLI advertises in --help (via the backend), plus a leading "Default" that
+  // sends no --effort. A configured-but-unadvertised value stays selectable so
+  // detection hiccups don't silently drop the user's choice.
+  private async populateEffortSelect(): Promise<void> {
+    let levels: string[] = [];
+    try {
+      levels = (await GetAssistantEffortLevels()) ?? [];
+    } catch {
+      // Detection failed — only "Default" is offered.
+    }
+    const cfg = this.getAssistantConfig();
+    if (cfg.effort && !levels.includes(cfg.effort)) levels = [cfg.effort, ...levels];
+    this.effortSelect.innerHTML = '';
+    const def = document.createElement('option');
+    def.value = '';
+    def.textContent = 'Default';
+    this.effortSelect.appendChild(def);
+    for (const lv of levels) {
+      const o = document.createElement('option');
+      o.value = lv;
+      o.textContent = lv.charAt(0).toUpperCase() + lv.slice(1);
+      this.effortSelect.appendChild(o);
+    }
+    this.effortSelect.value = cfg.effort || '';
+  }
+
+  // populateModelSelect fills the model dropdown from the detected CLI's model
+  // list, ensuring the currently-configured model (which may be a custom one
+  // set in Settings) is present and selected.
+  private async populateModelSelect(): Promise<void> {
+    const cfg = this.getAssistantConfig();
+    let models: string[] = [];
+    try {
+      const clis = await DetectAssistantCLIs();
+      const cli = (clis ?? []).find(c => c.id === (cfg.cli || 'claude')) ?? (clis ?? [])[0];
+      models = cli?.models ?? [];
+    } catch {
+      // Detection failed — fall back to just the configured model below.
+    }
+    const opts = [...models];
+    if (cfg.model && !opts.includes(cfg.model)) opts.unshift(cfg.model);
+    this.modelSelect.innerHTML = '';
+    for (const m of opts) {
+      const o = document.createElement('option');
+      o.value = m;
+      o.textContent = m;
+      this.modelSelect.appendChild(o);
+    }
+    if (cfg.model) this.modelSelect.value = cfg.model;
+  }
+
+  // applyConfigChange writes the selector's model + effort back into the
+  // persisted assistant config. The model is only read from the dropdown once
+  // it has options, so an early effort change can't clobber it with "".
+  private applyConfigChange(): void {
+    const current = this.getAssistantConfig();
+    const model = this.modelSelect.options.length > 0 ? this.modelSelect.value : current.model;
+    this.onAssistantConfigChange({ ...current, model, effort: this.effortSelect.value });
+  }
+
   show(): void {
     this.visible = true;
     this.panel.classList.add('open');
     this.registerEvents();
     this.input.focus();
     this.checkForCLIs();
+    this.syncControlsFromConfig();
   }
 
   private noCLIBanner: HTMLElement | null = null;

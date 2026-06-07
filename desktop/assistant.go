@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"facet/pkg/fctlang/doc"
 	"facet/share/docs"
@@ -16,10 +17,11 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// AssistantConfig holds the user's chosen AI CLI and model.
+// AssistantConfig holds the user's chosen AI CLI, model, and effort.
 type AssistantConfig struct {
 	CLI          string `json:"cli"`
 	Model        string `json:"model"`
+	Effort       string `json:"effort"` // Claude CLI --effort level ("" = CLI default; low/medium/high/xhigh/max)
 	SystemPrompt string `json:"systemPrompt"`
 	MaxTurns     int    `json:"maxTurns"` // max tool-use turns for Claude CLI (0 = default 10)
 }
@@ -254,6 +256,66 @@ func queryModels(cliID, binPath string) []string {
 		}
 	}
 	return models
+}
+
+// effortLevelsCache memoizes the parsed --effort levels: the claude binary
+// doesn't change within a session, and re-running `claude --help` on every
+// settings/panel open would add needless subprocess latency.
+var (
+	effortLevelsOnce  sync.Once
+	effortLevelsCache []string
+)
+
+// GetAssistantEffortLevels returns the reasoning-effort levels the claude CLI
+// advertises in its --help (e.g. low/medium/high/xhigh/max), so the UI doesn't
+// hardcode them. Returns nil if the binary is missing or the help can't be
+// parsed; the frontend then offers only the "Default" (no --effort) choice.
+func (a *App) GetAssistantEffortLevels() []string {
+	effortLevelsOnce.Do(func() {
+		if p := findBinary("claude"); p != "" {
+			effortLevelsCache = detectEffortLevels(p)
+		}
+	})
+	return effortLevelsCache
+}
+
+// detectEffortLevels runs `claude --help` and parses the --effort flag's
+// advertised levels. Separate from parseEffortLevels so the parser is testable
+// without spawning the CLI.
+func detectEffortLevels(binPath string) []string {
+	out, err := exec.Command(binPath, "--help").CombinedOutput()
+	if err != nil {
+		return nil
+	}
+	return parseEffortLevels(string(out))
+}
+
+// parseEffortLevels extracts the comma-separated levels from the --effort line
+// of `claude --help`, e.g. "--effort <level> ... (low, medium, high, xhigh,
+// max)" → ["low","medium","high","xhigh","max"]. The list usually wraps onto
+// the next help line, so it scans forward from "--effort" for the first
+// parenthesised group.
+func parseEffortLevels(help string) []string {
+	i := strings.Index(help, "--effort")
+	if i < 0 {
+		return nil
+	}
+	rest := help[i:]
+	open := strings.IndexByte(rest, '(')
+	if open < 0 {
+		return nil
+	}
+	closeIdx := strings.IndexByte(rest[open:], ')')
+	if closeIdx < 0 {
+		return nil
+	}
+	var levels []string
+	for _, p := range strings.Split(rest[open+1:open+closeIdx], ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			levels = append(levels, p)
+		}
+	}
+	return levels
 }
 
 // SetAssistantConfig stores the assistant configuration.

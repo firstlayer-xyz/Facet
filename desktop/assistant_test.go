@@ -121,3 +121,31 @@ func TestIsKnownCLI(t *testing.T) {
 		t.Error("empty id should not match")
 	}
 }
+
+// TestParseEffortLevels parses the --effort levels out of the claude --help
+// text, including the common case where the (a, b, c) list wraps onto the line
+// after the flag.
+func TestParseEffortLevels(t *testing.T) {
+	help := "Options:\n" +
+		"  --model <model>                       Model for the current session\n" +
+		"  --effort <level>                      Effort level for the current session\n" +
+		"                                        (low, medium, high, xhigh, max)\n" +
+		"  --exclude-dynamic-system-prompt-sections\n"
+	got := parseEffortLevels(help)
+	want := []string{"low", "medium", "high", "xhigh", "max"}
+	if len(got) != len(want) {
+		t.Fatalf("parseEffortLevels = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("level %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	if lv := parseEffortLevels("no effort flag here"); lv != nil {
+		t.Errorf("expected nil when --effort absent, got %v", lv)
+	}
+	if lv := parseEffortLevels("  --effort <level>   Effort level (no list yet"); lv != nil {
+		t.Errorf("expected nil when the levels group is unterminated, got %v", lv)
+	}
+}
