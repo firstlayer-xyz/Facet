@@ -743,6 +743,34 @@ func TestBOSL2_LineCopies(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// arc_copies(n, r) with no sa/ea spaces n copies evenly around a full circle;
+// each is moved out to r and rotated to face outward.
+func TestBOSL2_ArcCopiesFull(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\narc_copies(n=6, r=20) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("arc_copies should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Union(", ".Move(x: 20 mm)", ".Rotate(z:", "* 360 / 6"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A partial arc (sa/ea) spans the angle range inclusively: angle = sa +
+// i*(ea-sa)/(n-1).
+func TestBOSL2_ArcCopiesPartial(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\narc_copies(n=3, r=20, sa=0, ea=90) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("partial arc_copies should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "(90 - 0) / (3 - 1)") {
+		t.Fatalf("expected inclusive arc stepping in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

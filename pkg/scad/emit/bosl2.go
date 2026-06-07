@@ -107,6 +107,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2LineCopies(n), true
 	case "zrot_copies", "rot_copies":
 		return e.bosl2RotCopies(n), true
+	case "arc_copies", "arc_of":
+		return e.bosl2ArcCopies(n), true
 	case "grid_copies", "grid2d":
 		return e.bosl2GridCopies(n), true
 	// mirror-and-keep copies
@@ -212,6 +214,43 @@ func (e *Emitter) bosl2Rot(n *ast.ModuleCall) string {
 		return child
 	}
 	return child + "." + m
+}
+
+// bosl2ArcCopies emits BOSL2's arc_copies/arc_of: n copies of the child placed
+// on a circular arc of radius r, each moved out and rotated to face outward
+// (rot=true). With no sa/ea it spans a full circle (angle = i*360/n); with an
+// end angle ea (and optional start sa, default 0) it spans the arc inclusively
+// (angle = sa + i*(ea-sa)/(n-1)). The elliptical (rx/ry) and rot=false forms
+// are not supported and error.
+func (e *Emitter) bosl2ArcCopies(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 0, "n", "r", "d", "sa", "ea")
+	count, ok := arg(n, "n", -1)
+	if !ok {
+		return e.errf(n.Pos(), "arc_copies needs a count n")
+	}
+	cnt := e.expr(count, kNumber)
+	r, ok := e.tubeRadius(n, "r", "d")
+	if !ok {
+		return e.errf(n.Pos(), "arc_copies needs a radius (r/d)")
+	}
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "arc_copies has no child geometry")
+	}
+	v := e.freshLoopVar()
+	var ang string
+	if ea, has := arg(n, "ea", -1); has {
+		eaStr := e.expr(ea, kNumber)
+		saStr := "0"
+		if sa, hasSa := arg(n, "sa", -1); hasSa {
+			saStr = e.expr(sa, kNumber)
+		}
+		ang = "(" + saStr + " + " + v + " * (" + eaStr + " - " + saStr + ") / (" + cnt + " - 1)) * 1 deg"
+	} else {
+		ang = "(" + v + " * 360 / " + cnt + ") * 1 deg"
+	}
+	return "Union(arr: for " + v + " [0:" + cnt + " - 1] { yield " + child +
+		".Move(x: " + r + ").Rotate(z: " + ang + ") })"
 }
 
 // bosl2RotCopies emits BOSL2's zrot_copies: n copies of the child spaced evenly
