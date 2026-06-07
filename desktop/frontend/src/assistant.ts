@@ -8,22 +8,11 @@ import type {
   AssistantTaskPlanPayload,
   AssistantTaskStatus,
 } from './events';
-import { SendAssistantMessage, CancelAssistant, ClearAssistantHistory, PickImageFile, DetectAssistantCLIs, AnswerAssistantQuestion, DeliverViewportScreenshot, AnswerToolPermission }
+import { SendAssistantMessage, CancelAssistant, ClearAssistantHistory, PickImageFile, DetectAssistantCLIs, GetAssistantEffortLevels, AnswerAssistantQuestion, DeliverViewportScreenshot, AnswerToolPermission }
   from '../wailsjs/go/main/App';
 import type { AppSettings } from './settings';
 
 type AssistantConfig = AppSettings['assistant'];
-
-// Reasoning-effort choices for the panel selector. The empty value means
-// "Default" — the backend omits --effort and the Claude CLI picks its own.
-const EFFORT_OPTIONS: [label: string, value: string][] = [
-  ['Default', ''],
-  ['Low', 'low'],
-  ['Medium', 'medium'],
-  ['High', 'high'],
-  ['XHigh', 'xhigh'],
-  ['Max', 'max'],
-];
 
 export class AssistantPanel {
   private container: HTMLElement;
@@ -214,12 +203,6 @@ export class AssistantPanel {
     this.effortSelect = document.createElement('select');
     this.effortSelect.title = 'Reasoning effort';
     styleSelect(this.effortSelect);
-    for (const [label, value] of EFFORT_OPTIONS) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      this.effortSelect.appendChild(opt);
-    }
     this.effortSelect.addEventListener('change', () => this.applyConfigChange());
 
     controls.appendChild(this.modelSelect);
@@ -233,8 +216,35 @@ export class AssistantPanel {
   // Called from show() rather than the constructor because the settings the
   // callbacks read are loaded after the panel is built.
   private syncControlsFromConfig(): void {
-    this.effortSelect.value = this.getAssistantConfig().effort || '';
+    void this.populateEffortSelect();
     void this.populateModelSelect();
+  }
+
+  // populateEffortSelect fills the effort dropdown from the levels the claude
+  // CLI advertises in --help (via the backend), plus a leading "Default" that
+  // sends no --effort. A configured-but-unadvertised value stays selectable so
+  // detection hiccups don't silently drop the user's choice.
+  private async populateEffortSelect(): Promise<void> {
+    let levels: string[] = [];
+    try {
+      levels = (await GetAssistantEffortLevels()) ?? [];
+    } catch {
+      // Detection failed — only "Default" is offered.
+    }
+    const cfg = this.getAssistantConfig();
+    if (cfg.effort && !levels.includes(cfg.effort)) levels = [cfg.effort, ...levels];
+    this.effortSelect.innerHTML = '';
+    const def = document.createElement('option');
+    def.value = '';
+    def.textContent = 'Default';
+    this.effortSelect.appendChild(def);
+    for (const lv of levels) {
+      const o = document.createElement('option');
+      o.value = lv;
+      o.textContent = lv.charAt(0).toUpperCase() + lv.slice(1);
+      this.effortSelect.appendChild(o);
+    }
+    this.effortSelect.value = cfg.effort || '';
   }
 
   // populateModelSelect fills the model dropdown from the detected CLI's model
