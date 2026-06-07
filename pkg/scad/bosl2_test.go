@@ -724,6 +724,25 @@ func TestBOSL2_Star(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// line_copies(spacing=[..], n) spaces n copies along a direction vector,
+// centered on the origin (the vector generalization of xcopies).
+func TestBOSL2_LineCopies(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nline_copies(spacing=[10, 5, 0], n=3) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("line_copies should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Union(", "[0:3 - 1]", ".Move(", "(3 - 1) / 2) * 10 mm", "(3 - 1) / 2) * 5 mm"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	// A zero spacing component is dropped (no z offset here).
+	if strings.Contains(res.Facet, "z: (") {
+		t.Fatalf("zero spacing axis should be omitted:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A non-BOSL2 include cannot be resolved (we only special-case BOSL2), so it is
 // a located error with no output — never a silent drop (no fallbacks).
 func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {

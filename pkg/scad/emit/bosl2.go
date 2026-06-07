@@ -3,6 +3,7 @@ package emit
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"facet/pkg/scad/ast"
 )
@@ -102,6 +103,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2LinearCopies(n, "y"), true
 	case "zcopies":
 		return e.bosl2LinearCopies(n, "z"), true
+	case "line_copies", "line_of":
+		return e.bosl2LineCopies(n), true
 	case "zrot_copies", "rot_copies":
 		return e.bosl2RotCopies(n), true
 	case "grid_copies", "grid2d":
@@ -418,6 +421,55 @@ func (e *Emitter) pair2(v ast.Expr, k kind) (a, b string) {
 	}
 	s := e.expr(v, k)
 	return s, s
+}
+
+// bosl2LineCopies emits a BOSL2 line_copies/line_of: n copies of the child
+// spaced along a direction vector and centered on the origin (the vector
+// generalization of xcopies). Copy i sits at (i - (n-1)/2)·spacing; zero
+// spacing components are dropped. Count n defaults to 2.
+func (e *Emitter) bosl2LineCopies(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 2, "spacing", "n", "l")
+	count := "2"
+	if c, ok := arg(n, "n", 1); ok {
+		count = e.expr(c, kNumber)
+	}
+	sp, ok := arg(n, "spacing", 0)
+	if !ok {
+		return e.errf(n.Pos(), "line_copies needs a spacing vector")
+	}
+	sx, sy, sz := e.vec3Of(sp)
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "line_copies has no child geometry")
+	}
+	v := e.freshLoopVar()
+	factor := "(" + v + " - (" + count + " - 1) / 2)"
+	var parts []string
+	for _, c := range []struct{ axis, s string }{{"x", sx}, {"y", sy}, {"z", sz}} {
+		if c.s != "0 mm" {
+			parts = append(parts, c.axis+": "+factor+" * "+c.s)
+		}
+	}
+	if len(parts) == 0 {
+		return e.errf(n.Pos(), "line_copies spacing is zero")
+	}
+	return "Union(arr: for " + v + " [0:" + count + " - 1] { yield " + child +
+		".Move(" + strings.Join(parts, ", ") + ") })"
+}
+
+// vec3Of renders a 3-vector argument into (x, y, z) Length expressions; missing
+// components and a scalar's y/z are "0 mm" (a scalar lies along X).
+func (e *Emitter) vec3Of(expr ast.Expr) (x, y, z string) {
+	if v, isVec := expr.(*ast.Vector); isVec {
+		get := func(i int) string {
+			if i < len(v.Elems) {
+				return e.expr(v.Elems[i], kLength)
+			}
+			return "0 mm"
+		}
+		return get(0), get(1), get(2)
+	}
+	return e.expr(expr, kLength), "0 mm", "0 mm"
 }
 
 // bosl2LinearCopies emits a BOSL2 linear distributor (xcopies/ycopies/zcopies):
