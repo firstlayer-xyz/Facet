@@ -132,6 +132,13 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Half(n, "x", -1), true
 	case "half_of":
 		return e.bosl2HalfOf(n), true
+	// single-axis mirrors (no copy; optional offset plane)
+	case "xflip":
+		return e.bosl2Flip(n, "x"), true
+	case "yflip":
+		return e.bosl2Flip(n, "y"), true
+	case "zflip":
+		return e.bosl2Flip(n, "z"), true
 	// linear distributors (n copies spaced along one axis, centered)
 	case "xcopies":
 		return e.bosl2LinearCopies(n, "x"), true
@@ -178,6 +185,23 @@ func (e *Emitter) bosl2Half(n *ast.ModuleCall, axis string, sign int) string {
 		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
 	}
 	return fmt.Sprintf("%s.Trim(%s: %d)", child, axis, sign)
+}
+
+// bosl2Flip emits BOSL2's single-axis mirror xflip/yflip/zflip: a reflection
+// across the plane perpendicular to that axis. The optional offset (named after
+// the axis, e.g. xflip(x=5)) moves the mirror plane; with no offset it is the
+// plane through the origin, a plain Solid.Mirror on that axis.
+func (e *Emitter) bosl2Flip(n *ast.ModuleCall, axis string) string {
+	e.rejectExtraArgs(n, 1, axis)
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
+	}
+	if off, ok := arg(n, axis, 0); ok {
+		d := e.expr(off, kLength)
+		return fmt.Sprintf("%s.Move(%s: -(%s)).Mirror(%s: 1).Move(%s: %s)", child, axis, d, axis, axis, d)
+	}
+	return fmt.Sprintf("%s.Mirror(%s: 1)", child, axis)
 }
 
 // bosl2HalfOf emits BOSL2's general half_of(v): keep the half of the child on the

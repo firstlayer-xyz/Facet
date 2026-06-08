@@ -338,3 +338,26 @@ func TestBOSL2Render_Ellipse(t *testing.T) {
 		t.Errorf("volume = %v, want ~628 (pi*rx*ry*h)", v)
 	}
 }
+
+// xflip() reflects an off-center cube to the opposite side: a 4-cube centered at
+// x=10 (x:8..12) lands at x:-12..-8 with its volume unchanged.
+func TestBOSL2Render_Xflip(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nxflip() right(10) cuboid([4, 4, 4]);\n")
+	if v := s.Volume(); !near(v, 64, 0.5) {
+		t.Errorf("volume = %v, want 64 (4^3, mirror preserves volume)", v)
+	}
+	minX, _, _, maxX, _, _ := s.BoundingBox()
+	if !near(minX, -12, 0.1) || !near(maxX, -8, 0.1) {
+		t.Errorf("x range [%v, %v], want [-12, -8] (mirrored from [8, 12])", minX, maxX)
+	}
+}
+
+// xflip(x=d) mirrors about the plane x=d: a 2-cube at x:10..12 reflected about
+// x=10 lands at x:8..10.
+func TestBOSL2Render_FlipOffset(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nxflip(x=10) right(11) cuboid([2, 2, 2]);\n")
+	minX, _, _, maxX, _, _ := s.BoundingBox()
+	if !near(minX, 8, 0.1) || !near(maxX, 10, 0.1) {
+		t.Errorf("x range [%v, %v], want [8, 10] (mirrored about x=10)", minX, maxX)
+	}
+}

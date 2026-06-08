@@ -1037,3 +1037,25 @@ func TestBOSL2_Ellipse(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// xflip/yflip/zflip are single-axis mirrors. With no offset they mirror about the
+// plane through the origin (a plain Mirror); an offset shifts the mirror plane.
+func TestBOSL2_Flip(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nxflip() cuboid([10, 10, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("xflip should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Mirror(x: 1)") {
+		t.Fatalf("expected .Mirror(x: 1) in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nzflip(z=5) cuboid([10, 10, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("zflip(z=5) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(z: -5 mm).Mirror(z: 1).Move(z: 5 mm)") {
+		t.Fatalf("expected offset mirror sandwich in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
