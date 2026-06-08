@@ -1059,3 +1059,25 @@ func TestBOSL2_Flip(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// recolor(c) paints the child the given color — Facet's Solid.Color via the
+// shared OpenSCAD color mapping (CSS names and r,g,b vectors).
+func TestBOSL2_Recolor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrecolor(\"red\") cuboid([10, 10, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("recolor name should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, `.Color(hex: "#FF0000")`) {
+		t.Fatalf("expected red Color(hex:) in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nrecolor([0, 0, 1]) cuboid([10, 10, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("recolor vector should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, `.Color(hex: "#0000FF")`) {
+		t.Fatalf("expected blue Color(hex:) from vector in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}

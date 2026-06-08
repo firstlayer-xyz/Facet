@@ -361,3 +361,12 @@ func TestBOSL2Render_FlipOffset(t *testing.T) {
 		t.Errorf("x range [%v, %v], want [8, 10] (mirrored about x=10)", minX, maxX)
 	}
 }
+
+// recolor is cosmetic: it must pass the geometry through unchanged (and render
+// without error). A recolored 10-cube is still a 1000-volume cube.
+func TestBOSL2Render_Recolor(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nrecolor(\"blue\") cuboid([10, 10, 10]);\n")
+	if v := s.Volume(); !near(v, 1000, 0.5) {
+		t.Errorf("volume = %v, want 1000 (recolor preserves geometry)", v)
+	}
+}

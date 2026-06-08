@@ -139,6 +139,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Flip(n, "y"), true
 	case "zflip":
 		return e.bosl2Flip(n, "z"), true
+	case "recolor":
+		return e.bosl2Recolor(n), true
 	// linear distributors (n copies spaced along one axis, centered)
 	case "xcopies":
 		return e.bosl2LinearCopies(n, "x"), true
@@ -202,6 +204,22 @@ func (e *Emitter) bosl2Flip(n *ast.ModuleCall, axis string) string {
 		return fmt.Sprintf("%s.Move(%s: -(%s)).Mirror(%s: 1).Move(%s: %s)", child, axis, d, axis, axis, d)
 	}
 	return fmt.Sprintf("%s.Mirror(%s: 1)", child, axis)
+}
+
+// bosl2Recolor emits BOSL2's recolor(c): it paints the child and all of its
+// descendants the given color — exactly Facet's Solid.Color, reached through the
+// shared OpenSCAD color mapping (CSS names and r,g,b[,a] vectors).
+func (e *Emitter) bosl2Recolor(n *ast.ModuleCall) string {
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "recolor has no child geometry")
+	}
+	method := e.colorMethod(n, false)
+	if method == "" {
+		// colorMethod recorded the specific error (unknown name, bad vector, …).
+		return child
+	}
+	return child + "." + method
 }
 
 // bosl2HalfOf emits BOSL2's general half_of(v): keep the half of the child on the
