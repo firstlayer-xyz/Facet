@@ -3,10 +3,21 @@ package emit
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"facet/pkg/scad/ast"
 )
+
+// literalNumber returns the value of a numeric literal expression, if x is one.
+func literalNumber(x ast.Expr) (float64, bool) {
+	n, ok := x.(*ast.Num)
+	if !ok {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(n.Text, 64)
+	return f, err == nil
+}
 
 // bosl2PathRe matches a BOSL2 library reference path, e.g. "BOSL2/std.scad" or
 // "BOSL2/shapes/cuboid.scad". BOSL2 is consumed via `include <BOSL2/...>`, so
@@ -187,7 +198,8 @@ func (e *Emitter) bosl2MirrorCopy(n *ast.ModuleCall) string {
 // child on the XY plane, centered, as a nested for-comprehension. spacing and n
 // accept a scalar (both axes) or a 2-vector (per axis).
 func (e *Emitter) bosl2GridCopies(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 2, "spacing", "n", "size")
+	// `size` (grid extent) is not implemented here — it must error, not be dropped.
+	e.rejectExtraArgs(n, 2, "spacing", "n")
 	cnt, ok := arg(n, "n", 1)
 	if !ok {
 		return e.errf(n.Pos(), "grid_copies needs a count n")
@@ -246,10 +258,20 @@ func (e *Emitter) bosl2ArcCopies(n *ast.ModuleCall) string {
 	v := e.freshLoopVar()
 	var ang string
 	if ea, has := arg(n, "ea", -1); has {
+		// A partial arc spreads n points across [sa, ea] inclusive: (n-1) gaps.
+		// A FULL or wrapping arc (ea ≥ 360, or ea ≤ sa) would put the last point
+		// on top of the first; BOSL2 drops the duplicate (n gaps), which this
+		// (n-1)-gap formula does not reproduce. Reject the wrapping case rather
+		// than emit overlapping copies; omit ea for a full circle.
 		eaStr := e.expr(ea, kNumber)
 		saStr := "0"
+		saVal, saLit := 0.0, true
 		if sa, hasSa := arg(n, "sa", -1); hasSa {
 			saStr = e.expr(sa, kNumber)
+			saVal, saLit = literalNumber(sa)
+		}
+		if eaVal, eaLit := literalNumber(ea); eaLit && (eaVal >= 360 || (saLit && eaVal <= saVal)) {
+			return e.errf(n.Pos(), "arc_copies: a full or wrapping arc (ea ≥ 360, or ea ≤ sa) is not supported; omit ea for a full circle")
 		}
 		ang = "(" + saStr + " + " + v + " * (" + eaStr + " - " + saStr + ") / (" + cnt + " - 1)) * 1 deg"
 	} else {
@@ -473,7 +495,8 @@ func (e *Emitter) pair2(v ast.Expr, k kind) (a, b string) {
 // generalization of xcopies). Copy i sits at (i - (n-1)/2)·spacing; zero
 // spacing components are dropped. Count n defaults to 2.
 func (e *Emitter) bosl2LineCopies(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 2, "spacing", "n", "l")
+	// `l` (total length) is not implemented here — it must error, not be dropped.
+	e.rejectExtraArgs(n, 2, "spacing", "n")
 	count := "2"
 	if c, ok := arg(n, "n", 1); ok {
 		count = e.expr(c, kNumber)

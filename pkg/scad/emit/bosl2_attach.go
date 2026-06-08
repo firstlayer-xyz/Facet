@@ -60,25 +60,32 @@ func anchorLit(d [3]int) string {
 	return fmt.Sprintf("B2Anchor{x: %d, y: %d, z: %d}", d[0], d[1], d[2])
 }
 
-// bosl2AttachGuard blocks a shape that has position/attach children but is not a
-// supported attachment parent (only cuboid/cyl carry a known attachment
-// geometry). Without this, such children would be silently dropped — the guard
-// turns that into a located error instead (no fallbacks).
+// bosl2AttachGuard blocks a leaf shape that has children — in BOSL2 a child of a
+// shape is an attachment, and only cuboid/cyl carry a known attachment geometry
+// (handled by bosl2AttachChain). Any other shape with children (a bare child, or
+// a position/attach child) would have those children silently dropped by the
+// leaf emitter, so the guard turns that into a located error instead (no
+// fallbacks). Transforms, distributors, and attachment containers are not leaf
+// shapes, so their children pass through to their own emitters.
 func (e *Emitter) bosl2AttachGuard(n *ast.ModuleCall) (string, bool) {
-	if n.Name == "cuboid" || n.Name == "cyl" {
-		return "", false
-	}
-	for _, c := range n.Children {
-		mc, ok := c.(*ast.ModuleCall)
-		if !ok {
-			continue
-		}
-		inner, _ := e.unwrapTags(mc)
-		if inner != nil && (inner.Name == "position" || inner.Name == "attach") {
-			return e.errf(inner.Pos(), "%s: attachments (position/attach) are only supported on cuboid and cyl", inner.Name), true
-		}
+	if len(n.Children) > 0 && isLeafShape(n.Name) {
+		return e.errf(n.Pos(), "%s: attachments are only supported on cuboid and cyl", n.Name), true
 	}
 	return "", false
+}
+
+// isLeafShape reports whether a module is a leaf geometry primitive — one that
+// never wraps children — as opposed to a transform, distributor, or attachment
+// container. cuboid and cyl are deliberately excluded: they ARE attachment
+// parents and carry their children as a B2 attachment chain.
+func isLeafShape(name string) bool {
+	switch name {
+	case "cube", "sphere", "cylinder", "circle", "square", "polygon", "text", "polyhedron",
+		"tube", "xcyl", "ycyl", "zcyl", "torus", "rect_tube", "rect",
+		"prismoid", "wedge", "spheroid", "regular_ngon", "hexagon", "pentagon", "octagon", "star":
+		return true
+	}
+	return false
 }
 
 // bosl2AttachChain emits a parent shape with attachment children as a B2 method
@@ -149,7 +156,7 @@ func (e *Emitter) b2Link(c ast.Stmt) string {
 	case "attach":
 		return e.b2AttachLink(mc, removed)
 	default:
-		child, ok := e.bosl2PrimitiveB2(mc)
+		child, ok := e.b2ChildPrimitive(mc)
 		if !ok {
 			return e.errf(mc.Pos(), "%s: not an attachable shape", mc.Name)
 		}
@@ -254,8 +261,19 @@ func (e *Emitter) b2ChildOf(n *ast.ModuleCall) (child string, removed bool, ok b
 	if mc == nil {
 		return "", removed, false
 	}
-	child, ok = e.bosl2PrimitiveB2(mc)
+	child, ok = e.b2ChildPrimitive(mc)
 	return child, removed, ok
+}
+
+// b2ChildPrimitive emits an attached child shape as a B2 constructor, rejecting a
+// child that itself carries attachments. Nested attachment chains aren't
+// supported, and bosl2PrimitiveB2 ignores a shape's children, so without this
+// the inner attachment would be silently dropped.
+func (e *Emitter) b2ChildPrimitive(mc *ast.ModuleCall) (string, bool) {
+	if len(mc.Children) > 0 {
+		return e.errf(mc.Pos(), "%s: nested attachments are not supported (an attached child cannot itself carry attachments)", mc.Name), true
+	}
+	return e.bosl2PrimitiveB2(mc)
 }
 
 // singleChildCall returns the single child geometry call of an attachment node,

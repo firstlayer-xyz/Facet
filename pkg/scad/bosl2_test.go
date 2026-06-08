@@ -300,6 +300,68 @@ func TestBOSL2_UnsupportedConstructErrors(t *testing.T) {
 	}
 }
 
+// A BARE child (no position/attach) on a shape that isn't an attachment parent
+// must error, not be silently dropped by the leaf emitter. In BOSL2 a child of a
+// shape is an attachment, and only cuboid/cyl carry one.
+func TestBOSL2_BareChildOnUnsupportedParentErrors(t *testing.T) {
+	for _, src := range []string{
+		"include <BOSL2/std.scad>\nsphere(5) cuboid(2);\n",
+		"include <BOSL2/std.scad>\nprismoid(size1=[10, 10], size2=[6, 6], h=8) cuboid(2);\n",
+	} {
+		res, err := Transpile(src, "part.scad")
+		if err == nil {
+			t.Fatalf("a bare child on an unsupported parent should error, got:\n%s", res.Facet)
+		}
+		if res.Facet != "" {
+			t.Fatalf("expected no output on error, got:\n%s", res.Facet)
+		}
+		if !strings.Contains(err.Error(), "only supported on cuboid and cyl") {
+			t.Fatalf("error should explain the unsupported parent, got: %v", err)
+		}
+	}
+}
+
+// An attached child cannot itself carry attachments — nested attachment chains
+// aren't supported, so the inner attachment errors rather than being dropped.
+func TestBOSL2_NestedAttachmentErrors(t *testing.T) {
+	src := "include <BOSL2/std.scad>\ncuboid(20) attach(TOP) cuboid(4) attach(TOP) cyl(h=3, r=1);\n"
+	res, err := Transpile(src, "part.scad")
+	if err == nil {
+		t.Fatalf("nested attachment should error, got:\n%s", res.Facet)
+	}
+	if !strings.Contains(err.Error(), "nested attachments") {
+		t.Fatalf("error should explain nested attachments, got: %v", err)
+	}
+}
+
+// arc_copies with a full/wrapping end angle (ea >= 360) would overlap the first
+// and last copies under the (n-1)-gap formula; it errors rather than emitting
+// overlapping geometry. Omitting ea gives a correct full circle.
+func TestBOSL2_ArcCopiesFullArcErrors(t *testing.T) {
+	src := "include <BOSL2/std.scad>\narc_copies(n=6, r=20, ea=360) cube(2);\n"
+	_, err := Transpile(src, "part.scad")
+	if err == nil {
+		t.Fatal("arc_copies with ea=360 should error")
+	}
+	if !strings.Contains(err.Error(), "full or wrapping arc") {
+		t.Fatalf("error should explain the wrapping arc, got: %v", err)
+	}
+}
+
+// Distributor arguments that are recognized but not implemented (line_copies l,
+// grid_copies size) must error via rejectExtraArgs, never be silently ignored.
+func TestBOSL2_UnimplementedDistributorArgsError(t *testing.T) {
+	for _, src := range []string{
+		"include <BOSL2/std.scad>\nline_copies(l=50, n=3) cube(2);\n",
+		"include <BOSL2/std.scad>\ngrid_copies(size=[40, 40], n=3) cube(2);\n",
+	} {
+		_, err := Transpile(src, "part.scad")
+		if err == nil {
+			t.Fatalf("an unimplemented distributor arg should error:\n%s", src)
+		}
+	}
+}
+
 // xcopies(spacing, n) makes n copies of the child along X, centered on the
 // origin, emitted as a unioned for-comprehension with a per-copy Move.
 func TestBOSL2_Xcopies(t *testing.T) {
