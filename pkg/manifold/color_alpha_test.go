@@ -11,12 +11,14 @@ func TestSetColorPersistsAlpha(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.SetColor(1.0, 0.5, 0.25, 0.5)
+	// SetColor is non-destructive: it returns a fresh colored Solid and leaves
+	// the receiver untouched, so inspect the result.
+	colored := c.SetColor(1.0, 0.5, 0.25, 0.5)
 
-	if len(c.FaceMap) == 0 {
+	if len(colored.FaceMap) == 0 {
 		t.Fatal("cube has no FaceMap entries")
 	}
-	for id, fi := range c.FaceMap {
+	for id, fi := range colored.FaceMap {
 		// 0.5 * 255 + 0.5 rounds to 128.
 		if fi.Alpha != 128 {
 			t.Errorf("face %d: expected Alpha=128 (0.5), got %d", id, fi.Alpha)

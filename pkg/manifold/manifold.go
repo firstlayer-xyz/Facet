@@ -10,13 +10,13 @@
 // transformSolid wrapper, external-memory accounting). Operations live in
 // sibling files organized by concern:
 //
-//   primitives.go   — CreateCube/Sphere/Cylinder/Square/Circle/Polygon
-//   booleans.go     — Union/Difference/Intersection/Insert/DecomposeSolid
-//   extrusions.go   — Extrude/Revolve/Sweep/Slice/Project/Loft
-//   transforms.go   — Translate/Rotate/Scale/Mirror for Solid and Sketch
-//   operations.go   — Hull/Trim/Smooth/Refine/Split/Compose/Offset
-//   queries.go      — BoundingBox/Volume/SurfaceArea/Area/Genus/MinGap/…
-//   mesh_extract.go — Mesh and DisplayMesh extraction/merging
+//	primitives.go   — CreateCube/Sphere/Cylinder/Square/Circle/Polygon
+//	booleans.go     — Union/Difference/Intersection/Insert/DecomposeSolid
+//	extrusions.go   — Extrude/Revolve/Sweep/Slice/Project/Loft
+//	transforms.go   — Translate/Rotate/Scale/Mirror for Solid and Sketch
+//	operations.go   — Hull/Trim/Smooth/Refine/Split/Compose/Offset
+//	queries.go      — BoundingBox/Volume/SurfaceArea/Area/Genus/MinGap/…
+//	mesh_extract.go — Mesh and DisplayMesh extraction/merging
 //
 // The cgo #cgo CFLAGS directive below applies package-wide; sibling files
 // only need the #include preamble for their own C references.
@@ -187,23 +187,30 @@ func (s *Solid) withFaceMap() map[uint32]FaceInfo {
 	return m
 }
 
-// SetColor sets a uniform RGBA color on all faces. Alpha 1 is fully opaque.
-// Each channel is clamped to [0, 1] before quantization so out-of-range inputs
-// can't wrap into a wrong color through int conversion + bit shifts.
-// Face IDs are auto-assigned by C at creation time; no new IDs are created here.
-// Destructive: mutates the receiver's FaceMap entries in place.
+// SetColor returns a copy of the solid with a uniform RGBA color on all faces.
+// Alpha 1 is fully opaque. Each channel is clamped to [0, 1] before quantization
+// so out-of-range inputs can't wrap into a wrong color through int conversion +
+// bit shifts. Face IDs are auto-assigned by C at creation time; no new IDs are
+// created here.
+//
+// Non-destructive: a *Solid is shared by language-level assignment (copyValue
+// copies structs, not Solids), so coloring must not mutate the receiver's
+// FaceMap in place. An identity transform yields a fresh Manifold with a copied
+// FaceMap, which is then colored — leaving the receiver untouched, like every
+// other Solid op.
 func (s *Solid) SetColor(r, g, b, a float64) *Solid {
+	out := s.Translate(0, 0, 0)
 	ri := uint32(clamp01(r)*255 + 0.5)
 	gi := uint32(clamp01(g)*255 + 0.5)
 	bi := uint32(clamp01(b)*255 + 0.5)
 	color := ri<<16 | gi<<8 | bi
 	alpha := uint8(clamp01(a)*255 + 0.5)
-	for id, fi := range s.FaceMap {
+	for id, fi := range out.FaceMap {
 		fi.Color = color
 		fi.Alpha = alpha
-		s.FaceMap[id] = fi
+		out.FaceMap[id] = fi
 	}
-	return s
+	return out
 }
 
 // newSolidWithOrigin wraps a FacetSolidRet and seeds a single-entry FaceMap

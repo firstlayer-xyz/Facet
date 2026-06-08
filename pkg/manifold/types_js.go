@@ -131,16 +131,19 @@ func (s *Solid) withFaceMap() map[uint32]FaceInfo {
 	return m
 }
 
-// SetColor sets a uniform RGBA color on all faces. Alpha 1 is fully opaque.
+// SetColor returns a copy of the solid colored uniformly. Non-destructive — see
+// the native build's SetColor for why the receiver must not be mutated in place.
+// An identity transform clones the geometry with a copied FaceMap, then colors it.
 func (s *Solid) SetColor(r, g, b, a float64) *Solid {
+	out := s.Translate(0, 0, 0)
 	color := uint32(int(r*255+0.5)<<16 | int(g*255+0.5)<<8 | int(b*255+0.5))
 	alpha := uint8(clamp01(a)*255 + 0.5)
-	for id, fi := range s.FaceMap {
+	for id, fi := range out.FaceMap {
 		fi.Color = color
 		fi.Alpha = alpha
-		s.FaceMap[id] = fi
+		out.FaceMap[id] = fi
 	}
-	return s
+	return out
 }
 
 // transformSolid wraps the result of a unary solid transform, carrying over the FaceMap.
