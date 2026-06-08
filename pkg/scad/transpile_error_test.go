@@ -879,22 +879,160 @@ func TestTranspilePassThroughVectorParam(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// $t (OpenSCAD's animation clock) maps to a `scad_t` const pinned at 0 (the
-// non-animating default); the name is reserved to avoid colliding with a user
-// `t`. A reference, e.g. in a parameter default, becomes `scad_t`.
-func TestTranspileAnimationTime(t *testing.T) {
+// $t (OpenSCAD's animation clock) turns the program into a Facet Animation whose
+// frame derives scad_t (0..1) from the wall clock. A $t-bearing parameter default
+// can't live on a Facet parameter, so the parameter loses its default and the
+// default is injected at each call site that omits the argument.
+func TestTranspileAnimationTimeInDefault(t *testing.T) {
 	src := "module spin(a = $t * 360) { rotate([0, 0, a]) cube(2); }\nspin();\n"
 	res, err := Transpile(src, "part.scad")
 	if err != nil {
 		t.Fatalf("$t should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, "const scad_t = 0") {
-		t.Fatalf("expected scad_t const declaration:\n%s", res.Facet)
-	}
-	if !strings.Contains(res.Facet, "scad_t * 360") {
-		t.Fatalf("expected $t mapped to scad_t:\n%s", res.Facet)
+	for _, want := range []string{
+		"fn Main() Animation",
+		"frame: fn(scad_ms Number) Solid",
+		"const scad_t = scad_ms % 4000 / 4000",
+		"fn spin(a Number) Solid", // the $t default is stripped from the parameter
+		"spin(a: scad_t * 360)",   // and injected at the call site
+	} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
 	}
 	assertTypeChecks(t, res.Facet)
+}
+
+// $t used directly in top-level geometry animates without any module threading:
+// the frame computes scad_t and the body references it.
+func TestTranspileAnimationTimeTopLevel(t *testing.T) {
+	res, err := Transpile("rotate([0, 0, $t * 360]) cube(10);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("$t should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn Main() Animation") {
+		t.Fatalf("expected an Animation entry:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Rotate(z: scad_t * 360 * 1 deg)") {
+		t.Fatalf("expected $t in the frame body:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A top-level variable that depends on $t is recomputed per frame: it moves
+// inside the frame lambda (after scad_t), while $t-independent variables stay at
+// module scope.
+func TestTranspileAnimationTimeTopLevelVar(t *testing.T) {
+	src := "size = 10;\nangle = $t * 360;\nrotate([0, 0, angle]) cube(size);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("$t should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "const size = 10") {
+		t.Fatalf("expected the $t-independent var at module scope:\n%s", res.Facet)
+	}
+	// angle depends on $t, so it is declared inside the frame, after scad_t.
+	frame := res.Facet[strings.Index(res.Facet, "frame:"):]
+	if !strings.Contains(frame, "const angle = scad_t * 360") {
+		t.Fatalf("expected the $t-dependent var inside the frame:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// $t inside a module body threads scad_t through as a parameter, and call sites
+// pass it down — mirroring how children() is threaded.
+func TestTranspileAnimationTimeInBody(t *testing.T) {
+	src := "module spin() { rotate([0, 0, $t * 360]) cube(2); }\nspin();\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("$t should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn spin(scad_t Number) Solid") {
+		t.Fatalf("expected scad_t threaded into the module:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "spin(scad_t: scad_t)") {
+		t.Fatalf("expected scad_t passed at the call site:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// $t inside a value function has no clean Facet form (a function can't receive
+// the per-frame clock the way geometry does), so it is rejected rather than
+// mistranslated.
+func TestTranspileAnimationTimeInFunctionErrors(t *testing.T) {
+	_, err := Transpile("function angle() = $t * 360;\nrotate([0, 0, angle()]) cube(2);\n", "part.scad")
+	if err == nil {
+		t.Fatal("expected an error for $t inside a function")
+	}
+	if !strings.Contains(err.Error(), "$t inside function") {
+		t.Fatalf("expected a $t-in-function error, got: %v", err)
+	}
+}
+
+// Animating 2D geometry would require the frame to return a Sketch, but an
+// Animation frame returns a Solid, so a 2D model using $t is rejected.
+func TestTranspileAnimationTime2DErrors(t *testing.T) {
+	_, err := Transpile("rotate([0, 0, $t * 360]) square(10);\n", "part.scad")
+	if err == nil {
+		t.Fatal("expected an error animating 2D geometry")
+	}
+	if !strings.Contains(err.Error(), "requires 3D geometry") {
+		t.Fatalf("expected a 3D-required error, got: %v", err)
+	}
+}
+
+// $t appearing only inside a dropped assert()/echo() has no geometric effect:
+// the construct is dropped, so the analysis must not thread scad_t for it (which
+// would leave an undefined scad_t reference in Main). The model stays a static
+// Solid.
+func TestTranspileAnimationTimeInDroppedAssert(t *testing.T) {
+	src := "module m() { assert($t < 1); cube(2); }\nm();\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("should transpile, got: %v", err)
+	}
+	if strings.Contains(res.Facet, "scad_t") {
+		t.Fatalf("$t in a dropped assert must not thread scad_t:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "fn Main() Solid") {
+		t.Fatalf("expected a static Solid (no animation):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A $t-bearing default that references another parameter cannot be injected at
+// the call site — the other parameter is not in the caller's scope — so it is a
+// hard error rather than an emitted undefined reference.
+func TestTranspileAnimationTimeDefaultRefsParamErrors(t *testing.T) {
+	src := "module spin(b, a = $t * b) { rotate([0, 0, a]) cube(b); }\nspin(5);\n"
+	_, err := Transpile(src, "part.scad")
+	if err == nil {
+		t.Fatal("expected an error for a $t default referencing another parameter")
+	}
+	if !strings.Contains(err.Error(), "another parameter") {
+		t.Fatalf("expected a default-references-parameter error, got: %v", err)
+	}
+}
+
+// User identifiers may not collide with the transpiler's reserved scad_ prefix:
+// scad_t/scad_ms drive the animation frame, and other scad_* names back emitted
+// helpers, so a collision would silently shadow generated code and render wrong
+// geometry. It is rejected at every binding site.
+func TestTranspileReservedScadPrefixErrors(t *testing.T) {
+	for _, src := range []string{
+		"scad_t = 5;\nrotate([0, 0, $t * 360]) cube(scad_t);\n", // top-level var collides with the clock
+		"module m(scad_t) { cube(scad_t); }\nm(5);\n",           // parameter
+		"scad_ms = 3;\ncube(scad_ms);\n",                        // the frame parameter name
+		"module scad_box() { cube(2); }\nscad_box();\n",         // a module name
+	} {
+		_, err := Transpile(src, "part.scad")
+		if err == nil {
+			t.Fatalf("expected a reserved-prefix error for:\n%s", src)
+		}
+		if !strings.Contains(err.Error(), "reserved") {
+			t.Fatalf("expected a reserved scad_ error, got: %v\nsrc:\n%s", err, src)
+		}
+	}
 }
 
 // An unsupported special variable (e.g. $vpr, the viewport rotation) has no
@@ -954,7 +1092,7 @@ func TestTranspileGeometryIfWithoutElseErrors(t *testing.T) {
 func TestTranspileNumericTruthiness(t *testing.T) {
 	src := "module m(n) {\n" +
 		"    flag = n > 5;\n" +
-		"    if (n) cube(2);\n" +        // n is a Number param → n != 0
+		"    if (n) cube(2);\n" + // n is a Number param → n != 0
 		"    else if (flag) cube(3);\n" + // flag is a Bool local → used directly
 		"    else sphere(1);\n" +
 		"}\n" +

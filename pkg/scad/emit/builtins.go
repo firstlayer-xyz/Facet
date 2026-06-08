@@ -56,10 +56,19 @@ func (e *Emitter) moduleCall(n *ast.ModuleCall) string {
 	// or check at preview time and produce no geometry. The transpiled Facet
 	// program is render-only, so we silently drop them rather than fail the
 	// transpile.
-	if n.Name == "echo" || n.Name == "assert" {
+	if isDroppedBuiltin(n.Name) {
 		return ""
 	}
 	return e.errf(n.Pos(), "module '%s'", n.Name)
+}
+
+// isDroppedBuiltin reports whether a module call is an OpenSCAD debug-only
+// construct (echo/assert) that the render-only transpiler drops entirely: it
+// produces no geometry and has no effect in the emitted program. The animation
+// analysis relies on this too, so a $t buried only in a dropped construct does
+// not spuriously turn the model into an Animation.
+func isDroppedBuiltin(name string) bool {
+	return name == "echo" || name == "assert"
 }
 
 // arg returns the value for parameter `name` or the positional arg at `idx`.
