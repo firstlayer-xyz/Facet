@@ -207,6 +207,8 @@ func (e *Emitter) b2Link(c ast.Stmt) string {
 		return e.b2PositionLink(mc, removed)
 	case "attach":
 		return e.b2AttachLink(mc, removed)
+	case "align":
+		return e.b2AlignLink(mc, removed)
 	default:
 		child, ok := e.b2ChildPrimitive(mc)
 		if !ok {
@@ -278,6 +280,43 @@ func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 
 	return "." + pick(removed, "attachReorientRemove", "attachReorient") +
 		"(pa: " + anchorLit(pdir) + ", child: " + child + ")"
+}
+
+// b2AlignLink emits a BOSL2 align(anchor, [inside=]) child: the child is seated
+// flush against the parent's anchor face, aligned by bounding box and keeping its
+// orientation (unlike attach, which mates anchor points and reorients). inside=
+// true seats the child inside the parent (for subtraction under diff()).
+func (e *Emitter) b2AlignLink(n *ast.ModuleCall, removedOuter bool) string {
+	e.rejectExtraArgs(n, 1, "inside")
+	a, ok := arg(n, "", 0)
+	if !ok {
+		return e.errf(n.Pos(), "align without an anchor")
+	}
+	dir, ok := anchorVec(a)
+	if !ok {
+		return e.errf(n.Pos(), "align: unsupported anchor expression")
+	}
+	push := "1"
+	inside := false
+	if ins, has := arg(n, "inside", -1); has {
+		b, isBool := ins.(*ast.Bool)
+		if !isBool {
+			return e.errf(n.Pos(), "align: inside must be a literal true or false")
+		}
+		inside = b.Val
+		if inside {
+			push = "-1"
+		}
+	}
+	child, removedChild, ok := e.b2ChildOf(n)
+	if !ok {
+		return e.errf(n.Pos(), "align: child is not an attachable shape")
+	}
+	// inside=true defaults the child's tag to "remove" (BOSL2), so inside an
+	// active diff() it subtracts the seated child rather than unioning it.
+	removed := removedOuter || removedChild || (inside && e.inDiff)
+	return "." + pick(removed, "alignRemove", "align") +
+		"(a: " + anchorLit(dir) + ", child: " + child + ", dir: " + push + ")"
 }
 
 // b2ChildOf emits the single geometry child of a position/attach node as a B2,

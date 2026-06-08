@@ -119,4 +119,26 @@ fn B2.attachReorient(pa B2Anchor, child B2) B2 {
 fn B2.attachReorientRemove(pa B2Anchor, child B2) B2 {
     return B2{solid: self.solid - self.attachReorientPlaced(pa: pa, child: child), size: self.size}
 }
+
+# The child placed flush against this shape's anchor face a: at the anchor point,
+# pushed by half the child's size on each anchored axis so its near face sits on
+# the face. Unlike attach, the child keeps its orientation and aligns by bounding
+# box. dir is +1 to seat it outside the parent (the default) or -1 to seat it
+# inside (BOSL2 align(inside=true), used under diff() to carve a pocket).
+fn B2.alignPlaced(a B2Anchor, child B2, dir Number) Solid {
+    var p = self.anchorPoint(a: a)
+    return child.solid.Move(
+        v: Vec3{
+            x: p.x + a.x * dir * child.size.x / 2,
+            y: p.y + a.y * dir * child.size.y / 2,
+            z: p.z + a.z * dir * child.size.z / 2
+        }
+    )
+}
+fn B2.align(a B2Anchor, child B2, dir Number) B2 {
+    return B2{solid: self.solid + self.alignPlaced(a: a, child: child, dir: dir), size: self.size}
+}
+fn B2.alignRemove(a B2Anchor, child B2, dir Number) B2 {
+    return B2{solid: self.solid - self.alignPlaced(a: a, child: child, dir: dir), size: self.size}
+}
 `
