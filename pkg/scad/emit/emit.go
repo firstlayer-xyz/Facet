@@ -83,6 +83,7 @@ const animFrameVar = "scad_ms"
 // module/function definitions, and returns the source text + any errors.
 func File(f *ast.File) (string, []TranspileError) {
 	e := &Emitter{}
+	e.checkReservedNames(f)
 	e.collectResolution(f.Stmts)
 	e.syms = collectSymbols(f)
 	e.vecParams = classifyVectorParams(e.syms)

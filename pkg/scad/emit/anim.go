@@ -124,6 +124,13 @@ func stmtBodyHasAnimTime(s ast.Stmt) bool {
 	case *ast.Assign:
 		return exprHasAnimTime(n.Value)
 	case *ast.ModuleCall:
+		// echo/assert are dropped wholesale (see isDroppedBuiltin), so a $t in
+		// their args has no geometric effect and must not flag the enclosing
+		// definition as needing scad_t — otherwise scad_t is threaded but never
+		// derived (emission never sees the $t), leaving an undefined reference.
+		if isDroppedBuiltin(n.Name) {
+			return false
+		}
 		if argsHaveAnimTime(n.Args) {
 			return true
 		}
@@ -218,6 +225,20 @@ func (e *Emitter) injectedAnimDefaults(mc *ast.ModuleCall, sym *symbol) []ast.Pa
 		}
 	}
 	return out
+}
+
+// defaultRefsParam reports whether parameter p's default references another
+// parameter of the same module. Such a default cannot be injected at the call
+// site — the other parameter is bound in the callee, not the caller's scope — so
+// the caller has no value to substitute.
+func defaultRefsParam(p ast.Param, params []ast.Param) bool {
+	others := map[string]bool{}
+	for _, q := range params {
+		if q.Name != p.Name {
+			others[q.Name] = true
+		}
+	}
+	return exprRefsAny(p.Default, others)
 }
 
 // bodyCallNeedsAnimTime reports whether any module call in a body targets a

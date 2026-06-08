@@ -941,6 +941,60 @@ func TestTranspileAnimationTime2DErrors(t *testing.T) {
 	}
 }
 
+// $t appearing only inside a dropped assert()/echo() has no geometric effect:
+// the construct is dropped, so the analysis must not thread scad_t for it (which
+// would leave an undefined scad_t reference in Main). The model stays a static
+// Solid.
+func TestTranspileAnimationTimeInDroppedAssert(t *testing.T) {
+	src := "module m() { assert($t < 1); cube(2); }\nm();\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("should transpile, got: %v", err)
+	}
+	if strings.Contains(res.Facet, "scad_t") {
+		t.Fatalf("$t in a dropped assert must not thread scad_t:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "fn Main() Solid") {
+		t.Fatalf("expected a static Solid (no animation):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A $t-bearing default that references another parameter cannot be injected at
+// the call site — the other parameter is not in the caller's scope — so it is a
+// hard error rather than an emitted undefined reference.
+func TestTranspileAnimationTimeDefaultRefsParamErrors(t *testing.T) {
+	src := "module spin(b, a = $t * b) { rotate([0, 0, a]) cube(b); }\nspin(5);\n"
+	_, err := Transpile(src, "part.scad")
+	if err == nil {
+		t.Fatal("expected an error for a $t default referencing another parameter")
+	}
+	if !strings.Contains(err.Error(), "another parameter") {
+		t.Fatalf("expected a default-references-parameter error, got: %v", err)
+	}
+}
+
+// User identifiers may not collide with the transpiler's reserved scad_ prefix:
+// scad_t/scad_ms drive the animation frame, and other scad_* names back emitted
+// helpers, so a collision would silently shadow generated code and render wrong
+// geometry. It is rejected at every binding site.
+func TestTranspileReservedScadPrefixErrors(t *testing.T) {
+	for _, src := range []string{
+		"scad_t = 5;\nrotate([0, 0, $t * 360]) cube(scad_t);\n", // top-level var collides with the clock
+		"module m(scad_t) { cube(scad_t); }\nm(5);\n",           // parameter
+		"scad_ms = 3;\ncube(scad_ms);\n",                        // the frame parameter name
+		"module scad_box() { cube(2); }\nscad_box();\n",         // a module name
+	} {
+		_, err := Transpile(src, "part.scad")
+		if err == nil {
+			t.Fatalf("expected a reserved-prefix error for:\n%s", src)
+		}
+		if !strings.Contains(err.Error(), "reserved") {
+			t.Fatalf("expected a reserved scad_ error, got: %v\nsrc:\n%s", err, src)
+		}
+	}
+}
+
 // An unsupported special variable (e.g. $vpr, the viewport rotation) has no
 // Facet meaning and must error rather than emit an invalid `$`-prefixed name.
 func TestTranspileUnsupportedSpecialVarErrors(t *testing.T) {

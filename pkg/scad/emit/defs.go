@@ -266,8 +266,14 @@ func (e *Emitter) userModuleCall(n *ast.ModuleCall, sym *symbol) string {
 		add(animTimeVar + ": " + animTimeVar)
 	}
 	// Supply $t-bearing defaults the call omits, evaluated here in the caller's
-	// scope where scad_t is live (Facet defaults can't reference it).
+	// scope where scad_t is live (Facet defaults can't reference it). A default
+	// that references another parameter can't be injected — that parameter isn't
+	// in the caller's scope — so it is a hard error, not a broken reference.
 	for _, p := range e.injectedAnimDefaults(n, sym) {
+		if defaultRefsParam(p, sym.params) {
+			e.errf(n.Pos(), "%s: the $t default for parameter %q references another parameter, so it cannot be injected at the call site", n.Name, p.Name)
+			continue
+		}
 		add(p.Name + ": " + e.expr(p.Default, kNumber))
 	}
 	if cu := e.childUse[n.Name]; cu.uses {
