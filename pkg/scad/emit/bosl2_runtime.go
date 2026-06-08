@@ -62,12 +62,20 @@ fn B2.positionRemove(a B2Anchor, child B2) B2 {
     return B2{solid: self.solid - self.positionPlaced(a: a, child: child), size: self.size}
 }
 
-# The child solid placed so its ca anchor lands on this shape's pa anchor (no
-# reorientation: the caller guarantees ca is anti-parallel to pa).
+# The child solid placed so its ca anchor lands on this shape's pa anchor, rotated
+# so the child's ca face points opposite pa (into this shape). The ca anchor is
+# moved to the origin first, rotated there, then moved onto pa — so only the solid
+# is rotated, never a point. When ca is anti-parallel to pa the rotation is the
+# identity, leaving a pure translation.
 fn B2.attachPlaced(pa B2Anchor, ca B2Anchor, child B2) Solid {
-    var p = self.anchorPoint(a: pa)
     var c = child.anchorPoint(a: ca)
-    return child.solid.Move(v: Vec3{x: p.x - c.x, y: p.y - c.y, z: p.z - c.z})
+    var p = self.anchorPoint(a: pa)
+    return child.solid.Move(v: -c)
+        .Rotate(
+            from: Vec3{x: ca.x * 1 mm, y: ca.y * 1 mm, z: ca.z * 1 mm},
+            to: Vec3{x: pa.x * -1 mm, y: pa.y * -1 mm, z: pa.z * -1 mm}
+        )
+        .Move(v: p)
 }
 fn B2.attach(pa B2Anchor, ca B2Anchor, child B2) B2 {
     return B2{solid: self.solid + self.attachPlaced(pa: pa, ca: ca, child: child), size: self.size}

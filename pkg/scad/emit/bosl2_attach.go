@@ -52,9 +52,6 @@ func anchorVec(x ast.Expr) ([3]int, bool) {
 	return [3]int{}, false
 }
 
-// negDir returns the opposite direction vector.
-func negDir(d [3]int) [3]int { return [3]int{-d[0], -d[1], -d[2]} }
-
 // anchorLit renders a direction vector as a B2Anchor literal for the runtime.
 func anchorLit(d [3]int) string {
 	return fmt.Sprintf("B2Anchor{x: %d, y: %d, z: %d}", d[0], d[1], d[2])
@@ -213,12 +210,12 @@ func (e *Emitter) b2PositionLink(n *ast.ModuleCall, removedOuter bool) string {
 		"(a: " + anchorLit(dir) + ", child: " + child + ")"
 }
 
-// b2AttachLink emits one attach link. The two-anchor form attach(P, C) is the
-// no-reorientation case — C must be anti-parallel to P (e.g. attach(TOP, BOTTOM))
-// — and emits B2.attach. The single-anchor form attach(P) reorients the child to
-// point out the P anchor (any direction, including combined edge/corner anchors)
-// and emits B2.attachReorient. Non-opposite two-anchor attach (a general child
-// rotation) is still a located error.
+// b2AttachLink emits one attach link. The two-anchor form attach(P, C) mates the
+// child's C anchor onto the parent's P anchor, rotating the child so C faces
+// opposite P — emitted as B2.attach (the rotation is the identity when C is
+// already anti-parallel to P, e.g. attach(TOP, BOTTOM)). The single-anchor form
+// attach(P) reorients the child to point out the P anchor (any direction,
+// including combined edge/corner anchors) and emits B2.attachReorient.
 func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 	pa, ok := arg(n, "", 0)
 	if !ok {
@@ -239,9 +236,8 @@ func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 		if !ok {
 			return e.errf(n.Pos(), "attach: unsupported child anchor")
 		}
-		if cdir != negDir(pdir) {
-			return e.errf(n.Pos(), "attach: reorienting the child (non-opposite anchors) is not yet supported")
-		}
+		// Any child anchor: the runtime rotates the child so ca faces opposite pa
+		// (a no-op when ca is already anti-parallel to pa).
 		return "." + pick(removed, "attachRemove", "attach") +
 			"(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ")"
 	}

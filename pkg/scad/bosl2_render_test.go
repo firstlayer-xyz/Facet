@@ -251,3 +251,21 @@ func TestBOSL2Render_CuboidOrient(t *testing.T) {
 		t.Errorf("z-extent = %v, want ~10 (was the x dimension)", dz)
 	}
 }
+
+// attach(RIGHT, BOTTOM) is a NON-opposite two-anchor attach: the cylinder's
+// BOTTOM mates onto the cube's RIGHT face, rotating the cyl so its axis ends up
+// along +X. So it reaches out to ~x=20 (cube right face at 10 + cyl length 10) —
+// a wrong/absent rotation would leave it pointing up (z).
+func TestBOSL2Render_AttachNonOpposite(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([20, 20, 20]) attach(RIGHT, BOTTOM) cyl(h=10, r=2);\n")
+	if v := s.Volume(); !(v > 0) {
+		t.Errorf("volume = %v, want > 0", v)
+	}
+	_, _, _, maxX, _, maxZ := s.BoundingBox()
+	if !near(maxX, 20, 1.0) {
+		t.Errorf("maxX = %v, want ~20 (cyl axis along +X out the right face)", maxX)
+	}
+	if !near(maxZ, 10, 1.0) { // cube only; the cyl lies along X, not Z
+		t.Errorf("maxZ = %v, want ~10 (cube top; cyl doesn't add height)", maxZ)
+	}
+}

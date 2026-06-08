@@ -225,23 +225,17 @@ func TestBOSL2_AttachReorientRight(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// A single-anchor attach with a combined (non-axis) anchor has no single
-// out-pointing direction, so it is a located error rather than a wrong guess.
-// An attach that needs the child reoriented (child anchor not anti-parallel to
-// the parent anchor) is not yet supported — a located error, never a wrong
-// silent emission (no fallbacks).
-func TestBOSL2_AttachReorientErrors(t *testing.T) {
+// A two-anchor attach with NON-opposite anchors (here RIGHT, BOTTOM) rotates the
+// child so its named face mates with the parent face. It used to be unsupported;
+// the runtime now does it via move-to-origin → rotate → move-to-anchor, so it
+// transpiles and type-checks.
+func TestBOSL2_AttachNonOpposite(t *testing.T) {
 	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 10]) attach(RIGHT, BOTTOM) cyl(h=8, r=3);\n"
 	res, err := Transpile(src, "part.scad")
-	if err == nil {
-		t.Fatalf("reorienting attach should error, got:\n%s", res.Facet)
+	if err != nil {
+		t.Fatalf("non-opposite attach should transpile, got: %v", err)
 	}
-	if res.Facet != "" {
-		t.Fatalf("expected no output on error, got:\n%s", res.Facet)
-	}
-	if !strings.Contains(err.Error(), "attach") {
-		t.Fatalf("error should mention attach, got: %v", err)
-	}
+	assertTypeChecks(t, res.Facet)
 }
 
 // Attachments on a shape that isn't a supported attachment parent must error,
