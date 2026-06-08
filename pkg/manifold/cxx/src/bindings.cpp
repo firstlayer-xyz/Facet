@@ -1671,6 +1671,21 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
   int nt = mesh.NumTri();
   int np = mesh.numProp;
 
+  // Empty mesh: allocate nothing and null every out-pointer, so the Go caller's
+  // early-return frees nothing (mirrors facet_extract_mesh and the other
+  // extractors). Without this the unconditional malloc below escapes unfreed
+  // when exporting an empty solid.
+  if (nv == 0 || nt == 0) {
+    *out_vertices = nullptr;
+    *out_num_verts = 0;
+    *out_indices = nullptr;
+    *out_num_tris = 0;
+    *out_run_original_id = nullptr;
+    *out_run_index = nullptr;
+    *out_num_runs = 0;
+    return;
+  }
+
   *out_num_verts = nv;
   *out_num_tris = nt;
 
