@@ -30,7 +30,7 @@ export function styleButton(btn: HTMLButtonElement, variant: 'primary' | 'second
     btn.style.background = 'var(--ui-accent)';
     btn.style.color = '#fff';
   } else {
-    btn.style.background = 'var(--ui-input-bg, #333)';
+    btn.style.background = 'var(--ui-border)';
     btn.style.color = 'var(--ui-text)';
   }
 }

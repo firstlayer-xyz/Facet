@@ -35,6 +35,42 @@
   box-sizing: border-box;
 }
 
+/* Themed combo boxes — strip the native OS <select> chrome (which ignores
+   background/color and renders as an off-theme "block" widget in WKWebView)
+   and give every dropdown a flat, theme-aware look with a custom chevron.
+   Context-specific rules below tune sizing/fill; they must use
+   `background-color` (not the `background` shorthand) to keep the chevron. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ui-text);
+  background-color: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  padding: 4px 26px 4px 8px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+
+select:hover {
+  border-color: var(--ui-border-hover);
+}
+
+select:focus {
+  border-color: var(--ui-accent);
+}
+
+select option {
+  background-color: var(--ui-bg);
+  color: var(--ui-text);
+}
+
 html {
   height: 100%;
 }
@@ -716,15 +752,11 @@ canvas {
   border: none;
   border-bottom: 2px solid transparent;
   border-radius: 2px;
-  background: var(--ui-border);
-  color: var(--ui-text);
+  background-color: var(--ui-border);
   font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
-  cursor: pointer;
-  padding: 0 6px;
+  padding: 0 26px 0 6px;
   min-width: 160px;
-  outline: none;
-  transition: border-color 0.15s;
 }
 
 .settings-color-row select:focus {
@@ -2277,19 +2309,21 @@ mark.search-highlight {
   gap: 8px;
 }
 
-.assistant-model-select {
-  padding: 2px 4px;
-  border: 1px solid var(--ui-border);
-  border-radius: 4px;
-  background: var(--ui-surface);
-  color: var(--ui-text-muted);
-  font-size: 11px;
-  outline: none;
-  cursor: pointer;
+/* Model + reasoning-effort selectors in the assistant panel footer. Colors,
+   border and chevron come from the global `select` rule; only the compact
+   layout is specialised here. */
+.assistant-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
 }
 
-.assistant-model-select:hover {
-  border-color: var(--ui-accent);
+.assistant-controls select {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  font-size: 11px;
 }
 
 .assistant-clear-btn {
@@ -3418,23 +3452,18 @@ mark.search-highlight {
 /* ── Unit select (Length/Angle) ── */
 .fn-preview-select {
   height: 24px;
-  padding: 0 4px;
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
+  padding: 0 16px 0 4px;
+  background-color: var(--ui-surface);
+  background-position: right 4px center;
   border-radius: 3px;
   color: var(--ui-text-bright);
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  outline: none;
-}
-
-.fn-preview-select:focus {
-  border-color: var(--ui-accent);
 }
 
 .fn-preview-unit-select {
   width: 52px;
-  padding: 0 2px;
+  padding: 0 14px 0 2px;
   flex-shrink: 0;
 }
 
