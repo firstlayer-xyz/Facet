@@ -92,6 +92,7 @@ func CreateSolidFromMesh(vertices []float32, indices []uint32) (*Solid, error) {
 	if len(vertices) == 0 || len(indices) == 0 {
 		return nil, fmt.Errorf("CreateSolidFromMesh: empty vertex or index data")
 	}
+	indices = orientOutward(vertices, indices)
 	nVerts := len(vertices) / 3
 	nTris := len(indices) / 3
 
