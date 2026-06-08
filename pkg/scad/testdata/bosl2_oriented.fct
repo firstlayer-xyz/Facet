@@ -1,0 +1,8 @@
+fn Main() Solid {
+    return Cylinder(r: 2 mm, h: 20 mm).AlignCenter(pos: Vec3{})
+        .Rotate(y: 90 deg) + Cylinder(d: 6 mm, h: 16 mm)
+        .AlignCenter(pos: Vec3{}).Rotate(x: -90 deg) + Cylinder(
+        r: 3 mm,
+        h: 12 mm
+    ).AlignCenter(pos: Vec3{})
+}

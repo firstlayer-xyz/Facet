@@ -40,11 +40,19 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 	case token.If:
 		return p.parseIf()
 	case token.Use:
-		t := p.advance()
-		return &ast.Use{Path: t.Text, P: curPos(t)}, nil
+		kw := p.advance() // use
+		path, err := p.expect(token.Path)
+		if err != nil {
+			return nil, err
+		}
+		return &ast.Use{Path: path.Text, P: curPos(kw)}, nil
 	case token.Include:
-		t := p.advance()
-		return &ast.Include{Path: t.Text, P: curPos(t)}, nil
+		kw := p.advance() // include
+		path, err := p.expect(token.Path)
+		if err != nil {
+			return nil, err
+		}
+		return &ast.Include{Path: path.Text, P: curPos(kw)}, nil
 	case token.LBrace:
 		children, err := p.parseChildBlock()
 		if err != nil {

@@ -1,0 +1,13 @@
+fn Main() Solid {
+    return Cube(x: 20 mm, y: 4 mm, z: 4 mm).AlignCenter(pos: Vec3{})
+        .Rotate(z: 30 deg) + Union(
+        arr: for scad_i0 [0:5 - 1] {
+            yield Cylinder(r: 1.5 mm, h: 8 mm).AlignCenter(pos: Vec3{})
+                .Move(x: 15 mm).Rotate(z: scad_i0 * 360 / 5 * 1 deg)
+        }
+    ) + (Cube(x: 24 mm, y: 18 mm, z: 6 mm).AlignCenter(pos: Vec3{}) - Cube(
+        x: 24 mm - 2 * 3 mm,
+        y: 18 mm - 2 * 3 mm,
+        z: 6 mm
+    ).AlignCenter(pos: Vec3{})).Move(z: 20 mm)
+}

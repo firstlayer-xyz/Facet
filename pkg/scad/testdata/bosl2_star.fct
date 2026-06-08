@@ -1,0 +1,21 @@
+fn Main() Solid {
+    return Polygon(
+        points: for scad_i0 [1:2 * 5] {
+            yield Vec2{x: (scad_i0 % 2 == 1 ? 5 mm : 12 mm) * Cos(
+                    a: 180 * scad_i0 / 5 * 1 deg
+                ),
+                y: (scad_i0 % 2 == 1 ? 5 mm : 12 mm) * Sin(
+                    a: 180 * scad_i0 / 5 * 1 deg
+                )}
+        }
+    ).Extrude(z: 2 mm) + Polygon(
+        points: for scad_i1 [1:2 * 8] {
+            yield Vec2{x: (scad_i1 % 2 == 1 ? 7 mm : 10 mm) * Cos(
+                    a: 180 * scad_i1 / 8 * 1 deg
+                ),
+                y: (scad_i1 % 2 == 1 ? 7 mm : 10 mm) * Sin(
+                    a: 180 * scad_i1 / 8 * 1 deg
+                )}
+        }
+    ).Extrude(z: 2 mm).Move(x: 40 mm)
+}

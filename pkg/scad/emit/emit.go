@@ -69,6 +69,28 @@ type Emitter struct {
 	// bindings) to their Facet type, so cond() can apply OpenSCAD truthiness to
 	// a bare identifier (see buildScope / inferType).
 	scope map[string]string
+	// bosl2 is set when the program references the BOSL2 library via
+	// `include <BOSL2/...>` / `use <BOSL2/...>`. It switches on the BOSL2
+	// vocabulary (primitives, transforms, anchors) and emits its runtime
+	// preamble (see bosl2.go).
+	bosl2 bool
+	// usesBosl2Runtime is set when an attachment is emitted as a B2 chain, so
+	// File injects the BOSL2 attachment runtime (see bosl2_runtime.go).
+	usesBosl2Runtime bool
+	// loopVarSeq names fresh loop variables for emitted for-comprehensions (BOSL2
+	// distributors), so nested distributors don't collide.
+	loopVarSeq int
+	// inDiff is true while emitting inside a BOSL2 diff(): a `tag("remove")`
+	// attachment is then subtracted from its parent instead of unioned.
+	inDiff bool
+}
+
+// freshLoopVar returns a unique, reserved-prefix loop variable name for an
+// emitted for-comprehension.
+func (e *Emitter) freshLoopVar() string {
+	v := fmt.Sprintf("scad_i%d", e.loopVarSeq)
+	e.loopVarSeq++
+	return v
 }
 
 // animTimeVar is the Facet name $t is translated to. It is `scad_*`-prefixed to
@@ -107,6 +129,12 @@ func File(f *ast.File) (string, []TranspileError) {
 				e.errf(n.Pos(), "$t inside function %q is not supported; reference $t in module or top-level geometry instead", n.Name)
 			}
 			defs = append(defs, e.emitFunctionDef(n))
+		case *ast.Include:
+			e.libRef(n.Path, n.Pos())
+			continue
+		case *ast.Use:
+			e.libRef(n.Path, n.Pos())
+			continue
 		case *ast.Assign:
 			if isResolutionVar(n.Name) {
 				continue // captured as a global resolution by collectResolution
@@ -160,6 +188,10 @@ func File(f *ast.File) (string, []TranspileError) {
 		w.write("\n")
 	}
 	w.write(e.helperPreamble())
+	if e.usesBosl2Runtime {
+		w.write(bosl2Runtime)
+		w.write("\n")
+	}
 	for _, d := range defs {
 		w.write(d)
 		w.write("\n")

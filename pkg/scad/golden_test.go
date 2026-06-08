@@ -47,6 +47,19 @@ var goldenCases = []string{
 	"projection",
 	"offset",
 	"icosphere",
+	"bosl2_primitives",
+	"bosl2_attachment",
+	"bosl2_distributors",
+	"bosl2_tube",
+	"bosl2_radial",
+	"bosl2_copies",
+	"bosl2_oriented",
+	"bosl2_diff",
+	"bosl2_2d",
+	"bosl2_torus",
+	"bosl2_prismoid",
+	"bosl2_star",
+	"bosl2_wedge",
 }
 
 func TestGolden(t *testing.T) {

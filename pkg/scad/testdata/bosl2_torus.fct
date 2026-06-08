@@ -1,0 +1,8 @@
+fn Main() Solid {
+    return Circle(r: 3 mm).Move(x: 20 mm - 3 mm, y: -3 mm).Revolve() + Circle(
+        r: (23 mm - 15 mm) / 2
+    ).Move(
+        x: (23 mm + 15 mm) / 2 - (23 mm - 15 mm) / 2,
+        y: -(23 mm - 15 mm) / 2
+    ).Revolve().Move(x: 60 mm)
+}
