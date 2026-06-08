@@ -195,9 +195,9 @@ func (e *Emitter) b2PositionLink(n *ast.ModuleCall, removedOuter bool) string {
 // b2AttachLink emits one attach link. The two-anchor form attach(P, C) is the
 // no-reorientation case — C must be anti-parallel to P (e.g. attach(TOP, BOTTOM))
 // — and emits B2.attach. The single-anchor form attach(P) reorients the child to
-// point out the P face and emits B2.attachReorient; P must be a single axis.
-// Cases needing a general child rotation (non-opposite two-anchor attach) are
-// located errors.
+// point out the P anchor (any direction, including combined edge/corner anchors)
+// and emits B2.attachReorient. Non-opposite two-anchor attach (a general child
+// rotation) is still a located error.
 func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 	pa, ok := arg(n, "", 0)
 	if !ok {
@@ -225,27 +225,8 @@ func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 			"(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ")"
 	}
 
-	if !isPureAxis(pdir) {
-		return e.errf(n.Pos(), "attach: single-anchor attach needs a single-axis anchor, not a combined one")
-	}
 	return "." + pick(removed, "attachReorientRemove", "attachReorient") +
 		"(pa: " + anchorLit(pdir) + ", child: " + child + ")"
-}
-
-// isPureAxis reports whether a direction vector points along exactly one axis
-// with unit magnitude (one of ±X/±Y/±Z).
-func isPureAxis(d [3]int) bool {
-	nonzero := 0
-	for _, v := range d {
-		switch v {
-		case 0:
-		case 1, -1:
-			nonzero++
-		default:
-			return false
-		}
-	}
-	return nonzero == 1
 }
 
 // b2ChildOf emits the single geometry child of a position/attach node as a B2,

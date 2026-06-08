@@ -76,26 +76,34 @@ fn B2.attachRemove(pa B2Anchor, ca B2Anchor, child B2) B2 {
     return B2{solid: self.solid - self.attachPlaced(pa: pa, ca: ca, child: child), size: self.size}
 }
 
-# Rotates a solid so its +Z (UP) axis points along the axis direction dir (one
-# of the six ±X/±Y/±Z). The caller guarantees dir is a single axis.
+# Rotates a solid so its +Z (UP) axis points along the anchor direction dir —
+# any direction, including combined edge/corner anchors (e.g. TOP+RIGHT). The
+# shortest-arc from/to rotation reduces to the same result as the per-axis euler
+# turns for the six face anchors.
 fn b2_orient_up_to(solid Solid, dir B2Anchor) Solid {
-    if dir.z == 1 { return solid }
-    if dir.z == -1 { return solid.Rotate(y: 180 deg) }
-    if dir.x == 1 { return solid.Rotate(y: 90 deg) }
-    if dir.x == -1 { return solid.Rotate(y: -90 deg) }
-    if dir.y == 1 { return solid.Rotate(x: -90 deg) }
-    return solid.Rotate(x: 90 deg)
+    return solid.Rotate(
+        from: Vec3{x: 0 mm, y: 0 mm, z: 1 mm},
+        to: Vec3{x: dir.x * 1 mm, y: dir.y * 1 mm, z: dir.z * 1 mm}
+    )
 }
 
 # The child solid for a single-anchor attach: reoriented so its +Z axis points
-# out the pa face, then its base sits on that face, centered on the anchor. The
-# child's mating face lies on its rotation axis, so placement is anchorPoint(pa)
-# plus a push of half the child's height along pa. pa is a pure axis.
+# out the pa face, then its base sits on that anchor. The child's mating face
+# lies on its rotation axis, so placement is anchorPoint(pa) plus a push of half
+# the child's height along the UNIT pa direction (pa may be a combined anchor,
+# whose magnitude is √2 or √3, so it must be normalized).
 fn B2.attachReorientPlaced(pa B2Anchor, child B2) Solid {
     var oriented = b2_orient_up_to(solid: child.solid, dir: pa)
     var ap = self.anchorPoint(a: pa)
+    var m = Sqrt(n: pa.x * pa.x + pa.y * pa.y + pa.z * pa.z)
     var hz = child.size.z / 2
-    return oriented.Move(v: Vec3{x: ap.x + pa.x * hz, y: ap.y + pa.y * hz, z: ap.z + pa.z * hz})
+    return oriented.Move(
+        v: Vec3{
+            x: ap.x + pa.x / m * hz,
+            y: ap.y + pa.y / m * hz,
+            z: ap.z + pa.z / m * hz
+        }
+    )
 }
 fn B2.attachReorient(pa B2Anchor, child B2) B2 {
     return B2{solid: self.solid + self.attachReorientPlaced(pa: pa, child: child), size: self.size}

@@ -217,3 +217,20 @@ func TestBOSL2Render_CylRounding(t *testing.T) {
 		t.Errorf("rounded cyl should be a simple solid: comps=%d genus=%d", rounded.NumComponents(), rounded.Genus())
 	}
 }
+
+// A single-anchor attach to a combined edge anchor (TOP+RIGHT) reorients the
+// child out along that diagonal: a cylinder attached to the top-right edge of a
+// 20-cube sticks out past the cube in BOTH +X and +Z (a pure-axis orientation
+// would extend only one).
+func TestBOSL2Render_AttachCombinedAnchor(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([20, 20, 20]) attach(TOP+RIGHT) cyl(h=10, r=2);\n")
+	if v := s.Volume(); !(v > 0) {
+		t.Errorf("volume = %v, want > 0", v)
+	}
+	// The cyl meets the cube along the edge line, so the two may register as
+	// separate components — that's fine; what matters is the diagonal orientation.
+	_, _, _, maxX, _, maxZ := s.BoundingBox()
+	if maxX < 14 || maxZ < 14 { // cube reaches 10; the cyl points out the (1,0,1) diagonal
+		t.Errorf("cyl should stick out top-right: maxX=%v maxZ=%v (cube reaches 10)", maxX, maxZ)
+	}
+}

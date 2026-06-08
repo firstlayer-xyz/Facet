@@ -227,6 +227,22 @@ func (e *Emitter) bosl2GridCopies(n *ast.ModuleCall) string {
 // axis-angle (v=) and pivot (cp=) forms are located errors, same as rotate.
 func (e *Emitter) bosl2Rot(n *ast.ModuleCall) string {
 	child := e.childExpr(n)
+	// BOSL2's rot(from=, to=) aligns one direction onto another — no OpenSCAD
+	// rotate equivalent, so handle it before delegating to the shared handler
+	// (which only knows the a/v forms).
+	if from, hasFrom := arg(n, "from", -1); hasFrom {
+		to, hasTo := arg(n, "to", -1)
+		if !hasTo {
+			return e.errf(n.Pos(), "rot(from=) needs a matching to=")
+		}
+		if child == "" {
+			return e.errf(n.Pos(), "rot has no child geometry")
+		}
+		fx, fy, fz := e.vec3Of(from)
+		tx, ty, tz := e.vec3Of(to)
+		return child + ".Rotate(from: Vec3{x: " + fx + ", y: " + fy + ", z: " + fz +
+			"}, to: Vec3{x: " + tx + ", y: " + ty + ", z: " + tz + "})"
+	}
 	m := e.rotateMethod(n, e.childIs2D(n))
 	if m == "" {
 		return child

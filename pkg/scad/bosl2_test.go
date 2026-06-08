@@ -227,17 +227,6 @@ func TestBOSL2_AttachReorientRight(t *testing.T) {
 
 // A single-anchor attach with a combined (non-axis) anchor has no single
 // out-pointing direction, so it is a located error rather than a wrong guess.
-func TestBOSL2_AttachReorientCombinedErrors(t *testing.T) {
-	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 20]) attach(RIGHT+TOP) cyl(h=10, r=2);\n"
-	res, err := Transpile(src, "part.scad")
-	if err == nil {
-		t.Fatalf("1-arg attach with a combined anchor should error, got:\n%s", res.Facet)
-	}
-	if !strings.Contains(err.Error(), "attach") {
-		t.Fatalf("error should mention attach, got: %v", err)
-	}
-}
-
 // An attach that needs the child reoriented (child anchor not anti-parallel to
 // the parent anchor) is not yet supported — a located error, never a wrong
 // silent emission (no fallbacks).
@@ -300,6 +289,32 @@ func TestBOSL2_UnsupportedConstructErrors(t *testing.T) {
 	}
 }
 
+// BOSL2 rot(a, v=axis) is an axis-angle rotation — maps to Rotate(axis, angle),
+// now that those exist in the stdlib.
+func TestBOSL2_RotAxisAngle(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrot(a=30, v=[1, 1, 0]) cube(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rot(a, v) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "axis: Vec3{") || !strings.Contains(res.Facet, "angle: 30 deg") {
+		t.Fatalf("expected an axis-angle rotate:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// BOSL2 rot(from=, to=) aligns one direction onto another — maps to
+// Rotate(from, to).
+func TestBOSL2_RotFromTo(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrot(from=[0, 0, 1], to=[1, 0, 0]) cube(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rot(from, to) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "from: Vec3{") || !strings.Contains(res.Facet, "to: Vec3{") {
+		t.Fatalf("expected a from/to rotate:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // BOSL2 cuboid(rounding=R) rounds every edge — maps to Facet Cube(fillet: R),
 // now that fillet primitives exist.
 func TestBOSL2_CuboidRounding(t *testing.T) {
@@ -321,6 +336,17 @@ func TestBOSL2_CylRounding(t *testing.T) {
 	}
 	if !strings.Contains(res.Facet, "fillet: 1 mm") {
 		t.Fatalf("expected rounding -> fillet:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A single-anchor attach to a COMBINED anchor (an edge/corner like TOP+RIGHT)
+// reorients the child out along that diagonal — now expressible via the from/to
+// rotation, so it no longer errors.
+func TestBOSL2_AttachCombinedAnchor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([20, 20, 20]) attach(TOP+RIGHT) cyl(h=10, r=2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("combined-anchor attach should transpile, got: %v", err)
 	}
 	assertTypeChecks(t, res.Facet)
 }
