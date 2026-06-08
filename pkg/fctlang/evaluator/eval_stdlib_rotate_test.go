@@ -113,3 +113,63 @@ func TestEvalRotateFromToAntiparallel(t *testing.T) {
 	assertClose(t, "minZ", minZ, -20)
 	assertClose(t, "maxZ", maxZ, 0)
 }
+
+// A zero-length axis or from/to vector has no defined rotation: Normalize (or the
+// cos denominator) divides by zero, which must surface as an error rather than
+// silent NaN geometry.
+func TestEvalRotateDegenerateErrors(t *testing.T) {
+	for _, src := range []string{
+		`fn Main() Solid { return Cube(s: 10 mm).Rotate(axis: Vec3{}, angle: 90 deg); }`,
+		`fn Main() Solid { return Cube(s: 10 mm).Rotate(from: Vec3{}, to: Vec3{x: 1 mm}); }`,
+		`fn Main() Solid { return Cube(s: 10 mm).Rotate(from: Vec3{z: 1 mm}, to: Vec3{}); }`,
+	} {
+		prog := parseTestProg(t, src)
+		if _, err := evalMerged(context.Background(), prog, nil); err == nil {
+			t.Errorf("expected an error for a degenerate rotation input:\n%s", src)
+		}
+	}
+}
+
+// A negative angle rotates the other way: -90° about +Z sends x:0..10 to y and
+// y:0..4 to +x — the mirror of the +90° case, so the sign is checked.
+func TestEvalRotateNegativeAngle(t *testing.T) {
+	minX, minY, _, maxX, maxY, _ := evalBounds(t,
+		`fn Main() Solid { return Cube(s: Vec3{x: 10 mm, y: 4 mm, z: 2 mm}).Rotate(axis: Vec3{z: 1 mm}, angle: -90 deg); }`)
+	assertClose(t, "minX", minX, 0)
+	assertClose(t, "maxX", maxX, 4)
+	assertClose(t, "minY", minY, -10)
+	assertClose(t, "maxY", maxY, 0)
+}
+
+// The axis need not be unit length (per the docstring): a scaled axis gives the
+// same rotation as the unit axis, bound-for-bound.
+func TestEvalRotateNonUnitAxis(t *testing.T) {
+	box := `Cube(s: Vec3{x: 10 mm, y: 4 mm, z: 2 mm})`
+	sMinX, sMinY, sMinZ, sMaxX, sMaxY, sMaxZ := evalBounds(t,
+		`fn Main() Solid { return `+box+`.Rotate(axis: Vec3{z: 5 mm}, angle: 90 deg); }`)
+	uMinX, uMinY, uMinZ, uMaxX, uMaxY, uMaxZ := evalBounds(t,
+		`fn Main() Solid { return `+box+`.Rotate(axis: Vec3{z: 1 mm}, angle: 90 deg); }`)
+	assertClose(t, "minX", sMinX, uMinX)
+	assertClose(t, "minY", sMinY, uMinY)
+	assertClose(t, "minZ", sMinZ, uMinZ)
+	assertClose(t, "maxX", sMaxX, uMaxX)
+	assertClose(t, "maxY", sMaxY, uMaxY)
+	assertClose(t, "maxZ", sMaxZ, uMaxZ)
+}
+
+// from/to need not be unit length or equal magnitude — only the directions
+// matter. Aligning a long +Z onto a shorter +X still lands the long axis on X.
+func TestEvalRotateFromToNonUnit(t *testing.T) {
+	minX, _, _, maxX, _, _ := evalBounds(t,
+		`fn Main() Solid { return Cube(s: Vec3{x: 2 mm, y: 2 mm, z: 20 mm}).Rotate(from: Vec3{z: 5 mm}, to: Vec3{x: 3 mm}); }`)
+	assertClose(t, "x-extent", maxX-minX, 20)
+}
+
+// Antiparallel from/to where `from` is +X exercises the perpendicular fallback
+// (cross with +X is zero, so it crosses with +Z): a +X-long box flips to -X.
+func TestEvalRotateFromToAntiparallelX(t *testing.T) {
+	minX, _, _, maxX, _, _ := evalBounds(t,
+		`fn Main() Solid { return Cube(s: Vec3{x: 20 mm, y: 2 mm, z: 2 mm}).Rotate(from: Vec3{x: 1 mm}, to: Vec3{x: -1 mm}); }`)
+	assertClose(t, "minX", minX, -20)
+	assertClose(t, "maxX", maxX, 0)
+}
