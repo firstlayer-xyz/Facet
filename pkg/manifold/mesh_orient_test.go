@@ -26,3 +26,14 @@ func TestCreateSolidFromMeshOrientsOutward(t *testing.T) {
 		}
 	}
 }
+
+// A mesh that isn't a valid closed manifold (here: an open surface — a tetra
+// missing one face) can't be a Solid. It must error rather than silently
+// producing an empty solid (no fallbacks).
+func TestCreateSolidFromMeshRejectsNonManifold(t *testing.T) {
+	verts := []float32{0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10}
+	open := []uint32{0, 1, 3, 0, 3, 2, 1, 2, 3} // tetra missing the bottom face
+	if _, err := CreateSolidFromMesh(verts, open); err == nil {
+		t.Error("expected an error for an open (non-manifold) mesh, got nil")
+	}
+}

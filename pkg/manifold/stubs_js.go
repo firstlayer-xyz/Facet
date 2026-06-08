@@ -108,7 +108,13 @@ func CreateSolidFromMesh(vertices []float32, indices []uint32) (*Solid, error) {
 	if id == 0 {
 		return nil, fmt.Errorf("CreateSolidFromMesh: manifold creation failed")
 	}
-	return newSolidWithOrigin(id), nil
+	s := newSolidWithOrigin(id)
+	if s.NumComponents() == 0 {
+		// Accepted but empty: the input is not a valid closed 2-manifold (open,
+		// self-intersecting, or non-orientable). Error rather than vanish.
+		return nil, fmt.Errorf("CreateSolidFromMesh: mesh is not a valid closed manifold (open, self-intersecting, or non-orientable)")
+	}
+	return s, nil
 }
 
 func ExportMesh(s *Solid, path string) error {

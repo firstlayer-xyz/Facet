@@ -51,5 +51,12 @@ func CreateSolidFromMesh(vertices []float32, indices []uint32) (*Solid, error) {
 	if ret.ptr == nil {
 		return nil, fmt.Errorf("CreateSolidFromMesh: manifold creation failed")
 	}
-	return newSolidWithOrigin(ret), nil
+	s := newSolidWithOrigin(ret)
+	if s.NumComponents() == 0 {
+		// The kernel accepted the data but produced an empty manifold: the input
+		// is not a valid closed 2-manifold (open, self-intersecting, or
+		// non-orientable). Error rather than hand back vanished geometry.
+		return nil, fmt.Errorf("CreateSolidFromMesh: mesh is not a valid closed manifold (open, self-intersecting, or non-orientable)")
+	}
+	return s, nil
 }
