@@ -90,6 +90,44 @@
       cursor: pointer;
     }
     #play-btn:hover { background: #4a8be5; }
+    #download-wrap { position: relative; }
+    #download-btn {
+      width: 100%;
+      margin-top: 8px;
+      background: #2a2a2a;
+      color: #e0e0e0;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #download-btn:hover { background: #333; }
+    #download-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      margin-top: 4px;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      overflow: hidden;
+      z-index: 10;
+    }
+    .dl-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      color: #e0e0e0;
+      border: none;
+      padding: 7px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .dl-item:hover:not(:disabled) { background: #3a7bd5; }
+    .dl-item:disabled { color: #5a5a5a; cursor: default; }
     #params-section {
       padding: 10px 14px;
       flex: 1;
@@ -181,6 +219,14 @@
     <div class="section-label">Entry Point</div>
     <select id="entry-select"><option>–</option></select>
     <button id="play-btn" style="display:none">▶ Play</button>
+    <div id="download-wrap">
+      <button id="download-btn" style="display:none">⬇ Download ▾</button>
+      <div id="download-menu" style="display:none">
+        <button class="dl-item" data-format="3mf">3MF</button>
+        <button class="dl-item" data-format="stl">STL</button>
+        <button class="dl-item" data-format="fct">.fct source</button>
+      </div>
+    </div>
   </div>
 
   <div id="params-section">
@@ -613,8 +659,12 @@ const statsEl    = document.getElementById('stats-section');
 const statsText  = document.getElementById('stats-text');
 const errorBox   = document.getElementById('error-box');
 const loadingEl  = document.getElementById('loading-overlay');
+const downloadBtn  = document.getElementById('download-btn');
+const downloadMenu = document.getElementById('download-menu');
 
 let currentSource = '';
+let currentName = '';        // loaded file/example name, for the download filename
+let hasGeometry = false;     // did the last render produce a mesh? gates 3MF/STL download
 let currentEntryPoints = [];
 let evalDebounceTimer = null;
 let wasmReady = false;
@@ -646,7 +696,10 @@ function loadSource(text, name) {
   setPlaying(false);   // a new model stops playback and invalidates any in-flight frame
   filenameEl.textContent = name;
   currentSource = text;
+  currentName = name;
   needsFrame = true;   // re-fit the camera to each newly loaded model
+  hasGeometry = false; // until the new model renders, only .fct is downloadable
+  updateDownloadUI();
   doParse();
 }
 
@@ -937,11 +990,12 @@ function renderFromResponse(header, bin, isFrame = false) {
   if (header.errors && header.errors.length > 0) {
     showError(header.errors.map(e => e.message || JSON.stringify(e)).join('\n'));
     setStatus('Error');
+    hasGeometry = false;
     return false;
   }
   showError(null);
 
-  if (!header.mesh) { setStatus('No geometry'); return true; }
+  if (!header.mesh) { hasGeometry = false; setStatus('No geometry'); return true; }
 
   const mesh  = header.mesh;
   const stats = header.stats;
@@ -964,6 +1018,7 @@ function renderFromResponse(header, bin, isFrame = false) {
     colors = bin.slice(mesh.colors.offset, mesh.colors.offset + mesh.colors.size);
   }
 
+  hasGeometry = !!positions;
   if (positions) {
     renderMesh(positions, colors, edges, isFrame);
     const tris = mesh.expandedCount / 3;
@@ -1080,6 +1135,97 @@ async function issueFrame(timeMs) {
   } finally {
     frameInFlight = false;
   }
+}
+
+// ── Download (3MF / STL / .fct) ──────────────────────────────────────────────
+// One button opens a small menu. .fct downloads the current source directly;
+// 3MF/STL evaluate the active entry (the current frame, if animated) and stream
+// the bytes from facetExport — the same serializer the desktop writes to disk.
+function updateDownloadUI() {
+  downloadBtn.style.display = (wasmReady && currentSource) ? '' : 'none';
+}
+
+// .fct is always available; mesh formats need geometry on screen.
+function updateDownloadMenu() {
+  for (const item of downloadMenu.querySelectorAll('.dl-item')) {
+    if (item.dataset.format !== 'fct') item.disabled = !hasGeometry;
+  }
+}
+
+function closeDownloadMenu() { downloadMenu.style.display = 'none'; }
+
+downloadBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (downloadMenu.style.display === 'none') {
+    updateDownloadMenu();
+    downloadMenu.style.display = '';
+  } else {
+    closeDownloadMenu();
+  }
+});
+
+// A click anywhere else dismisses the menu.
+document.addEventListener('click', e => {
+  if (!downloadMenu.contains(e.target) && e.target !== downloadBtn) closeDownloadMenu();
+});
+
+downloadMenu.addEventListener('click', e => {
+  const item = e.target.closest('.dl-item');
+  if (!item || item.disabled) return;
+  closeDownloadMenu();
+  void handleDownload(item.dataset.format);
+});
+
+// downloadBaseName derives the file stem from the loaded file/example name,
+// falling back to "model" for pasted or unnamed sources.
+function downloadBaseName() {
+  const stem = (currentName || '').replace(/\.fct$/i, '').trim();
+  return stem || 'model';
+}
+
+const EXPORT_MIME = {
+  '3mf': 'application/vnd.ms-package.3dmanufacturing-3dmodel+xml',
+  'stl': 'model/stl',
+};
+
+async function handleDownload(format) {
+  if (format === 'fct') {
+    saveBlob(new Blob([currentSource], { type: 'text/plain' }), downloadBaseName() + '.fct');
+    return;
+  }
+  if (!wasmReady || !currentSource || typeof window.facetExport !== 'function') return;
+  const entry = entrySelect.value || 'Main';
+  const overrides = JSON.stringify(paramValues);
+  // Animated entries export the frame currently on screen; static entries
+  // ignore the time. Date.now() matches the playback clock (epoch ms).
+  const timeMs = activeEntryIsAnimated() ? Date.now() : 0;
+  setStatus(`Exporting ${format.toUpperCase()}…`);
+  try {
+    const result = await window.facetExport(currentSource, entry, overrides, format, timeMs);
+    if (result instanceof Uint8Array) {
+      saveBlob(new Blob([result], { type: EXPORT_MIME[format] }), downloadBaseName() + '.' + format);
+      setStatus(`Downloaded ${format.toUpperCase()}`);
+    } else {
+      showError(result && result.error ? result.error : 'Export failed');
+      setStatus('Error');
+    }
+  } catch (e) {
+    console.error('export failed:', e);
+    showError(String(e));
+    setStatus('Error');
+  }
+}
+
+// saveBlob triggers a browser download of blob under filename.
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ── WebGL renderer ────────────────────────────────────────────────────────────
@@ -1472,6 +1618,7 @@ function mulMat4(a,b) {
     await initWasm();
 
     wasmReady = true;
+    updateDownloadUI();   // a file dropped before wasm finished loading can now export
     initExamples();
   } catch (e) {
     setStatus('Failed: ' + e.message);
