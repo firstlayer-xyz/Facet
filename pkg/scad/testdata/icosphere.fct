@@ -47,10 +47,11 @@ fn icosphere(
         )
     } else if init {
         return Mesh{vertices: scad_v3(ps: verts), indices: scad_faces(fs: tris)}
-            .Solid()
+            .Solid().Scale(x: radius, y: radius, z: radius)
     } else {
         return Mesh{vertices: scad_v3(ps: icoPnts),
             indices: scad_faces(fs: icoTris)}.Solid()
+            .Scale(x: radius, y: radius, z: radius)
     }
 }
 
