@@ -1022,3 +1022,18 @@ func TestBOSL2_HalfCuts(t *testing.T) {
 		assertTypeChecks(t, res.Facet)
 	}
 }
+
+// BOSL2 ellipse is a centered 2D ellipse — a circle of radius rx scaled in y by
+// ry/rx (built at rx so the facet count suits the final size).
+func TestBOSL2_Ellipse(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nellipse(r=[10, 5]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("ellipse should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Circle(r: 10 mm", ".Scale(", "Number(from: 5 mm) / Number(from: 10 mm)"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}

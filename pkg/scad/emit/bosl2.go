@@ -80,6 +80,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Star(n), true
 	case "trapezoid":
 		return e.bosl2Trapezoid(n), true
+	case "ellipse":
+		return e.bosl2Ellipse(n), true
 	case "position", "attach":
 		// Reached only outside a supported parent (top level, or under a
 		// transform); inside cuboid/cyl these are handled by withAttachments.
@@ -452,7 +454,7 @@ func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
 // isBosl22D reports whether a BOSL2 shape name yields a 2D Sketch.
 func isBosl22D(name string) bool {
 	switch name {
-	case "rect", "regular_ngon", "hexagon", "pentagon", "octagon", "star", "trapezoid":
+	case "rect", "regular_ngon", "hexagon", "pentagon", "octagon", "star", "trapezoid", "ellipse":
 		return true
 	}
 	return false
@@ -487,6 +489,25 @@ func (e *Emitter) bosl2Star(n *ast.ModuleCall) string {
 	ang := "(180 * " + v + " / " + nStr + ") * 1 deg"
 	return "Polygon(points: for " + v + " [1:2 * " + nStr + "] { yield Vec2{x: " +
 		radius + " * Cos(a: " + ang + "), y: " + radius + " * Sin(a: " + ang + ")} })"
+}
+
+// bosl2Ellipse emits BOSL2's 2D ellipse, centered on the origin: a circle of
+// radius rx (so the facet count suits the final size), centered, then scaled in y
+// by ry/rx. Accepts r=[rx,ry] or d=[dx,dy] (a scalar gives a circle).
+func (e *Emitter) bosl2Ellipse(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 1, "r", "d", "$fn", "$fa", "$fs")
+	var rx, ry string
+	if r, ok := arg(n, "r", 0); ok {
+		rx, ry = e.pair2(r, kLength)
+	} else if d, ok := arg(n, "d", -1); ok {
+		dx, dy := e.pair2(d, kLength)
+		rx, ry = "("+dx+") / 2", "("+dy+") / 2"
+	} else {
+		return e.errf(n.Pos(), "ellipse without r or d")
+	}
+	circ := "Circle(r: " + rx + e.segmentsSuffix(n, 0, false) + ")"
+	return fmt.Sprintf("%s.Move(x: -(%s), y: -(%s)).Scale(x: 1, y: Number(from: %s) / Number(from: %s))",
+		circ, rx, rx, ry, rx)
 }
 
 // bosl2Trapezoid emits BOSL2's 2D isosceles trapezoid, centered on the origin:

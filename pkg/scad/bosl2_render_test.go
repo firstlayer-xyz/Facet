@@ -320,3 +320,21 @@ func TestBOSL2Render_TopHalf(t *testing.T) {
 		t.Errorf("z range [%v, %v], want [0, 5] (top half)", minZ, maxZ)
 	}
 }
+
+// An ellipse (rx=10, ry=5) extruded is sized rx x ry per axis with area ~pi*rx*ry.
+func TestBOSL2Render_Ellipse(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nlinear_extrude(height=4) ellipse(r=[10, 5]);\n")
+	dx, dy, dz := extents(s)
+	if !near(dx, 20, 0.6) {
+		t.Errorf("x-extent = %v, want ~20 (2*rx)", dx)
+	}
+	if !near(dy, 10, 0.6) {
+		t.Errorf("y-extent = %v, want ~10 (2*ry)", dy)
+	}
+	if !near(dz, 4, 0.2) {
+		t.Errorf("z-extent = %v, want ~4", dz)
+	}
+	if v := s.Volume(); v < 600 || v > 632 { // pi*10*5*4 ~ 628, less with faceting
+		t.Errorf("volume = %v, want ~628 (pi*rx*ry*h)", v)
+	}
+}
