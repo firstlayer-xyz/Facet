@@ -485,6 +485,9 @@ func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value
 			case "*":
 				return ln * rn, nil
 			case "/":
+				if rn == 0 {
+					return nil, e.errAt(pos, "division by zero")
+				}
 				return ln / rn, nil
 			}
 		}
@@ -503,6 +506,9 @@ func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value
 			case "-":
 				return length{mm: lL.mm - rL.mm}, nil
 			case "/":
+				if rL.mm == 0 {
+					return nil, e.errAt(pos, "division by zero")
+				}
 				return lL.mm / rL.mm, nil
 			}
 		}
@@ -511,6 +517,9 @@ func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value
 			case "*":
 				return length{mm: lL.mm * rn}, nil
 			case "/":
+				if rn == 0 {
+					return nil, e.errAt(pos, "division by zero")
+				}
 				return length{mm: lL.mm / rn}, nil
 			}
 		}
@@ -529,10 +538,12 @@ func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value
 			case "*":
 				return angle{deg: lA.deg * rn}, nil
 			case "/":
+				if rn == 0 {
+					return nil, e.errAt(pos, "division by zero")
+				}
 				return angle{deg: lA.deg / rn}, nil
 			}
 		}
 	}
 	return nil, e.errAt(pos, "operator %s: incompatible scalar types %s and %s", op, typeName(lv), typeName(rv))
 }
-
