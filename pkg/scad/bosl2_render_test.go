@@ -415,3 +415,16 @@ func TestBOSL2Render_CylAnchorBottom(t *testing.T) {
 		t.Errorf("x range [%v, %v], want [-4, 4] (still centered in x)", minX, maxX)
 	}
 }
+
+// spheroid(anchor=BOTTOM) rests the sphere on the plate: an r=5 sphere spans
+// z:0..10, centered in x (-5..5).
+func TestBOSL2Render_SpheroidAnchorBottom(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nspheroid(r=5, anchor=BOTTOM);\n")
+	minX, _, minZ, maxX, _, maxZ := s.BoundingBox()
+	if !near(minZ, 0, 0.15) || !near(maxZ, 10, 0.15) {
+		t.Errorf("z range [%v, %v], want [0, 10] (BOTTOM on plate)", minZ, maxZ)
+	}
+	if !near(minX, -5, 0.15) || !near(maxX, 5, 0.15) {
+		t.Errorf("x range [%v, %v], want [-5, 5] (still centered)", minX, maxX)
+	}
+}

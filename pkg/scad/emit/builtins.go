@@ -224,13 +224,29 @@ func (e *Emitter) cubeCtor(size ast.Expr, fillet, chamfer string) string {
 // origin; Facet's Sphere is corner-origin, so recenter onto Vec3{}.
 func (e *Emitter) sphere(n *ast.ModuleCall) string {
 	e.rejectExtraArgs(n, 1, "r", "d", "$fn", "$fa", "$fs")
-	key, val, ok := e.radiusArg(n, 0)
+	ctor, _, ok := e.sphereCtor(n)
 	if !ok {
 		return e.errf(n.Pos(), "sphere without radius")
 	}
+	return ctor + ".AlignCenter(pos: Vec3{})"
+}
+
+// sphereCtor builds the (corner-origin) Sphere constructor and returns the radius
+// expression for bounding-box use. ok is false when no radius/diameter is given.
+// Shared by the OpenSCAD sphere and BOSL2 spheroid, which differ only in the
+// extra arguments they accept and in spheroid's anchor placement.
+func (e *Emitter) sphereCtor(n *ast.ModuleCall) (ctor, radius string, ok bool) {
+	key, val, ok := e.radiusArg(n, 0)
+	if !ok {
+		return "", "", false
+	}
 	rMM, rOK := radiusMM(n, 0)
-	return fmt.Sprintf("Sphere(%s: %s%s).AlignCenter(pos: Vec3{})",
-		key, val, e.segmentsSuffix(n, rMM, rOK))
+	ctor = fmt.Sprintf("Sphere(%s: %s%s)", key, val, e.segmentsSuffix(n, rMM, rOK))
+	radius = val
+	if key == "d" {
+		radius = "(" + val + ") / 2"
+	}
+	return ctor, radius, true
 }
 
 // cylinder emits Cylinder(...) or Frustum(...) with origin normalization.

@@ -65,9 +65,7 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 	case "wedge":
 		return e.bosl2Wedge(n), true
 	case "spheroid":
-		// BOSL2's preferred sphere; the OpenSCAD sphere emitter already centers
-		// and handles r/d, so reuse it (circum/style options error as extras).
-		return e.sphere(n), true
+		return e.bosl2Spheroid(n), true
 	case "regular_ngon":
 		return e.bosl2RegularNgon(n, "", 1), true
 	case "hexagon":
@@ -823,6 +821,28 @@ func (e *Emitter) signedLen(d ast.Expr, sign int) string {
 		return "-" + val
 	}
 	return "-(" + val + ")"
+}
+
+// bosl2Spheroid emits BOSL2's spheroid (its preferred sphere): a centered Sphere
+// from r/d, with anchor= placing it by its anchor point over the [2r,2r,2r]
+// bounding box (so spheroid(anchor=BOTTOM) rests on the plate). circum/style
+// options still error as extras.
+func (e *Emitter) bosl2Spheroid(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 1, "r", "d", "anchor", "$fn", "$fa", "$fs")
+	ctor, radius, ok := e.sphereCtor(n)
+	if !ok {
+		return e.errf(n.Pos(), "spheroid without radius")
+	}
+	shape := ctor + ".AlignCenter(pos: Vec3{})"
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "spheroid: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+		dia := "2 * (" + radius + ")"
+		shape += anchorMove(v, [3]string{dia, dia, dia})
+	}
+	return shape
 }
 
 // bosl2Cuboid emits BOSL2's cuboid, which is centered on the origin by default

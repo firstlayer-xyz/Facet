@@ -1168,3 +1168,26 @@ func TestBOSL2_CylAnchorTaperedXYErrors(t *testing.T) {
 		t.Fatalf("expected a tapered-cyl anchor error, got: %v", err)
 	}
 }
+
+// spheroid(anchor=) shifts the centered sphere by its anchor point over its
+// [2r,2r,2r] box. BOTTOM lifts it onto the plate by r; the d form halves first.
+func TestBOSL2_SpheroidAnchor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nspheroid(r=5, anchor=BOTTOM);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("spheroid anchor should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(z: 0.5 * (2 * 5 mm))") {
+		t.Fatalf("expected BOTTOM lift by r in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// Plain spheroid (no anchor) still emits a bare centered sphere.
+	res, err = Transpile("include <BOSL2/std.scad>\nspheroid(d=8);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("spheroid should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Sphere(d: 8 mm") || !strings.Contains(res.Facet, ".AlignCenter(pos: Vec3{})") {
+		t.Fatalf("expected centered sphere:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
