@@ -397,14 +397,42 @@ func (e *Emitter) rotateMethod(n *ast.ModuleCall, is2D bool) string {
 // and the named `scale(v=[...])` form.
 func (e *Emitter) scaleMethod(n *ast.ModuleCall, is2D bool) string {
 	e.rejectExtraArgs(n, 1, "v")
-	x, y, z, ok := e.vecArg(n, "v", 0, kNumber)
-	if !ok {
-		return ""
+	v, found := arg(n, "v", 0)
+	if !found {
+		return e.errf(n.Pos(), "scale without a factor")
 	}
+	x, y, z := e.scaleComponents(v)
 	if is2D {
 		return fmt.Sprintf("Scale(x: %s, y: %s)", x, y)
 	}
 	return fmt.Sprintf("Scale(x: %s, y: %s, z: %s)", x, y, z)
+}
+
+// scaleComponents resolves an OpenSCAD scale factor to per-axis Facet factors. A
+// vector scales per axis, with omitted components defaulting to 1 (no scaling),
+// matching OpenSCAD — not 0, which would collapse the axis. A scalar scales every
+// axis uniformly; a vector-valued variable is indexed. (A scalar factor used to
+// fall through vecArg and be dropped entirely, silently removing the scale.)
+func (e *Emitter) scaleComponents(v ast.Expr) (x, y, z string) {
+	if vec, ok := v.(*ast.Vector); ok {
+		x, y, z = "1", "1", "1"
+		if len(vec.Elems) > 0 {
+			x = e.expr(vec.Elems[0], kNumber)
+		}
+		if len(vec.Elems) > 1 {
+			y = e.expr(vec.Elems[1], kNumber)
+		}
+		if len(vec.Elems) > 2 {
+			z = e.expr(vec.Elems[2], kNumber)
+		}
+		return x, y, z
+	}
+	if e.inferType(v) == "[]Number" {
+		b := e.operand(v, kNumber)
+		return b + "[0]", b + "[1]", b + "[2]"
+	}
+	s := e.operand(v, kNumber)
+	return s, s, s
 }
 
 // mirrorMethod builds `.Mirror(...)`. The vector is the mirror-plane normal

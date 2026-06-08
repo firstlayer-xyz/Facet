@@ -85,6 +85,46 @@ func TestTranspileNonLiteralColorPassThrough(t *testing.T) {
 
 // A translate whose vector is a runtime expression (not a literal) indexes
 // the expression per axis so Facet's Move receives Length-coercible Numbers.
+// scale(s) with a SCALAR scales every axis uniformly. It was previously dropped
+// entirely (the scale vanished), which silently under-sized models such as the
+// icosphere (which relies on scale(radius)).
+func TestTranspileScaleScalar(t *testing.T) {
+	res, err := Transpile("scale(10) cube([1, 1, 1]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("scale(scalar) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Scale(x: 10, y: 10, z: 10)") {
+		t.Fatalf("expected a uniform scalar scale:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A scalar scale through a module parameter (the icosphere's scale(radius)) also
+// broadcasts to all axes.
+func TestTranspileScaleScalarVariable(t *testing.T) {
+	res, err := Transpile("module f(r) scale(r) cube([1, 1, 1]);\nf(10);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Scale(x: r, y: r, z: r)") {
+		t.Fatalf("expected scalar-variable broadcast:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A scale vector with fewer than three components defaults the omitted axes to 1
+// (no scaling), matching OpenSCAD — not 0, which would collapse the axis.
+func TestTranspileScaleVectorPadsWithOne(t *testing.T) {
+	res, err := Transpile("scale([2, 3]) cube([1, 1, 1]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Scale(x: 2, y: 3, z: 1)") {
+		t.Fatalf("expected omitted z to default to 1:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 func TestTranspileTranslateComputedVector(t *testing.T) {
 	src := "module shift(s) translate(s * [1, 2, 0]) cube(3);\nshift(5);\n"
 	res, err := Transpile(src, "part.scad")
