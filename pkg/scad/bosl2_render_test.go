@@ -402,3 +402,16 @@ func TestBOSL2Render_CuboidAnchorBottom(t *testing.T) {
 		t.Errorf("xy box [%v,%v]-[%v,%v], want centered [-5,-10]-[5,10]", minX, minY, maxX, maxY)
 	}
 }
+
+// cyl(anchor=BOTTOM) sits the cylinder on the plate: a h=10 r=4 cyl spans z:0..10,
+// centered in x/y (-4..4).
+func TestBOSL2Render_CylAnchorBottom(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncyl(h=10, r=4, anchor=BOTTOM);\n")
+	minX, _, minZ, maxX, _, maxZ := s.BoundingBox()
+	if !near(minZ, 0, 0.1) || !near(maxZ, 10, 0.1) {
+		t.Errorf("z range [%v, %v], want [0, 10] (BOTTOM on plate)", minZ, maxZ)
+	}
+	if !near(minX, -4, 0.1) || !near(maxX, 4, 0.1) {
+		t.Errorf("x range [%v, %v], want [-4, 4] (still centered in x)", minX, maxX)
+	}
+}

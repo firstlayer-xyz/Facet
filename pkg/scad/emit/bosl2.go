@@ -906,9 +906,10 @@ func (e *Emitter) boxSizeComponents(size ast.Expr) (x, y, z string) {
 
 // bosl2Cyl emits BOSL2's cyl, a cylinder centered on the origin in every axis
 // (anchor=CENTER) — unlike OpenSCAD's cylinder, which centers only X/Y. `l` and
-// `h` are both accepted for the length; `r`/`d` for the radius/diameter. Cones
-// (r1/r2/d1/d2), chamfer, rounding, and anchors are not yet translated and
-// error via rejectExtraArgs.
+// `h` are both accepted for the length; `r`/`d` for the radius/diameter; r1/r2
+// (or d1/d2) make a cone (Frustum); chamfer/rounding bevel/round both rims;
+// orient= reorients it; and anchor= shifts it by its anchor point (an x/y anchor
+// on a tapered cyl is a located error — its bounding diameter is the larger end).
 func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
@@ -922,7 +923,7 @@ func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 // single r/d makes a plain cylinder. ok is false on a missing height/radius (an
 // error is already recorded).
 func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
-	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "rounding", "chamfer", "orient", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "rounding", "chamfer", "orient", "anchor", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
 		return e.errf(n.Pos(), "cyl without height"), false
@@ -957,7 +958,44 @@ func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 		}
 		ctor = fmt.Sprintf("Cylinder(%s: %s, h: %s%s%s)", key, val, hStr, segs, edge)
 	}
-	return e.applyOrient(n, ctor+".AlignCenter(pos: Vec3{})"), true
+	shape := ctor + ".AlignCenter(pos: Vec3{})"
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "cyl: unsupported anchor (use a named anchor or a ±1/0 vector)"), false
+		}
+		// The cylinder's bounding box is [diameter, diameter, h]; the diameter is
+		// only needed when the anchor leans off the z axis.
+		dia := ""
+		if v[0] != 0 || v[1] != 0 {
+			d, dok := e.cylDiameter(n)
+			if !dok {
+				return e.errf(n.Pos(), "cyl: an x/y anchor on a tapered cyl is not supported"), false
+			}
+			dia = d
+		}
+		shape += anchorMove(v, [3]string{dia, dia, hStr})
+	}
+	return e.applyOrient(n, shape), true
+}
+
+// cylDiameter returns the x/y bounding diameter of a straight cyl: the explicit
+// d, or 2*r. It returns ok=false for a tapered cyl (r1/r2/d1/d2), whose bounding
+// diameter is the larger end — not needed for the common z-axis anchors.
+func (e *Emitter) cylDiameter(n *ast.ModuleCall) (string, bool) {
+	for _, name := range []string{"r1", "r2", "d1", "d2"} {
+		if _, has := arg(n, name, -1); has {
+			return "", false
+		}
+	}
+	key, val, ok := e.radiusArg(n, 1)
+	if !ok {
+		return "", false
+	}
+	if key == "d" {
+		return val, true
+	}
+	return "2 * (" + val + ")", true
 }
 
 // bosl2OrientedCyl renders a BOSL2 axis-oriented cylinder (xcyl/ycyl/zcyl): the

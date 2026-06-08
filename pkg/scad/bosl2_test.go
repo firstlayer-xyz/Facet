@@ -1135,3 +1135,36 @@ func TestBOSL2_CuboidAnchor(t *testing.T) {
 		assertTypeChecks(t, res.Facet)
 	}
 }
+
+// cyl(anchor=) shifts the centered cylinder by its anchor point. BOTTOM uses the
+// height (z); an off-axis anchor (RIGHT) uses the diameter (2r). A tapered cyl
+// with an x/y anchor is unsupported (its bounding diameter is the larger end).
+func TestBOSL2_CylAnchor(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"cyl(h=10, r=4, anchor=BOTTOM)", ".Move(z: 0.5 * 10 mm)"},
+		{"cyl(h=10, r=4, anchor=TOP)", ".Move(z: -0.5 * 10 mm)"},
+		{"cyl(h=10, r=4, anchor=RIGHT)", ".Move(x: -0.5 * (2 * 4 mm))"},
+		{"cyl(h=10, d=8, anchor=RIGHT)", ".Move(x: -0.5 * 8 mm)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.src, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.src, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
+
+// An x/y anchor on a tapered cyl is a located error, not silently-wrong geometry.
+func TestBOSL2_CylAnchorTaperedXYErrors(t *testing.T) {
+	_, err := Transpile("include <BOSL2/std.scad>\ncyl(h=10, r1=4, r2=2, anchor=RIGHT);\n", "part.scad")
+	if err == nil {
+		t.Fatal("x/y anchor on a tapered cyl should error")
+	}
+	if !strings.Contains(err.Error(), "tapered") {
+		t.Fatalf("expected a tapered-cyl anchor error, got: %v", err)
+	}
+}
