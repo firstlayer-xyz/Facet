@@ -156,6 +156,13 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2ArcCopies(n), true
 	case "grid_copies", "grid2d":
 		return e.bosl2GridCopies(n), true
+	// distributors (spread the distinct children along one axis, centered)
+	case "xdistribute":
+		return e.bosl2Distribute(n, "x"), true
+	case "ydistribute":
+		return e.bosl2Distribute(n, "y"), true
+	case "zdistribute":
+		return e.bosl2Distribute(n, "z"), true
 	// mirror-and-keep copies
 	case "xflip_copy":
 		return e.bosl2FlipCopy(n, "x"), true
@@ -220,6 +227,44 @@ func (e *Emitter) bosl2Recolor(n *ast.ModuleCall) string {
 		return child
 	}
 	return child + "." + method
+}
+
+// bosl2Distribute spreads a module's distinct children evenly along one axis,
+// centered on the origin (BOSL2 xdistribute/ydistribute/zdistribute). Child i of
+// n sits at offset (i - (n-1)/2) * spacing, where spacing is the explicit
+// `spacing` or `l` total length spread across the n-1 gaps. Unlike the *copies
+// distributors (which repeat one child), this places each different child, so it
+// expands to a union of individually-moved children rather than a loop.
+func (e *Emitter) bosl2Distribute(n *ast.ModuleCall, axis string) string {
+	e.rejectExtraArgs(n, 1, "spacing", "l")
+	parts := e.childParts(n.Children)
+	if len(parts) == 0 {
+		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
+	}
+	cnt := len(parts)
+	var spacing string
+	if s, ok := arg(n, "spacing", 0); ok {
+		spacing = e.expr(s, kLength)
+	} else if l, ok := arg(n, "l", -1); ok {
+		if cnt < 2 {
+			return e.errf(n.Pos(), "%s with a total length l needs at least two children", n.Name)
+		}
+		spacing = "(" + e.expr(l, kLength) + ") / " + strconv.Itoa(cnt-1)
+	} else {
+		return e.errf(n.Pos(), "%s needs a spacing or a total length l", n.Name)
+	}
+	mid := float64(cnt-1) / 2
+	moved := make([]string, cnt)
+	for i, p := range parts {
+		coeff := float64(i) - mid
+		if coeff == 0 {
+			moved[i] = parenthesizeIfOperator(p)
+			continue
+		}
+		c := strconv.FormatFloat(coeff, 'g', -1, 64)
+		moved[i] = fmt.Sprintf("%s.Move(%s: %s * (%s))", parenthesizeIfOperator(p), axis, c, spacing)
+	}
+	return strings.Join(moved, " + ")
 }
 
 // bosl2HalfOf emits BOSL2's general half_of(v): keep the half of the child on the

@@ -1081,3 +1081,34 @@ func TestBOSL2_Recolor(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// xdistribute/ydistribute/zdistribute spread the distinct children evenly along
+// an axis, centered: child i of n sits at (i-(n-1)/2)*spacing. Three children at
+// spacing 10 land at -10, 0, +10 (the middle one keeps its place).
+func TestBOSL2_Distribute(t *testing.T) {
+	src := "include <BOSL2/std.scad>\nxdistribute(10) { cuboid(2); cuboid(2); cuboid(2); }\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("xdistribute should transpile, got: %v", err)
+	}
+	for _, want := range []string{".Move(x: -1 * 10 mm)", ".Move(x: 1 * 10 mm)"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A total length l spreads the children across the gaps: l=20 over three children
+// gives spacing 10.
+func TestBOSL2_DistributeLength(t *testing.T) {
+	src := "include <BOSL2/std.scad>\nydistribute(l=20) { cuboid(2); cuboid(2); cuboid(2); }\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("ydistribute(l=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "20 mm / 2") {
+		t.Fatalf("expected l spread across gaps in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}

@@ -370,3 +370,19 @@ func TestBOSL2Render_Recolor(t *testing.T) {
 		t.Errorf("volume = %v, want 1000 (recolor preserves geometry)", v)
 	}
 }
+
+// xdistribute(10) of three size-2 cubes makes three separate components spanning
+// x:-11..11, total volume 3*8=24.
+func TestBOSL2Render_Distribute(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nxdistribute(10) { cuboid(2); cuboid(2); cuboid(2); }\n")
+	if c := s.NumComponents(); c != 3 {
+		t.Errorf("components = %d, want 3 (separated cubes)", c)
+	}
+	if v := s.Volume(); !near(v, 24, 0.5) {
+		t.Errorf("volume = %v, want 24 (3 * 2^3)", v)
+	}
+	dx, _, _ := extents(s)
+	if !near(dx, 22, 0.1) {
+		t.Errorf("x-extent = %v, want 22 (-11..11)", dx)
+	}
+}
