@@ -181,7 +181,7 @@ func (e *Emitter) cube(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "cube without size")
 	}
-	dims := e.cubeCtor(size)
+	dims := e.cubeCtor(size, "")
 	if boolArg(n, "center", 1) {
 		dims += ".AlignCenter(pos: Vec3{})"
 	}
@@ -189,14 +189,20 @@ func (e *Emitter) cube(n *ast.ModuleCall) string {
 }
 
 // cubeCtor renders a box constructor from an OpenSCAD size: a 3-vector becomes
-// `Cube(x:, y:, z:)`, anything else the scalar `Cube(s:)` overload. The result
-// is corner-origin (the caller recenters when needed).
-func (e *Emitter) cubeCtor(size ast.Expr) string {
-	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) == 3 {
-		return fmt.Sprintf("Cube(x: %s, y: %s, z: %s)",
-			e.expr(v.Elems[0], kLength), e.expr(v.Elems[1], kLength), e.expr(v.Elems[2], kLength))
+// `Cube(x:, y:, z:)`, anything else the scalar `Cube(s:)` overload. A non-empty
+// fillet (a Length expression) rounds every edge — BOSL2's cuboid(rounding=);
+// plain OpenSCAD cube passes "". The result is corner-origin (the caller
+// recenters when needed).
+func (e *Emitter) cubeCtor(size ast.Expr, fillet string) string {
+	extra := ""
+	if fillet != "" {
+		extra = ", fillet: " + fillet
 	}
-	return fmt.Sprintf("Cube(s: %s)", e.expr(size, kLength))
+	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) == 3 {
+		return fmt.Sprintf("Cube(x: %s, y: %s, z: %s%s)",
+			e.expr(v.Elems[0], kLength), e.expr(v.Elems[1], kLength), e.expr(v.Elems[2], kLength), extra)
+	}
+	return fmt.Sprintf("Cube(s: %s%s)", e.expr(size, kLength), extra)
 }
 
 // sphere emits Sphere(...).AlignCenter(...). OpenSCAD centers spheres at the

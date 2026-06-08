@@ -300,6 +300,40 @@ func TestBOSL2_UnsupportedConstructErrors(t *testing.T) {
 	}
 }
 
+// BOSL2 cuboid(rounding=R) rounds every edge — maps to Facet Cube(fillet: R),
+// now that fillet primitives exist.
+func TestBOSL2_CuboidRounding(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([10, 10, 10], rounding=2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cuboid(rounding=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fillet: 2 mm") {
+		t.Fatalf("expected rounding -> fillet:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// BOSL2 cyl(rounding=R) rounds both rims — maps to Facet Cylinder(fillet: R).
+func TestBOSL2_CylRounding(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncyl(h=10, r=5, rounding=1);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cyl(rounding=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fillet: 1 mm") {
+		t.Fatalf("expected rounding -> fillet:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// chamfer has no Facet primitive (only fillet/rounding), so it must still error
+// rather than be silently dropped or mistranslated as a fillet.
+func TestBOSL2_CuboidChamferStillErrors(t *testing.T) {
+	_, err := Transpile("include <BOSL2/std.scad>\ncuboid([10, 10, 10], chamfer=2);\n", "part.scad")
+	if err == nil {
+		t.Fatal("chamfer should still error (no Facet chamfer primitive)")
+	}
+}
+
 // A BARE child (no position/attach) on a shape that isn't an attachment parent
 // must error, not be silently dropped by the leaf emitter. In BOSL2 a child of a
 // shape is an attachment, and only cuboid/cyl carry one.

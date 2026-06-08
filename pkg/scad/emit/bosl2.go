@@ -637,12 +637,16 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
 	}
-	e.rejectExtraArgs(n, 1, "size")
+	e.rejectExtraArgs(n, 1, "size", "rounding")
 	size, ok := arg(n, "size", 0)
 	if !ok {
 		return e.errf(n.Pos(), "cuboid without size")
 	}
-	return e.cubeCtor(size) + ".AlignCenter(pos: Vec3{})"
+	fillet := ""
+	if r, has := arg(n, "rounding", -1); has {
+		fillet = e.expr(r, kLength)
+	}
+	return e.cubeCtor(size, fillet) + ".AlignCenter(pos: Vec3{})"
 }
 
 // bosl2Wedge emits BOSL2's wedge — a triangular ramp — as its exact VNF (the
@@ -708,7 +712,7 @@ func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 // single r/d makes a plain cylinder. ok is false on a missing height/radius (an
 // error is already recorded).
 func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
-	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "rounding", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
 		return e.errf(n.Pos(), "cyl without height"), false
@@ -716,6 +720,11 @@ func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 	hStr := e.expr(h, kLength)
 	rMM, rMMok := cylinderRadiusMM(n)
 	segs := e.segmentsSuffix(n, rMM, rMMok)
+	// BOSL2 cyl(rounding=R) rounds both rims; Frustum/Cylinder fillet does the same.
+	fillet := ""
+	if r, has := arg(n, "rounding", -1); has {
+		fillet = ", fillet: " + e.expr(r, kLength)
+	}
 
 	r1, hasR1 := arg(n, "r1", -1)
 	r2, hasR2 := arg(n, "r2", -1)
@@ -724,15 +733,15 @@ func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 	var ctor string
 	switch {
 	case hasR1 && hasR2:
-		ctor = fmt.Sprintf("Frustum(r1: %s, r2: %s, h: %s%s)", e.expr(r1, kLength), e.expr(r2, kLength), hStr, segs)
+		ctor = fmt.Sprintf("Frustum(r1: %s, r2: %s, h: %s%s%s)", e.expr(r1, kLength), e.expr(r2, kLength), hStr, segs, fillet)
 	case hasD1 && hasD2:
-		ctor = fmt.Sprintf("Frustum(d1: %s, d2: %s, h: %s%s)", e.expr(d1, kLength), e.expr(d2, kLength), hStr, segs)
+		ctor = fmt.Sprintf("Frustum(d1: %s, d2: %s, h: %s%s%s)", e.expr(d1, kLength), e.expr(d2, kLength), hStr, segs, fillet)
 	default:
 		key, val, rok := e.radiusArg(n, 1)
 		if !rok {
 			return e.errf(n.Pos(), "cyl without radius"), false
 		}
-		ctor = fmt.Sprintf("Cylinder(%s: %s, h: %s%s)", key, val, hStr, segs)
+		ctor = fmt.Sprintf("Cylinder(%s: %s, h: %s%s%s)", key, val, hStr, segs, fillet)
 	}
 	return ctor + ".AlignCenter(pos: Vec3{})", true
 }

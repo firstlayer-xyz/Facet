@@ -181,3 +181,39 @@ func TestBOSL2Render_AttachReorientsToRight(t *testing.T) {
 		t.Errorf("z-extent = %v, want ~20 (cube only)", dz)
 	}
 }
+
+// cuboid(rounding=R) rounds the edges: the bounding box is unchanged but corner
+// material is removed (less volume than the plain box), and it stays a simple
+// solid (one component, genus 0).
+func TestBOSL2Render_CuboidRounding(t *testing.T) {
+	plain := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([20, 20, 20]);\n")
+	rounded := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([20, 20, 20], rounding=3);\n")
+	pdx, pdy, pdz := extents(plain)
+	rdx, rdy, rdz := extents(rounded)
+	if !near(rdx, pdx, 0.5) || !near(rdy, pdy, 0.5) || !near(rdz, pdz, 0.5) {
+		t.Errorf("rounded bbox %v x %v x %v should match plain %v x %v x %v", rdx, rdy, rdz, pdx, pdy, pdz)
+	}
+	if !(rounded.Volume() < plain.Volume()) {
+		t.Errorf("rounded volume %v should be < plain %v (corners removed)", rounded.Volume(), plain.Volume())
+	}
+	if rounded.NumComponents() != 1 || rounded.Genus() != 0 {
+		t.Errorf("rounded cuboid should be a simple solid: comps=%d genus=%d", rounded.NumComponents(), rounded.Genus())
+	}
+}
+
+// cyl(rounding=R) rounds both rims: same height/bounds, less volume, simple solid.
+func TestBOSL2Render_CylRounding(t *testing.T) {
+	plain := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncyl(h=20, r=10);\n")
+	rounded := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncyl(h=20, r=10, rounding=3);\n")
+	_, _, pdz := extents(plain)
+	_, _, rdz := extents(rounded)
+	if !near(rdz, pdz, 0.5) {
+		t.Errorf("rounded cyl height %v should match plain %v", rdz, pdz)
+	}
+	if !(rounded.Volume() < plain.Volume()) {
+		t.Errorf("rounded volume %v should be < plain %v (rims rounded)", rounded.Volume(), plain.Volume())
+	}
+	if rounded.NumComponents() != 1 || rounded.Genus() != 0 {
+		t.Errorf("rounded cyl should be a simple solid: comps=%d genus=%d", rounded.NumComponents(), rounded.Genus())
+	}
+}
