@@ -488,13 +488,24 @@ func (e *Emitter) bosl2RectTube(n *ast.ModuleCall) string {
 // bosl2Rect emits BOSL2's 2D rect — a rectangle centered on the origin (a
 // Sketch). size is [x,y] or a scalar (square).
 func (e *Emitter) bosl2Rect(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 1, "size")
+	e.rejectExtraArgs(n, 1, "size", "anchor")
 	size, ok := arg(n, "size", 0)
 	if !ok {
 		return e.errf(n.Pos(), "rect without size")
 	}
 	x, y := e.pair2(size, kLength)
-	return e.centeredSquare(x, y)
+	shape := e.centeredSquare(x, y)
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "rect: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+		if v[2] != 0 {
+			return e.errf(n.Pos(), "rect: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)")
+		}
+		shape += anchorMove(v, [3]string{x, y, ""})
+	}
+	return shape
 }
 
 // centeredSquare renders a Square of the given side-length expressions recentered
@@ -1037,7 +1048,7 @@ func (e *Emitter) bosl2OrientedCyl(n *ast.ModuleCall, rotate string) string {
 // from or/od and the inner bore from ir/id. Wall-thickness forms and rounding
 // are not yet translated and error via rejectExtraArgs.
 func (e *Emitter) bosl2Tube(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 1, "h", "l", "height", "or", "ir", "od", "id", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 1, "h", "l", "height", "or", "ir", "od", "id", "anchor", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
 		return e.errf(n.Pos(), "tube without height")
@@ -1051,8 +1062,18 @@ func (e *Emitter) bosl2Tube(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "tube without an inner radius (ir/id)")
 	}
 	hStr := e.expr(h, kLength)
-	return fmt.Sprintf("(Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}) - Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}))",
+	shape := fmt.Sprintf("(Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}) - Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}))",
 		outer, hStr, inner, hStr)
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "tube: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+		// The tube's bounding box is [outer diameter, outer diameter, h].
+		dia := "2 * (" + outer + ")"
+		shape += anchorMove(v, [3]string{dia, dia, hStr})
+	}
+	return shape
 }
 
 // bosl2Torus emits BOSL2's torus by revolving a minor-radius circle, offset to

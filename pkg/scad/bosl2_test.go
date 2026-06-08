@@ -1270,3 +1270,35 @@ func TestBOSL2_AlignRejectsExtras(t *testing.T) {
 		t.Fatal("align(inset=) should error (not translated)")
 	}
 }
+
+// rect(anchor=) shifts the centered 2D rectangle by its anchor point (in-plane
+// only). RIGHT puts the right edge on the origin. A z-bearing anchor (TOP) is a
+// located error — there is no out-of-plane axis on a 2D shape.
+func TestBOSL2_RectAnchor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrect([20, 10], anchor=RIGHT);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rect anchor should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(x: -0.5 * 20 mm)") {
+		t.Fatalf("expected RIGHT shift by w/2 in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	_, err = Transpile("include <BOSL2/std.scad>\nrect([20, 10], anchor=TOP);\n", "part.scad")
+	if err == nil {
+		t.Fatal("rect(anchor=TOP) should error (out-of-plane anchor on a 2D shape)")
+	}
+}
+
+// tube(anchor=) shifts the centered tube by its anchor point over its
+// [outer-dia, outer-dia, h] bounding box. BOTTOM sits it on the plate (z).
+func TestBOSL2_TubeAnchor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ntube(h=10, or=8, ir=4, anchor=BOTTOM);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("tube anchor should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(z: 0.5 * 10 mm)") {
+		t.Fatalf("expected BOTTOM lift by h/2 in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}

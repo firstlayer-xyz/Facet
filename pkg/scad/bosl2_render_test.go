@@ -472,3 +472,35 @@ func TestBOSL2Render_AlignInsideDiff(t *testing.T) {
 		t.Errorf("z range [%v, %v], want [-5, 5] (pocket is internal)", minZ, maxZ)
 	}
 }
+
+// rect(anchor=RIGHT) puts the rectangle's right edge on the origin: a [20,10]
+// rect extruded spans x:-20..0, y:-5..5, volume 20*10*4=800.
+func TestBOSL2Render_RectAnchor(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nlinear_extrude(height=4) rect([20, 10], anchor=RIGHT);\n")
+	minX, minY, _, maxX, maxY, _ := s.BoundingBox()
+	if !near(minX, -20, 0.1) || !near(maxX, 0, 0.1) {
+		t.Errorf("x range [%v, %v], want [-20, 0] (right edge on origin)", minX, maxX)
+	}
+	if !near(minY, -5, 0.1) || !near(maxY, 5, 0.1) {
+		t.Errorf("y range [%v, %v], want [-5, 5] (still centered in y)", minY, maxY)
+	}
+	if v := s.Volume(); !near(v, 800, 0.5) {
+		t.Errorf("volume = %v, want 800", v)
+	}
+}
+
+// tube(anchor=BOTTOM) sits the hollow cylinder on the plate: h=10 or=8 ir=4 spans
+// z:0..10, x:-8..8, with a hollow core (volume = pi*(8^2-4^2)*10 ~ 1508).
+func TestBOSL2Render_TubeAnchor(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ntube(h=10, or=8, ir=4, anchor=BOTTOM);\n")
+	minX, _, minZ, maxX, _, maxZ := s.BoundingBox()
+	if !near(minZ, 0, 0.1) || !near(maxZ, 10, 0.1) {
+		t.Errorf("z range [%v, %v], want [0, 10] (BOTTOM on plate)", minZ, maxZ)
+	}
+	if !near(minX, -8, 0.1) || !near(maxX, 8, 0.1) {
+		t.Errorf("x range [%v, %v], want [-8, 8]", minX, maxX)
+	}
+	if v := s.Volume(); v < 1400 || v > 1520 { // pi*(64-16)*10 ~ 1508, less with faceting
+		t.Errorf("volume = %v, want ~1508 (hollow)", v)
+	}
+}
