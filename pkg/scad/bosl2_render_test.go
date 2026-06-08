@@ -540,3 +540,20 @@ func TestBOSL2Render_TrapezoidAnchor(t *testing.T) {
 		t.Errorf("y range [%v, %v], want [0, 10] (front edge on origin)", minY, maxY)
 	}
 }
+
+// xrot(90, cp=[0,0,10]) turns a 2-cube about the point (0,0,10): the cube's
+// center (0,0,0) is 10 below the pivot, so +90deg about X swings it to (0,10,10).
+// The cube lands at y:9..11, z:9..11.
+func TestBOSL2Render_AxisRotPivot(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nxrot(90, cp=[0, 0, 10]) cuboid([2, 2, 2]);\n")
+	_, minY, minZ, _, maxY, maxZ := s.BoundingBox()
+	if !near(minY, 9, 0.1) || !near(maxY, 11, 0.1) {
+		t.Errorf("y range [%v, %v], want [9, 11] (swung up by the pivot)", minY, maxY)
+	}
+	if !near(minZ, 9, 0.1) || !near(maxZ, 11, 0.1) {
+		t.Errorf("z range [%v, %v], want [9, 11]", minZ, maxZ)
+	}
+	if v := s.Volume(); !near(v, 8, 0.2) {
+		t.Errorf("volume = %v, want 8 (rotation preserves volume)", v)
+	}
+}

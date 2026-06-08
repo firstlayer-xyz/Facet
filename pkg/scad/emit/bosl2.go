@@ -846,12 +846,27 @@ func (e *Emitter) bosl2AxisScale(n *ast.ModuleCall, axis string) string {
 // bosl2AxisRot emits a BOSL2 single-axis rotation (xrot/yrot/zrot): a scalar
 // degree angle about one axis.
 func (e *Emitter) bosl2AxisRot(n *ast.ModuleCall, axis string) string {
-	e.rejectExtraArgs(n, 1)
+	e.rejectExtraArgs(n, 1, "cp")
 	a, ok := arg(n, "", 0)
 	if !ok {
 		return e.errf(n.Pos(), "%s without angle", n.Name)
 	}
-	return e.childExpr(n) + ".Rotate(" + axis + ": " + e.expr(a, kAngle) + ")"
+	method := "Rotate(" + axis + ": " + e.expr(a, kAngle) + ")"
+	return e.pivotRotate(n, e.childExpr(n), method)
+}
+
+// pivotRotate wraps a rotation method around an optional cp= pivot point: the
+// child is moved so cp sits at the origin, rotated, then moved back, so the
+// rotation turns about cp instead of the origin (BOSL2's cp=). With no cp it is a
+// plain trailing rotation.
+func (e *Emitter) pivotRotate(n *ast.ModuleCall, child, method string) string {
+	cp, has := arg(n, "cp", -1)
+	if !has {
+		return child + "." + method
+	}
+	cx, cy, cz := e.vec3Of(cp)
+	p := "Vec3{x: " + cx + ", y: " + cy + ", z: " + cz + "}"
+	return child + ".Move(v: -(" + p + "))." + method + ".Move(v: " + p + ")"
 }
 
 // signedLen renders a Length expression negated when sign is negative. A literal
