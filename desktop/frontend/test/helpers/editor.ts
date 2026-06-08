@@ -54,7 +54,13 @@ export async function hoverAt(page: Page, line: number, col: number) {
     },
     { ed, line, col }
   );
+  // Two-step move: approach from a nearby offset, then land on the target.
+  // A single move to the exact point is occasionally not registered as a
+  // mousemove in headless CI (the pointer can already be treated as "there"),
+  // so Monaco never (re)starts its hover-delay timer. The nudge guarantees a
+  // fresh mousemove onto the token.
+  await page.mouse.move(xy.x - 6, xy.y - 6);
   await page.mouse.move(xy.x, xy.y);
-  // Monaco's hover delay is ~300ms; give it 600ms to settle and stabilize.
+  // Monaco's hover delay is ~300ms; give it time to fire and fetch content.
   await page.waitForTimeout(600);
 }
