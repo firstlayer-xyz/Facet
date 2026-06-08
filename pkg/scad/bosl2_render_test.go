@@ -234,3 +234,20 @@ func TestBOSL2Render_AttachCombinedAnchor(t *testing.T) {
 		t.Errorf("cyl should stick out top-right: maxX=%v maxZ=%v (cube reaches 10)", maxX, maxZ)
 	}
 }
+
+// orient= reorients a primitive's +Z (UP) to the given direction. orient=RIGHT
+// points UP along +X, so a 10×4×2 box (long axis X, short axis Z) swaps those:
+// short axis (2) ends up on X, long axis (10) on Z.
+func TestBOSL2Render_CuboidOrient(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([10, 4, 2], orient=RIGHT);\n")
+	dx, dy, dz := extents(s)
+	if !near(dx, 2, 0.5) {
+		t.Errorf("x-extent = %v, want ~2 (was the z dimension)", dx)
+	}
+	if !near(dy, 4, 0.5) {
+		t.Errorf("y-extent = %v, want ~4 (unchanged)", dy)
+	}
+	if !near(dz, 10, 0.5) {
+		t.Errorf("z-extent = %v, want ~10 (was the x dimension)", dz)
+	}
+}

@@ -60,6 +60,27 @@ func anchorLit(d [3]int) string {
 	return fmt.Sprintf("B2Anchor{x: %d, y: %d, z: %d}", d[0], d[1], d[2])
 }
 
+// anchorVec3Lit renders a direction vector as a Facet Vec3 literal (mm units).
+func anchorVec3Lit(d [3]int) string {
+	return fmt.Sprintf("Vec3{x: %d mm, y: %d mm, z: %d mm}", d[0], d[1], d[2])
+}
+
+// applyOrient appends a Rotate(from: UP, to: orient) when the call carries an
+// orient= anchor — BOSL2's orient= points the shape's +Z (UP) axis along that
+// direction. The shape must already be centered on the origin (orient rotates it
+// in place).
+func (e *Emitter) applyOrient(n *ast.ModuleCall, shape string) string {
+	o, has := arg(n, "orient", -1)
+	if !has {
+		return shape
+	}
+	dir, ok := anchorVec(o)
+	if !ok {
+		return e.errf(n.Pos(), "%s: unsupported orient anchor", n.Name)
+	}
+	return shape + ".Rotate(from: Vec3{z: 1 mm}, to: " + anchorVec3Lit(dir) + ")"
+}
+
 // bosl2AttachGuard blocks a leaf shape that has children — in BOSL2 a child of a
 // shape is an attachment, and only cuboid/cyl carry a known attachment geometry
 // (handled by bosl2AttachChain). Any other shape with children (a bare child, or

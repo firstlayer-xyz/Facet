@@ -653,7 +653,7 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
 	}
-	e.rejectExtraArgs(n, 1, "size", "rounding")
+	e.rejectExtraArgs(n, 1, "size", "rounding", "orient")
 	size, ok := arg(n, "size", 0)
 	if !ok {
 		return e.errf(n.Pos(), "cuboid without size")
@@ -662,7 +662,7 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if r, has := arg(n, "rounding", -1); has {
 		fillet = e.expr(r, kLength)
 	}
-	return e.cubeCtor(size, fillet) + ".AlignCenter(pos: Vec3{})"
+	return e.applyOrient(n, e.cubeCtor(size, fillet)+".AlignCenter(pos: Vec3{})")
 }
 
 // bosl2Wedge emits BOSL2's wedge — a triangular ramp — as its exact VNF (the
@@ -728,7 +728,7 @@ func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 // single r/d makes a plain cylinder. ok is false on a missing height/radius (an
 // error is already recorded).
 func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
-	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "rounding", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "rounding", "orient", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
 		return e.errf(n.Pos(), "cyl without height"), false
@@ -759,7 +759,7 @@ func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 		}
 		ctor = fmt.Sprintf("Cylinder(%s: %s, h: %s%s%s)", key, val, hStr, segs, fillet)
 	}
-	return ctor + ".AlignCenter(pos: Vec3{})", true
+	return e.applyOrient(n, ctor+".AlignCenter(pos: Vec3{})"), true
 }
 
 // bosl2OrientedCyl renders a BOSL2 axis-oriented cylinder (xcyl/ycyl/zcyl): the

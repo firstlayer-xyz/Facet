@@ -315,6 +315,30 @@ func TestBOSL2_RotFromTo(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// BOSL2 orient= points a primitive's +Z (UP) axis along the given anchor — maps
+// to Rotate(from: UP, to: orient) on the centered shape.
+func TestBOSL2_CuboidOrient(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([10, 4, 2], orient=RIGHT);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cuboid(orient=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "from: Vec3{") || !strings.Contains(res.Facet, "to: Vec3{") {
+		t.Fatalf("expected orient -> Rotate(from, to):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+func TestBOSL2_CylOrient(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncyl(h=10, r=2, orient=FWD);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cyl(orient=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "from: Vec3{") || !strings.Contains(res.Facet, "to: Vec3{") {
+		t.Fatalf("expected orient -> Rotate(from, to):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // BOSL2 cuboid(rounding=R) rounds every edge — maps to Facet Cube(fillet: R),
 // now that fillet primitives exist.
 func TestBOSL2_CuboidRounding(t *testing.T) {
