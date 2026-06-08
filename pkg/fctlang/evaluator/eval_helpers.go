@@ -2,6 +2,7 @@ package evaluator
 
 import (
 	"fmt"
+	"math"
 )
 
 // requireLength extracts the mm value from a length argument.
@@ -29,6 +30,24 @@ func requireNumber(funcName string, argNum int, v value) (float64, error) {
 	return 0, fmt.Errorf("%s() argument %d must be a Number, got %s (use Number(from: x) to convert Length explicitly)", funcName, argNum, typeName(v))
 }
 
+// requireCount converts an already-extracted Number into a non-negative integer
+// count (circular segments, subdivision factor), rejecting non-finite, negative,
+// or above-max values. Such counts flow straight into the C++ geometry kernel,
+// which does not clamp, so an unbounded value would OOM/hang the host; this
+// turns that into a clean error at the boundary. Zero is allowed — for segment
+// counts it means "auto/default".
+func requireCount(funcName string, argNum int, n float64, max int) (int, error) {
+	switch {
+	case math.IsNaN(n) || math.IsInf(n, 0):
+		return 0, fmt.Errorf("%s() argument %d must be a finite count, got %v", funcName, argNum, n)
+	case n < 0:
+		return 0, fmt.Errorf("%s() argument %d must be a non-negative count, got %v", funcName, argNum, n)
+	case n > float64(max):
+		return 0, fmt.Errorf("%s() argument %d (%v) exceeds the maximum supported count of %d", funcName, argNum, n, max)
+	}
+	return int(n), nil
+}
+
 // requireAngle extracts the degree value from an angle argument.
 func requireAngle(funcName string, argNum int, v value) (float64, error) {
 	v = unwrap(v)
@@ -38,7 +57,6 @@ func requireAngle(funcName string, argNum int, v value) (float64, error) {
 	}
 	return a.deg, nil
 }
-
 
 // requireString extracts a string from a value.
 func requireString(funcName string, argNum int, v value) (string, error) {

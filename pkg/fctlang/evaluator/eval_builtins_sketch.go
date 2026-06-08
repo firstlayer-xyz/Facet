@@ -67,7 +67,11 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		return pf.Extrude(height, int(slices), twist, scaleX, scaleY)
+		sl, err := requireCount(name, 2, slices, maxSegments)
+		if err != nil {
+			return nil, err
+		}
+		return pf.Extrude(height, sl, twist, scaleX, scaleY)
 	})
 
 	builtinRegistry["_revolve"] = sketchMethod("_revolve", func(pf *manifold.Sketch, args []value) (value, error) {
@@ -89,7 +93,10 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
-			segments = int(n)
+			segments, err = requireCount(name, 2, n, maxSegments)
+			if err != nil {
+				return nil, err
+			}
 		}
 		return pf.Revolve(segments, degrees)
 	})

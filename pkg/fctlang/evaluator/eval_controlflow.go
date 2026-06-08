@@ -217,6 +217,13 @@ func (e *evaluator) evalForBody(body []parser.Stmt, locals map[string]value, res
 			// nil means the expression had no value (e.g. if-without-else
 			// where the branch contained explicit yields). Skip it.
 			if v != nil {
+				// Each per-clause range is capped (maxRangeSize), but a nested
+				// for-yield is a cartesian product, so the *accumulated* result
+				// count is bounded here to keep an adversarial product (e.g.
+				// `for x [0:9999] for y [0:9999]`) from exhausting memory.
+				if len(*results) >= maxRangeSize {
+					return e.errAt(s.Pos, "for-yield produced too many elements (limit %d)", maxRangeSize)
+				}
 				*results = append(*results, v)
 			}
 			return nil
