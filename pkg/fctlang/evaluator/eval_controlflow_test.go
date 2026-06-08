@@ -310,6 +310,28 @@ fn Main() {
 	}
 }
 
+// Broadcast (element-wise) division by zero must error, like scalar division —
+// the broadcast path must not silently produce Inf elements. Covers all four
+// numericBinop divisor types (Number, Length/Length, Length, Angle).
+func TestEvalBroadcastDivisionByZero(t *testing.T) {
+	for _, src := range []string{
+		`fn Main() { var x = [1, 2, 3] / 0; return Cube(s: 10 mm); }`,
+		`fn Main() { var x = [1 mm, 2 mm] / 0 mm; return Cube(s: 10 mm); }`,
+		`fn Main() { var x = [1 mm, 2 mm] / 0; return Cube(s: 10 mm); }`,
+		`fn Main() { var x = [10 deg, 20 deg] / 0; return Cube(s: 10 mm); }`,
+	} {
+		prog := parseTestProg(t, src)
+		_, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
+		if err == nil {
+			t.Errorf("expected division by zero error for: %s", src)
+			continue
+		}
+		if !strings.Contains(err.Error(), "division by zero") {
+			t.Errorf("expected 'division by zero', got %v for: %s", err, src)
+		}
+	}
+}
+
 func TestEvalUnaryMinusNumber(t *testing.T) {
 	src := `
 fn Main() {
