@@ -352,7 +352,13 @@ func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
 	}
 
 	if len(solids) == 1 {
-		return extractDisplayMesh(solids[0].ptr, merged)
+		// extractDisplayMesh receives only the raw C pointer, so the owning
+		// *Solid must stay reachable across the C call — otherwise its finalizer
+		// (facet_delete_solid) can run mid-call (use-after-free). The two-solid
+		// branch below keeps `solids` alive for the same reason.
+		dm := extractDisplayMesh(solids[0].ptr, merged)
+		runtime.KeepAlive(solids)
+		return dm
 	}
 
 	ptrs := make([]*C.ManifoldPtr, len(solids))
