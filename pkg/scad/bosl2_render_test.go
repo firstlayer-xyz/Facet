@@ -307,3 +307,16 @@ func TestBOSL2Render_CuboidChamfer(t *testing.T) {
 		t.Errorf("chamfered cuboid: comps=%d genus=%d, want 1/0", c, g)
 	}
 }
+
+// top_half() keeps the +Z half of a centered cube: a 10-cube (z:-5..5) becomes
+// z:0..5 with half the volume.
+func TestBOSL2Render_TopHalf(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ntop_half() cuboid([10, 10, 10]);\n")
+	if v := s.Volume(); !near(v, 500, 1.0) {
+		t.Errorf("volume = %v, want ~500 (half of 1000)", v)
+	}
+	_, _, minZ, _, _, maxZ := s.BoundingBox()
+	if !near(minZ, 0, 0.2) || !near(maxZ, 5, 0.2) {
+		t.Errorf("z range [%v, %v], want [0, 5] (top half)", minZ, maxZ)
+	}
+}

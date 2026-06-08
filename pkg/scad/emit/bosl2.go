@@ -115,6 +115,21 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2AxisScale(n, "y"), true
 	case "zscale":
 		return e.bosl2AxisScale(n, "z"), true
+	// half-space cuts (keep one side of the plane through the origin)
+	case "top_half":
+		return e.bosl2Half(n, "z", 1), true
+	case "bottom_half":
+		return e.bosl2Half(n, "z", -1), true
+	case "back_half":
+		return e.bosl2Half(n, "y", 1), true
+	case "front_half":
+		return e.bosl2Half(n, "y", -1), true
+	case "right_half":
+		return e.bosl2Half(n, "x", 1), true
+	case "left_half":
+		return e.bosl2Half(n, "x", -1), true
+	case "half_of":
+		return e.bosl2HalfOf(n), true
 	// linear distributors (n copies spaced along one axis, centered)
 	case "xcopies":
 		return e.bosl2LinearCopies(n, "x"), true
@@ -149,6 +164,37 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.childExpr(n), true
 	}
 	return "", false
+}
+
+// bosl2Half emits a BOSL2 named half-space cut (top_half/bottom_half/…): it keeps
+// the side of the plane through the origin that the (axis, sign) normal points
+// toward, via Solid.Trim (which cuts the negative side of the half-space).
+func (e *Emitter) bosl2Half(n *ast.ModuleCall, axis string, sign int) string {
+	e.rejectExtraArgs(n, 0)
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
+	}
+	return fmt.Sprintf("%s.Trim(%s: %d)", child, axis, sign)
+}
+
+// bosl2HalfOf emits BOSL2's general half_of(v): keep the half of the child on the
+// side the direction v points toward, via Solid.Trim with v as the plane normal.
+func (e *Emitter) bosl2HalfOf(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 1, "v")
+	v, ok := arg(n, "v", 0)
+	if !ok {
+		return e.errf(n.Pos(), "half_of needs a direction v")
+	}
+	dir, ok := anchorVec(v)
+	if !ok {
+		return e.errf(n.Pos(), "half_of: unsupported direction (use an anchor or a ±1/0 vector)")
+	}
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "half_of has no child geometry")
+	}
+	return fmt.Sprintf("%s.Trim(x: %d, y: %d, z: %d)", child, dir[0], dir[1], dir[2])
 }
 
 // bosl2Diff emits BOSL2's diff(): it renders its child with subtractive tagging

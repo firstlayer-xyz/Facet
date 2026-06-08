@@ -999,3 +999,26 @@ func TestBOSL2_Trapezoid(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// BOSL2 half-space cuts (top_half/back_half/…) and the general half_of(v) keep
+// one side of the plane through the origin — mapped to Solid.Trim.
+func TestBOSL2_HalfCuts(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"top_half() cuboid([10, 10, 10])", ".Trim(z: 1)"},
+		{"bottom_half() cuboid([10, 10, 10])", ".Trim(z: -1)"},
+		{"back_half() cuboid([10, 10, 10])", ".Trim(y: 1)"},
+		{"left_half() cuboid([10, 10, 10])", ".Trim(x: -1)"},
+		{"half_of([0, 0, 1]) cuboid([10, 10, 10])", ".Trim(x: 0, y: 0, z: 1)"},
+		{"half_of(UP) cuboid([10, 10, 10])", ".Trim(x: 0, y: 0, z: 1)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.src, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.src, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
