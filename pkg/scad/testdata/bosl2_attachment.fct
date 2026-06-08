@@ -56,12 +56,18 @@ fn B2.positionRemove(a B2Anchor, child B2) B2 {
         size: self.size}
 }
 
-# The child solid placed so its ca anchor lands on this shape's pa anchor (no
-# reorientation: the caller guarantees ca is anti-parallel to pa).
+# The child solid placed so its ca anchor lands on this shape's pa anchor, rotated
+# so the child's ca face points opposite pa (into this shape). The ca anchor is
+# moved to the origin first, rotated there, then moved onto pa — so only the solid
+# is rotated, never a point. When ca is anti-parallel to pa the rotation is the
+# identity, leaving a pure translation.
 fn B2.attachPlaced(pa, ca B2Anchor, child B2) Solid {
-    var p = self.anchorPoint(a: pa)
     var c = child.anchorPoint(a: ca)
-    return child.solid.Move(v: Vec3{x: p.x - c.x, y: p.y - c.y, z: p.z - c.z})
+    var p = self.anchorPoint(a: pa)
+    return child.solid.Move(v: -c).Rotate(
+        from: Vec3{x: ca.x * 1 mm, y: ca.y * 1 mm, z: ca.z * 1 mm},
+        to: Vec3{x: pa.x * -1 mm, y: pa.y * -1 mm, z: pa.z * -1 mm}
+    ).Move(v: p)
 }
 
 fn B2.attach(pa, ca B2Anchor, child B2) B2 {
@@ -74,27 +80,30 @@ fn B2.attachRemove(pa, ca B2Anchor, child B2) B2 {
             .attachPlaced(pa: pa, ca: ca, child: child), size: self.size}
 }
 
-# Rotates a solid so its +Z (UP) axis points along the axis direction dir (one
-# of the six ±X/±Y/±Z). The caller guarantees dir is a single axis.
+# Rotates a solid so its +Z (UP) axis points along the anchor direction dir —
+# any direction, including combined edge/corner anchors (e.g. TOP+RIGHT). The
+# shortest-arc from/to rotation reduces to the same result as the per-axis euler
+# turns for the six face anchors.
 fn b2_orient_up_to(solid Solid, dir B2Anchor) Solid {
-    if dir.z == 1 { return solid }
-    if dir.z == -1 { return solid.Rotate(y: 180 deg) }
-    if dir.x == 1 { return solid.Rotate(y: 90 deg) }
-    if dir.x == -1 { return solid.Rotate(y: -90 deg) }
-    if dir.y == 1 { return solid.Rotate(x: -90 deg) }
-    return solid.Rotate(x: 90 deg)
+    return solid.Rotate(
+        from: Vec3{x: 0 mm, y: 0 mm, z: 1 mm},
+        to: Vec3{x: dir.x * 1 mm, y: dir.y * 1 mm, z: dir.z * 1 mm}
+    )
 }
 
 # The child solid for a single-anchor attach: reoriented so its +Z axis points
-# out the pa face, then its base sits on that face, centered on the anchor. The
-# child's mating face lies on its rotation axis, so placement is anchorPoint(pa)
-# plus a push of half the child's height along pa. pa is a pure axis.
+# out the pa face, then its base sits on that anchor. The child's mating face
+# lies on its rotation axis, so placement is anchorPoint(pa) plus a push of half
+# the child's height along the UNIT pa direction (pa may be a combined anchor,
+# whose magnitude is √2 or √3, so it must be normalized).
 fn B2.attachReorientPlaced(pa B2Anchor, child B2) Solid {
     var oriented = b2_orient_up_to(solid: child.solid, dir: pa)
     var ap = self.anchorPoint(a: pa)
+    var m = Sqrt(n: pa.x * pa.x + pa.y * pa.y + pa.z * pa.z)
     var hz = child.size.z / 2
     return oriented.Move(
-        v: Vec3{x: ap.x + pa.x * hz, y: ap.y + pa.y * hz, z: ap.z + pa.z * hz}
+        v: Vec3{x: ap.x + pa.x / m * hz, y: ap.y + pa.y / m * hz,
+            z: ap.z + pa.z / m * hz}
     )
 }
 

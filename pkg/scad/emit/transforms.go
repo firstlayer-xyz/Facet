@@ -371,14 +371,21 @@ func (e *Emitter) translateMethod(n *ast.ModuleCall, is2D bool) string {
 	return fmt.Sprintf("Move(x: %s[0] * 1 mm, y: %s[1] * 1 mm, z: %s[2] * 1 mm)", expr, expr, expr)
 }
 
-// rotateMethod builds `.Rotate(...)`. Handles both the vector form
-// `rotate([x,y,z])` and the scalar form `rotate(a)`. The axis-angle form
-// `rotate(a, v=[...])` is not representable and records a diagnostic.
+// rotateMethod builds `.Rotate(...)`. Handles the vector form `rotate([x,y,z])`,
+// the scalar form `rotate(a)`, and the axis-angle form `rotate(a, v=[...])`.
 func (e *Emitter) rotateMethod(n *ast.ModuleCall, is2D bool) string {
 	e.rejectExtraArgs(n, 1, "a", "v")
-	// Axis-angle form: a scalar angle plus an axis vector `v`.
-	if _, hasV := arg(n, "v", -1); hasV {
-		return e.errf(n.Pos(), "rotate axis-angle form")
+	// Axis-angle form: a scalar angle `a` about an axis vector `v`.
+	if vAxis, hasV := arg(n, "v", -1); hasV {
+		a, found := arg(n, "a", 0)
+		if !found {
+			return e.errf(n.Pos(), "rotate(v=) needs an angle a")
+		}
+		if is2D {
+			return e.errf(n.Pos(), "rotate about an axis (v=) needs 3D geometry")
+		}
+		vx, vy, vz := e.vec3Of(vAxis)
+		return "Rotate(axis: Vec3{x: " + vx + ", y: " + vy + ", z: " + vz + "}, angle: " + e.expr(a, kAngle) + ")"
 	}
 	x, y, z, isVec := e.vecArg(n, "a", 0, kAngle)
 	if isVec {

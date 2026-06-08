@@ -225,34 +225,17 @@ func TestBOSL2_AttachReorientRight(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// A single-anchor attach with a combined (non-axis) anchor has no single
-// out-pointing direction, so it is a located error rather than a wrong guess.
-func TestBOSL2_AttachReorientCombinedErrors(t *testing.T) {
-	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 20]) attach(RIGHT+TOP) cyl(h=10, r=2);\n"
-	res, err := Transpile(src, "part.scad")
-	if err == nil {
-		t.Fatalf("1-arg attach with a combined anchor should error, got:\n%s", res.Facet)
-	}
-	if !strings.Contains(err.Error(), "attach") {
-		t.Fatalf("error should mention attach, got: %v", err)
-	}
-}
-
-// An attach that needs the child reoriented (child anchor not anti-parallel to
-// the parent anchor) is not yet supported — a located error, never a wrong
-// silent emission (no fallbacks).
-func TestBOSL2_AttachReorientErrors(t *testing.T) {
+// A two-anchor attach with NON-opposite anchors (here RIGHT, BOTTOM) rotates the
+// child so its named face mates with the parent face. It used to be unsupported;
+// the runtime now does it via move-to-origin → rotate → move-to-anchor, so it
+// transpiles and type-checks.
+func TestBOSL2_AttachNonOpposite(t *testing.T) {
 	src := "include <BOSL2/std.scad>\ncuboid([20, 20, 10]) attach(RIGHT, BOTTOM) cyl(h=8, r=3);\n"
 	res, err := Transpile(src, "part.scad")
-	if err == nil {
-		t.Fatalf("reorienting attach should error, got:\n%s", res.Facet)
+	if err != nil {
+		t.Fatalf("non-opposite attach should transpile, got: %v", err)
 	}
-	if res.Facet != "" {
-		t.Fatalf("expected no output on error, got:\n%s", res.Facet)
-	}
-	if !strings.Contains(err.Error(), "attach") {
-		t.Fatalf("error should mention attach, got: %v", err)
-	}
+	assertTypeChecks(t, res.Facet)
 }
 
 // Attachments on a shape that isn't a supported attachment parent must error,
@@ -297,6 +280,110 @@ func TestBOSL2_UnsupportedConstructErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "teardrop") || !strings.Contains(err.Error(), "2:1") {
 		t.Fatalf("error should name the construct and location, got: %v", err)
+	}
+}
+
+// BOSL2 rot(a, v=axis) is an axis-angle rotation — maps to Rotate(axis, angle),
+// now that those exist in the stdlib.
+func TestBOSL2_RotAxisAngle(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrot(a=30, v=[1, 1, 0]) cube(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rot(a, v) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "axis: Vec3{") || !strings.Contains(res.Facet, "angle: 30 deg") {
+		t.Fatalf("expected an axis-angle rotate:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// BOSL2 rot(from=, to=) aligns one direction onto another — maps to
+// Rotate(from, to).
+func TestBOSL2_RotFromTo(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrot(from=[0, 0, 1], to=[1, 0, 0]) cube(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("rot(from, to) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "from: Vec3{") || !strings.Contains(res.Facet, "to: Vec3{") {
+		t.Fatalf("expected a from/to rotate:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// BOSL2 orient= points a primitive's +Z (UP) axis along the given anchor — maps
+// to Rotate(from: UP, to: orient) on the centered shape.
+func TestBOSL2_CuboidOrient(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([10, 4, 2], orient=RIGHT);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cuboid(orient=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "from: Vec3{") || !strings.Contains(res.Facet, "to: Vec3{") {
+		t.Fatalf("expected orient -> Rotate(from, to):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+func TestBOSL2_CylOrient(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncyl(h=10, r=2, orient=FWD);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cyl(orient=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "from: Vec3{") || !strings.Contains(res.Facet, "to: Vec3{") {
+		t.Fatalf("expected orient -> Rotate(from, to):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// BOSL2 cuboid(rounding=R) rounds every edge — maps to Facet Cube(fillet: R),
+// now that fillet primitives exist.
+func TestBOSL2_CuboidRounding(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([10, 10, 10], rounding=2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cuboid(rounding=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fillet: 2 mm") {
+		t.Fatalf("expected rounding -> fillet:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// BOSL2 cyl(rounding=R) rounds both rims — maps to Facet Cylinder(fillet: R).
+func TestBOSL2_CylRounding(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncyl(h=10, r=5, rounding=1);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cyl(rounding=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fillet: 1 mm") {
+		t.Fatalf("expected rounding -> fillet:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A single-anchor attach to a COMBINED anchor (an edge/corner like TOP+RIGHT)
+// reorients the child out along that diagonal — now expressible via the from/to
+// rotation, so it no longer errors.
+func TestBOSL2_AttachCombinedAnchor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([20, 20, 20]) attach(TOP+RIGHT) cyl(h=10, r=2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("combined-anchor attach should transpile, got: %v", err)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// cuboid(chamfer=C) / cyl(chamfer=C) bevel every edge — mapped to the Facet
+// Cube/Cylinder chamfer primitives (added in #106).
+func TestBOSL2_Chamfer(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"cuboid([10, 10, 10], chamfer=2)", "chamfer: 2 mm"},
+		{"cyl(h=10, r=5, chamfer=1)", "chamfer: 1 mm"},
+	} {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+tc.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", tc.src, err)
+		}
+		if !strings.Contains(res.Facet, tc.want) {
+			t.Fatalf("%q: expected %q in:\n%s", tc.src, tc.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
 	}
 }
 
@@ -899,4 +986,241 @@ func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "myhelpers.scad") || !strings.Contains(err.Error(), "1:1") {
 		t.Fatalf("error should name the path and location, got: %v", err)
 	}
+}
+
+// BOSL2 trapezoid is a centered 2D isosceles trapezoid — a four-point Polygon.
+func TestBOSL2_Trapezoid(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ntrapezoid(h=10, w1=20, w2=10);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("trapezoid should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Polygon(") {
+		t.Fatalf("expected a Polygon:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// BOSL2 half-space cuts (top_half/back_half/…) and the general half_of(v) keep
+// one side of the plane through the origin — mapped to Solid.Trim.
+func TestBOSL2_HalfCuts(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"top_half() cuboid([10, 10, 10])", ".Trim(z: 1)"},
+		{"bottom_half() cuboid([10, 10, 10])", ".Trim(z: -1)"},
+		{"back_half() cuboid([10, 10, 10])", ".Trim(y: 1)"},
+		{"left_half() cuboid([10, 10, 10])", ".Trim(x: -1)"},
+		{"half_of([0, 0, 1]) cuboid([10, 10, 10])", ".Trim(x: 0, y: 0, z: 1)"},
+		{"half_of(UP) cuboid([10, 10, 10])", ".Trim(x: 0, y: 0, z: 1)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.src, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.src, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
+
+// BOSL2 ellipse is a centered 2D ellipse — a circle of radius rx scaled in y by
+// ry/rx (built at rx so the facet count suits the final size).
+func TestBOSL2_Ellipse(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nellipse(r=[10, 5]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("ellipse should transpile, got: %v", err)
+	}
+	for _, want := range []string{"Circle(r: 10 mm", ".Scale(", "Number(from: 5 mm) / Number(from: 10 mm)"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// xflip/yflip/zflip are single-axis mirrors. With no offset they mirror about the
+// plane through the origin (a plain Mirror); an offset shifts the mirror plane.
+func TestBOSL2_Flip(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nxflip() cuboid([10, 10, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("xflip should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Mirror(x: 1)") {
+		t.Fatalf("expected .Mirror(x: 1) in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nzflip(z=5) cuboid([10, 10, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("zflip(z=5) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(z: -5 mm).Mirror(z: 1).Move(z: 5 mm)") {
+		t.Fatalf("expected offset mirror sandwich in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// recolor(c) paints the child the given color — Facet's Solid.Color via the
+// shared OpenSCAD color mapping (CSS names and r,g,b vectors).
+func TestBOSL2_Recolor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nrecolor(\"red\") cuboid([10, 10, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("recolor name should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, `.Color(hex: "#FF0000")`) {
+		t.Fatalf("expected red Color(hex:) in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nrecolor([0, 0, 1]) cuboid([10, 10, 10]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("recolor vector should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, `.Color(hex: "#0000FF")`) {
+		t.Fatalf("expected blue Color(hex:) from vector in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// xdistribute/ydistribute/zdistribute spread the distinct children evenly along
+// an axis, centered: child i of n sits at (i-(n-1)/2)*spacing. Three children at
+// spacing 10 land at -10, 0, +10 (the middle one keeps its place).
+func TestBOSL2_Distribute(t *testing.T) {
+	src := "include <BOSL2/std.scad>\nxdistribute(10) { cuboid(2); cuboid(2); cuboid(2); }\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("xdistribute should transpile, got: %v", err)
+	}
+	for _, want := range []string{".Move(x: -1 * 10 mm)", ".Move(x: 1 * 10 mm)"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// A total length l spreads the children across the gaps: l=20 over three children
+// gives spacing 10.
+func TestBOSL2_DistributeLength(t *testing.T) {
+	src := "include <BOSL2/std.scad>\nydistribute(l=20) { cuboid(2); cuboid(2); cuboid(2); }\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("ydistribute(l=) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "20 mm / 2") {
+		t.Fatalf("expected l spread across gaps in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// cuboid(anchor=) shifts the centered box so the anchor point lands on the
+// origin: the box moves by -anchor*size/2 per axis. BOTTOM sits it on the plate.
+func TestBOSL2_CuboidAnchor(t *testing.T) {
+	cases := []struct{ src, want string }{
+		// BOTTOM -> +z/2: a 30-tall box rises to z:0..30.
+		{"cuboid([10, 20, 30], anchor=BOTTOM)", ".Move(z: 0.5 * 30 mm)"},
+		// TOP -> -z/2.
+		{"cuboid(10, anchor=TOP)", ".Move(z: -0.5 * 10 mm)"},
+		// Combined RIGHT+TOP shifts two axes at once.
+		{"cuboid([10, 10, 10], anchor=RIGHT+TOP)", ".Move(x: -0.5 * 10 mm, z: -0.5 * 10 mm)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.src, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.src, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
+
+// cyl(anchor=) shifts the centered cylinder by its anchor point. BOTTOM uses the
+// height (z); an off-axis anchor (RIGHT) uses the diameter (2r). A tapered cyl
+// with an x/y anchor is unsupported (its bounding diameter is the larger end).
+func TestBOSL2_CylAnchor(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"cyl(h=10, r=4, anchor=BOTTOM)", ".Move(z: 0.5 * 10 mm)"},
+		{"cyl(h=10, r=4, anchor=TOP)", ".Move(z: -0.5 * 10 mm)"},
+		{"cyl(h=10, r=4, anchor=RIGHT)", ".Move(x: -0.5 * (2 * 4 mm))"},
+		{"cyl(h=10, d=8, anchor=RIGHT)", ".Move(x: -0.5 * 8 mm)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.src, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.src, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
+
+// An x/y anchor on a tapered cyl is a located error, not silently-wrong geometry.
+func TestBOSL2_CylAnchorTaperedXYErrors(t *testing.T) {
+	_, err := Transpile("include <BOSL2/std.scad>\ncyl(h=10, r1=4, r2=2, anchor=RIGHT);\n", "part.scad")
+	if err == nil {
+		t.Fatal("x/y anchor on a tapered cyl should error")
+	}
+	if !strings.Contains(err.Error(), "tapered") {
+		t.Fatalf("expected a tapered-cyl anchor error, got: %v", err)
+	}
+}
+
+// spheroid(anchor=) shifts the centered sphere by its anchor point over its
+// [2r,2r,2r] box. BOTTOM lifts it onto the plate by r; the d form halves first.
+func TestBOSL2_SpheroidAnchor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nspheroid(r=5, anchor=BOTTOM);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("spheroid anchor should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(z: 0.5 * (2 * 5 mm))") {
+		t.Fatalf("expected BOTTOM lift by r in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// Plain spheroid (no anchor) still emits a bare centered sphere.
+	res, err = Transpile("include <BOSL2/std.scad>\nspheroid(d=8);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("spheroid should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Sphere(d: 8 mm") || !strings.Contains(res.Facet, ".AlignCenter(pos: Vec3{})") {
+		t.Fatalf("expected centered sphere:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// spin= rotates a shape about its Z axis (BOSL2's attachable spin), applied after
+// anchor placement. It maps to a trailing Rotate(z: spin deg) on cuboid/cyl/
+// spheroid; with anchor= the spin follows the anchor Move.
+func TestBOSL2_Spin(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"cuboid([10, 20, 30], spin=45)", ".Rotate(z: 45 deg)"},
+		{"cyl(h=10, r=4, spin=30)", ".Rotate(z: 30 deg)"},
+		{"spheroid(r=5, spin=90)", ".Rotate(z: 90 deg)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.src, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.src, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+
+	// anchor + spin: both apply, spin after the anchor Move.
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([10, 20, 30], anchor=BOTTOM, spin=90);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("anchor+spin should transpile, got: %v", err)
+	}
+	for _, want := range []string{".Move(z: 0.5 * 30 mm)", ".Rotate(z: 90 deg)"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
 }

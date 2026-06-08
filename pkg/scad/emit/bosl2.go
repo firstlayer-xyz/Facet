@@ -65,9 +65,7 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 	case "wedge":
 		return e.bosl2Wedge(n), true
 	case "spheroid":
-		// BOSL2's preferred sphere; the OpenSCAD sphere emitter already centers
-		// and handles r/d, so reuse it (circum/style options error as extras).
-		return e.sphere(n), true
+		return e.bosl2Spheroid(n), true
 	case "regular_ngon":
 		return e.bosl2RegularNgon(n, "", 1), true
 	case "hexagon":
@@ -78,6 +76,10 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2RegularNgon(n, "8", 0), true
 	case "star":
 		return e.bosl2Star(n), true
+	case "trapezoid":
+		return e.bosl2Trapezoid(n), true
+	case "ellipse":
+		return e.bosl2Ellipse(n), true
 	case "position", "attach":
 		// Reached only outside a supported parent (top level, or under a
 		// transform); inside cuboid/cyl these are handled by withAttachments.
@@ -113,6 +115,30 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2AxisScale(n, "y"), true
 	case "zscale":
 		return e.bosl2AxisScale(n, "z"), true
+	// half-space cuts (keep one side of the plane through the origin)
+	case "top_half":
+		return e.bosl2Half(n, "z", 1), true
+	case "bottom_half":
+		return e.bosl2Half(n, "z", -1), true
+	case "back_half":
+		return e.bosl2Half(n, "y", 1), true
+	case "front_half":
+		return e.bosl2Half(n, "y", -1), true
+	case "right_half":
+		return e.bosl2Half(n, "x", 1), true
+	case "left_half":
+		return e.bosl2Half(n, "x", -1), true
+	case "half_of":
+		return e.bosl2HalfOf(n), true
+	// single-axis mirrors (no copy; optional offset plane)
+	case "xflip":
+		return e.bosl2Flip(n, "x"), true
+	case "yflip":
+		return e.bosl2Flip(n, "y"), true
+	case "zflip":
+		return e.bosl2Flip(n, "z"), true
+	case "recolor":
+		return e.bosl2Recolor(n), true
 	// linear distributors (n copies spaced along one axis, centered)
 	case "xcopies":
 		return e.bosl2LinearCopies(n, "x"), true
@@ -128,6 +154,13 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2ArcCopies(n), true
 	case "grid_copies", "grid2d":
 		return e.bosl2GridCopies(n), true
+	// distributors (spread the distinct children along one axis, centered)
+	case "xdistribute":
+		return e.bosl2Distribute(n, "x"), true
+	case "ydistribute":
+		return e.bosl2Distribute(n, "y"), true
+	case "zdistribute":
+		return e.bosl2Distribute(n, "z"), true
 	// mirror-and-keep copies
 	case "xflip_copy":
 		return e.bosl2FlipCopy(n, "x"), true
@@ -147,6 +180,108 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.childExpr(n), true
 	}
 	return "", false
+}
+
+// bosl2Half emits a BOSL2 named half-space cut (top_half/bottom_half/…): it keeps
+// the side of the plane through the origin that the (axis, sign) normal points
+// toward, via Solid.Trim (which cuts the negative side of the half-space).
+func (e *Emitter) bosl2Half(n *ast.ModuleCall, axis string, sign int) string {
+	e.rejectExtraArgs(n, 0)
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
+	}
+	return fmt.Sprintf("%s.Trim(%s: %d)", child, axis, sign)
+}
+
+// bosl2Flip emits BOSL2's single-axis mirror xflip/yflip/zflip: a reflection
+// across the plane perpendicular to that axis. The optional offset (named after
+// the axis, e.g. xflip(x=5)) moves the mirror plane; with no offset it is the
+// plane through the origin, a plain Solid.Mirror on that axis.
+func (e *Emitter) bosl2Flip(n *ast.ModuleCall, axis string) string {
+	e.rejectExtraArgs(n, 1, axis)
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
+	}
+	if off, ok := arg(n, axis, 0); ok {
+		d := e.expr(off, kLength)
+		return fmt.Sprintf("%s.Move(%s: -(%s)).Mirror(%s: 1).Move(%s: %s)", child, axis, d, axis, axis, d)
+	}
+	return fmt.Sprintf("%s.Mirror(%s: 1)", child, axis)
+}
+
+// bosl2Recolor emits BOSL2's recolor(c): it paints the child and all of its
+// descendants the given color — exactly Facet's Solid.Color, reached through the
+// shared OpenSCAD color mapping (CSS names and r,g,b[,a] vectors).
+func (e *Emitter) bosl2Recolor(n *ast.ModuleCall) string {
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "recolor has no child geometry")
+	}
+	method := e.colorMethod(n, false)
+	if method == "" {
+		// colorMethod recorded the specific error (unknown name, bad vector, …).
+		return child
+	}
+	return child + "." + method
+}
+
+// bosl2Distribute spreads a module's distinct children evenly along one axis,
+// centered on the origin (BOSL2 xdistribute/ydistribute/zdistribute). Child i of
+// n sits at offset (i - (n-1)/2) * spacing, where spacing is the explicit
+// `spacing` or `l` total length spread across the n-1 gaps. Unlike the *copies
+// distributors (which repeat one child), this places each different child, so it
+// expands to a union of individually-moved children rather than a loop.
+func (e *Emitter) bosl2Distribute(n *ast.ModuleCall, axis string) string {
+	e.rejectExtraArgs(n, 1, "spacing", "l")
+	parts := e.childParts(n.Children)
+	if len(parts) == 0 {
+		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
+	}
+	cnt := len(parts)
+	var spacing string
+	if s, ok := arg(n, "spacing", 0); ok {
+		spacing = e.expr(s, kLength)
+	} else if l, ok := arg(n, "l", -1); ok {
+		if cnt < 2 {
+			return e.errf(n.Pos(), "%s with a total length l needs at least two children", n.Name)
+		}
+		spacing = "(" + e.expr(l, kLength) + ") / " + strconv.Itoa(cnt-1)
+	} else {
+		return e.errf(n.Pos(), "%s needs a spacing or a total length l", n.Name)
+	}
+	mid := float64(cnt-1) / 2
+	moved := make([]string, cnt)
+	for i, p := range parts {
+		coeff := float64(i) - mid
+		if coeff == 0 {
+			moved[i] = parenthesizeIfOperator(p)
+			continue
+		}
+		c := strconv.FormatFloat(coeff, 'g', -1, 64)
+		moved[i] = fmt.Sprintf("%s.Move(%s: %s * (%s))", parenthesizeIfOperator(p), axis, c, spacing)
+	}
+	return strings.Join(moved, " + ")
+}
+
+// bosl2HalfOf emits BOSL2's general half_of(v): keep the half of the child on the
+// side the direction v points toward, via Solid.Trim with v as the plane normal.
+func (e *Emitter) bosl2HalfOf(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 1, "v")
+	v, ok := arg(n, "v", 0)
+	if !ok {
+		return e.errf(n.Pos(), "half_of needs a direction v")
+	}
+	dir, ok := anchorVec(v)
+	if !ok {
+		return e.errf(n.Pos(), "half_of: unsupported direction (use an anchor or a ±1/0 vector)")
+	}
+	child := e.childExpr(n)
+	if child == "" {
+		return e.errf(n.Pos(), "half_of has no child geometry")
+	}
+	return fmt.Sprintf("%s.Trim(x: %d, y: %d, z: %d)", child, dir[0], dir[1], dir[2])
 }
 
 // bosl2Diff emits BOSL2's diff(): it renders its child with subtractive tagging
@@ -227,6 +362,22 @@ func (e *Emitter) bosl2GridCopies(n *ast.ModuleCall) string {
 // axis-angle (v=) and pivot (cp=) forms are located errors, same as rotate.
 func (e *Emitter) bosl2Rot(n *ast.ModuleCall) string {
 	child := e.childExpr(n)
+	// BOSL2's rot(from=, to=) aligns one direction onto another — no OpenSCAD
+	// rotate equivalent, so handle it before delegating to the shared handler
+	// (which only knows the a/v forms).
+	if from, hasFrom := arg(n, "from", -1); hasFrom {
+		to, hasTo := arg(n, "to", -1)
+		if !hasTo {
+			return e.errf(n.Pos(), "rot(from=) needs a matching to=")
+		}
+		if child == "" {
+			return e.errf(n.Pos(), "rot has no child geometry")
+		}
+		fx, fy, fz := e.vec3Of(from)
+		tx, ty, tz := e.vec3Of(to)
+		return child + ".Rotate(from: Vec3{x: " + fx + ", y: " + fy + ", z: " + fz +
+			"}, to: Vec3{x: " + tx + ", y: " + ty + ", z: " + tz + "})"
+	}
 	m := e.rotateMethod(n, e.childIs2D(n))
 	if m == "" {
 		return child
@@ -388,7 +539,7 @@ func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
 // isBosl22D reports whether a BOSL2 shape name yields a 2D Sketch.
 func isBosl22D(name string) bool {
 	switch name {
-	case "rect", "regular_ngon", "hexagon", "pentagon", "octagon", "star":
+	case "rect", "regular_ngon", "hexagon", "pentagon", "octagon", "star", "trapezoid", "ellipse":
 		return true
 	}
 	return false
@@ -423,6 +574,49 @@ func (e *Emitter) bosl2Star(n *ast.ModuleCall) string {
 	ang := "(180 * " + v + " / " + nStr + ") * 1 deg"
 	return "Polygon(points: for " + v + " [1:2 * " + nStr + "] { yield Vec2{x: " +
 		radius + " * Cos(a: " + ang + "), y: " + radius + " * Sin(a: " + ang + ")} })"
+}
+
+// bosl2Ellipse emits BOSL2's 2D ellipse, centered on the origin: a circle of
+// radius rx (so the facet count suits the final size), centered, then scaled in y
+// by ry/rx. Accepts r=[rx,ry] or d=[dx,dy] (a scalar gives a circle).
+func (e *Emitter) bosl2Ellipse(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 1, "r", "d", "$fn", "$fa", "$fs")
+	var rx, ry string
+	if r, ok := arg(n, "r", 0); ok {
+		rx, ry = e.pair2(r, kLength)
+	} else if d, ok := arg(n, "d", -1); ok {
+		dx, dy := e.pair2(d, kLength)
+		rx, ry = "("+dx+") / 2", "("+dy+") / 2"
+	} else {
+		return e.errf(n.Pos(), "ellipse without r or d")
+	}
+	circ := "Circle(r: " + rx + e.segmentsSuffix(n, 0, false) + ")"
+	return fmt.Sprintf("%s.Move(x: -(%s), y: -(%s)).Scale(x: 1, y: Number(from: %s) / Number(from: %s))",
+		circ, rx, rx, ry, rx)
+}
+
+// bosl2Trapezoid emits BOSL2's 2D isosceles trapezoid, centered on the origin:
+// height h along Y, bottom width w1 and top width w2 along X — a four-point
+// Polygon.
+func (e *Emitter) bosl2Trapezoid(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 3, "h", "w1", "w2")
+	h, ok := arg(n, "h", 0)
+	if !ok {
+		return e.errf(n.Pos(), "trapezoid without height h")
+	}
+	w1, ok := arg(n, "w1", 1)
+	if !ok {
+		return e.errf(n.Pos(), "trapezoid without bottom width w1")
+	}
+	w2, ok := arg(n, "w2", 2)
+	if !ok {
+		return e.errf(n.Pos(), "trapezoid without top width w2")
+	}
+	hs, a, b := e.expr(h, kLength), e.expr(w1, kLength), e.expr(w2, kLength)
+	return fmt.Sprintf("Polygon(points: [Vec2{x: -(%s) / 2, y: -(%s) / 2}, "+
+		"Vec2{x: (%s) / 2, y: -(%s) / 2}, Vec2{x: (%s) / 2, y: (%s) / 2}, "+
+		"Vec2{x: -(%s) / 2, y: (%s) / 2}])",
+		a, hs, a, hs, b, hs, b, hs)
 }
 
 // bosl2RegularNgon emits a BOSL2 regular polygon (regular_ngon, or the named
@@ -629,20 +823,60 @@ func (e *Emitter) signedLen(d ast.Expr, sign int) string {
 	return "-(" + val + ")"
 }
 
+// bosl2Spheroid emits BOSL2's spheroid (its preferred sphere): a centered Sphere
+// from r/d, with anchor= placing it by its anchor point over the [2r,2r,2r]
+// bounding box (so spheroid(anchor=BOTTOM) rests on the plate). circum/style
+// options still error as extras.
+func (e *Emitter) bosl2Spheroid(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 1, "r", "d", "anchor", "spin", "$fn", "$fa", "$fs")
+	ctor, radius, ok := e.sphereCtor(n)
+	if !ok {
+		return e.errf(n.Pos(), "spheroid without radius")
+	}
+	shape := ctor + ".AlignCenter(pos: Vec3{})"
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "spheroid: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+		dia := "2 * (" + radius + ")"
+		shape += anchorMove(v, [3]string{dia, dia, dia})
+	}
+	return e.applySpin(n, shape)
+}
+
 // bosl2Cuboid emits BOSL2's cuboid, which is centered on the origin by default
-// (anchor=CENTER) — unlike OpenSCAD's corner-origin cube. Rounding, chamfering,
-// edge selection, and explicit anchors are not yet translated; rejectExtraArgs
-// turns any such argument into a located error rather than dropping it.
+// (anchor=CENTER) — unlike OpenSCAD's corner-origin cube. rounding/chamfer round
+// or bevel every edge, anchor= shifts the box so that anchor point lands on the
+// origin, and orient= reorients it. Per-edge selection (edges=/except=) is not
+// translated; rejectExtraArgs turns any such argument into a located error.
 func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
 	}
-	e.rejectExtraArgs(n, 1, "size")
+	e.rejectExtraArgs(n, 1, "size", "rounding", "chamfer", "orient", "anchor", "spin")
 	size, ok := arg(n, "size", 0)
 	if !ok {
 		return e.errf(n.Pos(), "cuboid without size")
 	}
-	return e.cubeCtor(size) + ".AlignCenter(pos: Vec3{})"
+	fillet := ""
+	if r, has := arg(n, "rounding", -1); has {
+		fillet = e.expr(r, kLength)
+	}
+	chamfer := ""
+	if c, has := arg(n, "chamfer", -1); has {
+		chamfer = e.expr(c, kLength)
+	}
+	shape := e.cubeCtor(size, fillet, chamfer) + ".AlignCenter(pos: Vec3{})"
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "cuboid: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+		sx, sy, sz := e.cubeSizeComponents(size)
+		shape += anchorMove(v, [3]string{sx, sy, sz})
+	}
+	return e.applyOrient(n, e.applySpin(n, shape))
 }
 
 // bosl2Wedge emits BOSL2's wedge — a triangular ramp — as its exact VNF (the
@@ -692,9 +926,10 @@ func (e *Emitter) boxSizeComponents(size ast.Expr) (x, y, z string) {
 
 // bosl2Cyl emits BOSL2's cyl, a cylinder centered on the origin in every axis
 // (anchor=CENTER) — unlike OpenSCAD's cylinder, which centers only X/Y. `l` and
-// `h` are both accepted for the length; `r`/`d` for the radius/diameter. Cones
-// (r1/r2/d1/d2), chamfer, rounding, and anchors are not yet translated and
-// error via rejectExtraArgs.
+// `h` are both accepted for the length; `r`/`d` for the radius/diameter; r1/r2
+// (or d1/d2) make a cone (Frustum); chamfer/rounding bevel/round both rims;
+// orient= reorients it; and anchor= shifts it by its anchor point (an x/y anchor
+// on a tapered cyl is a located error — its bounding diameter is the larger end).
 func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
@@ -708,7 +943,7 @@ func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 // single r/d makes a plain cylinder. ok is false on a missing height/radius (an
 // error is already recorded).
 func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
-	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "rounding", "chamfer", "orient", "anchor", "spin", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
 		return e.errf(n.Pos(), "cyl without height"), false
@@ -716,6 +951,15 @@ func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 	hStr := e.expr(h, kLength)
 	rMM, rMMok := cylinderRadiusMM(n)
 	segs := e.segmentsSuffix(n, rMM, rMMok)
+	// BOSL2 cyl(rounding=R)/chamfer=C round/bevel both rims; Frustum/Cylinder
+	// fillet/chamfer do the same.
+	edge := ""
+	if r, has := arg(n, "rounding", -1); has {
+		edge += ", fillet: " + e.expr(r, kLength)
+	}
+	if c, has := arg(n, "chamfer", -1); has {
+		edge += ", chamfer: " + e.expr(c, kLength)
+	}
 
 	r1, hasR1 := arg(n, "r1", -1)
 	r2, hasR2 := arg(n, "r2", -1)
@@ -724,17 +968,54 @@ func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 	var ctor string
 	switch {
 	case hasR1 && hasR2:
-		ctor = fmt.Sprintf("Frustum(r1: %s, r2: %s, h: %s%s)", e.expr(r1, kLength), e.expr(r2, kLength), hStr, segs)
+		ctor = fmt.Sprintf("Frustum(r1: %s, r2: %s, h: %s%s%s)", e.expr(r1, kLength), e.expr(r2, kLength), hStr, segs, edge)
 	case hasD1 && hasD2:
-		ctor = fmt.Sprintf("Frustum(d1: %s, d2: %s, h: %s%s)", e.expr(d1, kLength), e.expr(d2, kLength), hStr, segs)
+		ctor = fmt.Sprintf("Frustum(d1: %s, d2: %s, h: %s%s%s)", e.expr(d1, kLength), e.expr(d2, kLength), hStr, segs, edge)
 	default:
 		key, val, rok := e.radiusArg(n, 1)
 		if !rok {
 			return e.errf(n.Pos(), "cyl without radius"), false
 		}
-		ctor = fmt.Sprintf("Cylinder(%s: %s, h: %s%s)", key, val, hStr, segs)
+		ctor = fmt.Sprintf("Cylinder(%s: %s, h: %s%s%s)", key, val, hStr, segs, edge)
 	}
-	return ctor + ".AlignCenter(pos: Vec3{})", true
+	shape := ctor + ".AlignCenter(pos: Vec3{})"
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "cyl: unsupported anchor (use a named anchor or a ±1/0 vector)"), false
+		}
+		// The cylinder's bounding box is [diameter, diameter, h]; the diameter is
+		// only needed when the anchor leans off the z axis.
+		dia := ""
+		if v[0] != 0 || v[1] != 0 {
+			d, dok := e.cylDiameter(n)
+			if !dok {
+				return e.errf(n.Pos(), "cyl: an x/y anchor on a tapered cyl is not supported"), false
+			}
+			dia = d
+		}
+		shape += anchorMove(v, [3]string{dia, dia, hStr})
+	}
+	return e.applyOrient(n, e.applySpin(n, shape)), true
+}
+
+// cylDiameter returns the x/y bounding diameter of a straight cyl: the explicit
+// d, or 2*r. It returns ok=false for a tapered cyl (r1/r2/d1/d2), whose bounding
+// diameter is the larger end — not needed for the common z-axis anchors.
+func (e *Emitter) cylDiameter(n *ast.ModuleCall) (string, bool) {
+	for _, name := range []string{"r1", "r2", "d1", "d2"} {
+		if _, has := arg(n, name, -1); has {
+			return "", false
+		}
+	}
+	key, val, ok := e.radiusArg(n, 1)
+	if !ok {
+		return "", false
+	}
+	if key == "d" {
+		return val, true
+	}
+	return "2 * (" + val + ")", true
 }
 
 // bosl2OrientedCyl renders a BOSL2 axis-oriented cylinder (xcyl/ycyl/zcyl): the

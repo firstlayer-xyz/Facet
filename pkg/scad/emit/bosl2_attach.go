@@ -2,6 +2,8 @@ package emit
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"facet/pkg/scad/ast"
 )
@@ -52,12 +54,62 @@ func anchorVec(x ast.Expr) ([3]int, bool) {
 	return [3]int{}, false
 }
 
-// negDir returns the opposite direction vector.
-func negDir(d [3]int) [3]int { return [3]int{-d[0], -d[1], -d[2]} }
-
 // anchorLit renders a direction vector as a B2Anchor literal for the runtime.
 func anchorLit(d [3]int) string {
 	return fmt.Sprintf("B2Anchor{x: %d, y: %d, z: %d}", d[0], d[1], d[2])
+}
+
+// anchorMove returns the trailing .Move that repositions a CENTER-anchored box of
+// the given per-axis sizes so the BOSL2 anchor v lands on the origin. In a
+// centered box the anchor point sits at v*size/2, so the box is shifted by
+// -v*size/2 on each anchored axis. Returns "" for CENTER (v all zero).
+func anchorMove(v [3]int, size [3]string) string {
+	axes := [3]string{"x", "y", "z"}
+	var parts []string
+	for i := 0; i < 3; i++ {
+		if v[i] == 0 {
+			continue
+		}
+		coeff := strconv.FormatFloat(-float64(v[i])/2, 'g', -1, 64)
+		parts = append(parts, fmt.Sprintf("%s: %s * (%s)", axes[i], coeff, size[i]))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ".Move(" + strings.Join(parts, ", ") + ")"
+}
+
+// anchorVec3Lit renders a direction vector as a Facet Vec3 literal (mm units).
+func anchorVec3Lit(d [3]int) string {
+	return fmt.Sprintf("Vec3{x: %d mm, y: %d mm, z: %d mm}", d[0], d[1], d[2])
+}
+
+// applyOrient appends a Rotate(from: UP, to: orient) when the call carries an
+// orient= anchor — BOSL2's orient= points the shape's +Z (UP) axis along that
+// direction. The shape must already be centered on the origin (orient rotates it
+// in place).
+func (e *Emitter) applyOrient(n *ast.ModuleCall, shape string) string {
+	o, has := arg(n, "orient", -1)
+	if !has {
+		return shape
+	}
+	dir, ok := anchorVec(o)
+	if !ok {
+		return e.errf(n.Pos(), "%s: unsupported orient anchor", n.Name)
+	}
+	return shape + ".Rotate(from: Vec3{z: 1 mm}, to: " + anchorVec3Lit(dir) + ")"
+}
+
+// applySpin appends a Rotate(z: spin) when the call carries a spin= angle —
+// BOSL2's spin rotates the shape about its Z axis. BOSL2 applies it after anchor
+// placement and before orient, so callers wrap the anchored shape with applySpin
+// inside applyOrient.
+func (e *Emitter) applySpin(n *ast.ModuleCall, shape string) string {
+	s, has := arg(n, "spin", -1)
+	if !has {
+		return shape
+	}
+	return shape + ".Rotate(z: " + e.expr(s, kAngle) + ")"
 }
 
 // bosl2AttachGuard blocks a leaf shape that has children — in BOSL2 a child of a
@@ -192,12 +244,12 @@ func (e *Emitter) b2PositionLink(n *ast.ModuleCall, removedOuter bool) string {
 		"(a: " + anchorLit(dir) + ", child: " + child + ")"
 }
 
-// b2AttachLink emits one attach link. The two-anchor form attach(P, C) is the
-// no-reorientation case — C must be anti-parallel to P (e.g. attach(TOP, BOTTOM))
-// — and emits B2.attach. The single-anchor form attach(P) reorients the child to
-// point out the P face and emits B2.attachReorient; P must be a single axis.
-// Cases needing a general child rotation (non-opposite two-anchor attach) are
-// located errors.
+// b2AttachLink emits one attach link. The two-anchor form attach(P, C) mates the
+// child's C anchor onto the parent's P anchor, rotating the child so C faces
+// opposite P — emitted as B2.attach (the rotation is the identity when C is
+// already anti-parallel to P, e.g. attach(TOP, BOTTOM)). The single-anchor form
+// attach(P) reorients the child to point out the P anchor (any direction,
+// including combined edge/corner anchors) and emits B2.attachReorient.
 func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 	pa, ok := arg(n, "", 0)
 	if !ok {
@@ -218,34 +270,14 @@ func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 		if !ok {
 			return e.errf(n.Pos(), "attach: unsupported child anchor")
 		}
-		if cdir != negDir(pdir) {
-			return e.errf(n.Pos(), "attach: reorienting the child (non-opposite anchors) is not yet supported")
-		}
+		// Any child anchor: the runtime rotates the child so ca faces opposite pa
+		// (a no-op when ca is already anti-parallel to pa).
 		return "." + pick(removed, "attachRemove", "attach") +
 			"(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ")"
 	}
 
-	if !isPureAxis(pdir) {
-		return e.errf(n.Pos(), "attach: single-anchor attach needs a single-axis anchor, not a combined one")
-	}
 	return "." + pick(removed, "attachReorientRemove", "attachReorient") +
 		"(pa: " + anchorLit(pdir) + ", child: " + child + ")"
-}
-
-// isPureAxis reports whether a direction vector points along exactly one axis
-// with unit magnitude (one of ±X/±Y/±Z).
-func isPureAxis(d [3]int) bool {
-	nonzero := 0
-	for _, v := range d {
-		switch v {
-		case 0:
-		case 1, -1:
-			nonzero++
-		default:
-			return false
-		}
-	}
-	return nonzero == 1
 }
 
 // b2ChildOf emits the single geometry child of a position/attach node as a B2,
