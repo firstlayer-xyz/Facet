@@ -493,6 +493,80 @@ return x
 `,
 		},
 		{
+			name: "multi-line params group consecutive same-type without defaults",
+			input: `fn Frustum(r1 Length, r2 Length, h Length, segments Number = 0) Solid {
+return r1
+}
+`,
+			want: `fn Frustum(
+    r1, r2, h Length,
+    segments Number = 0,
+) Solid {
+    return r1
+}
+`,
+		},
+		{
+			name: "multi-line params keep distinct types on separate group lines",
+			input: `fn Foo(a Length, b Length, c Number, d Number, e Angle = 0 deg) Solid {
+return a
+}
+`,
+			want: `fn Foo(
+    a, b Length,
+    c, d Number,
+    e Angle = 0 deg,
+) Solid {
+    return a
+}
+`,
+		},
+		{
+			// Grouping Any params shares a type slot (the checker forces them to
+			// one concrete type), so independently-declared Any params must NOT
+			// be merged — that would change the program's meaning.
+			name: "independently-declared generic Any params are not merged single-line",
+			input: `fn Foo(a Any, b Any) Any {
+return a
+}
+`,
+			want: `fn Foo(a Any, b Any) Any {
+    return a
+}
+`,
+		},
+		{
+			name: "independently-declared generic Any params are not merged multi-line",
+			input: `fn Foo(a Any, b Any, c Number = 0) Any {
+return a
+}
+`,
+			want: `fn Foo(
+    a Any,
+    b Any,
+    c Number = 0,
+) Any {
+    return a
+}
+`,
+		},
+		{
+			// Author-declared generic groups DO share a type slot, so they must
+			// be preserved exactly as grouped.
+			name: "author-grouped generic Any params are preserved",
+			input: `fn Foo(a, b Any, c Number = 0) Any {
+return a
+}
+`,
+			want: `fn Foo(
+    a, b Any,
+    c Number = 0,
+) Any {
+    return a
+}
+`,
+		},
+		{
 			name: "fraction preserved",
 			input: `fn Main() {
 return 1/2 mm

@@ -537,8 +537,9 @@ func TestTranspilePolyhedronParamNested(t *testing.T) {
 	if err != nil {
 		t.Fatalf("polyhedron-param module should transpile, got: %v", err)
 	}
-	// The formatter groups same-typed adjacent params: `pts, fcs Any`.
-	if !strings.Contains(res.Facet, "fn shell(pts, fcs Any)") {
+	// pts and fcs are independent Any slots and must stay separate: merging
+	// them into `pts, fcs Any` would force both to one concrete type.
+	if !strings.Contains(res.Facet, "fn shell(pts Any, fcs Any)") {
 		t.Fatalf("polyhedron points/faces params not typed Any:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
