@@ -22,8 +22,8 @@ func TestSetColorClampsAllChannels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cube.SetColor(2.0, -0.5, 1.5, 0.5)
-	for id, fi := range cube.FaceMap {
+	colored := cube.SetColor(2.0, -0.5, 1.5, 0.5)
+	for id, fi := range colored.FaceMap {
 		// All three channels clamped: R=1.0→255, G=0→0, B=1.0→255.
 		// Color is 0xRRGGBB (low 24 bits).
 		const wantColor = uint32(0xFF00FF)
@@ -47,8 +47,8 @@ func TestSetColorNoStrayHighBits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cube.SetColor(2.0, 2.0, 2.0, 1.0)
-	for id, fi := range cube.FaceMap {
+	colored := cube.SetColor(2.0, 2.0, 2.0, 1.0)
+	for id, fi := range colored.FaceMap {
 		if fi.Color>>24 != 0 {
 			t.Errorf("face %d: high byte of color must be 0, got 0x%X", id, fi.Color)
 		}
