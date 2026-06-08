@@ -19,9 +19,7 @@
 # fn Main() { Cube(s: 20 mm, chamfer: 2 mm) }
 # ```
 fn Cube(
-    x Length,
-    y Length,
-    z Length,
+    x, y, z Length,
     fillet Length = 0 mm,
     chamfer Length = 0 mm,
 ) Solid {
@@ -104,16 +102,14 @@ fn Sphere(
 # fn Main() { Torus(r_maj: 20 mm, r_min: 4 mm) }
 # ```
 fn Torus(
-    r_maj Length,
-    r_min Length,
+    r_maj, r_min Length,
     segments Number = 0,
 ) Solid {
     return Circle(r: r_min).Move(x: r_maj - r_min, y: -r_min).Revolve(segments: segments)
 }
 
 fn Torus(
-    d_maj Length,
-    d_min Length,
+    d_maj, d_min Length,
     segments Number = 0,
 ) Solid {
     return Torus(r_maj: d_maj / 2, r_min: d_min / 2, segments: segments)
@@ -151,8 +147,7 @@ fn Octahedron(r Length) Solid {
 # fn Main() { Cylinder(r: 5 mm, h: 20 mm, fillet: 1 mm) }
 # ```
 fn Cylinder(
-    r Length,
-    h Length,
+    r, h Length,
     segments Number = 0,
     fillet Length = 0 mm,
     chamfer Length = 0 mm,
@@ -162,8 +157,7 @@ fn Cylinder(
 }
 
 fn Cylinder(
-    d Length,
-    h Length,
+    d, h Length,
     segments Number = 0,
     fillet Length = 0 mm,
     chamfer Length = 0 mm,
@@ -181,9 +175,7 @@ fn Cylinder(
 # fn Main() { Frustum(r1: 8 mm, r2: 3 mm, h: 20 mm, fillet: 1 mm) }
 # ```
 fn Frustum(
-    r1 Length,
-    r2 Length,
-    h Length,
+    r1, r2, h Length,
     segments Number = 0,
     fillet Length = 0 mm,
     chamfer Length = 0 mm,
@@ -219,9 +211,7 @@ fn Frustum(
 }
 
 fn Frustum(
-    d1 Length,
-    d2 Length,
-    h Length,
+    d1, d2, h Length,
     segments Number = 0,
     fillet Length = 0 mm,
     chamfer Length = 0 mm,
@@ -244,8 +234,7 @@ fn Cone(r, h Length) Solid {
 # fn Main() { Prism(s: 10 mm, h: 20 mm, sides: 6) }    # hexagonal prism
 # ```
 fn Prism(
-    s Length,
-    h Length,
+    s, h Length,
     sides Number = 3,
 ) Solid {
     var r = s / (2 * Sin(a: 180 deg / sides))
@@ -336,9 +325,7 @@ fn Solid.Rotate(from, to Vec3) Solid {
 # Scales a solid around a pivot point. `Scale(v, around)` uses the same factor for all axes.
 # `Resize(s, around)` scales to exact target dimensions.
 fn Solid.Scale(
-    x Number,
-    y Number,
-    z Number,
+    x, y, z Number,
     around Vec3 = Vec3{},
 ) Solid {
     return _scale(self, x, y, z, around.x, around.y, around.z)

@@ -309,13 +309,59 @@ func (f *formatter) formatFunction(fn *parser.Function, trailing []parser.Commen
 	f.writeIndentedLn("}")
 }
 
-func (f *formatter) formatParamsMultiLine(params []*parser.Param) {
+// paramGroup is a run of consecutive parameters that share a type and render
+// with the type written once after the last name: `a, b, c Type`.
+type paramGroup struct {
+	params []*parser.Param
+	typ    string
+}
+
+// groupParams splits params into consecutive same-type runs that render with
+// the type written once: `a, b, c Type`. A param with a default or constraint
+// always begins its own group, since defaults and constraints are only legal
+// on single-name declarations.
+//
+// Grouping is purely cosmetic for concrete types but carries meaning for
+// generic types: `a, b Any` makes the checker force a and b to one concrete
+// type, while `a Any, b Any` leaves them independent. So generic params are
+// merged only when the author already declared them together (a shared,
+// positive GroupID); independently-declared generic params stay separate.
+func groupParams(params []*parser.Param) []paramGroup {
+	var groups []paramGroup
 	for _, p := range params {
-		f.writeIndent()
-		f.write(p.Name)
-		if p.Type != "" {
-			f.write(" " + p.Type)
+		merge := len(groups) > 0 &&
+			groups[len(groups)-1].typ == p.Type &&
+			p.Default == nil && p.Constraint == nil
+		if merge && isGenericParamType(p.Type) {
+			prev := groups[len(groups)-1].params
+			last := prev[len(prev)-1]
+			merge = last.GroupID != 0 && last.GroupID == p.GroupID
 		}
+		if !merge {
+			groups = append(groups, paramGroup{typ: p.Type})
+		}
+		groups[len(groups)-1].params = append(groups[len(groups)-1].params, p)
+	}
+	return groups
+}
+
+// isGenericParamType reports whether grouping params of this type changes
+// program meaning. Any and []Any params declared together share a type slot
+// that the checker forces to a single concrete type (see checker.checkCall);
+// for all other (concrete) types, grouping only affects layout.
+func isGenericParamType(t string) bool {
+	return t == "Any" || t == "[]Any"
+}
+
+// writeGroupType writes a parameter group's shared type, plus the default and
+// constraint when the group is a single parameter (defaults/constraints are
+// only legal on single-name declarations).
+func (f *formatter) writeGroupType(g paramGroup) {
+	if g.typ != "" {
+		f.write(" " + g.typ)
+	}
+	if len(g.params) == 1 {
+		p := g.params[0]
 		if p.Default != nil {
 			f.write(" = ")
 			f.formatExpr(p.Default)
@@ -324,6 +370,19 @@ func (f *formatter) formatParamsMultiLine(params []*parser.Param) {
 			f.write(" where ")
 			f.formatExpr(p.Constraint)
 		}
+	}
+}
+
+func (f *formatter) formatParamsMultiLine(params []*parser.Param) {
+	for _, g := range groupParams(params) {
+		f.writeIndent()
+		for i, p := range g.params {
+			if i > 0 {
+				f.write(", ")
+			}
+			f.write(p.Name)
+		}
+		f.writeGroupType(g)
 		f.writeln(",")
 	}
 }
@@ -332,21 +391,8 @@ func (f *formatter) formatParams(params []*parser.Param) {
 	// Facet param syntax: name Type [= default] [where constraint]
 	// Consecutive same-type params without defaults/constraints share the trailing type.
 	// Groups separated by commas between groups: "x, y Length, z Angle"
-
-	type paramGroup struct {
-		params []*parser.Param
-		typ    string
-	}
-	var groups []paramGroup
-	for _, p := range params {
-		if len(groups) == 0 || groups[len(groups)-1].typ != p.Type || p.Default != nil || p.Constraint != nil {
-			groups = append(groups, paramGroup{typ: p.Type})
-		}
-		groups[len(groups)-1].params = append(groups[len(groups)-1].params, p)
-	}
-
 	firstParam := true
-	for _, g := range groups {
+	for _, g := range groupParams(params) {
 		for _, p := range g.params {
 			if !firstParam {
 				f.write(", ")
@@ -354,21 +400,7 @@ func (f *formatter) formatParams(params []*parser.Param) {
 			firstParam = false
 			f.write(p.Name)
 		}
-		if g.typ != "" {
-			f.write(" " + g.typ)
-		}
-		// Defaults/constraints only on single-param groups, written after type.
-		if len(g.params) == 1 {
-			p := g.params[0]
-			if p.Default != nil {
-				f.write(" = ")
-				f.formatExpr(p.Default)
-			}
-			if p.Constraint != nil {
-				f.write(" where ")
-				f.formatExpr(p.Constraint)
-			}
-		}
+		f.writeGroupType(g)
 	}
 }
 

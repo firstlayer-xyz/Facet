@@ -99,8 +99,7 @@ fn Sketch.Rotate(
 
 # Scales a sketch non-uniformly around a pivot point.
 fn Sketch.Scale(
-    x Number,
-    y Number,
+    x, y Number,
     around Vec2 = Vec2{},
 ) Sketch {
     return _scale(self, x, y, around.x, around.y)
