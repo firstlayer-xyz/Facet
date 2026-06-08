@@ -1325,3 +1325,31 @@ func TestBOSL2_PrismoidAnchor(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// ellipse(anchor=) and trapezoid(anchor=) shift the centered 2D shape by its
+// anchor point (in-plane only). ellipse uses [2rx, 2ry]; trapezoid uses
+// [max(w1,w2), h]. A z-bearing anchor is a located error on a 2D shape.
+func TestBOSL2_Shape2DAnchor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nellipse(r=[10, 5], anchor=RIGHT);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("ellipse anchor should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(x: -0.5 * (2 * 10 mm))") {
+		t.Fatalf("expected RIGHT shift by rx in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\ntrapezoid(h=10, w1=20, w2=8, anchor=RIGHT);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("trapezoid anchor should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Max(a: 20 mm, b: 8 mm)") {
+		t.Fatalf("expected x bound via Max of the two widths in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// Out-of-plane anchor errors on both.
+	if _, err := Transpile("include <BOSL2/std.scad>\nellipse(r=[10, 5], anchor=TOP);\n", "part.scad"); err == nil {
+		t.Fatal("ellipse(anchor=TOP) should error (out-of-plane)")
+	}
+}

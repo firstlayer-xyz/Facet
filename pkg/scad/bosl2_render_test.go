@@ -517,3 +517,26 @@ func TestBOSL2Render_PrismoidAnchorBottom(t *testing.T) {
 		t.Errorf("x range [%v, %v], want [-10, 10] (20-wide base, centered)", minX, maxX)
 	}
 }
+
+// ellipse(anchor=RIGHT) puts the right vertex on the origin: an rx=10,ry=5
+// ellipse extruded spans x:-20..0, y:-5..5.
+func TestBOSL2Render_EllipseAnchor(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nlinear_extrude(height=3) ellipse(r=[10, 5], anchor=RIGHT);\n")
+	minX, minY, _, maxX, maxY, _ := s.BoundingBox()
+	if !near(minX, -20, 0.6) || !near(maxX, 0, 0.6) {
+		t.Errorf("x range [%v, %v], want [-20, 0] (right edge on origin)", minX, maxX)
+	}
+	if !near(minY, -5, 0.6) || !near(maxY, 5, 0.6) {
+		t.Errorf("y range [%v, %v], want [-5, 5] (still centered in y)", minY, maxY)
+	}
+}
+
+// trapezoid(anchor=FWD) puts the front edge on the origin: h=10 trapezoid spans
+// y:0..10, x within +/- max(w1,w2)/2.
+func TestBOSL2Render_TrapezoidAnchor(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nlinear_extrude(height=3) trapezoid(h=10, w1=20, w2=8, anchor=FWD);\n")
+	_, minY, _, _, maxY, _ := s.BoundingBox()
+	if !near(minY, 0, 0.1) || !near(maxY, 10, 0.1) {
+		t.Errorf("y range [%v, %v], want [0, 10] (front edge on origin)", minY, maxY)
+	}
+}

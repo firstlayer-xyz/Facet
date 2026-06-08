@@ -603,7 +603,7 @@ func (e *Emitter) bosl2Star(n *ast.ModuleCall) string {
 // radius rx (so the facet count suits the final size), centered, then scaled in y
 // by ry/rx. Accepts r=[rx,ry] or d=[dx,dy] (a scalar gives a circle).
 func (e *Emitter) bosl2Ellipse(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 1, "r", "d", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 1, "r", "d", "anchor", "$fn", "$fa", "$fs")
 	var rx, ry string
 	if r, ok := arg(n, "r", 0); ok {
 		rx, ry = e.pair2(r, kLength)
@@ -614,15 +614,26 @@ func (e *Emitter) bosl2Ellipse(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "ellipse without r or d")
 	}
 	circ := "Circle(r: " + rx + e.segmentsSuffix(n, 0, false) + ")"
-	return fmt.Sprintf("%s.Move(x: -(%s), y: -(%s)).Scale(x: 1, y: Number(from: %s) / Number(from: %s))",
+	shape := fmt.Sprintf("%s.Move(x: -(%s), y: -(%s)).Scale(x: 1, y: Number(from: %s) / Number(from: %s))",
 		circ, rx, rx, ry, rx)
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "ellipse: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+		if v[2] != 0 {
+			return e.errf(n.Pos(), "ellipse: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)")
+		}
+		shape += anchorMove(v, [3]string{"2 * (" + rx + ")", "2 * (" + ry + ")", ""})
+	}
+	return shape
 }
 
 // bosl2Trapezoid emits BOSL2's 2D isosceles trapezoid, centered on the origin:
 // height h along Y, bottom width w1 and top width w2 along X — a four-point
 // Polygon.
 func (e *Emitter) bosl2Trapezoid(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 3, "h", "w1", "w2")
+	e.rejectExtraArgs(n, 3, "h", "w1", "w2", "anchor")
 	h, ok := arg(n, "h", 0)
 	if !ok {
 		return e.errf(n.Pos(), "trapezoid without height h")
@@ -636,10 +647,21 @@ func (e *Emitter) bosl2Trapezoid(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "trapezoid without top width w2")
 	}
 	hs, a, b := e.expr(h, kLength), e.expr(w1, kLength), e.expr(w2, kLength)
-	return fmt.Sprintf("Polygon(points: [Vec2{x: -(%s) / 2, y: -(%s) / 2}, "+
+	shape := fmt.Sprintf("Polygon(points: [Vec2{x: -(%s) / 2, y: -(%s) / 2}, "+
 		"Vec2{x: (%s) / 2, y: -(%s) / 2}, Vec2{x: (%s) / 2, y: (%s) / 2}, "+
 		"Vec2{x: -(%s) / 2, y: (%s) / 2}])",
 		a, hs, a, hs, b, hs, b, hs)
+	if av, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(av)
+		if !vok {
+			return e.errf(n.Pos(), "trapezoid: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+		if v[2] != 0 {
+			return e.errf(n.Pos(), "trapezoid: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)")
+		}
+		shape += anchorMove(v, [3]string{"Max(a: " + a + ", b: " + b + ")", hs, ""})
+	}
+	return shape
 }
 
 // bosl2RegularNgon emits a BOSL2 regular polygon (regular_ngon, or the named
