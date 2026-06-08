@@ -334,7 +334,11 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		return r.Refine(int(n)), nil
+		count, err := requireCount(name, 1, n, maxRefine)
+		if err != nil {
+			return nil, err
+		}
+		return r.Refine(count), nil
 	})
 
 	builtinRegistry["_simplify"] = solidMethod("_simplify", func(r *manifold.Solid, args []value) (value, error) {

@@ -50,7 +50,10 @@ func (e *evaluator) builtinSphere(args []value) (value, error) {
 		if err != nil {
 			return nil, err
 		}
-		segments = int(n)
+		segments, err = requireCount("_sphere", 2, n, maxSegments)
+		if err != nil {
+			return nil, err
+		}
 	}
 	result, err := manifold.CreateSphere(radius, segments)
 	if err != nil {
@@ -81,7 +84,10 @@ func (e *evaluator) builtinCylinder(args []value) (value, error) {
 		if err != nil {
 			return nil, err
 		}
-		segments = int(n)
+		segments, err = requireCount("_cylinder", 4, n, maxSegments)
+		if err != nil {
+			return nil, err
+		}
 	}
 	result, err := manifold.CreateCylinder(height, radiusLow, radiusHigh, segments)
 	if err != nil {
@@ -123,7 +129,10 @@ func (e *evaluator) builtinCircle(args []value) (value, error) {
 		if err != nil {
 			return nil, err
 		}
-		segments = int(n)
+		segments, err = requireCount("_circle", 2, n, maxSegments)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return manifold.CreateCircle(radius, segments)
 }

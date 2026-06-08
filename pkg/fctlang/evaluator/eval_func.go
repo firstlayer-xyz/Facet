@@ -117,6 +117,16 @@ func (e *evaluator) execBody(stmts []parser.Stmt, retType string, locals map[str
 const maxCallDepth = 1000
 const maxRangeSize = 10_000_000
 
+// maxSegments caps circular resolution (segments/slices for Sphere, Cylinder,
+// Circle, Revolve, Extrude). A sphere has ~segments² triangles and the C++
+// kernel does not clamp, so an unbounded count from source (e.g. 1e8) would
+// OOM/hang the host. 10000 is far beyond any real model (~10⁸ triangles at the
+// cap). maxRefine caps Refine's per-edge subdivision factor (triangle count
+// grows ~n²). Both are conservative ceilings, tunable if a model legitimately
+// needs more.
+const maxSegments = 10000
+const maxRefine = 1000
+
 func (e *evaluator) evalFunction(fn *parser.Function, args map[string]value) (value, error) {
 	e.callDepth++
 	if e.callDepth > maxCallDepth {
