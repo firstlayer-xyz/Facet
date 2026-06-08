@@ -419,6 +419,12 @@ export function applyUIPalette(palette: UIPalette): void {
   root.style.setProperty('--ui-border-hover', palette.borderHover);
   root.style.setProperty('--ui-text', palette.text);
   root.style.setProperty('--ui-text-muted', palette.textMuted);
+  // The dropdown chevron is an inline SVG; recolor its stroke to the muted
+  // text color so it matches each theme (a data URI can't read a CSS var).
+  root.style.setProperty(
+    '--ui-chevron',
+    `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='${encodeURIComponent(palette.textMuted)}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
+  );
   root.style.setProperty('--ui-text-bright', palette.textBright);
   root.style.setProperty('--ui-text-dim', palette.textDim);
   root.style.setProperty('--ui-text-placeholder', palette.textPlaceholder);
