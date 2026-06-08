@@ -269,3 +269,23 @@ func TestBOSL2Render_AttachNonOpposite(t *testing.T) {
 		t.Errorf("maxZ = %v, want ~10 (cube top; cyl doesn't add height)", maxZ)
 	}
 }
+
+// A trapezoid extruded to a solid has the expected size and area: h=10, w1=20,
+// w2=10 -> trapezoid area (20+10)/2*10 = 150; extruded 5 -> volume 750. Bounds
+// span w1=20 in X, h=10 in Y.
+func TestBOSL2Render_Trapezoid(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nlinear_extrude(height=5) trapezoid(h=10, w1=20, w2=10);\n")
+	if v := s.Volume(); !near(v, 750, 1.0) {
+		t.Errorf("volume = %v, want ~750 (area 150 x height 5)", v)
+	}
+	dx, dy, dz := extents(s)
+	if !near(dx, 20, 0.5) {
+		t.Errorf("x-extent = %v, want ~20 (w1)", dx)
+	}
+	if !near(dy, 10, 0.5) {
+		t.Errorf("y-extent = %v, want ~10 (h)", dy)
+	}
+	if !near(dz, 5, 0.5) {
+		t.Errorf("z-extent = %v, want ~5", dz)
+	}
+}

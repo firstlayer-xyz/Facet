@@ -78,6 +78,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2RegularNgon(n, "8", 0), true
 	case "star":
 		return e.bosl2Star(n), true
+	case "trapezoid":
+		return e.bosl2Trapezoid(n), true
 	case "position", "attach":
 		// Reached only outside a supported parent (top level, or under a
 		// transform); inside cuboid/cyl these are handled by withAttachments.
@@ -404,7 +406,7 @@ func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
 // isBosl22D reports whether a BOSL2 shape name yields a 2D Sketch.
 func isBosl22D(name string) bool {
 	switch name {
-	case "rect", "regular_ngon", "hexagon", "pentagon", "octagon", "star":
+	case "rect", "regular_ngon", "hexagon", "pentagon", "octagon", "star", "trapezoid":
 		return true
 	}
 	return false
@@ -439,6 +441,30 @@ func (e *Emitter) bosl2Star(n *ast.ModuleCall) string {
 	ang := "(180 * " + v + " / " + nStr + ") * 1 deg"
 	return "Polygon(points: for " + v + " [1:2 * " + nStr + "] { yield Vec2{x: " +
 		radius + " * Cos(a: " + ang + "), y: " + radius + " * Sin(a: " + ang + ")} })"
+}
+
+// bosl2Trapezoid emits BOSL2's 2D isosceles trapezoid, centered on the origin:
+// height h along Y, bottom width w1 and top width w2 along X — a four-point
+// Polygon.
+func (e *Emitter) bosl2Trapezoid(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 3, "h", "w1", "w2")
+	h, ok := arg(n, "h", 0)
+	if !ok {
+		return e.errf(n.Pos(), "trapezoid without height h")
+	}
+	w1, ok := arg(n, "w1", 1)
+	if !ok {
+		return e.errf(n.Pos(), "trapezoid without bottom width w1")
+	}
+	w2, ok := arg(n, "w2", 2)
+	if !ok {
+		return e.errf(n.Pos(), "trapezoid without top width w2")
+	}
+	hs, a, b := e.expr(h, kLength), e.expr(w1, kLength), e.expr(w2, kLength)
+	return fmt.Sprintf("Polygon(points: [Vec2{x: -(%s) / 2, y: -(%s) / 2}, "+
+		"Vec2{x: (%s) / 2, y: -(%s) / 2}, Vec2{x: (%s) / 2, y: (%s) / 2}, "+
+		"Vec2{x: -(%s) / 2, y: (%s) / 2}])",
+		a, hs, a, hs, b, hs, b, hs)
 }
 
 // bosl2RegularNgon emits a BOSL2 regular polygon (regular_ngon, or the named

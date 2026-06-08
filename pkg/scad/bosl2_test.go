@@ -978,3 +978,15 @@ func TestBOSL2_NonBOSL2IncludeErrors(t *testing.T) {
 		t.Fatalf("error should name the path and location, got: %v", err)
 	}
 }
+
+// BOSL2 trapezoid is a centered 2D isosceles trapezoid — a four-point Polygon.
+func TestBOSL2_Trapezoid(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ntrapezoid(h=10, w1=20, w2=10);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("trapezoid should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Polygon(") {
+		t.Fatalf("expected a Polygon:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
