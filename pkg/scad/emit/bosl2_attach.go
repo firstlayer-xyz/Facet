@@ -2,6 +2,8 @@ package emit
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"facet/pkg/scad/ast"
 )
@@ -55,6 +57,26 @@ func anchorVec(x ast.Expr) ([3]int, bool) {
 // anchorLit renders a direction vector as a B2Anchor literal for the runtime.
 func anchorLit(d [3]int) string {
 	return fmt.Sprintf("B2Anchor{x: %d, y: %d, z: %d}", d[0], d[1], d[2])
+}
+
+// anchorMove returns the trailing .Move that repositions a CENTER-anchored box of
+// the given per-axis sizes so the BOSL2 anchor v lands on the origin. In a
+// centered box the anchor point sits at v*size/2, so the box is shifted by
+// -v*size/2 on each anchored axis. Returns "" for CENTER (v all zero).
+func anchorMove(v [3]int, size [3]string) string {
+	axes := [3]string{"x", "y", "z"}
+	var parts []string
+	for i := 0; i < 3; i++ {
+		if v[i] == 0 {
+			continue
+		}
+		coeff := strconv.FormatFloat(-float64(v[i])/2, 'g', -1, 64)
+		parts = append(parts, fmt.Sprintf("%s: %s * (%s)", axes[i], coeff, size[i]))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ".Move(" + strings.Join(parts, ", ") + ")"
 }
 
 // anchorVec3Lit renders a direction vector as a Facet Vec3 literal (mm units).

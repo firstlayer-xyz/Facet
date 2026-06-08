@@ -826,14 +826,15 @@ func (e *Emitter) signedLen(d ast.Expr, sign int) string {
 }
 
 // bosl2Cuboid emits BOSL2's cuboid, which is centered on the origin by default
-// (anchor=CENTER) — unlike OpenSCAD's corner-origin cube. Rounding, chamfering,
-// edge selection, and explicit anchors are not yet translated; rejectExtraArgs
-// turns any such argument into a located error rather than dropping it.
+// (anchor=CENTER) — unlike OpenSCAD's corner-origin cube. rounding/chamfer round
+// or bevel every edge, anchor= shifts the box so that anchor point lands on the
+// origin, and orient= reorients it. Per-edge selection (edges=/except=) is not
+// translated; rejectExtraArgs turns any such argument into a located error.
 func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
 	}
-	e.rejectExtraArgs(n, 1, "size", "rounding", "chamfer", "orient")
+	e.rejectExtraArgs(n, 1, "size", "rounding", "chamfer", "orient", "anchor")
 	size, ok := arg(n, "size", 0)
 	if !ok {
 		return e.errf(n.Pos(), "cuboid without size")
@@ -846,7 +847,16 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if c, has := arg(n, "chamfer", -1); has {
 		chamfer = e.expr(c, kLength)
 	}
-	return e.applyOrient(n, e.cubeCtor(size, fillet, chamfer)+".AlignCenter(pos: Vec3{})")
+	shape := e.cubeCtor(size, fillet, chamfer) + ".AlignCenter(pos: Vec3{})"
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "cuboid: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+		sx, sy, sz := e.cubeSizeComponents(size)
+		shape += anchorMove(v, [3]string{sx, sy, sz})
+	}
+	return e.applyOrient(n, shape)
 }
 
 // bosl2Wedge emits BOSL2's wedge — a triangular ramp — as its exact VNF (the

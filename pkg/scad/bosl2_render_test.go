@@ -386,3 +386,19 @@ func TestBOSL2Render_Distribute(t *testing.T) {
 		t.Errorf("x-extent = %v, want 22 (-11..11)", dx)
 	}
 }
+
+// cuboid(anchor=BOTTOM) puts the box on the plate: a [10,20,30] box spans z:0..30,
+// still centered in x (-5..5) and y (-10..10), volume 6000.
+func TestBOSL2Render_CuboidAnchorBottom(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([10, 20, 30], anchor=BOTTOM);\n")
+	if v := s.Volume(); !near(v, 6000, 1.0) {
+		t.Errorf("volume = %v, want 6000", v)
+	}
+	minX, minY, minZ, maxX, maxY, maxZ := s.BoundingBox()
+	if !near(minZ, 0, 0.1) || !near(maxZ, 30, 0.1) {
+		t.Errorf("z range [%v, %v], want [0, 30] (BOTTOM on plate)", minZ, maxZ)
+	}
+	if !near(minX, -5, 0.1) || !near(maxX, 5, 0.1) || !near(minY, -10, 0.1) || !near(maxY, 10, 0.1) {
+		t.Errorf("xy box [%v,%v]-[%v,%v], want centered [-5,-10]-[5,10]", minX, minY, maxX, maxY)
+	}
+}

@@ -1112,3 +1112,26 @@ func TestBOSL2_DistributeLength(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// cuboid(anchor=) shifts the centered box so the anchor point lands on the
+// origin: the box moves by -anchor*size/2 per axis. BOTTOM sits it on the plate.
+func TestBOSL2_CuboidAnchor(t *testing.T) {
+	cases := []struct{ src, want string }{
+		// BOTTOM -> +z/2: a 30-tall box rises to z:0..30.
+		{"cuboid([10, 20, 30], anchor=BOTTOM)", ".Move(z: 0.5 * 30 mm)"},
+		// TOP -> -z/2.
+		{"cuboid(10, anchor=TOP)", ".Move(z: -0.5 * 10 mm)"},
+		// Combined RIGHT+TOP shifts two axes at once.
+		{"cuboid([10, 10, 10], anchor=RIGHT+TOP)", ".Move(x: -0.5 * 10 mm, z: -0.5 * 10 mm)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.src, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.src, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}

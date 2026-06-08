@@ -188,6 +188,18 @@ func (e *Emitter) cube(n *ast.ModuleCall) string {
 	return dims
 }
 
+// cubeSizeComponents returns the per-axis side lengths of a cuboid size argument:
+// a 3-vector yields its components, a scalar yields itself on all three axes. (It
+// recovers the explicit per-axis sizes that cubeCtor folds into Cube(s:) for the
+// scalar case, which BOSL2 anchor placement needs.)
+func (e *Emitter) cubeSizeComponents(size ast.Expr) (x, y, z string) {
+	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) == 3 {
+		return e.expr(v.Elems[0], kLength), e.expr(v.Elems[1], kLength), e.expr(v.Elems[2], kLength)
+	}
+	s := e.expr(size, kLength)
+	return s, s, s
+}
+
 // cubeCtor renders a box constructor from an OpenSCAD size: a 3-vector becomes
 // `Cube(x:, y:, z:)`, anything else the scalar `Cube(s:)` overload. A non-empty
 // fillet (a Length expression) rounds every edge — BOSL2's cuboid(rounding=);
