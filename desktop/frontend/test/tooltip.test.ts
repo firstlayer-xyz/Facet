@@ -5,6 +5,12 @@ test('Monaco hover tooltip appears, hides, and reappears', async ({
   mockedPage: page,
   setEvalHandler,
 }) => {
+  // Generous per-test cap: the hover-visibility waits below are raised to 10s
+  // each to tolerate slow content fetch + fade-in under CI load, which can
+  // exceed the 20s default when summed. These are ceilings, not delays — a
+  // healthy run finishes in a few seconds.
+  test.setTimeout(60_000);
+
   // The hover provider in src/editor.ts pulls tooltip content from `symbols`
   // (the checker's symbol table) plus `references` (token → declaration).
   // The default eval-cube fixture has neither, so an unaugmented hover
@@ -40,16 +46,19 @@ test('Monaco hover tooltip appears, hides, and reappears', async ({
   // Monaco renders its hover widget as `.monaco-hover` when active.
   const hover = page.locator('.monaco-hover').first();
 
-  // Hover on `cube` (line 1, col 2).
+  // Hover on `cube` (line 1, col 2). The hover widget mounts quickly but its
+  // content fetch + fade-in can run well past 2s under CI load (the widget
+  // sits in the DOM as `.monaco-hover ... hidden` until then), so wait
+  // generously — the assertion is "it shows", not "it shows within 2s".
   await hoverAt(page, 1, 2);
-  await expect(hover).toBeVisible({ timeout: 2_000 });
+  await expect(hover).toBeVisible({ timeout: 10_000 });
 
   // Move mouse far away — Monaco hides the hover when the pointer leaves.
   await page.mouse.move(0, 0);
-  await expect(hover).toBeHidden({ timeout: 2_000 });
+  await expect(hover).toBeHidden({ timeout: 5_000 });
 
   // Re-hover — the recurring breakage pattern is that the second hover never
   // re-shows the tooltip.
   await hoverAt(page, 1, 2);
-  await expect(hover).toBeVisible({ timeout: 2_000 });
+  await expect(hover).toBeVisible({ timeout: 10_000 });
 });
