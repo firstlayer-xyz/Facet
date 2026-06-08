@@ -9,6 +9,7 @@ package manifold
 import "C"
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"unsafe"
 
@@ -114,36 +115,25 @@ func extractRunMesh(s *Solid) *RunMesh {
 	}
 }
 
-// buildFaceColors constructs per-face color assignments from run-based mesh data
-// and a FaceMap. defaultHex is the color used for faces whose originalID has no
-// color in the FaceMap (e.g. "#C0C0C0" for 3MF, "" for OBJ). Returns nil if
-// the FaceMap contains no colors or there are no runs.
-func buildFaceColors(rm *RunMesh, faceMap map[uint32]FaceInfo, defaultHex string) []meshio.FaceColor {
-	hasColors := false
-	for _, fi := range faceMap {
-		if fi.Color != NoColor {
-			hasColors = true
-			break
-		}
-	}
-	if !hasColors || len(rm.RunOriginalID) == 0 {
-		return nil
-	}
-	numTris := len(rm.Indices) / 3
-	faceColors := make([]meshio.FaceColor, numTris)
+// runTriangleHex maps the FaceMap onto one hex color per triangle, using
+// Manifold's originalID run tracking. A triangle whose face has no assigned
+// color gets "". The result feeds EncodeSolidMesh / faceColorsFromHex, which
+// apply the per-format default.
+func runTriangleHex(rm *RunMesh, faceMap map[uint32]FaceInfo) []string {
+	hex := make([]string, len(rm.Indices)/3)
 	for run := 0; run < len(rm.RunOriginalID); run++ {
-		origID := rm.RunOriginalID[run]
-		hex := defaultHex
-		if fi, ok := faceMap[origID]; ok && fi.Color != NoColor {
-			hex = colorFromFaceInfo(fi)
+		fi, ok := faceMap[rm.RunOriginalID[run]]
+		if !ok || fi.Color == NoColor {
+			continue
 		}
+		c := colorFromFaceInfo(fi)
 		startTri := int(rm.RunIndex[run]) / 3
 		endTri := int(rm.RunIndex[run+1]) / 3
 		for t := startTri; t < endTri; t++ {
-			faceColors[t] = meshio.FaceColor{Hex: hex}
+			hex[t] = c
 		}
 	}
-	return faceColors
+	return hex
 }
 
 // Export3MF exports a single Solid to a 3MF file using faceID-based colors.
@@ -151,20 +141,11 @@ func buildFaceColors(rm *RunMesh, faceMap map[uint32]FaceInfo, defaultHex string
 // Colors are derived from the Solid's FaceMap via Manifold's originalID run tracking.
 func Export3MF(s *Solid, path string) error {
 	rm := extractRunMesh(s)
-	if len(rm.Vertices) == 0 {
-		return fmt.Errorf("export failed: empty mesh")
+	data, err := EncodeSolidMesh(rm.Vertices, rm.Indices, runTriangleHex(rm, s.FaceMap), "3mf")
+	if err != nil {
+		return err
 	}
-
-	// When a FaceMap with colors exists, every face must get a color — slicers like
-	// OrcaSlicer/PrusaSlicer ignore colors entirely if any triangle lacks one.
-	faceColors := buildFaceColors(rm, s.FaceMap, "#C0C0C0")
-
-	m := &meshio.Mesh{
-		Vertices:   rm.Vertices,
-		Indices:    rm.Indices,
-		FaceColors: faceColors,
-	}
-	return m.Write3MF(path)
+	return os.WriteFile(path, data, 0o644)
 }
 
 // Export3MFMulti unions multiple Solids and exports to 3MF with faceID-based colors.
@@ -178,14 +159,11 @@ func Export3MFMulti(solids []*Solid, path string) error {
 // ExportSTL exports a single Solid to a binary STL file.
 func ExportSTL(s *Solid, path string) error {
 	rm := extractRunMesh(s)
-	if len(rm.Vertices) == 0 {
-		return fmt.Errorf("export failed: empty mesh")
+	data, err := EncodeSolidMesh(rm.Vertices, rm.Indices, nil, "stl")
+	if err != nil {
+		return err
 	}
-	m := &meshio.Mesh{
-		Vertices: rm.Vertices,
-		Indices:  rm.Indices,
-	}
-	return m.WriteSTL(path)
+	return os.WriteFile(path, data, 0o644)
 }
 
 // ExportSTLMulti unions multiple Solids and exports to STL.
@@ -203,12 +181,10 @@ func ExportOBJ(s *Solid, path string) error {
 		return fmt.Errorf("export failed: empty mesh")
 	}
 
-	faceColors := buildFaceColors(rm, s.FaceMap, "")
-
 	m := &meshio.Mesh{
 		Vertices:   rm.Vertices,
 		Indices:    rm.Indices,
-		FaceColors: faceColors,
+		FaceColors: faceColorsFromHex(runTriangleHex(rm, s.FaceMap), len(rm.Indices)/3, ""),
 	}
 	return m.WriteOBJ(path)
 }

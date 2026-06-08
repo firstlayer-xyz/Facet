@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"runtime/debug"
 	"sort"
@@ -57,6 +58,7 @@ func main() {
 	js.Global().Set("facetFrame", js.FuncOf(jsFrame))
 	js.Global().Set("facetExamples", js.FuncOf(jsExamples))
 	js.Global().Set("facetExample", js.FuncOf(jsExample))
+	js.Global().Set("facetExport", js.FuncOf(jsExport))
 	// Block forever — WASM runtime must stay alive.
 	select {}
 }
@@ -251,6 +253,23 @@ func (s *webSession) getOrBuild(source, entry, overridesJSON string) (*evaluator
 	// previous inputs.
 	s.anim = nil
 
+	result, err := evalEntry(source, entry, overridesJSON)
+	if err != nil {
+		return nil, err
+	}
+	if result.Animation == nil {
+		return nil, fmt.Errorf("entry %q is not an Animation", entry)
+	}
+	s.store(source, entry, overridesJSON, result.Animation)
+	return result.Animation, nil
+}
+
+// evalEntry runs the browser-side Load → Check → Eval sequence for one entry,
+// returning the evaluator result or the first error. Shared by the animation
+// session build and mesh export so the parse/check/eval steps live in one
+// place. (jsEval keeps its own copy because it also surfaces entry points and
+// per-stage errors back to the viewer.)
+func evalEntry(source, entry, overridesJSON string) (*evaluator.EvalResult, error) {
 	overrides, err := parseOverrides(overridesJSON)
 	if err != nil {
 		return nil, err
@@ -264,15 +283,7 @@ func (s *webSession) getOrBuild(source, entry, overridesJSON string) (*evaluator
 	if len(checked.Errors) > 0 {
 		return nil, fmt.Errorf("%s", checked.Errors[0].Message)
 	}
-	result, err := evaluator.Eval(ctx, prog, "model.fct", overrides, entry)
-	if err != nil {
-		return nil, err
-	}
-	if result.Animation == nil {
-		return nil, fmt.Errorf("entry %q is not an Animation", entry)
-	}
-	s.store(source, entry, overridesJSON, result.Animation)
-	return result.Animation, nil
+	return evaluator.Eval(ctx, prog, "model.fct", overrides, entry)
 }
 
 // jsFrame renders one frame of an Animation entry at timeMs, reusing the
@@ -319,6 +330,106 @@ func packSolidFrame(solid *manifold.Solid) ([]byte, error) {
 	meta, binData := appendMeshBinary(nil, dm)
 	stats := evaluator.SolidFrameStats(solid, dm)
 	return packResponse(evalResponseHeader{Mesh: meta, Stats: &stats}, binData)
+}
+
+// ── Mesh export (download) ────────────────────────────────────────────────────
+
+// jsExport evaluates a Facet source and returns a Promise resolving to the
+// serialized mesh bytes for a browser download. The bytes come from the same
+// manifold.EncodeSolidMesh serializer the desktop app writes to disk, so a web
+// download is byte-for-byte the desktop export (3MF carries the same per-face
+// colors). An Animation entry exports the frame at timeMs — the geometry the
+// viewer is currently showing — rather than erroring.
+//
+// JS signature: facetExport(source, entry, overridesJSON, format, timeMs) → Promise<Uint8Array | {ok:false, error:string}>.
+// format is "3mf" or "stl"; .fct source download is handled in JS (no eval).
+func jsExport(this js.Value, args []js.Value) interface{} {
+	if len(args) < 5 {
+		return resolvedPromise(jsErrorObj("facetExport: expected (source, entryName, overridesJSON, format, timeMs)"))
+	}
+	source := args[0].String()
+	entryName := args[1].String()
+	overridesJSON := args[2].String()
+	format := args[3].String()
+	timeMs := args[4].Float()
+
+	return newPromise(func(resolve js.Value) {
+		defer recoverIntoResolve(resolve, "facetExport")
+
+		dm, err := exportDisplayMesh(source, entryName, overridesJSON, timeMs)
+		if err != nil {
+			resolve.Invoke(jsErrorObj(err.Error()))
+			return
+		}
+		verts, indices, faceHex := displayMeshForExport(dm)
+		data, err := manifold.EncodeSolidMesh(verts, indices, faceHex, format)
+		if err != nil {
+			resolve.Invoke(jsErrorObj(err.Error()))
+			return
+		}
+		resolve.Invoke(bytesToU8(data))
+	})
+}
+
+// exportDisplayMesh evaluates source+entry and returns the merged DisplayMesh to
+// serialize — the same StaticSolids → merge the viewer renders, so a download is
+// exactly what's on screen. For an Animation entry StaticSolids renders the
+// frame at timeMs. EncodeSolidMesh rejects an empty mesh downstream.
+func exportDisplayMesh(source, entryName, overridesJSON string, timeMs float64) (*manifold.DisplayMesh, error) {
+	result, err := evalEntry(source, entryName, overridesJSON)
+	if err != nil {
+		return nil, err
+	}
+	solids, err := result.StaticSolids(timeMs)
+	if err != nil {
+		return nil, err
+	}
+	return manifold.MergeExtractExpandedMeshes(solids, 40), nil
+}
+
+// displayMeshForExport flattens an extracted DisplayMesh into the inputs
+// EncodeSolidMesh expects: expanded triangle vertices (3 unshared verts per
+// triangle), a sequential index list, and one hex color per triangle resolved
+// from the face-id → color map. The expanded form is exact for STL (triangle
+// soup) and a valid, slicer-weldable 3MF.
+func displayMeshForExport(dm *manifold.DisplayMesh) ([]float32, []uint32, []string) {
+	verts := float32sFromRaw(dm.ExpandedRaw)
+	indices := make([]uint32, len(verts)/3)
+	for i := range indices {
+		indices[i] = uint32(i)
+	}
+
+	numTris := len(indices) / 3
+	faceHex := make([]string, numTris)
+	// FaceGroupRaw carries one uint32 face id per triangle (the common case) or
+	// per expanded vertex; mirror buildExpandedColors' detection.
+	fgN := len(dm.FaceGroupRaw) / 4
+	perVertex := fgN == len(indices)
+	for t := 0; t < numTris; t++ {
+		idx := t
+		if perVertex {
+			idx = t * 3 // the triangle's first vertex
+		}
+		off := idx * 4
+		if off+4 > len(dm.FaceGroupRaw) {
+			continue
+		}
+		id := binary.LittleEndian.Uint32(dm.FaceGroupRaw[off : off+4])
+		if hex, ok := dm.FaceColorMap[strconv.FormatUint(uint64(id), 10)]; ok {
+			faceHex[t] = hex
+		}
+	}
+	return verts, indices, faceHex
+}
+
+// float32sFromRaw decodes a little-endian float32 byte buffer into a slice.
+func float32sFromRaw(raw []byte) []float32 {
+	n := len(raw) / 4
+	out := make([]float32, n)
+	for i := 0; i < n; i++ {
+		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[i*4:]))
+	}
+	return out
 }
 
 // parseOverrides decodes the JSON overrides string shared by eval and frame

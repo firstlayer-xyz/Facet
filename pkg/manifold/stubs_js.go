@@ -83,7 +83,9 @@ func buildDisplayMesh(verts []float32, indices []uint32, faceGroups []uint32) *D
 	}
 }
 
-// Import/Export stubs — file I/O not available in browser.
+// ImportMesh stub — file I/O is not available in the browser. Mesh export in
+// the browser goes through facetExport (web/wasm), which serializes to bytes
+// via manifold.EncodeSolidMesh and hands them to JS for download.
 func ImportMesh(path string) (*Solid, error) {
 	return nil, fmt.Errorf("ImportMesh: not available in WASM mode")
 }
@@ -115,36 +117,4 @@ func CreateSolidFromMesh(vertices []float32, indices []uint32) (*Solid, error) {
 		return nil, fmt.Errorf("CreateSolidFromMesh: mesh is not a valid closed manifold (open, self-intersecting, or non-orientable)")
 	}
 	return s, nil
-}
-
-func ExportMesh(s *Solid, path string) error {
-	return fmt.Errorf("ExportMesh: not available in WASM mode (use browser download)")
-}
-
-func ExportMeshes(solids []*Solid, path string) error {
-	return fmt.Errorf("ExportMeshes: not available in WASM mode (use browser download)")
-}
-
-func Export3MF(s *Solid, path string) error {
-	return fmt.Errorf("Export3MF: not available in WASM mode (use browser download)")
-}
-
-func Export3MFMulti(solids []*Solid, path string) error {
-	return fmt.Errorf("Export3MFMulti: not available in WASM mode (use browser download)")
-}
-
-func ExportSTL(s *Solid, path string) error {
-	return fmt.Errorf("ExportSTL: not available in WASM mode (use browser download)")
-}
-
-func ExportSTLMulti(solids []*Solid, path string) error {
-	return fmt.Errorf("ExportSTLMulti: not available in WASM mode (use browser download)")
-}
-
-func ExportOBJ(s *Solid, path string) error {
-	return fmt.Errorf("ExportOBJ: not available in WASM mode (use browser download)")
-}
-
-func ExportOBJMulti(solids []*Solid, path string) error {
-	return fmt.Errorf("ExportOBJMulti: not available in WASM mode (use browser download)")
 }
