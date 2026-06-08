@@ -828,7 +828,7 @@ func (e *Emitter) signedLen(d ast.Expr, sign int) string {
 // bounding box (so spheroid(anchor=BOTTOM) rests on the plate). circum/style
 // options still error as extras.
 func (e *Emitter) bosl2Spheroid(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 1, "r", "d", "anchor", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 1, "r", "d", "anchor", "spin", "$fn", "$fa", "$fs")
 	ctor, radius, ok := e.sphereCtor(n)
 	if !ok {
 		return e.errf(n.Pos(), "spheroid without radius")
@@ -842,7 +842,7 @@ func (e *Emitter) bosl2Spheroid(n *ast.ModuleCall) string {
 		dia := "2 * (" + radius + ")"
 		shape += anchorMove(v, [3]string{dia, dia, dia})
 	}
-	return shape
+	return e.applySpin(n, shape)
 }
 
 // bosl2Cuboid emits BOSL2's cuboid, which is centered on the origin by default
@@ -854,7 +854,7 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
 	}
-	e.rejectExtraArgs(n, 1, "size", "rounding", "chamfer", "orient", "anchor")
+	e.rejectExtraArgs(n, 1, "size", "rounding", "chamfer", "orient", "anchor", "spin")
 	size, ok := arg(n, "size", 0)
 	if !ok {
 		return e.errf(n.Pos(), "cuboid without size")
@@ -876,7 +876,7 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 		sx, sy, sz := e.cubeSizeComponents(size)
 		shape += anchorMove(v, [3]string{sx, sy, sz})
 	}
-	return e.applyOrient(n, shape)
+	return e.applyOrient(n, e.applySpin(n, shape))
 }
 
 // bosl2Wedge emits BOSL2's wedge — a triangular ramp — as its exact VNF (the
@@ -943,7 +943,7 @@ func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 // single r/d makes a plain cylinder. ok is false on a missing height/radius (an
 // error is already recorded).
 func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
-	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "rounding", "chamfer", "orient", "anchor", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "rounding", "chamfer", "orient", "anchor", "spin", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
 		return e.errf(n.Pos(), "cyl without height"), false
@@ -996,7 +996,7 @@ func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 		}
 		shape += anchorMove(v, [3]string{dia, dia, hStr})
 	}
-	return e.applyOrient(n, shape), true
+	return e.applyOrient(n, e.applySpin(n, shape)), true
 }
 
 // cylDiameter returns the x/y bounding diameter of a straight cyl: the explicit

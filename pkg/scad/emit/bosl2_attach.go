@@ -100,6 +100,18 @@ func (e *Emitter) applyOrient(n *ast.ModuleCall, shape string) string {
 	return shape + ".Rotate(from: Vec3{z: 1 mm}, to: " + anchorVec3Lit(dir) + ")"
 }
 
+// applySpin appends a Rotate(z: spin) when the call carries a spin= angle —
+// BOSL2's spin rotates the shape about its Z axis. BOSL2 applies it after anchor
+// placement and before orient, so callers wrap the anchored shape with applySpin
+// inside applyOrient.
+func (e *Emitter) applySpin(n *ast.ModuleCall, shape string) string {
+	s, has := arg(n, "spin", -1)
+	if !has {
+		return shape
+	}
+	return shape + ".Rotate(z: " + e.expr(s, kAngle) + ")"
+}
+
 // bosl2AttachGuard blocks a leaf shape that has children — in BOSL2 a child of a
 // shape is an attachment, and only cuboid/cyl carry a known attachment geometry
 // (handled by bosl2AttachChain). Any other shape with children (a bare child, or

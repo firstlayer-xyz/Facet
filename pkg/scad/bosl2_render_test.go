@@ -428,3 +428,19 @@ func TestBOSL2Render_SpheroidAnchorBottom(t *testing.T) {
 		t.Errorf("x range [%v, %v], want [-5, 5] (still centered)", minX, maxX)
 	}
 }
+
+// spin=90 about Z swaps a non-square box's footprint: [20,10,4] becomes 10 wide
+// (x) and 20 deep (y), volume unchanged.
+func TestBOSL2Render_Spin(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([20, 10, 4], spin=90);\n")
+	dx, dy, dz := extents(s)
+	if !near(dx, 10, 0.1) || !near(dy, 20, 0.1) {
+		t.Errorf("footprint = %v x %v, want 10 x 20 (spun 90)", dx, dy)
+	}
+	if !near(dz, 4, 0.1) {
+		t.Errorf("z-extent = %v, want 4", dz)
+	}
+	if v := s.Volume(); !near(v, 800, 0.5) {
+		t.Errorf("volume = %v, want 800 (spin preserves volume)", v)
+	}
+}

@@ -1191,3 +1191,36 @@ func TestBOSL2_SpheroidAnchor(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// spin= rotates a shape about its Z axis (BOSL2's attachable spin), applied after
+// anchor placement. It maps to a trailing Rotate(z: spin deg) on cuboid/cyl/
+// spheroid; with anchor= the spin follows the anchor Move.
+func TestBOSL2_Spin(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"cuboid([10, 20, 30], spin=45)", ".Rotate(z: 45 deg)"},
+		{"cyl(h=10, r=4, spin=30)", ".Rotate(z: 30 deg)"},
+		{"spheroid(r=5, spin=90)", ".Rotate(z: 90 deg)"},
+	}
+	for _, c := range cases {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+c.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.src, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.src, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+
+	// anchor + spin: both apply, spin after the anchor Move.
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([10, 20, 30], anchor=BOTTOM, spin=90);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("anchor+spin should transpile, got: %v", err)
+	}
+	for _, want := range []string{".Move(z: 0.5 * 30 mm)", ".Rotate(z: 90 deg)"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+}
