@@ -1224,3 +1224,49 @@ func TestBOSL2_Spin(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// align(anchor) seats the child flush against the parent's anchor face (aligned
+// by bounding box, not reoriented): the child is placed at the anchor point and
+// pushed out by half its own size (dir 1). inside=true pushes it in (dir -1), and
+// under diff() that becomes a subtractive alignRemove.
+func TestBOSL2_Align(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([20, 20, 10]) align(TOP) cuboid([4, 4, 8]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("align should transpile, got: %v", err)
+	}
+	for _, want := range []string{".align(", "a: B2Anchor{x: 0, y: 0, z: 1}", "child: b2_cuboid(size: Vec3{x: 4 mm", "dir: 1"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// inside=true flips the push direction.
+	res, err = Transpile("include <BOSL2/std.scad>\ncuboid([20, 20, 10]) align(TOP, inside=true) cuboid([4, 4, 4]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("align inside should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "dir: -1") {
+		t.Fatalf("expected inside push dir -1 in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// diff() + inside makes it subtractive (alignRemove).
+	res, err = Transpile("include <BOSL2/std.scad>\ndiff() cuboid([20, 20, 10]) { align(TOP, inside=true) cuboid([4, 4, 4]); }\n", "part.scad")
+	if err != nil {
+		t.Fatalf("diff align should transpile, got: %v", err)
+	}
+	if !strings.Contains(mainBody(t, res.Facet), ".alignRemove(") {
+		t.Fatalf("expected subtractive alignRemove in Main:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// align= second positional (sub-alignment) and inset/shiftout are not translated;
+// they must error rather than be silently dropped.
+func TestBOSL2_AlignRejectsExtras(t *testing.T) {
+	_, err := Transpile("include <BOSL2/std.scad>\ncuboid([20, 20, 10]) align(TOP, inset=2) cuboid([4, 4, 8]);\n", "part.scad")
+	if err == nil {
+		t.Fatal("align(inset=) should error (not translated)")
+	}
+}

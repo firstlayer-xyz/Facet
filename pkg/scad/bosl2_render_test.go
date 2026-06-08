@@ -444,3 +444,31 @@ func TestBOSL2Render_Spin(t *testing.T) {
 		t.Errorf("volume = %v, want 800 (spin preserves volume)", v)
 	}
 }
+
+// align(TOP) stacks the child on the parent's top face: a [4,4,8] child on a
+// [20,20,10] parent (z:-5..5) sits at z:5..13, so the union reaches z:13 with
+// volume 4000+128=4128 (they meet on a shared face, no overlap).
+func TestBOSL2Render_AlignTop(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([20, 20, 10]) align(TOP) cuboid([4, 4, 8]);\n")
+	_, _, minZ, _, _, maxZ := s.BoundingBox()
+	if !near(minZ, -5, 0.1) || !near(maxZ, 13, 0.1) {
+		t.Errorf("z range [%v, %v], want [-5, 13] (child stacked on top)", minZ, maxZ)
+	}
+	if v := s.Volume(); !near(v, 4128, 1.0) {
+		t.Errorf("volume = %v, want 4128 (4000 + 128)", v)
+	}
+}
+
+// align(inside=true) under diff() carves a blind pocket from the top face: a
+// [4,4,4] cutter seated inside removes 64 from the [20,20,10] block (4000->3936),
+// leaving the bounding box unchanged.
+func TestBOSL2Render_AlignInsideDiff(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ndiff() cuboid([20, 20, 10]) { align(TOP, inside=true) cuboid([4, 4, 4]); }\n")
+	if v := s.Volume(); !near(v, 3936, 1.0) {
+		t.Errorf("volume = %v, want 3936 (4000 - 64 pocket)", v)
+	}
+	_, _, minZ, _, _, maxZ := s.BoundingBox()
+	if !near(minZ, -5, 0.1) || !near(maxZ, 5, 0.1) {
+		t.Errorf("z range [%v, %v], want [-5, 5] (pocket is internal)", minZ, maxZ)
+	}
+}
