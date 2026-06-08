@@ -289,3 +289,21 @@ func TestBOSL2Render_Trapezoid(t *testing.T) {
 		t.Errorf("z-extent = %v, want ~5", dz)
 	}
 }
+
+// cuboid(chamfer=C) bevels every edge: same bounding box as the plain box, less
+// volume (corners/edges cut off), still a simple solid.
+func TestBOSL2Render_CuboidChamfer(t *testing.T) {
+	plain := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([20, 20, 20]);\n")
+	cham := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([20, 20, 20], chamfer=3);\n")
+	pdx, pdy, pdz := extents(plain)
+	cdx, cdy, cdz := extents(cham)
+	if !near(cdx, pdx, 0.5) || !near(cdy, pdy, 0.5) || !near(cdz, pdz, 0.5) {
+		t.Errorf("chamfered bbox %vx%vx%v should match plain %vx%vx%v", cdx, cdy, cdz, pdx, pdy, pdz)
+	}
+	if !(cham.Volume() < plain.Volume()) {
+		t.Errorf("chamfered volume %v should be < plain %v (edges beveled)", cham.Volume(), plain.Volume())
+	}
+	if c, g := cham.NumComponents(), cham.Genus(); c != 1 || g != 0 {
+		t.Errorf("chamfered cuboid: comps=%d genus=%d, want 1/0", c, g)
+	}
+}

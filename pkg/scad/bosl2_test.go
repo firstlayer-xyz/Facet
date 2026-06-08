@@ -369,12 +369,21 @@ func TestBOSL2_AttachCombinedAnchor(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// chamfer has no Facet primitive (only fillet/rounding), so it must still error
-// rather than be silently dropped or mistranslated as a fillet.
-func TestBOSL2_CuboidChamferStillErrors(t *testing.T) {
-	_, err := Transpile("include <BOSL2/std.scad>\ncuboid([10, 10, 10], chamfer=2);\n", "part.scad")
-	if err == nil {
-		t.Fatal("chamfer should still error (no Facet chamfer primitive)")
+// cuboid(chamfer=C) / cyl(chamfer=C) bevel every edge — mapped to the Facet
+// Cube/Cylinder chamfer primitives (added in #106).
+func TestBOSL2_Chamfer(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"cuboid([10, 10, 10], chamfer=2)", "chamfer: 2 mm"},
+		{"cyl(h=10, r=5, chamfer=1)", "chamfer: 1 mm"},
+	} {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+tc.src+";\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", tc.src, err)
+		}
+		if !strings.Contains(res.Facet, tc.want) {
+			t.Fatalf("%q: expected %q in:\n%s", tc.src, tc.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
 	}
 }
 
