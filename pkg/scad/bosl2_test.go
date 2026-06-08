@@ -1302,3 +1302,26 @@ func TestBOSL2_TubeAnchor(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// prismoid(anchor=) shifts the tapered box by its anchor point over the bounding
+// box [max(size1.x,size2.x), max(...y), h]. BOTTOM sits it on the plate (z);
+// RIGHT uses the wider end on x via Max.
+func TestBOSL2_PrismoidAnchor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nprismoid(size1=[20, 20], size2=[10, 10], h=15, anchor=BOTTOM);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("prismoid anchor should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Move(z: 0.5 * 15 mm)") {
+		t.Fatalf("expected BOTTOM lift by h/2 in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\nprismoid(size1=[20, 20], size2=[10, 10], h=15, anchor=RIGHT);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("prismoid RIGHT anchor should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Max(a: 20 mm, b: 10 mm)") {
+		t.Fatalf("expected x bound via Max of the two ends in:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}

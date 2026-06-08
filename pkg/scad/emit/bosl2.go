@@ -519,7 +519,7 @@ func (e *Emitter) centeredSquare(x, y string) string {
 // centered rectangles and recentering on the origin. `shift` (an off-axis top)
 // is not yet supported and errors via rejectExtraArgs.
 func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 3, "size1", "size2", "h", "l", "height", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 3, "size1", "size2", "h", "l", "height", "anchor", "$fn", "$fa", "$fs")
 	s1, ok := arg(n, "size1", 0)
 	if !ok {
 		return e.errf(n.Pos(), "prismoid without size1")
@@ -543,8 +543,20 @@ func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
 	}
 	x1, y1 := e.pair2(s1, kLength)
 	x2, y2 := e.pair2(s2, kLength)
-	return "Loft(profiles: [" + e.centeredSquare(x1, y1) + ", " + e.centeredSquare(x2, y2) +
-		"], heights: [0 mm, " + e.expr(h, kLength) + "]).AlignCenter(pos: Vec3{})"
+	hStr := e.expr(h, kLength)
+	shape := "Loft(profiles: [" + e.centeredSquare(x1, y1) + ", " + e.centeredSquare(x2, y2) +
+		"], heights: [0 mm, " + hStr + "]).AlignCenter(pos: Vec3{})"
+	if a, has := arg(n, "anchor", -1); has {
+		v, vok := anchorVec(a)
+		if !vok {
+			return e.errf(n.Pos(), "prismoid: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+		// The bounding box spans the wider of the two ends on each axis.
+		sx := "Max(a: " + x1 + ", b: " + x2 + ")"
+		sy := "Max(a: " + y1 + ", b: " + y2 + ")"
+		shape += anchorMove(v, [3]string{sx, sy, hStr})
+	}
+	return shape
 }
 
 // isBosl22D reports whether a BOSL2 shape name yields a 2D Sketch.

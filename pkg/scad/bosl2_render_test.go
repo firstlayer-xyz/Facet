@@ -504,3 +504,16 @@ func TestBOSL2Render_TubeAnchor(t *testing.T) {
 		t.Errorf("volume = %v, want ~1508 (hollow)", v)
 	}
 }
+
+// prismoid(anchor=BOTTOM) sits the tapered box on the plate: a 20->10 prismoid of
+// height 15 spans z:0..15, base centered (x:-10..10 from the 20-wide bottom).
+func TestBOSL2Render_PrismoidAnchorBottom(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nprismoid(size1=[20, 20], size2=[10, 10], h=15, anchor=BOTTOM);\n")
+	minX, _, minZ, maxX, _, maxZ := s.BoundingBox()
+	if !near(minZ, 0, 0.1) || !near(maxZ, 15, 0.1) {
+		t.Errorf("z range [%v, %v], want [0, 15] (BOTTOM on plate)", minZ, maxZ)
+	}
+	if !near(minX, -10, 0.1) || !near(maxX, 10, 0.1) {
+		t.Errorf("x range [%v, %v], want [-10, 10] (20-wide base, centered)", minX, maxX)
+	}
+}
