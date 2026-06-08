@@ -137,6 +137,43 @@ func TestTranspileTranslateComputedVector(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// mirror with a non-literal (computed) vector normal is indexed per axis rather
+// than silently dropped — it used to fall through vecArg and vanish entirely.
+func TestTranspileMirrorComputedNormal(t *testing.T) {
+	res, err := Transpile("module m(s) mirror(s * [1, 0, 0]) cube([1, 2, 3]);\nm(1);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("mirror with a computed normal should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Mirror(") {
+		t.Fatalf("mirror must not be dropped for a computed normal:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
+// mirror without a normal vector is a hard error, not a dropped operation
+// (no fallbacks).
+func TestTranspileMirrorWithoutNormalErrors(t *testing.T) {
+	_, err := Transpile("mirror() cube(2);\n", "part.scad")
+	if err == nil {
+		t.Fatal("expected an error for mirror without a normal")
+	}
+	if !strings.Contains(err.Error(), "mirror") {
+		t.Fatalf("expected a mirror error, got: %v", err)
+	}
+}
+
+// rotate without an angle is a hard error rather than a silently dropped
+// rotation.
+func TestTranspileRotateWithoutAngleErrors(t *testing.T) {
+	_, err := Transpile("rotate() cube(2);\n", "part.scad")
+	if err == nil {
+		t.Fatal("expected an error for rotate without an angle")
+	}
+	if !strings.Contains(err.Error(), "rotate") {
+		t.Fatalf("expected a rotate error, got: %v", err)
+	}
+}
+
 // offset(r=…) is approximated as mitered Offset(delta:…). The visual
 // difference between rounded and mitered offsets is small for thin offsets
 // (line outlines, fillets at small radii), and the alternative — refusing to

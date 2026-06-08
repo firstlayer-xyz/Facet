@@ -369,8 +369,7 @@ func (e *Emitter) rotateMethod(n *ast.ModuleCall, is2D bool) string {
 	e.rejectExtraArgs(n, 1, "a", "v")
 	// Axis-angle form: a scalar angle plus an axis vector `v`.
 	if _, hasV := arg(n, "v", -1); hasV {
-		e.errf(n.Pos(), "rotate axis-angle form")
-		return ""
+		return e.errf(n.Pos(), "rotate axis-angle form")
 	}
 	x, y, z, isVec := e.vecArg(n, "a", 0, kAngle)
 	if isVec {
@@ -380,10 +379,12 @@ func (e *Emitter) rotateMethod(n *ast.ModuleCall, is2D bool) string {
 		}
 		return "Rotate(" + joinNonZero(pair{"x", x}, pair{"y", y}, pair{"z", z}) + ")"
 	}
-	// Scalar form: rotate(a) spins about Z.
+	// Scalar form: rotate(a) spins about Z. A scalar literal or variable flows
+	// through expr; a missing angle is a hard error, not a silently dropped
+	// rotation.
 	a, found := arg(n, "a", 0)
 	if !found {
-		return ""
+		return e.errf(n.Pos(), "rotate without an angle")
 	}
 	aStr := e.expr(a, kAngle)
 	if is2D {
@@ -440,14 +441,24 @@ func (e *Emitter) scaleComponents(v ast.Expr) (x, y, z string) {
 // named `mirror(v=[...])` form.
 func (e *Emitter) mirrorMethod(n *ast.ModuleCall, is2D bool) string {
 	e.rejectExtraArgs(n, 1, "v")
-	x, y, z, ok := e.vecArg(n, "v", 0, kNumber)
-	if !ok {
-		return ""
+	if x, y, z, ok := e.vecArg(n, "v", 0, kNumber); ok {
+		if is2D {
+			return "Mirror(" + joinNonZero(pair{"x", x}, pair{"y", y}) + ")"
+		}
+		return "Mirror(" + joinNonZero(pair{"x", x}, pair{"y", y}, pair{"z", z}) + ")"
 	}
+	// Non-literal normal (a variable or computed vector): index it per axis,
+	// exactly like translate. A missing arg is a hard error, not a dropped
+	// mirror — previously a non-literal fell through vecArg and vanished.
+	v, found := arg(n, "v", 0)
+	if !found {
+		return e.errf(n.Pos(), "mirror without a normal vector")
+	}
+	expr := e.expr(v, kNumber)
 	if is2D {
-		return "Mirror(" + joinNonZero(pair{"x", x}, pair{"y", y}) + ")"
+		return fmt.Sprintf("Mirror(x: %s[0], y: %s[1])", expr, expr)
 	}
-	return "Mirror(" + joinNonZero(pair{"x", x}, pair{"y", y}, pair{"z", z}) + ")"
+	return fmt.Sprintf("Mirror(x: %s[0], y: %s[1], z: %s[2])", expr, expr, expr)
 }
 
 // resizeMethod builds `.Resize(size: Vec3{...})`. Resize is a 3D-only method.
