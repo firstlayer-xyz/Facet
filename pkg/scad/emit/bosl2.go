@@ -665,10 +665,13 @@ func (e *Emitter) bosl2Wedge(n *ast.ModuleCall) string {
 		v(hx, hy, nz), v(hx, ny, nz), v(hx, ny, hz),
 		v(nx, hy, nz), v(nx, ny, nz), v(nx, ny, hz),
 	}, ", ")
-	faces := "Face{v0: 0, v1: 1, v2: 2}, Face{v0: 3, v1: 5, v2: 4}, " +
-		"Face{v0: 0, v1: 3, v2: 1}, Face{v0: 1, v1: 3, v2: 4}, " +
-		"Face{v0: 1, v1: 4, v2: 2}, Face{v0: 2, v1: 4, v2: 5}, " +
-		"Face{v0: 2, v1: 5, v2: 3}, Face{v0: 0, v1: 2, v2: 3}"
+	// Wound so the face normals point OUTWARD (positive volume). BOSL2's VNF uses
+	// the opposite winding to Facet's Mesh convention, so each triangle is
+	// reversed (v1<->v2) from the upstream face list.
+	faces := "Face{v0: 0, v1: 2, v2: 1}, Face{v0: 3, v1: 4, v2: 5}, " +
+		"Face{v0: 0, v1: 1, v2: 3}, Face{v0: 1, v1: 4, v2: 3}, " +
+		"Face{v0: 1, v1: 2, v2: 4}, Face{v0: 2, v1: 5, v2: 4}, " +
+		"Face{v0: 2, v1: 3, v2: 5}, Face{v0: 0, v1: 3, v2: 2}"
 	mesh := "Mesh{vertices: []Vec3[" + verts + "], indices: []Face[" + faces + "]}.Solid()"
 	if boolArg(n, "center", 1) {
 		return mesh
