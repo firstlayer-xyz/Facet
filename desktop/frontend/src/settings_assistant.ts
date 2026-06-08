@@ -1,6 +1,7 @@
 import { DetectAssistantCLIs, ComingSoonCLIs, GetDefaultSystemPrompt } from '../wailsjs/go/main/App';
 import {
   settingsRow,
+  styleButton,
   type SettingsPageContext,
   type PageResult,
 } from './settings_ui';
@@ -198,6 +199,7 @@ export function buildAssistantPage(ctx: SettingsPageContext): PageResult {
     // Reset prompt button
     const resetBtn = document.createElement('button');
     resetBtn.textContent = 'Reset to Default';
+    styleButton(resetBtn);
     resetBtn.style.marginTop = '8px';
     resetBtn.addEventListener('click', () => {
       promptTextarea.value = defaultPrompt;

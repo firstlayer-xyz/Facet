@@ -3,14 +3,14 @@
 /** Show a dialog for creating a new library: pick/create folder + name. */
 export function promptNewLibrary(folders: string[]): Promise<{folder: string; name: string; isNewFolder: boolean} | null> {
   return new Promise(resolve => {
-    const inputCSS = 'width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--ui-border,#444);border-radius:4px;background:var(--ui-bg-alt,#1a1a1a);color:var(--ui-text,#eee);font-size:13px;outline:none';
+    const inputCSS = 'width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--ui-border);border-radius:4px;background-color:var(--ui-bg);color:var(--ui-text);font-size:13px;outline:none';
     const btnCSS = 'padding:4px 14px;border:none;border-radius:4px;cursor:pointer;font-size:13px';
 
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:9999';
 
     const box = document.createElement('div');
-    box.style.cssText = 'background:var(--ui-bg,#222);border:1px solid var(--ui-border,#444);border-radius:8px;padding:16px;min-width:300px;color:var(--ui-text,#eee);font-family:system-ui,sans-serif;font-size:13px';
+    box.style.cssText = 'background:var(--ui-bg);border:1px solid var(--ui-border);border-radius:8px;padding:16px;min-width:300px;color:var(--ui-text);font-family:system-ui,sans-serif;font-size:13px';
 
     const title = document.createElement('div');
     title.textContent = 'New Library';
@@ -27,7 +27,7 @@ export function promptNewLibrary(folders: string[]): Promise<{folder: string; na
     folderRow.style.cssText = 'display:flex;gap:6px;margin-bottom:10px';
 
     const sel = document.createElement('select');
-    sel.style.cssText = inputCSS + ';flex:1';
+    sel.style.cssText = inputCSS + ';flex:1;padding-right:26px';
     for (const f of folders) {
       const o = document.createElement('option');
       o.value = f; o.textContent = f;
@@ -72,11 +72,11 @@ export function promptNewLibrary(folders: string[]): Promise<{folder: string; na
 
     const cancel = document.createElement('button');
     cancel.textContent = 'Cancel';
-    cancel.style.cssText = btnCSS + ';background:var(--ui-border,#444);color:var(--ui-text,#eee)';
+    cancel.style.cssText = btnCSS + ';background:var(--ui-border);color:var(--ui-text)';
 
     const ok = document.createElement('button');
     ok.textContent = 'Create';
-    ok.style.cssText = btnCSS + ';background:var(--ui-accent,#4a9eff);color:#fff';
+    ok.style.cssText = btnCSS + ';background:var(--ui-accent);color:#fff';
 
     function done(result: {folder: string; name: string; isNewFolder: boolean} | null) {
       overlay.remove(); resolve(result);

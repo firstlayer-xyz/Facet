@@ -179,30 +179,13 @@ export class AssistantPanel {
   private buildControls(): HTMLElement {
     const controls = document.createElement('div');
     controls.className = 'assistant-controls';
-    controls.style.display = 'flex';
-    controls.style.gap = '6px';
-    controls.style.alignItems = 'center';
-    controls.style.padding = '4px 8px';
-
-    const styleSelect = (sel: HTMLSelectElement) => {
-      sel.style.flex = '1';
-      sel.style.minWidth = '0';
-      sel.style.background = '#1a1a2e';
-      sel.style.color = '#ccc';
-      sel.style.border = '1px solid #444';
-      sel.style.borderRadius = '4px';
-      sel.style.padding = '2px 4px';
-      sel.style.fontSize = '11px';
-    };
 
     this.modelSelect = document.createElement('select');
     this.modelSelect.title = 'Model';
-    styleSelect(this.modelSelect);
     this.modelSelect.addEventListener('change', () => this.applyConfigChange());
 
     this.effortSelect = document.createElement('select');
     this.effortSelect.title = 'Reasoning effort';
-    styleSelect(this.effortSelect);
     this.effortSelect.addEventListener('change', () => this.applyConfigChange());
 
     controls.appendChild(this.modelSelect);
