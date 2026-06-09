@@ -203,7 +203,11 @@ func buildDisplayMeshFromC(b cDisplayMeshBuffers, faceMap map[uint32]FaceInfo) *
 		defer C.free(unsafe.Pointer(b.faceIDs))
 		fgRaw = copyCBytes(unsafe.Pointer(b.faceIDs), nFaceIDs*4)
 		fgCount = nFaceIDs
-		faceIDs := unsafe.Slice((*uint32)(unsafe.Pointer(b.faceIDs)), nFaceIDs)
+		// Copy the IDs into a Go slice before buildFaceColorMap reads them — an
+		// unsafe.Slice over the C buffer would dangle once the deferred C.free above
+		// runs, and aliasing it is one refactor away from a use-after-free.
+		faceIDs := make([]uint32, nFaceIDs)
+		copy(faceIDs, unsafe.Slice((*uint32)(unsafe.Pointer(b.faceIDs)), nFaceIDs))
 		fcMap = buildFaceColorMap(faceIDs, faceMap)
 	}
 

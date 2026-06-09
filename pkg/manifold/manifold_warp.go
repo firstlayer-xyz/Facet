@@ -18,7 +18,15 @@ func (s *Solid) Warp(fn func(x, y, z float64) (float64, float64, float64)) *Soli
 	var ret C.FacetSolidRet
 	C.facet_warp(s.ptr, C.int(id), &ret)
 	runtime.KeepAlive(s)
+	// Wrap before re-raising so ret's Manifold gets a finalizer (no leak if the
+	// callback panicked); the wrapped result is then dropped by the panic.
 	r := newSolid(ret)
+	if p := takeWarpPanic(); p != nil {
+		panic(p)
+	}
+	if r == nil {
+		return nil
+	}
 	r.FaceMap = s.withFaceMap()
 	return r
 }
@@ -34,5 +42,10 @@ func LevelSet(fn func(x, y, z float64) float64, minX, minY, minZ, maxX, maxY, ma
 		C.double(minX), C.double(minY), C.double(minZ),
 		C.double(maxX), C.double(maxY), C.double(maxZ),
 		C.double(edgeLen), &ret)
-	return newSolidWithOrigin(ret)
+	// Wrap before re-raising so ret's Manifold gets a finalizer (no leak).
+	r := newSolidWithOrigin(ret)
+	if p := takeLevelSetPanic(); p != nil {
+		panic(p)
+	}
+	return r
 }

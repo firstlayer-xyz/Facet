@@ -175,6 +175,17 @@ func requireSolids(op string, solids ...*Solid) {
 	}
 }
 
+// requireSketches is requireSolids for *Sketch operands — a nil Sketch reaching
+// a 2D boolean is a caller bug; panic with a clear message rather than letting
+// the nil `.ptr` SIGSEGV inside the cgo wrapper.
+func requireSketches(op string, sketches ...*Sketch) {
+	for i, sk := range sketches {
+		if sk == nil {
+			panic(fmt.Sprintf("manifold.%s: sketch argument %d is nil", op, i))
+		}
+	}
+}
+
 // withFaceMap returns a copy of the Solid's FaceMap (or nil).
 func (s *Solid) withFaceMap() map[uint32]FaceInfo {
 	if len(s.FaceMap) == 0 {
@@ -234,6 +245,9 @@ func newSolidWithOrigin(ret C.FacetSolidRet) *Solid {
 // returned, would not satisfy the cgo pointer-safety contract.
 func transformSolid(s *Solid, ret C.FacetSolidRet) *Solid {
 	r := newSolid(ret)
+	if r == nil {
+		return nil
+	}
 	r.FaceMap = s.withFaceMap()
 	return r
 }

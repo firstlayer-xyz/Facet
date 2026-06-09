@@ -1663,7 +1663,7 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
     float** out_vertices, int* out_num_verts,
     uint32_t** out_indices, int* out_num_tris,
     uint32_t** out_run_original_id, uint32_t** out_run_index,
-    int* out_num_runs) {
+    int* out_num_runs, int* out_num_run_index) {
 
   MeshGL mesh = as_cpp(m)->GetMeshGL();
 
@@ -1683,6 +1683,7 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
     *out_run_original_id = nullptr;
     *out_run_index = nullptr;
     *out_num_runs = 0;
+    *out_num_run_index = 0;
     return;
   }
 
@@ -1709,13 +1710,16 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
     *out_run_original_id = (uint32_t*)malloc(numRuns * sizeof(uint32_t));
     memcpy(*out_run_original_id, mesh.runOriginalID.data(), numRuns * sizeof(uint32_t));
 
-    // runIndex has numRuns+1 entries (last entry = total triVerts size)
+    // runIndex normally has numRuns+1 entries (last entry = total triVerts size);
+    // report its actual size so the caller never assumes the length.
     int riLen = (int)mesh.runIndex.size();
+    *out_num_run_index = riLen;
     *out_run_index = (uint32_t*)malloc(riLen * sizeof(uint32_t));
     memcpy(*out_run_index, mesh.runIndex.data(), riLen * sizeof(uint32_t));
   } else {
     *out_run_original_id = nullptr;
     *out_run_index = nullptr;
+    *out_num_run_index = 0;
   }
 }
 

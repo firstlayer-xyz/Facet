@@ -24,7 +24,21 @@ var (
 	warpMu       sync.Mutex
 	warpRegistry = make(map[int]func(x, y, z float64) (float64, float64, float64))
 	warpNextID   atomic.Int32
+	// warpPanic holds a panic that escaped a facetWarpBridge invocation, to be
+	// re-raised by Warp once facet_warp has returned. A panic must NOT unwind
+	// through the C++ frames that called the bridge (undefined behavior). Guarded
+	// by warpMu; callbacks are serialized, so a single slot suffices.
+	warpPanic any
 )
+
+// takeWarpPanic returns and clears any stashed bridge panic.
+func takeWarpPanic() any {
+	warpMu.Lock()
+	p := warpPanic
+	warpPanic = nil
+	warpMu.Unlock()
+	return p
+}
 
 func registerWarp(fn func(x, y, z float64) (float64, float64, float64)) int {
 	id := int(warpNextID.Add(1))
@@ -48,7 +62,18 @@ var (
 	levelSetMu       sync.Mutex
 	levelSetRegistry = make(map[int]func(x, y, z float64) float64)
 	levelSetNextID   atomic.Int32
+	// levelSetPanic: see warpPanic.
+	levelSetPanic any
 )
+
+// takeLevelSetPanic returns and clears any stashed bridge panic.
+func takeLevelSetPanic() any {
+	levelSetMu.Lock()
+	p := levelSetPanic
+	levelSetPanic = nil
+	levelSetMu.Unlock()
+	return p
+}
 
 func registerLevelSet(fn func(x, y, z float64) float64) int {
 	id := int(levelSetNextID.Add(1))
@@ -73,14 +98,21 @@ func unregisterLevelSet(id int) {
 //
 // The id is registered by Warp() before calling into C and unregistered
 // only after C returns, so the bridge is guaranteed to find it.  A missing
-// id indicates a programmer bug (use-after-unregister, stray C invocation,
-// corrupted registry) — panic loudly rather than silently returning the
-// input unchanged, which would produce subtly-wrong geometry.
+// id (or a panic from the callback) indicates a programmer bug; we still want
+// to fail loudly rather than silently produce subtly-wrong geometry, but a Go
+// panic must not unwind through the C++ frames that called us (undefined
+// behavior). So we recover here, stash the panic, and leave this vertex
+// unchanged; Warp() re-raises it on the Go side after facet_warp returns.
 //
 //export facetWarpBridge
 func facetWarpBridge(id C.int, xp, yp, zp *C.double) {
 	warpMu.Lock()
 	defer warpMu.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			warpPanic = r
+		}
+	}()
 	fn := lookupWarpLocked(int(id))
 	nx, ny, nz := fn(float64(*xp), float64(*yp), float64(*zp))
 	*xp = C.double(nx)
@@ -103,15 +135,22 @@ func lookupWarpLocked(id int) func(x, y, z float64) (float64, float64, float64) 
 // facetLevelSetBridge is invoked by facet_level_set for each sample point.
 // levelSetMu is held for the entire call to serialize evaluator access.
 //
-// As with facetWarpBridge, the id is guaranteed present — a nil entry is
-// a programmer bug.  Returning 0 silently would flood the entire SDF
-// sample grid with the zero iso-surface, producing nonsense geometry
-// with no error surface.  Panic instead.
+// As with facetWarpBridge, a missing id or a callback panic is a programmer
+// bug we want surfaced — but a panic cannot unwind through the C++ caller.
+// So we recover, stash it, return 0 for this one sample, and let LevelSet()
+// re-raise it on the Go side after facet_level_set returns (the result is
+// discarded, so the transient zero sample never reaches geometry).
 //
 //export facetLevelSetBridge
-func facetLevelSetBridge(id C.int, x, y, z C.double) C.double {
+func facetLevelSetBridge(id C.int, x, y, z C.double) (result C.double) {
 	levelSetMu.Lock()
 	defer levelSetMu.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			levelSetPanic = r
+			result = 0
+		}
+	}()
 	fn := lookupLevelSetLocked(int(id))
 	return C.double(fn(float64(x), float64(y), float64(z)))
 }

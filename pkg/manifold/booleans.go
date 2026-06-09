@@ -103,6 +103,7 @@ func DecomposeSolid(s *Solid) []*Solid {
 
 // Union computes the boolean union of two sketches.
 func (a *Sketch) Union(b *Sketch) *Sketch {
+	requireSketches("Sketch.Union", a, b)
 	var ret C.FacetSketchRet
 	C.facet_cs_union(a.ptr, b.ptr, &ret)
 	runtime.KeepAlive(a)
@@ -112,6 +113,7 @@ func (a *Sketch) Union(b *Sketch) *Sketch {
 
 // Difference computes the boolean difference of two sketches.
 func (a *Sketch) Difference(b *Sketch) *Sketch {
+	requireSketches("Sketch.Difference", a, b)
 	var ret C.FacetSketchRet
 	C.facet_cs_difference(a.ptr, b.ptr, &ret)
 	runtime.KeepAlive(a)
@@ -121,6 +123,7 @@ func (a *Sketch) Difference(b *Sketch) *Sketch {
 
 // Intersection computes the boolean intersection of two sketches.
 func (a *Sketch) Intersection(b *Sketch) *Sketch {
+	requireSketches("Sketch.Intersection", a, b)
 	var ret C.FacetSketchRet
 	C.facet_cs_intersection(a.ptr, b.ptr, &ret)
 	runtime.KeepAlive(a)
