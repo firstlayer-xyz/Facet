@@ -170,9 +170,11 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2FlipCopy(n, "z"), true
 	case "mirror_copy":
 		return e.bosl2MirrorCopy(n), true
-	// subtractive modeling
+	// deferred-CSG modeling (tag-partition over the scope's children)
 	case "diff":
 		return e.bosl2Diff(n), true
+	case "intersect":
+		return e.bosl2Intersect(n), true
 	case "tag", "tag_this", "force_tag":
 		// Outside an attachable parent (top level / under a transform) a tag is
 		// inert — its effect on diff() is resolved where the parent emits its
@@ -284,20 +286,6 @@ func (e *Emitter) bosl2HalfOf(n *ast.ModuleCall) string {
 	return fmt.Sprintf("%s.Trim(x: %d, y: %d, z: %d)", child, dir[0], dir[1], dir[2])
 }
 
-// bosl2Diff emits BOSL2's diff(): it renders its child with subtractive tagging
-// active, so a `tag("remove")` attachment is subtracted from its parent rather
-// than unioned. Only the default remove tag ("remove") is supported.
-func (e *Emitter) bosl2Diff(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 0)
-	prev := e.inDiff
-	e.inDiff = true
-	out := e.childExpr(n)
-	e.inDiff = prev
-	if out == "" {
-		return e.errf(n.Pos(), "diff() has no child geometry")
-	}
-	return out
-}
 
 // bosl2FlipCopy emits a BOSL2 single-axis mirror-and-keep (xflip_copy/yflip_copy/
 // zflip_copy): the child plus a copy mirrored across the plane normal to `axis`.

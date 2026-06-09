@@ -1431,3 +1431,38 @@ func TestBOSL2_CoreAnchorGating(t *testing.T) {
 		t.Fatalf("plain cube should stay corner-origin:\n%s", res.Facet)
 	}
 }
+
+// diff()/intersect() partition their children by tag and emit the BOSL2 CSG
+// formula (subtraction/intersection + keep), not a union. Geometry is verified
+// against real OpenSCAD in TestBOSL2GroundTruth_CSG; these run in CI.
+func TestBOSL2_CSGPartition(t *testing.T) {
+	check := func(src string, wants ...string) {
+		res, err := Transpile("include <BOSL2/std.scad>\n"+src+"\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", src, err)
+		}
+		for _, w := range wants {
+			if !strings.Contains(res.Facet, w) {
+				t.Fatalf("%q: expected %q in:\n%s", src, w, res.Facet)
+			}
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+	// sibling tag("remove") -> subtraction (the bug was a union here)
+	check(`diff(){ cuboid(20); tag("remove") cuboid([30,6,6]); }`, " - ")
+	// intersect() -> intersection
+	check(`intersect(){ cuboid(20); tag("intersect") sphere(d=24); }`, " & ")
+	// keep unions back after the subtraction (both operators present)
+	check(`diff(){ cuboid(20); tag("remove") cuboid([30,6,6]); tag("keep") cuboid([2,2,30]); }`, " - ", " + ")
+	// custom remove tag name (positional)
+	check(`diff("hole"){ cuboid(20); tag("hole") cuboid([30,6,6]); }`, " - ")
+
+	mustErr := func(src, why string) {
+		if _, err := Transpile("include <BOSL2/std.scad>\n"+src+"\n", "part.scad"); err == nil {
+			t.Fatalf("%s: expected an error (%s)", src, why)
+		}
+	}
+	mustErr(`diff(){ tag("remove") cuboid(5); }`, "no untagged base geometry")
+	mustErr(`intersect(){ cuboid(20); }`, "nothing to intersect with")
+	mustErr(`diff(remove="x", keep="x"){ cuboid(20); }`, "remove == keep")
+}
