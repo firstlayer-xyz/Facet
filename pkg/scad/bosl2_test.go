@@ -1474,3 +1474,33 @@ func TestBOSL2_CSGPartition(t *testing.T) {
 	mustErr(`intersect(){ cuboid(20); }`, "nothing to intersect with")
 	mustErr(`diff(remove="x", keep="x"){ cuboid(20); }`, "remove == keep")
 }
+
+// hide(tags) drops the tagged children; show_only(tags) keeps only them. Tags are
+// a whitespace-separated string. Geometry is verified vs OpenSCAD in
+// TestBOSL2GroundTruth_CSG.
+func TestBOSL2_HideShowOnly(t *testing.T) {
+	// show_only keeps only the tagged bar (a 30-long box), dropping the 20-cube.
+	res, err := Transpile("include <BOSL2/std.scad>\nshow_only(\"bar\"){ cuboid(20); tag(\"bar\") cuboid([30,6,6]); }\n", "part.scad")
+	if err != nil {
+		t.Fatalf("show_only should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "30 mm") || strings.Contains(res.Facet, "Cube(s: 20 mm") {
+		t.Fatalf("show_only should keep only the tagged bar:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// hide drops the tagged bar, keeps the 20-cube.
+	res, err = Transpile("include <BOSL2/std.scad>\nhide(\"bar\"){ cuboid(20); tag(\"bar\") cuboid([30,6,6]); }\n", "part.scad")
+	if err != nil {
+		t.Fatalf("hide should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Cube(s: 20 mm") || strings.Contains(res.Facet, "30 mm") {
+		t.Fatalf("hide should drop the tagged bar:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// a missing/empty selection errors (no fallback).
+	if _, err := Transpile("include <BOSL2/std.scad>\nshow_only(\"none\"){ cuboid(20); }\n", "part.scad"); err == nil {
+		t.Fatal("show_only with no matching tag should error")
+	}
+}
