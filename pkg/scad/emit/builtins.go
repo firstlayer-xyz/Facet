@@ -176,10 +176,27 @@ func (e *Emitter) radiusArg(n *ast.ModuleCall, posIdx int) (key, val string, ok 
 
 // cube emits `cube(size, center)` → Facet Cube(...) with optional centering.
 func (e *Emitter) cube(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 2, "size", "center")
+	allowed := []string{"size", "center"}
+	if e.bosl2 {
+		allowed = append(allowed, "anchor", "spin", "orient")
+	}
+	e.rejectExtraArgs(n, 2, allowed...)
 	size, ok := arg(n, "size", 0)
 	if !ok {
 		return e.errf(n.Pos(), "cube without size")
+	}
+	// In a BOSL2 file cube() is BOSL2's attachable override: anchor/spin/orient
+	// place the box (a box anchor is its bounding-box corner). The default anchor
+	// reproduces the OpenSCAD corner origin (ALLNEG), or CENTER when center=true;
+	// an explicit anchor wins over center.
+	if e.bosl2 && hasAttachArgs(n) {
+		def := [3]int{-1, -1, -1}
+		if boolArg(n, "center", 1) {
+			def = [3]int{0, 0, 0}
+		}
+		sx, sy, sz := e.cubeSizeComponents(size)
+		centered := e.cubeCtor(size, "", "") + ".AlignCenter(pos: Vec3{})"
+		return e.bosl2CoreLeaf(n, centered, [3]string{sx, sy, sz}, def, anchorBox)
 	}
 	dims := e.cubeCtor(size, "", "")
 	if boolArg(n, "center", 1) {
@@ -223,12 +240,24 @@ func (e *Emitter) cubeCtor(size ast.Expr, fillet, chamfer string) string {
 // sphere emits Sphere(...).AlignCenter(...). OpenSCAD centers spheres at the
 // origin; Facet's Sphere is corner-origin, so recenter onto Vec3{}.
 func (e *Emitter) sphere(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 1, "r", "d", "$fn", "$fa", "$fs")
-	ctor, _, ok := e.sphereCtor(n)
+	allowed := []string{"r", "d", "$fn", "$fa", "$fs"}
+	if e.bosl2 {
+		allowed = append(allowed, "anchor", "spin", "orient")
+	}
+	e.rejectExtraArgs(n, 1, allowed...)
+	ctor, radius, ok := e.sphereCtor(n)
 	if !ok {
 		return e.errf(n.Pos(), "sphere without radius")
 	}
-	return ctor + ".AlignCenter(pos: Vec3{})"
+	centered := ctor + ".AlignCenter(pos: Vec3{})"
+	// In a BOSL2 file sphere() is attachable; a sphere anchor lands on the sphere
+	// SURFACE (r·unit(v)), not its bounding-box corner — anchorSphere. Default
+	// anchor is CENTER (OpenSCAD spheres are centered). Shares spheroid's [2r]^3 box.
+	if e.bosl2 && hasAttachArgs(n) {
+		dia := "2 * (" + radius + ")"
+		return e.bosl2CoreLeaf(n, centered, [3]string{dia, dia, dia}, [3]int{0, 0, 0}, anchorSphere)
+	}
+	return centered
 }
 
 // sphereCtor builds the (corner-origin) Sphere constructor and returns the radius
@@ -252,7 +281,11 @@ func (e *Emitter) sphereCtor(n *ast.ModuleCall) (ctor, radius string, ok bool) {
 // cylinder emits Cylinder(...) or Frustum(...) with origin normalization.
 // OpenSCAD centers cylinders in X/Y; Z runs 0..h unless center=true.
 func (e *Emitter) cylinder(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 2, "h", "r", "r1", "r2", "d", "d1", "d2", "center", "$fn", "$fa", "$fs")
+	allowed := []string{"h", "r", "r1", "r2", "d", "d1", "d2", "center", "$fn", "$fa", "$fs"}
+	if e.bosl2 {
+		allowed = append(allowed, "anchor", "spin", "orient")
+	}
+	e.rejectExtraArgs(n, 2, allowed...)
 	h, ok := arg(n, "h", 0)
 	if !ok {
 		return e.errf(n.Pos(), "cylinder without height")
@@ -284,10 +317,46 @@ func (e *Emitter) cylinder(n *ast.ModuleCall) string {
 			key, val, hStr, segs)
 	}
 
+	// In a BOSL2 file cylinder() is attachable: a cylinder anchor is radial on the
+	// rim (r·unit(xy)) and axial ±h/2 — anchorCyl, not the bounding-box corner. The
+	// default anchor reproduces the OpenSCAD base-at-origin (BOTTOM), or CENTER when
+	// center=true.
+	if e.bosl2 && hasAttachArgs(n) {
+		return e.cylinderAnchored(n, ctor, hStr)
+	}
 	if boolArg(n, "center", -1) {
 		return ctor + ".AlignCenter(pos: Vec3{})"
 	}
 	return ctor + ".AlignCenter(pos: Vec3{}, z: false)"
+}
+
+// cylinderAnchored places a centered core cylinder by its BOSL2 anchor/spin/orient
+// (mirroring BOSL2 cyl): the radial anchor lands on the rim (anchorCyl divides the
+// x/y pair by |xy|), the axial anchor on ±h/2. The bounding diameter is only needed
+// for an off-z anchor; a tapered cylinder (r1≠r2) has no single one, so an x/y
+// anchor there is a located error.
+func (e *Emitter) cylinderAnchored(n *ast.ModuleCall, ctor, hStr string) string {
+	def := [3]int{0, 0, -1}
+	if boolArg(n, "center", -1) {
+		def = [3]int{0, 0, 0}
+	}
+	v := def
+	if a, has := arg(n, "anchor", -1); has {
+		var ok bool
+		if v, ok = anchorVec(a); !ok {
+			return e.errf(n.Pos(), "cylinder: unsupported anchor (use a named anchor or a ±1/0 vector)")
+		}
+	}
+	dia := ""
+	if v[0] != 0 || v[1] != 0 {
+		d, dok := e.cylDiameter(n)
+		if !dok {
+			return e.errf(n.Pos(), "cylinder: an x/y anchor on a tapered cylinder is unsupported (its bounding diameter is the larger end)")
+		}
+		dia = d
+	}
+	shape := ctor + ".AlignCenter(pos: Vec3{})" + anchorOffset(v, [3]string{dia, dia, hStr}, anchorCyl)
+	return e.applyOrient(n, e.applySpin(n, shape))
 }
 
 // circle emits Circle(...).Move(...). OpenSCAD centers circles at the origin;
