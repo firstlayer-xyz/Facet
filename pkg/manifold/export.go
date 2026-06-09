@@ -69,11 +69,12 @@ func extractRunMesh(s *Solid) *RunMesh {
 	var cRunOrigID *C.uint32_t
 	var cRunIndex *C.uint32_t
 	var cNumRuns C.int
+	var cNumRunIndex C.int
 
 	C.facet_extract_mesh_with_runs(s.ptr,
 		&cVerts, &cNumVerts,
 		&cIndices, &cNumTris,
-		&cRunOrigID, &cRunIndex, &cNumRuns)
+		&cRunOrigID, &cRunIndex, &cNumRuns, &cNumRunIndex)
 	runtime.KeepAlive(s)
 
 	nv := int(cNumVerts)
@@ -101,8 +102,9 @@ func extractRunMesh(s *Solid) *RunMesh {
 		runOrigID = make([]uint32, nr)
 		copy(runOrigID, unsafe.Slice((*uint32)(unsafe.Pointer(cRunOrigID)), nr))
 
-		// runIndex has nr+1 entries
-		riLen := nr + 1
+		// Size from the length C reports (normally nr+1), not an assumed nr+1, so a
+		// shorter runIndex can't drive an out-of-bounds read of the C buffer.
+		riLen := int(cNumRunIndex)
 		runIndex = make([]uint32, riLen)
 		copy(runIndex, unsafe.Slice((*uint32)(unsafe.Pointer(cRunIndex)), riLen))
 	}

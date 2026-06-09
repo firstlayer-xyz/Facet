@@ -54,6 +54,7 @@ func (s *Solid) Genus() int {
 
 // MinGap returns the minimum distance between two solids, searching up to searchLength.
 func (s *Solid) MinGap(other *Solid, searchLength float64) float64 {
+	requireSolids("MinGap", s, other)
 	result := C.facet_min_gap(s.ptr, other.ptr, C.double(searchLength))
 	runtime.KeepAlive(s)
 	runtime.KeepAlive(other)

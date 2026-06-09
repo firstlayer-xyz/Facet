@@ -86,6 +86,17 @@ func TestBooleanOpsRejectNilOperand(t *testing.T) {
 	mustPanic(t, "Difference(nil)", func() { cube.Difference(nil) })
 	mustPanic(t, "Intersection(nil)", func() { cube.Intersection(nil) })
 	mustPanic(t, "Insert(nil)", func() { cube.Insert(nil) })
+	mustPanic(t, "MinGap(nil)", func() { cube.MinGap(nil, 100) })
+}
+
+func TestSketchBoolsRejectNilOperand(t *testing.T) {
+	sq, err := CreateSquare(10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustPanic(t, "Sketch.Union(nil)", func() { sq.Union(nil) })
+	mustPanic(t, "Sketch.Difference(nil)", func() { sq.Difference(nil) })
+	mustPanic(t, "Sketch.Intersection(nil)", func() { sq.Intersection(nil) })
 }
 
 func TestHullRejectsNilReceiver(t *testing.T) {

@@ -340,12 +340,15 @@ void facet_as_original(ManifoldPtr* m, FacetSolidRet* out);
 // Extracts mesh data with run information for per-face color mapping.
 // runOriginalID[i] is the originalID for triangle run i.
 // runIndex[i] is the start index (in triVerts) for run i; runIndex[numRuns] = total triVerts.
+// out_num_run_index reports the actual run_index length (runIndex.size(), normally
+// num_runs+1); the caller must size its read from it rather than assuming
+// num_runs+1, so a shorter runIndex can't drive an out-of-bounds read.
 // Caller must free all output arrays.
 void facet_extract_mesh_with_runs(ManifoldPtr* m,
     float** out_vertices, int* out_num_verts,
     uint32_t** out_indices, int* out_num_tris,
     uint32_t** out_run_original_id, uint32_t** out_run_index,
-    int* out_num_runs);
+    int* out_num_runs, int* out_num_run_index);
 
 // ---------------------------------------------------------------------------
 // PolyMesh
