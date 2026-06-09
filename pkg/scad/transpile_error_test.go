@@ -66,6 +66,22 @@ func TestTranspileCuboidEdges(t *testing.T) {
 	}
 }
 
+// OpenSCAD's lookup(key, table) linearly interpolates over a [[key,value], …]
+// table; it maps to the injected scad_lookup helper.
+func TestTranspileLookup(t *testing.T) {
+	res, err := Transpile("tbl=[[0,0],[1,10]];\ncube([1,1,lookup(0.5,tbl)]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("lookup should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "scad_lookup(key: 0.5, table: tbl)") {
+		t.Fatalf("expected scad_lookup call:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "fn scad_lookup(") {
+		t.Fatalf("expected scad_lookup helper to be injected:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // An unsupported construct must fail the transpile with a located error and
 // produce no output — never a placeholder.
 func TestTranspileErrorsOnUnsupported(t *testing.T) {

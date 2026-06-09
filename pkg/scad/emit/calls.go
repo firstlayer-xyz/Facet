@@ -83,6 +83,16 @@ func (e *Emitter) call(n *ast.Call) string {
 				", value: " + e.expr(n.Args[0].Value, kNumber) + ")"
 		}
 		return e.errf(n.Pos(), "only the two-argument search(value, list) form is supported")
+	case "lookup":
+		// lookup(key, table) linearly interpolates value over a sorted
+		// [[key, value], …] table (clamped at the ends), via the injected
+		// scad_lookup helper.
+		if len(n.Args) == 2 && n.Args[0].Name == "" && n.Args[1].Name == "" {
+			e.usesLookup = true
+			return "scad_lookup(key: " + e.expr(n.Args[0].Value, kNumber) +
+				", table: " + e.expr(n.Args[1].Value, kNumber) + ")"
+		}
+		return e.errf(n.Pos(), "lookup expects (key, table)")
 	}
 	if b, ok := mathBuiltins[n.Name]; ok {
 		return b.facet + "(" + e.mapArgs(n.Name, n.Args, b.params) + ")"
