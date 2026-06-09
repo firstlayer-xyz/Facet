@@ -1353,3 +1353,28 @@ func TestBOSL2_Shape2DAnchor(t *testing.T) {
 		t.Fatal("ellipse(anchor=TOP) should error (out-of-plane)")
 	}
 }
+
+// xrot/yrot/zrot with cp= rotate about that pivot point instead of the origin:
+// the child is moved so cp is at the origin, rotated, then moved back.
+func TestBOSL2_AxisRotPivot(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nxrot(90, cp=[0, 0, 10]) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("xrot cp should transpile, got: %v", err)
+	}
+	for _, want := range []string{".Move(v: -Vec3{x: 0 mm, y: 0 mm, z: 10 mm})", ".Rotate(x: 90 deg)", ".Move(v: Vec3{x: 0 mm, y: 0 mm, z: 10 mm})"} {
+		if !strings.Contains(res.Facet, want) {
+			t.Fatalf("expected %q in:\n%s", want, res.Facet)
+		}
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// No cp is still a plain rotation (no Move sandwich).
+	res, err = Transpile("include <BOSL2/std.scad>\nzrot(45) cuboid(2);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("zrot should transpile, got: %v", err)
+	}
+	if strings.Contains(res.Facet, ".Move(v:") {
+		t.Fatalf("plain zrot should not wrap in Move:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
