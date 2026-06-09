@@ -712,6 +712,35 @@ function loadFile(file) {
   reader.readAsText(file);
 }
 
+// ── Shared source via URL hash ─────────────────────────────────────────────────
+// The desktop app's Share button encodes a .fct source into the URL as
+// #code=<base64url(deflate-raw(utf8))>. Returns 'none' when the hash carries
+// no shared code, 'loaded' after handing the source to loadSource, or 'failed'
+// after surfacing a decode error.
+async function loadSharedFromHash() {
+  const m = location.hash.match(/^#code=(.+)$/);
+  if (!m) return 'none';
+  let text;
+  try {
+    text = await inflateBase64Url(m[1]);
+  } catch (e) {
+    showError('Failed to decode shared model from URL: ' + (e.message || e));
+    setStatus('Error');
+    return 'failed';
+  }
+  loadSource(text, 'shared.fct');
+  return 'loaded';
+}
+
+async function inflateBase64Url(b64url) {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Response(stream).text();
+}
+
 // ── Bundled examples ───────────────────────────────────────────────────────────
 function populateExamples(names) {
   exampleSelect.innerHTML = '';
@@ -734,7 +763,7 @@ function loadExample(name) {
   loadSource(src, name);
 }
 
-function initExamples() {
+function initExamples(autoloadDefault) {
   // Surface failures instead of leaving a silently-empty selector — the most
   // likely cause is a stale cached facet.wasm (no facetExamples export) loaded
   // against a fresh index.html.
@@ -753,7 +782,7 @@ function initExamples() {
   }
   populateExamples(names);
   const def = names.includes('Tutorial.fct') ? 'Tutorial.fct' : names[0];
-  if (def && !currentSource) {
+  if (autoloadDefault && def && !currentSource) {
     exampleSelect.value = def;
     loadExample(def);
   } else {
@@ -1619,7 +1648,8 @@ function mulMat4(a,b) {
 
     wasmReady = true;
     updateDownloadUI();   // a file dropped before wasm finished loading can now export
-    initExamples();
+    const shared = await loadSharedFromHash();
+    initExamples(shared === 'none');
   } catch (e) {
     setStatus('Failed: ' + e.message);
     showError('Init failed: ' + e);
