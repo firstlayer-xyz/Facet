@@ -618,9 +618,36 @@ func clamp255(f float64) int {
 // the shared colorname table. The second result is false for unknown names
 // (the caller emits #000000 + an error).
 func cssColorHex(name string) (string, bool) {
+	if h, ok := normalizeHexColor(name); ok {
+		return h, true
+	}
 	hex, ok := colorname.Hex(name)
 	if !ok {
 		return "#000000", false
 	}
 	return hex, true
+}
+
+// normalizeHexColor expands a CSS hex color literal "#rgb" or "#rrggbb"
+// (case-insensitive) to "#RRGGBB". The alpha forms "#rgba"/"#rrggbbaa" are not
+// handled (ok=false) so they surface as an unsupported color rather than a
+// silently dropped alpha channel.
+func normalizeHexColor(s string) (string, bool) {
+	if len(s) < 2 || s[0] != '#' {
+		return "", false
+	}
+	d := s[1:]
+	for i := 0; i < len(d); i++ {
+		c := d[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return "", false
+		}
+	}
+	switch len(d) {
+	case 3: // #rgb -> #RRGGBB
+		return strings.ToUpper("#" + string([]byte{d[0], d[0], d[1], d[1], d[2], d[2]})), true
+	case 6:
+		return strings.ToUpper("#" + d), true
+	}
+	return "", false
 }

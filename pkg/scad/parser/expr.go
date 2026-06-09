@@ -66,6 +66,12 @@ func (p *parser) parseBinary(minPrec int) (ast.Expr, error) {
 }
 
 func (p *parser) parseUnary() (ast.Expr, error) {
+	// Unary plus is a no-op in OpenSCAD (e.g. rands(-sw, +sw, …)): drop it and
+	// return the operand directly.
+	if p.at(token.Plus) {
+		p.advance()
+		return p.parseUnary()
+	}
 	if p.at(token.Minus) || p.at(token.Bang) {
 		op := p.advance()
 		x, err := p.parseUnary()

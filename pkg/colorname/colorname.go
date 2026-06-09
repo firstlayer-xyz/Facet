@@ -48,6 +48,49 @@ func Hex(name string) (string, bool) {
 		return "#FFC0CB", true
 	case "brown":
 		return "#A52A2A", true
+	// extended CSS3 keywords commonly used by OpenSCAD/BOSL2 models
+	case "lightgray", "lightgrey":
+		return "#D3D3D3", true
+	case "darkgray", "darkgrey":
+		return "#A9A9A9", true
+	case "dimgray", "dimgrey":
+		return "#696969", true
+	case "gainsboro":
+		return "#DCDCDC", true
+	case "whitesmoke":
+		return "#F5F5F5", true
+	case "gold":
+		return "#FFD700", true
+	case "skyblue":
+		return "#87CEEB", true
+	case "lightblue":
+		return "#ADD8E6", true
+	case "darkblue":
+		return "#00008B", true
+	case "lightgreen":
+		return "#90EE90", true
+	case "darkgreen":
+		return "#006400", true
+	case "indigo":
+		return "#4B0082", true
+	case "violet":
+		return "#EE82EE", true
+	case "tan":
+		return "#D2B48C", true
+	case "beige":
+		return "#F5F5DC", true
+	case "ivory":
+		return "#FFFFF0", true
+	case "khaki":
+		return "#F0E68C", true
+	case "salmon":
+		return "#FA8072", true
+	case "coral":
+		return "#FF7F50", true
+	case "turquoise":
+		return "#40E0D0", true
+	case "crimson":
+		return "#DC143C", true
 	}
 	return "", false
 }
