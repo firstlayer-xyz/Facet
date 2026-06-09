@@ -60,27 +60,49 @@ func anchorLit(d [3]int) string {
 	return fmt.Sprintf("B2Anchor{x: %d, y: %d, z: %d}", d[0], d[1], d[2])
 }
 
-// anchorMove returns the trailing .Move that repositions a CENTER-anchored box of
-// the given per-axis sizes so the BOSL2 anchor v lands on the origin. In a
-// centered box the anchor point sits at v*size/2, so the box is shifted by
-// -v*size/2 on each anchored axis. When round, a diagonal anchor resolves to the
-// elliptical/spherical perimeter point instead of the bounding-box corner: the
-// shift is divided by the anchor direction's magnitude, so v/|v| is a unit
-// direction and v*size/2 lands on the curve. Returns "" for CENTER (v all zero).
-func anchorMove(v [3]int, size [3]string, round bool) string {
-	axes := [3]string{"x", "y", "z"}
-	mag := 1.0
-	if round {
-		if sq := v[0]*v[0] + v[1]*v[1] + v[2]*v[2]; sq > 0 {
-			mag = math.Sqrt(float64(sq))
+// anchorMode selects the per-geometry math BOSL2's _find_anchor uses to place an
+// anchor on a shape. size in anchorOffset is always the full bounding-box extent
+// per axis.
+type anchorMode int
+
+const (
+	anchorBox     anchorMode = iota // bounding box: v·size/2 (cuboid, rect, prismoid/trapezoid at a fixed level)
+	anchorSphere                     // sphere surface: r·unit(v), shift ÷ |v|
+	anchorCyl                        // cylinder: radial r·unit(xy) (÷ |xy|), axial ±h/2
+	anchorEllipse                    // 2D ellipse: where the ray along v meets the perimeter
+)
+
+// anchorOffset returns the trailing .Move that shifts a centered shape so the
+// BOSL2 anchor v lands on the origin, per mode. size is the full per-axis extent;
+// for anchorEllipse size[0]/size[1] are the x/y semi-axes (radii). Returns "" for
+// CENTER.
+func anchorOffset(v [3]int, size [3]string, mode anchorMode) string {
+	if mode == anchorEllipse {
+		return ellipseAnchorOffset(v, size[0], size[1])
+	}
+	// Per-axis shift coeff is -v[i] / (2·mag): mag normalizes the radial group so
+	// v/mag is a unit direction (sphere = all three axes, cyl = the x/y pair),
+	// while a box axis keeps mag = 1 (the bounding-box corner).
+	mag := func(i int) float64 {
+		switch mode {
+		case anchorSphere:
+			return math.Sqrt(float64(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]))
+		case anchorCyl:
+			if i < 2 {
+				return math.Hypot(float64(v[0]), float64(v[1]))
+			}
+			return 1
+		default:
+			return 1
 		}
 	}
+	axes := [3]string{"x", "y", "z"}
 	var parts []string
 	for i := 0; i < 3; i++ {
 		if v[i] == 0 {
 			continue
 		}
-		coeff := strconv.FormatFloat(-float64(v[i])/(2*mag), 'g', -1, 64)
+		coeff := strconv.FormatFloat(-float64(v[i])/(2*mag(i)), 'g', -1, 64)
 		parts = append(parts, fmt.Sprintf("%s: %s * (%s)", axes[i], coeff, size[i]))
 	}
 	if len(parts) == 0 {
@@ -89,13 +111,48 @@ func anchorMove(v [3]int, size [3]string, round bool) string {
 	return ".Move(" + strings.Join(parts, ", ") + ")"
 }
 
-// applyAnchor appends the trailing .Move that places a centered `shape` by its
-// BOSL2 anchor= argument — the anchor point lands on the origin. size is the full
-// bounding-box extent per axis; an "" axis (a 2D shape's z) must not be anchored.
-// twoD rejects an off-plane (TOP/BOTTOM) anchor; round resolves a diagonal anchor
-// to the elliptical perimeter point rather than the bounding-box corner. Without
-// anchor= the shape is returned unchanged.
-func (e *Emitter) applyAnchor(n *ast.ModuleCall, shape string, size [3]string, twoD, round bool) string {
+// ellipseAnchorOffset shifts a centered ellipse (semi-axes rx, ry) so its BOSL2
+// anchor lands on the origin. BOSL2 anchors an ellipse where the ray in the anchor
+// direction meets the perimeter: a cardinal anchor is the semi-axis endpoint
+// (±rx or ±ry); a ±1/±1 diagonal lands at |x|=|y|=t with t = rx / sqrt(1 + (rx/ry)^2)
+// (= rx·ry/sqrt(rx^2+ry^2)). Length*Length has no Facet type, so t is written with
+// the dimensionless ratio rx/ry only.
+func ellipseAnchorOffset(v [3]int, rx, ry string) string {
+	switch {
+	case v[0] == 0 && v[1] == 0:
+		return ""
+	case v[1] == 0: // cardinal x
+		return ".Move(x: " + signedExpr(-v[0], rx) + ")"
+	case v[0] == 0: // cardinal y
+		return ".Move(y: " + signedExpr(-v[1], ry) + ")"
+	default: // diagonal: both ±1
+		ratio := "Number(from: " + rx + ") / Number(from: " + ry + ")"
+		t := "(" + rx + ") / Sqrt(n: 1 + (" + ratio + ") * (" + ratio + "))"
+		return ".Move(x: " + signedExpr(-v[0], t) + ", y: " + signedExpr(-v[1], t) + ")"
+	}
+}
+
+// signedExpr prefixes expr with a minus when k is negative (k is ±1).
+func signedExpr(k int, expr string) string {
+	if k < 0 {
+		return "-(" + expr + ")"
+	}
+	return "(" + expr + ")"
+}
+
+// applyAnchor appends the .Move that places a centered `shape` by its BOSL2
+// anchor= argument (the anchor point lands on the origin), using mode's geometry.
+// size is the full bounding-box extent per axis; an "" axis (a 2D shape's z) must
+// not be anchored. twoD rejects an off-plane (TOP/BOTTOM) anchor. Without anchor=
+// the shape is returned unchanged.
+func (e *Emitter) applyAnchor(n *ast.ModuleCall, shape string, size [3]string, twoD bool, mode anchorMode) string {
+	return e.applyAnchorFn(n, shape, twoD, mode, func([3]int) [3]string { return size })
+}
+
+// applyAnchorFn is applyAnchor for shapes whose extent depends on the anchor
+// itself — a prismoid/trapezoid samples its tapered width at the anchored level —
+// so the size is supplied as sizeFn(v) once v is known.
+func (e *Emitter) applyAnchorFn(n *ast.ModuleCall, shape string, twoD bool, mode anchorMode, sizeFn func([3]int) [3]string) string {
 	a, has := arg(n, "anchor", -1)
 	if !has {
 		return shape
@@ -107,7 +164,7 @@ func (e *Emitter) applyAnchor(n *ast.ModuleCall, shape string, size [3]string, t
 	if twoD && v[2] != 0 {
 		return e.errf(n.Pos(), "%s: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)", n.Name)
 	}
-	return shape + anchorMove(v, size, round)
+	return shape + anchorOffset(v, sizeFn(v), mode)
 }
 
 // anchorVec3Lit renders a direction vector as a Facet Vec3 literal (mm units).
