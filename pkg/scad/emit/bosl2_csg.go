@@ -329,3 +329,62 @@ func (e *Emitter) bosl2Intersect(n *ast.ModuleCall) string {
 	return e.csgPartition(n, map[string]tagRole{isect: roleIntersect, keep: roleKeep}, "&")
 }
 
+// csgTagSet reads a hide()/show_only() tag list — a single string of
+// whitespace-separated tag names (BOSL2 `hide("a b")`) — into a set. A missing or
+// non-string argument is a located error.
+func (e *Emitter) csgTagSet(n *ast.ModuleCall) map[string]bool {
+	v, has := arg(n, "", 0)
+	if !has {
+		e.errf(n.Pos(), "%s requires a tag list", n.Name)
+		return nil
+	}
+	s, ok := v.(*ast.Str)
+	if !ok {
+		e.errf(n.Pos(), "%s: the tag list must be a string literal", n.Name)
+		return nil
+	}
+	set := map[string]bool{}
+	for _, f := range strings.Fields(s.Value) {
+		set[f] = true
+	}
+	return set
+}
+
+// csgVisibility walks a hide()/show_only() scope with the listed tags routed to
+// `to`, and returns the union of the `result` bucket — the visibility filters are
+// the two trivial uses of the scope walker (no subtraction/intersection, just
+// keep-one-bucket), so they inherit tags-under-transforms, attachable-parent
+// splitting, and the mixed-tag/nested-CSG guards.
+func (e *Emitter) csgVisibility(n *ast.ModuleCall, to, result tagRole, empty string) string {
+	e.rejectExtraArgs(n, 1)
+	if !e.rejectNestedCSG(n) {
+		return ""
+	}
+	cfg := map[string]tagRole{}
+	for t := range e.csgTagSet(n) {
+		cfg[t] = to
+	}
+	buckets := map[tagRole][]string{}
+	for _, c := range n.Children {
+		e.collect(c, "", roleUntagged, cfg, buckets)
+	}
+	if len(buckets[result]) == 0 {
+		return e.errf(n.Pos(), "%s", empty)
+	}
+	return unionParts(buckets[result])
+}
+
+// bosl2Hide emits BOSL2's hide(tags): the children tagged with any of the
+// (whitespace-separated) tags are dropped from the result; everything else
+// (untagged and other tags) is unioned. Hidden tags route to roleRemove (the
+// dropped bucket) and the untagged bucket is the result.
+func (e *Emitter) bosl2Hide(n *ast.ModuleCall) string {
+	return e.csgVisibility(n, roleRemove, roleUntagged, "hide() left no visible geometry")
+}
+
+// bosl2ShowOnly emits BOSL2's show_only(tags): only the children tagged with one
+// of the tags are kept (unioned); everything else is dropped. Shown tags route to
+// roleKeep and the kept bucket is the result.
+func (e *Emitter) bosl2ShowOnly(n *ast.ModuleCall) string {
+	return e.csgVisibility(n, roleKeep, roleKeep, "show_only() selected no geometry")
+}

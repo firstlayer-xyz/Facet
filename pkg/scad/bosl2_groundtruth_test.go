@@ -271,6 +271,10 @@ func TestBOSL2GroundTruth_CSG(t *testing.T) {
 		{"diff_cross_parent", `diff(){ cuboid([10,10,10]); right(8) cuboid([10,10,10]){ tag("remove") position(LEFT) cuboid([16,3,3]); } }`, 0.01},
 		// tag below a transform: the remove rides through up(6) and still cuts the base.
 		{"diff_tag_under_transform", `diff(){ cuboid([20,20,20]); up(6) tag("remove") cuboid([30,6,6]); }`, 0.005},
+		// hide(tags): the tagged children are dropped from the result; the rest stay.
+		{"hide", `hide("bar"){ cuboid([20,20,20]); tag("bar") cuboid([30,6,6]); }`, 0.005},
+		// show_only(tags): only the tagged children are kept.
+		{"show_only", `show_only("bar"){ cuboid([20,20,20]); tag("bar") cuboid([30,6,6]); }`, 0.005},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

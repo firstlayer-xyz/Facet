@@ -175,6 +175,10 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Diff(n), true
 	case "intersect":
 		return e.bosl2Intersect(n), true
+	case "hide":
+		return e.bosl2Hide(n), true
+	case "show_only":
+		return e.bosl2ShowOnly(n), true
 	case "tag", "tag_this", "force_tag":
 		// Outside a diff/intersect scope a tag is inert (its CSG role is resolved by
 		// the scope walker, which peels tags itself). Emit the child geometry.
