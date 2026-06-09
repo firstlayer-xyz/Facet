@@ -39,6 +39,11 @@ func (e *Emitter) expr(x ast.Expr, k kind) string {
 		}
 		return "false"
 	case *ast.Ident:
+		// A let()-bound name resolves to its (already-emitted) value expression;
+		// OpenSCAD has no runtime let, so the binding is inlined at the use site.
+		if v, ok := e.letScope[n.Name]; ok {
+			return v
+		}
 		if strings.HasPrefix(n.Name, "$") {
 			switch n.Name {
 			case "$t":
@@ -77,12 +82,28 @@ func (e *Emitter) expr(x ast.Expr, k kind) string {
 	case *ast.ListComp:
 		// SCAD `[for (v = iter, …) body]` maps to Facet's
 		// `for v iter, … { yield body }`. Multiple iterators form a Cartesian
-		// product in both languages.
+		// product in both languages. The ranges see the enclosing scope, but the
+		// loop variables shadow any same-named let() binding in the body — pop
+		// them from letScope while the body emits, else the binding's value would
+		// be wrongly inlined over the loop variable.
 		clauses := make([]string, 0, len(n.Iters))
 		for _, it := range n.Iters {
 			clauses = append(clauses, it.Var+" "+e.expr(it.Range, kNumber))
 		}
-		return "for " + strings.Join(clauses, ", ") + " { yield " + e.expr(n.Body, kNumber) + " }"
+		shadowed := make(map[string]string, len(n.Iters))
+		for _, it := range n.Iters {
+			if v, ok := e.letScope[it.Var]; ok {
+				shadowed[it.Var] = v
+				delete(e.letScope, it.Var)
+			}
+		}
+		body := e.expr(n.Body, kNumber)
+		for name, v := range shadowed {
+			e.letScope[name] = v
+		}
+		return "for " + strings.Join(clauses, ", ") + " { yield " + body + " }"
+	case *ast.Let:
+		return e.emitLet(n, k)
 	case *ast.Vector:
 		// A SCAD vector is a []Number list. Geometry boundaries that need a
 		// Vec2/Vec3 extract components or wrap with a scad_v* helper separately.
@@ -132,4 +153,36 @@ func (e *Emitter) operand(x ast.Expr, k kind) string {
 		return "(" + s + ")"
 	}
 	return s
+}
+
+// emitLet inlines an OpenSCAD `let(name = value, …) body`. Facet has no let
+// expression, so each binding is emitted (with earlier bindings already in scope)
+// and substituted for its name at every use in the body — sound because let
+// bindings are pure. Bindings are pushed onto e.letScope while the body emits and
+// restored afterward, so they shadow only within the let (incl. nested lets).
+func (e *Emitter) emitLet(n *ast.Let, k kind) string {
+	if e.letScope == nil {
+		e.letScope = map[string]string{}
+	}
+	prev := make(map[string]*string, len(n.Binds))
+	for _, b := range n.Binds {
+		if _, seen := prev[b.Name]; !seen {
+			if old, ok := e.letScope[b.Name]; ok {
+				v := old
+				prev[b.Name] = &v
+			} else {
+				prev[b.Name] = nil
+			}
+		}
+		e.letScope[b.Name] = "(" + e.expr(b.Value, kNumber) + ")"
+	}
+	body := e.expr(n.Body, k)
+	for name, old := range prev {
+		if old == nil {
+			delete(e.letScope, name)
+		} else {
+			e.letScope[name] = *old
+		}
+	}
+	return body
 }
