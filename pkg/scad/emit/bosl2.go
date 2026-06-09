@@ -494,18 +494,7 @@ func (e *Emitter) bosl2Rect(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "rect without size")
 	}
 	x, y := e.pair2(size, kLength)
-	shape := e.centeredSquare(x, y)
-	if a, has := arg(n, "anchor", -1); has {
-		v, vok := anchorVec(a)
-		if !vok {
-			return e.errf(n.Pos(), "rect: unsupported anchor (use a named anchor or a ±1/0 vector)")
-		}
-		if v[2] != 0 {
-			return e.errf(n.Pos(), "rect: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)")
-		}
-		shape += anchorMove(v, [3]string{x, y, ""})
-	}
-	return shape
+	return e.applyAnchor(n, e.centeredSquare(x, y), [3]string{x, y, ""}, true, false)
 }
 
 // centeredSquare renders a Square of the given side-length expressions recentered
@@ -546,17 +535,10 @@ func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
 	hStr := e.expr(h, kLength)
 	shape := "Loft(profiles: [" + e.centeredSquare(x1, y1) + ", " + e.centeredSquare(x2, y2) +
 		"], heights: [0 mm, " + hStr + "]).AlignCenter(pos: Vec3{})"
-	if a, has := arg(n, "anchor", -1); has {
-		v, vok := anchorVec(a)
-		if !vok {
-			return e.errf(n.Pos(), "prismoid: unsupported anchor (use a named anchor or a ±1/0 vector)")
-		}
-		// The bounding box spans the wider of the two ends on each axis.
-		sx := "Max(a: " + x1 + ", b: " + x2 + ")"
-		sy := "Max(a: " + y1 + ", b: " + y2 + ")"
-		shape += anchorMove(v, [3]string{sx, sy, hStr})
-	}
-	return shape
+	// The anchor bounding box spans the wider of the two ends on each axis.
+	sx := "Max(a: " + x1 + ", b: " + x2 + ")"
+	sy := "Max(a: " + y1 + ", b: " + y2 + ")"
+	return e.applyAnchor(n, shape, [3]string{sx, sy, hStr}, false, false)
 }
 
 // isBosl22D reports whether a BOSL2 shape name yields a 2D Sketch.
@@ -616,17 +598,9 @@ func (e *Emitter) bosl2Ellipse(n *ast.ModuleCall) string {
 	circ := "Circle(r: " + rx + e.segmentsSuffix(n, 0, false) + ")"
 	shape := fmt.Sprintf("%s.Move(x: -(%s), y: -(%s)).Scale(x: 1, y: Number(from: %s) / Number(from: %s))",
 		circ, rx, rx, ry, rx)
-	if a, has := arg(n, "anchor", -1); has {
-		v, vok := anchorVec(a)
-		if !vok {
-			return e.errf(n.Pos(), "ellipse: unsupported anchor (use a named anchor or a ±1/0 vector)")
-		}
-		if v[2] != 0 {
-			return e.errf(n.Pos(), "ellipse: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)")
-		}
-		shape += anchorMove(v, [3]string{"2 * (" + rx + ")", "2 * (" + ry + ")", ""})
-	}
-	return shape
+	// round: the ellipse is a scaled circle, so a diagonal anchor lands on the
+	// perimeter (rx·v/|v|, ry·v/|v|), not the bounding-box corner.
+	return e.applyAnchor(n, shape, [3]string{"2 * (" + rx + ")", "2 * (" + ry + ")", ""}, true, true)
 }
 
 // bosl2Trapezoid emits BOSL2's 2D isosceles trapezoid, centered on the origin:
@@ -651,17 +625,7 @@ func (e *Emitter) bosl2Trapezoid(n *ast.ModuleCall) string {
 		"Vec2{x: (%s) / 2, y: -(%s) / 2}, Vec2{x: (%s) / 2, y: (%s) / 2}, "+
 		"Vec2{x: -(%s) / 2, y: (%s) / 2}])",
 		a, hs, a, hs, b, hs, b, hs)
-	if av, has := arg(n, "anchor", -1); has {
-		v, vok := anchorVec(av)
-		if !vok {
-			return e.errf(n.Pos(), "trapezoid: unsupported anchor (use a named anchor or a ±1/0 vector)")
-		}
-		if v[2] != 0 {
-			return e.errf(n.Pos(), "trapezoid: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)")
-		}
-		shape += anchorMove(v, [3]string{"Max(a: " + a + ", b: " + b + ")", hs, ""})
-	}
-	return shape
+	return e.applyAnchor(n, shape, [3]string{"Max(a: " + a + ", b: " + b + ")", hs, ""}, true, false)
 }
 
 // bosl2RegularNgon emits a BOSL2 regular polygon (regular_ngon, or the named
@@ -864,6 +828,9 @@ func (e *Emitter) pivotRotate(n *ast.ModuleCall, child, method string) string {
 	if !has {
 		return child + "." + method
 	}
+	if _, isVec := cp.(*ast.Vector); !isVec {
+		return e.errf(n.Pos(), "%s: cp must be a coordinate vector like [x, y, z]", n.Name)
+	}
 	cx, cy, cz := e.vec3Of(cp)
 	p := "Vec3{x: " + cx + ", y: " + cy + ", z: " + cz + "}"
 	return child + ".Move(v: -(" + p + "))." + method + ".Move(v: " + p + ")"
@@ -894,14 +861,8 @@ func (e *Emitter) bosl2Spheroid(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "spheroid without radius")
 	}
 	shape := ctor + ".AlignCenter(pos: Vec3{})"
-	if a, has := arg(n, "anchor", -1); has {
-		v, vok := anchorVec(a)
-		if !vok {
-			return e.errf(n.Pos(), "spheroid: unsupported anchor (use a named anchor or a ±1/0 vector)")
-		}
-		dia := "2 * (" + radius + ")"
-		shape += anchorMove(v, [3]string{dia, dia, dia})
-	}
+	dia := "2 * (" + radius + ")"
+	shape = e.applyAnchor(n, shape, [3]string{dia, dia, dia}, false, false)
 	return e.applySpin(n, shape)
 }
 
@@ -928,14 +889,8 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 		chamfer = e.expr(c, kLength)
 	}
 	shape := e.cubeCtor(size, fillet, chamfer) + ".AlignCenter(pos: Vec3{})"
-	if a, has := arg(n, "anchor", -1); has {
-		v, vok := anchorVec(a)
-		if !vok {
-			return e.errf(n.Pos(), "cuboid: unsupported anchor (use a named anchor or a ±1/0 vector)")
-		}
-		sx, sy, sz := e.cubeSizeComponents(size)
-		shape += anchorMove(v, [3]string{sx, sy, sz})
-	}
+	sx, sy, sz := e.cubeSizeComponents(size)
+	shape = e.applyAnchor(n, shape, [3]string{sx, sy, sz}, false, false)
 	return e.applyOrient(n, e.applySpin(n, shape))
 }
 
@@ -1054,7 +1009,7 @@ func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 			}
 			dia = d
 		}
-		shape += anchorMove(v, [3]string{dia, dia, hStr})
+		shape += anchorMove(v, [3]string{dia, dia, hStr}, false)
 	}
 	return e.applyOrient(n, e.applySpin(n, shape)), true
 }
@@ -1113,16 +1068,9 @@ func (e *Emitter) bosl2Tube(n *ast.ModuleCall) string {
 	hStr := e.expr(h, kLength)
 	shape := fmt.Sprintf("(Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}) - Cylinder(r: %s, h: %s).AlignCenter(pos: Vec3{}))",
 		outer, hStr, inner, hStr)
-	if a, has := arg(n, "anchor", -1); has {
-		v, vok := anchorVec(a)
-		if !vok {
-			return e.errf(n.Pos(), "tube: unsupported anchor (use a named anchor or a ±1/0 vector)")
-		}
-		// The tube's bounding box is [outer diameter, outer diameter, h].
-		dia := "2 * (" + outer + ")"
-		shape += anchorMove(v, [3]string{dia, dia, hStr})
-	}
-	return shape
+	// The tube's bounding box is [outer diameter, outer diameter, h].
+	dia := "2 * (" + outer + ")"
+	return e.applyAnchor(n, shape, [3]string{dia, dia, hStr}, false, false)
 }
 
 // bosl2Torus emits BOSL2's torus by revolving a minor-radius circle, offset to

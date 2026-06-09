@@ -1378,3 +1378,18 @@ func TestBOSL2_AxisRotPivot(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// A scalar cp= is not a pivot point — BOSL2 cp is a coordinate vector. Rather
+// than silently rotate about (cp,0,0), the transpiler errors and names the call.
+func TestBOSL2_AxisRotScalarPivotErrors(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nxrot(90, cp=5) cuboid(2);\n", "part.scad")
+	if err == nil {
+		t.Fatalf("scalar cp should error, got:\n%s", res.Facet)
+	}
+	if res.Facet != "" {
+		t.Fatalf("expected no output on error, got:\n%s", res.Facet)
+	}
+	if !strings.Contains(err.Error(), "cp must be a coordinate vector") {
+		t.Fatalf("error should explain cp must be a vector, got: %v", err)
+	}
+}
