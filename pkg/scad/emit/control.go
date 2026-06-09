@@ -28,15 +28,27 @@ func (e *Emitter) intersectionFor(n *ast.ModuleCall) string {
 }
 
 // geomComprehension builds `<combiner>(arr: for <clauses> { yield <children> })`
-// where the children are unioned into a single geometry per iteration.
+// where the children are unioned into a single geometry per iteration. Local
+// assignments in the loop body (`for(i=…){ x = f(i); cube(x); }`) are OpenSCAD
+// block-scoped bindings; they are inlined into the geometry (like let), since
+// Facet has no statement bindings inside a for-yield.
 func (e *Emitter) geomComprehension(p ast.Pos, combiner string, iters []ast.ForIter, children []ast.Stmt) string {
 	clauses := make([]string, 0, len(iters))
 	for _, it := range iters {
 		clauses = append(clauses, it.Var+" "+e.expr(it.Range, kNumber))
 	}
-	child := e.unionStmts(children)
+	child := e.unionStmts(geometryStmts(children))
 	if child == "" {
 		return e.errf(p, "loop body produces no geometry")
 	}
-	return combiner + "(arr: for " + strings.Join(clauses, ", ") + " { yield " + child + " })"
+	// Local assignments in the loop body are OpenSCAD block-scoped bindings; emit
+	// them as Facet consts inside the for-yield body (as emitGeomBody does for a
+	// module body), in source order, so the geometry can reference them.
+	var binds strings.Builder
+	for _, s := range children {
+		if a, ok := s.(*ast.Assign); ok {
+			binds.WriteString("const " + a.Name + " = " + e.expr(a.Value, kNumber) + "\n")
+		}
+	}
+	return combiner + "(arr: for " + strings.Join(clauses, ", ") + " {\n" + binds.String() + "yield " + child + "\n})"
 }
