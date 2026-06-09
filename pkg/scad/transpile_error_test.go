@@ -83,6 +83,38 @@ func TestTranspileNonLiteralColorPassThrough(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// A "#rgb"/"#rrggbb" hex color is expanded to #RRGGBB and passed to Color(hex:).
+// OpenSCAD/BOSL2 commonly use hex colors (e.g. color("#f77")).
+func TestTranspileHexColor(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{`color("#f77") cube(5);`, `Color(hex: "#FF7777")`},
+		{`color("#FF7755") cube(5);`, `Color(hex: "#FF7755")`},
+	}
+	for _, c := range cases {
+		res, err := Transpile(c.in+"\n", "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.in, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.in, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
+
+// Common CSS color names beyond the basic 16 resolve (e.g. lightgray).
+func TestTranspileExtendedCSSColors(t *testing.T) {
+	for _, name := range []string{"lightgray", "lightgrey", "darkgray", "gold", "skyblue"} {
+		res, err := Transpile(`color("`+name+`") cube(5);`+"\n", "part.scad")
+		if err != nil {
+			t.Fatalf("color(%q) should transpile, got: %v", name, err)
+		}
+		if !strings.Contains(res.Facet, "Color(hex:") {
+			t.Fatalf("color(%q): expected Color(hex:) in:\n%s", name, res.Facet)
+		}
+	}
+}
+
 // A translate whose vector is a runtime expression (not a literal) indexes
 // the expression per axis so Facet's Move receives Length-coercible Numbers.
 // scale(s) with a SCALAR scales every axis uniformly. It was previously dropped

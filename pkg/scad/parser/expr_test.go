@@ -88,6 +88,18 @@ func TestExpr_MemberIndexUnary(t *testing.T) {
 	}
 }
 
+// Unary plus is a no-op in OpenSCAD (e.g. rands(-sw, +sw, ...)): +a parses as the
+// operand a, with no Unary node.
+func TestExpr_UnaryPlus(t *testing.T) {
+	if _, ok := parseExprSrc(t, "+a").(*ast.Ident); !ok {
+		t.Fatalf("+a should parse as its operand (an Ident)")
+	}
+	b := parseExprSrc(t, "2 - +3").(*ast.Binary)
+	if b.Op != "-" {
+		t.Fatalf("2 - +3 should parse as a subtraction, got %q", b.Op)
+	}
+}
+
 func TestExpr_MalformedNeverHangs(t *testing.T) {
 	// Malformed input must return (an error is fine) and never hang or panic.
 	for _, src := range []string{"sin(30", "f(a b)", "[1,2", "(1+", "a ?", "[0:"} {
