@@ -5,6 +5,27 @@ import (
 	"testing"
 )
 
+// OpenSCAD `let(name=value, …) expr` has no Facet equivalent, so each binding is
+// inlined: substituted for its name at every use (later bindings and the body).
+func TestTranspileLetExpr(t *testing.T) {
+	// let as a list-comprehension body: x is inlined to (i * 2) in the yield.
+	res, err := Transpile("pts = [for(i=[0:2]) let(x=i*2) x+1];\ntranslate([pts[0],0,0]) cube(1);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("let in a comprehension should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "i * 2") {
+		t.Fatalf("let binding should inline into the yield:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// sequential bindings: b references the earlier a.
+	res, err = Transpile("function f(n) = let(a=n, b=a+1) a+b;\ncube(f(2));\n", "part.scad")
+	if err != nil {
+		t.Fatalf("sequential let should transpile, got: %v", err)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // An unsupported construct must fail the transpile with a located error and
 // produce no output — never a placeholder.
 func TestTranspileErrorsOnUnsupported(t *testing.T) {
