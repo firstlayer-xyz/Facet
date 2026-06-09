@@ -110,6 +110,9 @@ fileGroup.appendChild(openBtn);
 export const saveBtn = makeBtn('save-btn', 'Save (\u2318S)', 'SAVE', '<path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>');
 fileGroup.appendChild(saveBtn);
 
+export const shareBtn = makeBtn('share-btn', 'Share to web preview', 'SHARE', '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>');
+fileGroup.appendChild(shareBtn);
+
 export const exportBtn = makeBtn('export-btn', 'Export', 'EXP', '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
 export const slicerBtn = makeBtn('slicer-btn', 'Send to Slicer', 'SLICE', '<rect x="4" y="14" width="16" height="8" rx="1"/><line x1="6" y1="18" x2="18" y2="18"/><line x1="6" y1="16" x2="18" y2="16"/><path d="M10 14V6h4v8"/><path d="M8 6h8"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="10" y1="3" x2="14" y2="3"/>');
 

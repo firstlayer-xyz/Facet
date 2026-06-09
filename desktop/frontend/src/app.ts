@@ -1,6 +1,6 @@
 // app.ts — Run/debug orchestration logic.
 
-import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocCatalog, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
+import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, ShareToWeb, GetDocCatalog, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
 import type { EntryPoint } from './function-preview';
 import { on } from './events';
 import { Viewer } from './viewer';
@@ -1086,6 +1086,16 @@ export async function exportMesh(format: string = '3mf') {
   try {
     const p = currentEvalParams();
     await ExportMesh(format, p.sources, p.key, p.entry, p.overrides);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// shareToWeb opens the hosted web preview in the default browser with the
+// active tab's buffer rendered (transported in the URL hash).
+export async function shareToWeb() {
+  try {
+    await ShareToWeb(editor.getContent());
   } catch (err) {
     showError(err);
   }
