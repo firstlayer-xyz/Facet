@@ -145,16 +145,18 @@ func TestBOSL2Render_GridCopiesExtent(t *testing.T) {
 	}
 }
 
-// attach(TOP) stacks the child on the parent's top face: a 12-tall cube with a
-// 16-tall cylinder on top spans 28 in Z, as one connected component.
+// attach(TOP) (1-arg) CENTERS the child on the parent's top face, matching BOSL2:
+// a 12-tall cube (z -6..6) with a 16-tall cyl centered on z=6 puts the cyl at
+// z -2..14, so the whole spans 20 in Z, one connected component. (Sitting the cyl
+// fully on top is the 2-arg attach(TOP, BOTTOM).)
 func TestBOSL2Render_AttachStacksOnTop(t *testing.T) {
 	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([30, 30, 12]) attach(TOP) cyl(h=16, r=4);\n")
 	if n := s.NumComponents(); n != 1 {
-		t.Errorf("components = %d, want 1 (child touches parent)", n)
+		t.Errorf("components = %d, want 1 (child overlaps parent)", n)
 	}
-	_, _, dz := extents(s)
-	if !near(dz, 28, 1.0) { // cube z -6..6, cyl on top to +22
-		t.Errorf("z-extent = %v, want ~28 (12 cube + 16 cyl)", dz)
+	_, _, _, _, _, maxZ := s.BoundingBox()
+	if !near(maxZ, 14, 1.0) { // cyl centered on the top face z=6, reaches z=14
+		t.Errorf("max Z = %v, want ~14 (cyl centered on the top face, BOSL2 1-arg attach)", maxZ)
 	}
 }
 
@@ -168,14 +170,15 @@ func TestBOSL2Render_WedgeVolume(t *testing.T) {
 	}
 }
 
-// attach(RIGHT) reorients the child so its axis points along +X: a cylinder
-// attached to the right face of a 20-cube extends the X span to ~30. A wrong
-// reorientation would leave it pointing up (z), not out (x).
+// attach(RIGHT) reorients the child so its axis points along +X AND centers it on
+// the right face (BOSL2 1-arg attach): a cyl (h=10) centered on the right face of
+// a 20-cube (x=10) reaches x=15, so the X span is ~25. A wrong reorientation would
+// leave it pointing up (z), not out (x).
 func TestBOSL2Render_AttachReorientsToRight(t *testing.T) {
 	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncuboid([20, 20, 20]) attach(RIGHT) cyl(h=10, r=4);\n")
 	dx, _, dz := extents(s)
-	if !near(dx, 30, 1.0) { // cube x -10..10, cyl out to +20
-		t.Errorf("x-extent = %v, want ~30 (cyl points +X)", dx)
+	if !near(dx, 25, 1.0) { // cube x -10..10, cyl centered on x=10 reaches x=15
+		t.Errorf("x-extent = %v, want ~25 (cyl centered on the right face, points +X)", dx)
 	}
 	if !near(dz, 20, 1.0) { // unchanged by the reorientation
 		t.Errorf("z-extent = %v, want ~20 (cube only)", dz)

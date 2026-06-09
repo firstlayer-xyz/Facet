@@ -5,11 +5,11 @@ fn Main() Solid {
             Square(x: 14 mm, y: 14 mm).Move(x: -14 mm / 2, y: -14 mm / 2)
         ],
         heights: [0 mm, 18 mm]
-    ).AlignCenter(pos: Vec3{}) + Loft(
+    ).AlignCenter(pos: Vec3{}).Move(z: 0.5 * 18 mm) + Loft(
         profiles: [
             Square(x: 20 mm, y: 10 mm).Move(x: -20 mm / 2, y: -10 mm / 2),
             Square(x: 20 mm, y: 2 mm).Move(x: -20 mm / 2, y: -2 mm / 2)
         ],
         heights: [0 mm, 10 mm]
-    ).AlignCenter(pos: Vec3{}).Move(x: 50 mm)
+    ).AlignCenter(pos: Vec3{}).Move(z: 0.5 * 10 mm).Move(x: 50 mm)
 }

@@ -9,5 +9,5 @@ fn Main() Solid {
         x: 24 mm - 2 * 3 mm,
         y: 18 mm - 2 * 3 mm,
         z: 6 mm
-    ).AlignCenter(pos: Vec3{})).Move(z: 20 mm)
+    ).AlignCenter(pos: Vec3{})).Move(z: 0.5 * 6 mm).Move(z: 20 mm)
 }

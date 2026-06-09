@@ -66,22 +66,24 @@ fn B2.positionRemove(a B2Anchor, child B2) B2 {
 # so the child's ca face points opposite pa (into this shape). The ca anchor is
 # moved to the origin first, rotated there, then moved onto pa — so only the solid
 # is rotated, never a point. When ca is anti-parallel to pa the rotation is the
-# identity, leaving a pure translation.
-fn B2.attachPlaced(pa B2Anchor, ca B2Anchor, child B2) Solid {
+# identity, leaving a pure translation. overlap pushes the child that far INTO this
+# shape along the inward pa normal (BOSL2's overlap=).
+fn B2.attachPlaced(pa B2Anchor, ca B2Anchor, child B2, overlap Length) Solid {
     var c = child.anchorPoint(a: ca)
     var p = self.anchorPoint(a: pa)
+    var m = Sqrt(n: pa.x * pa.x + pa.y * pa.y + pa.z * pa.z)
     return child.solid.Move(v: -c)
         .Rotate(
             from: Vec3{x: ca.x * 1 mm, y: ca.y * 1 mm, z: ca.z * 1 mm},
             to: Vec3{x: pa.x * -1 mm, y: pa.y * -1 mm, z: pa.z * -1 mm}
         )
-        .Move(v: p)
+        .Move(v: Vec3{x: p.x - pa.x / m * overlap, y: p.y - pa.y / m * overlap, z: p.z - pa.z / m * overlap})
 }
-fn B2.attach(pa B2Anchor, ca B2Anchor, child B2) B2 {
-    return B2{solid: self.solid + self.attachPlaced(pa: pa, ca: ca, child: child), size: self.size}
+fn B2.attach(pa B2Anchor, ca B2Anchor, child B2, overlap Length) B2 {
+    return B2{solid: self.solid + self.attachPlaced(pa: pa, ca: ca, child: child, overlap: overlap), size: self.size}
 }
-fn B2.attachRemove(pa B2Anchor, ca B2Anchor, child B2) B2 {
-    return B2{solid: self.solid - self.attachPlaced(pa: pa, ca: ca, child: child), size: self.size}
+fn B2.attachRemove(pa B2Anchor, ca B2Anchor, child B2, overlap Length) B2 {
+    return B2{solid: self.solid - self.attachPlaced(pa: pa, ca: ca, child: child, overlap: overlap), size: self.size}
 }
 
 # Rotates a solid so its +Z (UP) axis points along the anchor direction dir —
@@ -96,28 +98,27 @@ fn b2_orient_up_to(solid Solid, dir B2Anchor) Solid {
 }
 
 # The child solid for a single-anchor attach: reoriented so its +Z axis points
-# out the pa face, then its base sits on that anchor. The child's mating face
-# lies on its rotation axis, so placement is anchorPoint(pa) plus a push of half
-# the child's height along the UNIT pa direction (pa may be a combined anchor,
-# whose magnitude is √2 or √3, so it must be normalized).
-fn B2.attachReorientPlaced(pa B2Anchor, child B2) Solid {
+# out the pa face, then CENTERED on that anchor point (BOSL2's 1-arg attach(P)
+# aligns the child's CENTER to the parent anchor, not its base). overlap shifts it
+# that far INTO this shape along the inward pa normal (pa may be a combined anchor,
+# whose magnitude is √2 or √3, so the direction is normalized).
+fn B2.attachReorientPlaced(pa B2Anchor, child B2, overlap Length) Solid {
     var oriented = b2_orient_up_to(solid: child.solid, dir: pa)
     var ap = self.anchorPoint(a: pa)
     var m = Sqrt(n: pa.x * pa.x + pa.y * pa.y + pa.z * pa.z)
-    var hz = child.size.z / 2
     return oriented.Move(
         v: Vec3{
-            x: ap.x + pa.x / m * hz,
-            y: ap.y + pa.y / m * hz,
-            z: ap.z + pa.z / m * hz
+            x: ap.x - pa.x / m * overlap,
+            y: ap.y - pa.y / m * overlap,
+            z: ap.z - pa.z / m * overlap
         }
     )
 }
-fn B2.attachReorient(pa B2Anchor, child B2) B2 {
-    return B2{solid: self.solid + self.attachReorientPlaced(pa: pa, child: child), size: self.size}
+fn B2.attachReorient(pa B2Anchor, child B2, overlap Length) B2 {
+    return B2{solid: self.solid + self.attachReorientPlaced(pa: pa, child: child, overlap: overlap), size: self.size}
 }
-fn B2.attachReorientRemove(pa B2Anchor, child B2) B2 {
-    return B2{solid: self.solid - self.attachReorientPlaced(pa: pa, child: child), size: self.size}
+fn B2.attachReorientRemove(pa B2Anchor, child B2, overlap Length) B2 {
+    return B2{solid: self.solid - self.attachReorientPlaced(pa: pa, child: child, overlap: overlap), size: self.size}
 }
 
 # The child placed flush against this shape's anchor face a: at the anchor point,
