@@ -69,6 +69,11 @@ type Emitter struct {
 	// bindings) to their Facet type, so cond() can apply OpenSCAD truthiness to
 	// a bare identifier (see buildScope / inferType).
 	scope map[string]string
+	// letScope maps a let()-bound name to its emitted value expression, active
+	// only while the let body is being emitted (see emitLet). A bound name in the
+	// body is replaced by this string — OpenSCAD's let is inlined since Facet has
+	// no let expression.
+	letScope map[string]string
 	// bosl2 is set when the program references the BOSL2 library via
 	// `include <BOSL2/...>` / `use <BOSL2/...>`. It switches on the BOSL2
 	// vocabulary (primitives, transforms, anchors) and emits its runtime
