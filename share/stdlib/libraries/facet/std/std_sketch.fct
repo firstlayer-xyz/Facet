@@ -34,6 +34,46 @@ fn Square(s Length) Sketch {
     return _square(s, s)
 }
 
+# Regular `n`-sided polygon with all vertices on the circumradius `r`, the first
+# on +X. Corner-anchored: built around the origin, then shifted so its
+# bounding-box min corner sits at (0,0) — matching the Square/Circle convention.
+# `n` must be at least 3.
+# ```
+# fn Main() { Ngon(n: 6, r: 10 mm).Extrude(z: 3 mm) }   # hexagonal prism
+# ```
+fn Ngon(n Number, r Length) Sketch {
+    var p = Polygon(
+        points: for i [0:n - 1] {
+            yield Vec2{x: r * Cos(a: i * 360 deg / n), y: r * Sin(a: i * 360 deg / n)}
+        }
+    )
+    return p.Move(x: -p.Left(), y: -p.Front())
+}
+
+fn Ngon(n Number, d Length) Sketch {
+    return Ngon(n: n, r: d / 2)
+}
+
+# `n`-pointed star: a 2n-vertex polygon alternating the outer radius `r` and the
+# inner radius `ir`, with vertex `i` at angle 180*i/n. Corner-anchored like Ngon.
+# `n` must be at least 2.
+# ```
+# fn Main() { Star(n: 5, r: 12 mm, ir: 5 mm).Extrude(z: 2 mm) }
+# ```
+fn Star(n Number, r Length, ir Length) Sketch {
+    var p = Polygon(
+        points: for i [1:2 * n] {
+            var radius = i % 2 == 1 ? ir : r
+            yield Vec2{x: radius * Cos(a: 180 deg * i / n), y: radius * Sin(a: 180 deg * i / n)}
+        }
+    )
+    return p.Move(x: -p.Left(), y: -p.Front())
+}
+
+fn Star(n Number, d Length, id Length) Sketch {
+    return Star(n: n, r: d / 2, ir: id / 2)
+}
+
 # ---------------------------------------------------------------------------
 # Arc Generators
 # ---------------------------------------------------------------------------

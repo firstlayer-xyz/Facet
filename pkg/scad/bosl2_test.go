@@ -783,14 +783,16 @@ func TestBOSL2_RectExtruded(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// regular_ngon(n, r) is a centered regular polygon (a Sketch), vertices at
-// a = 360 - i*360/n from +X (BOSL2's default orientation).
+// regular_ngon(n, r) maps to the stdlib Ngon primitive, recentered (BOSL2's
+// default anchor is CENTER, Ngon is corner-anchored).
 func TestBOSL2_RegularNgon(t *testing.T) {
 	res, err := Transpile("include <BOSL2/std.scad>\nregular_ngon(n=6, r=10);\n", "part.scad")
 	if err != nil {
 		t.Fatalf("regular_ngon should transpile, got: %v", err)
 	}
-	for _, want := range []string{"fn Main() Sketch", "Polygon(", "points: for scad_i", "Cos(a:", "Sin(a:", "360 / 6"} {
+	// n=6 is even, so the construction center is the bbox center: the recenter
+	// move is -(r) in x (a vertex sits at +X) and -sqrt(3)/2*r in y.
+	for _, want := range []string{"fn Main() Sketch", "Ngon(n: 6, r: 10 mm)", ".Move(x: -1 * 10 mm"} {
 		if !strings.Contains(res.Facet, want) {
 			t.Fatalf("expected %q in:\n%s", want, res.Facet)
 		}
@@ -798,20 +800,20 @@ func TestBOSL2_RegularNgon(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// hexagon/pentagon/octagon are regular_ngon with a fixed side count.
+// hexagon/pentagon/octagon are Ngon with a fixed side count.
 func TestBOSL2_NamedNgons(t *testing.T) {
-	cases := []struct{ name, sides string }{
-		{"hexagon", "360 / 6"},
-		{"pentagon", "360 / 5"},
-		{"octagon", "360 / 8"},
+	cases := []struct{ name, want string }{
+		{"hexagon", "Ngon(n: 6, r: 8 mm)"},
+		{"pentagon", "Ngon(n: 5, r: 8 mm)"},
+		{"octagon", "Ngon(n: 8, r: 8 mm)"},
 	}
 	for _, c := range cases {
 		res, err := Transpile("include <BOSL2/std.scad>\n"+c.name+"(r=8);\n", "part.scad")
 		if err != nil {
 			t.Fatalf("%s should transpile, got: %v", c.name, err)
 		}
-		if !strings.Contains(res.Facet, c.sides) || !strings.Contains(res.Facet, "fn Main() Sketch") {
-			t.Fatalf("%s: expected %q (2D ngon) in:\n%s", c.name, c.sides, res.Facet)
+		if !strings.Contains(res.Facet, c.want) || !strings.Contains(res.Facet, "fn Main() Sketch") {
+			t.Fatalf("%s: expected %q (2D ngon) in:\n%s", c.name, c.want, res.Facet)
 		}
 		assertTypeChecks(t, res.Facet)
 	}
@@ -858,14 +860,14 @@ func TestBOSL2_Prismoid(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// star(n, r, ir) is a centered 2n-point star (Sketch): outer radius r at even
-// indices, inner radius ir at odd ones, at angle 180*i/n.
+// star(n, r, ir) maps to the stdlib Star primitive (outer radius r, inner ir),
+// recentered (BOSL2's default anchor is CENTER, Star is corner-anchored).
 func TestBOSL2_Star(t *testing.T) {
 	res, err := Transpile("include <BOSL2/std.scad>\nstar(n=5, r=10, ir=4);\n", "part.scad")
 	if err != nil {
 		t.Fatalf("star should transpile, got: %v", err)
 	}
-	for _, want := range []string{"fn Main() Sketch", "Polygon(", "[1:2 * 5]", "% 2 == 1 ? 4 mm : 10 mm", "180 * ", "Cos("} {
+	for _, want := range []string{"fn Main() Sketch", "Star(n: 5, r: 10 mm, ir: 4 mm)", ".Move(x:"} {
 		if !strings.Contains(res.Facet, want) {
 			t.Fatalf("expected %q in:\n%s", want, res.Facet)
 		}
@@ -920,29 +922,31 @@ func TestBOSL2_ArcCopiesPartial(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// wedge emits BOSL2's triangular ramp as its exact VNF (a Mesh). By default the
-// min corner sits at the origin (a trailing Move by size/2).
+// wedge maps to the stdlib Wedge primitive. Wedge is corner-anchored, which
+// matches BOSL2's default wedge anchor, so the bare form maps directly (no
+// recentering).
 func TestBOSL2_Wedge(t *testing.T) {
 	res, err := Transpile("include <BOSL2/std.scad>\nwedge([10, 8, 6]);\n", "part.scad")
 	if err != nil {
 		t.Fatalf("wedge should transpile, got: %v", err)
 	}
-	for _, want := range []string{"Mesh{vertices:", "[]Face[", ".Solid()", ".Move(x: 10 mm / 2"} {
-		if !strings.Contains(res.Facet, want) {
-			t.Fatalf("expected %q in:\n%s", want, res.Facet)
-		}
+	if !strings.Contains(res.Facet, "Wedge(x: 10 mm, y: 8 mm, z: 6 mm)") {
+		t.Fatalf("expected a Wedge primitive in:\n%s", res.Facet)
+	}
+	if strings.Contains(res.Facet, ".AlignCenter(") {
+		t.Fatalf("bare wedge should not be recentered:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 }
 
-// wedge(center=true) keeps the VNF centered (no trailing Move).
+// wedge(center=true) recenters the corner-anchored Wedge with AlignCenter.
 func TestBOSL2_WedgeCentered(t *testing.T) {
 	res, err := Transpile("include <BOSL2/std.scad>\nwedge([10, 8, 6], center=true);\n", "part.scad")
 	if err != nil {
 		t.Fatalf("centered wedge should transpile, got: %v", err)
 	}
-	if strings.Contains(res.Facet, ".Solid().Move(") {
-		t.Fatalf("centered wedge should not be shifted:\n%s", res.Facet)
+	if !strings.Contains(res.Facet, "Wedge(x: 10 mm, y: 8 mm, z: 6 mm).AlignCenter(pos: Vec3{})") {
+		t.Fatalf("centered wedge should be recentered:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 }

@@ -572,10 +572,14 @@ func isBosl22D(name string) bool {
 	return false
 }
 
-// bosl2Star emits BOSL2's 2D star — a centered 2n-point star (Sketch). Points
-// alternate the outer radius r (r/or/d/od) and inner radius ir (ir/id) at
-// angle 180*i/n, matching BOSL2's vertex placement. The `step` form (star
-// polygons), realign, and align_tip are not supported and error.
+// bosl2Star emits BOSL2's 2D star via the stdlib Star primitive. Star takes the
+// outer radius r (r/or/d/od) and inner radius ir (ir/id); it builds the 2n-point
+// path at angle 180*i/n — the same placement BOSL2 uses. Star is corner-anchored,
+// so ngonCenterMove shifts it onto its construction origin (BOSL2's CENTER
+// anchor); the star's extent is set by its outer vertices, which sit at a
+// `sides`-gon's angles, so it reuses the n-gon offset. A literal point count is
+// required. The `step` form (star polygons), realign, and align_tip are not
+// supported and error.
 func (e *Emitter) bosl2Star(n *ast.ModuleCall) string {
 	e.rejectExtraArgs(n, 3, "n", "r", "or", "d", "od", "ir", "id", "$fn", "$fa", "$fs")
 	nArg, ok := arg(n, "n", 0)
@@ -596,11 +600,14 @@ func (e *Emitter) bosl2Star(n *ast.ModuleCall) string {
 	if !iok {
 		return e.errf(n.Pos(), "star without an inner radius (ir/id)")
 	}
-	v := e.freshLoopVar()
-	radius := "(" + v + " % 2 == 1 ? " + ir + " : " + r + ")"
-	ang := "(180 * " + v + " / " + nStr + ") * 1 deg"
-	return "Polygon(points: for " + v + " [1:2 * " + nStr + "] { yield Vec2{x: " +
-		radius + " * Cos(a: " + ang + "), y: " + radius + " * Sin(a: " + ang + ")} })"
+	sides := 0
+	if f, isLit := literalNumber(nArg); isLit {
+		sides = int(f)
+	}
+	if sides < 2 {
+		return e.errf(n.Pos(), "star: requires a literal point count of at least 2")
+	}
+	return "Star(n: " + nStr + ", r: " + r + ", ir: " + ir + ")" + ngonCenterMove(sides, r)
 }
 
 // bosl2Ellipse emits BOSL2's 2D ellipse, centered on the origin: a circle of
@@ -653,11 +660,15 @@ func (e *Emitter) bosl2Trapezoid(n *ast.ModuleCall) string {
 }
 
 // bosl2RegularNgon emits a BOSL2 regular polygon (regular_ngon, or the named
-// hexagon/pentagon/octagon) as a centered Polygon. Vertices follow BOSL2's
-// default orientation: a = 360 - i*360/n from +X, at the circumradius. fixedN is
-// the side count for the named shapes ("" reads the n argument); rPos is the
-// positional index of the radius. side/ir/realign/rounding are not supported and
-// error via rejectExtraArgs.
+// hexagon/pentagon/octagon) via the stdlib Ngon primitive. Ngon places a vertex
+// on +X at the circumradius; a regular polygon has the same vertex set under
+// 360/n symmetry, so this is the same shape as BOSL2's default orientation. Ngon
+// is corner-anchored, so ngonCenterMove shifts it onto its construction origin
+// (BOSL2's CENTER anchor), and a vector anchor= then lands on the perimeter
+// (ngonAnchorMove). Both moves need the offset coefficients, so a literal side
+// count is required. fixedN is the side count for the named shapes ("" reads the
+// n argument); rPos is the positional index of the radius. side/ir/realign/
+// rounding are not supported and error via rejectExtraArgs.
 func (e *Emitter) bosl2RegularNgon(n *ast.ModuleCall, fixedN string, rPos int) string {
 	nStr := fixedN
 	sides := 0
@@ -679,24 +690,21 @@ func (e *Emitter) bosl2RegularNgon(n *ast.ModuleCall, fixedN string, rPos int) s
 	if !ok {
 		return e.errf(n.Pos(), "%s without a radius (r/d/or/od)", n.Name)
 	}
-	v := e.freshLoopVar()
-	ang := "(360 - " + v + " * 360 / " + nStr + ") * 1 deg"
-	poly := "Polygon(points: for " + v + " [0:" + nStr + " - 1] { yield Vec2{x: " +
-		r + " * Cos(a: " + ang + "), y: " + r + " * Sin(a: " + ang + ")} })"
+	if sides < 3 {
+		return e.errf(n.Pos(), "%s: requires a literal side count of at least 3", n.Name)
+	}
+	shape := "Ngon(n: " + nStr + ", r: " + r + ")" + ngonCenterMove(sides, r)
 	// BOSL2 anchors a 2D polygon by its path: a vector anchor lands on the
 	// perimeter where the center-ray crosses it (verified vs OpenSCAD: hexagon
-	// RIGHT+BACK -> (6.34,6.34), not the bbox corner). Needs a literal side count.
+	// RIGHT+BACK -> (6.34,6.34), not the bbox corner).
 	if _, has := arg(n, "anchor", -1); has {
-		if sides < 3 {
-			return e.errf(n.Pos(), "%s: anchor= requires a literal side count of at least 3", n.Name)
-		}
 		move, ok := e.ngonAnchorMove(n, sides, r)
 		if !ok {
 			return move
 		}
-		return poly + move
+		return shape + move
 	}
-	return poly
+	return shape
 }
 
 // ngonRadius renders a polygon's circumradius from r/or, or d/od (halved), or
@@ -937,10 +945,10 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	return e.applyOrient(n, e.applySpin(n, shape))
 }
 
-// bosl2Wedge emits BOSL2's wedge — a triangular ramp — as its exact VNF (the
-// six vertices and eight faces BOSL2 builds, scaled by size/2). BOSL2's default
-// anchor is the min corner, so the centered mesh is shifted by size/2 unless
-// center=true.
+// bosl2Wedge emits BOSL2's wedge — a triangular ramp — via the stdlib Wedge
+// primitive. Wedge is corner-anchored (min corner at origin), which matches
+// BOSL2's default wedge anchor, so the bare form maps directly; center=true
+// recenters it with AlignCenter.
 func (e *Emitter) bosl2Wedge(n *ast.ModuleCall) string {
 	e.rejectExtraArgs(n, 2, "size", "center")
 	size, ok := arg(n, "size", 0)
@@ -948,27 +956,11 @@ func (e *Emitter) bosl2Wedge(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "wedge without size")
 	}
 	x, y, z := e.boxSizeComponents(size)
-	hx, hy, hz := x+" / 2", y+" / 2", z+" / 2"
-	nx, ny, nz := "-("+x+" / 2)", "-("+y+" / 2)", "-("+z+" / 2)"
-	v := func(px, py, pz string) string {
-		return fmt.Sprintf("Vec3{x: %s, y: %s, z: %s}", px, py, pz)
-	}
-	verts := strings.Join([]string{
-		v(hx, hy, nz), v(hx, ny, nz), v(hx, ny, hz),
-		v(nx, hy, nz), v(nx, ny, nz), v(nx, ny, hz),
-	}, ", ")
-	// Wound so the face normals point OUTWARD (positive volume). BOSL2's VNF uses
-	// the opposite winding to Facet's Mesh convention, so each triangle is
-	// reversed (v1<->v2) from the upstream face list.
-	faces := "Face{v0: 0, v1: 2, v2: 1}, Face{v0: 3, v1: 4, v2: 5}, " +
-		"Face{v0: 0, v1: 1, v2: 3}, Face{v0: 1, v1: 4, v2: 3}, " +
-		"Face{v0: 1, v1: 2, v2: 4}, Face{v0: 2, v1: 5, v2: 4}, " +
-		"Face{v0: 2, v1: 3, v2: 5}, Face{v0: 0, v1: 3, v2: 2}"
-	mesh := "Mesh{vertices: []Vec3[" + verts + "], indices: []Face[" + faces + "]}.Solid()"
+	wedge := "Wedge(x: " + x + ", y: " + y + ", z: " + z + ")"
 	if boolArg(n, "center", 1) {
-		return mesh
+		return wedge + ".AlignCenter(pos: Vec3{})"
 	}
-	return mesh + ".Move(x: " + hx + ", y: " + hy + ", z: " + hz + ")"
+	return wedge
 }
 
 // boxSizeComponents renders the three side-length Length expressions of an

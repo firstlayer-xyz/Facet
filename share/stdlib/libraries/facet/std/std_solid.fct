@@ -256,6 +256,20 @@ fn Prism(a, b, c Vec2, h Length) Solid {
     return Polygon(points: [a, b, c]).Extrude(z: h)
 }
 
+# Right-triangular ramp filling half of an `x`*`y`*`z` box: full height `z`
+# along the y=0 edge, tapering to zero at y=`y`, uniform along x. Bounding-box
+# min corner sits at (0,0,0). The cross-section is the right triangle
+# {(0,0), (y,0), (0,z)} in the y-z plane; we draw it in the sketch x-y plane,
+# extrude it along z by `x`, then rotate so the sketch axes (x,y,z) map to
+# world (y,z,x) — a 120-degree turn about the (1,1,1) diagonal.
+# ```
+# fn Main() { Wedge(x: 20 mm, y: 12 mm, z: 8 mm) }
+# ```
+fn Wedge(x, y, z Length) Solid {
+    var tri = Polygon(points: [Vec2{x: 0 mm, y: 0 mm}, Vec2{x: y, y: 0 mm}, Vec2{x: 0 mm, y: z}])
+    return tri.Extrude(z: x).Rotate(axis: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}, angle: 120 deg)
+}
+
 # ---------------------------------------------------------------------------
 # Solid Methods
 # ---------------------------------------------------------------------------

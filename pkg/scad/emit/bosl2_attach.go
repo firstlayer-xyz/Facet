@@ -268,6 +268,37 @@ func (e *Emitter) ngonAnchorMove(n *ast.ModuleCall, sides int, rExpr string) (st
 	return ".Move(" + strings.Join(parts, ", ") + ")", true
 }
 
+// ngonCenterMove returns the trailing .Move that recenters a corner-anchored
+// regular `sides`-gon (built with a vertex on +X at circumradius rExpr, bbox min
+// at the origin) on its construction origin — the circumcircle center, which is
+// where BOSL2 anchors it (anchor=CENTER). Bounding-center only coincides with
+// the construction center for even `sides`; for odd `sides` the polygon isn't
+// centrally symmetric, so the offset (the construction bbox's min corner, a fixed
+// coefficient of rExpr set by the vertex angles) must be moved out explicitly. A
+// star reuses this: its extent is set by its outer vertices, which sit at the
+// same angles as a `sides`-gon's.
+func ngonCenterMove(sides int, rExpr string) string {
+	minCos, minSin := math.Inf(1), math.Inf(1)
+	for k := 0; k < sides; k++ {
+		a := 2 * math.Pi * float64(k) / float64(sides)
+		minCos = math.Min(minCos, math.Cos(a))
+		minSin = math.Min(minSin, math.Sin(a))
+	}
+	// The construction origin sits at (-minCos*r, -minSin*r) in the corner-anchored
+	// frame, so moving by (minCos*r, minSin*r) brings it back to (0,0).
+	var parts []string
+	if cx := coeffStr(minCos); cx != "0" {
+		parts = append(parts, "x: "+cx+" * ("+rExpr+")")
+	}
+	if cy := coeffStr(minSin); cy != "0" {
+		parts = append(parts, "y: "+cy+" * ("+rExpr+")")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ".Move(" + strings.Join(parts, ", ") + ")"
+}
+
 // ngonPerimeterPoint returns the point (on the unit-circumradius regular n-gon
 // with a vertex on +X) where the ray from the center toward (dx,dy) crosses the
 // perimeter. The boundary distance along angle φ is inradius/cos(φ−ψ), with ψ the
