@@ -19,7 +19,7 @@ import (
 func TestBosl2RuntimeTypechecks(t *testing.T) {
 	main := `fn Main() Solid {
     return b2_cuboid(size: Vec3{x: 20 mm, y: 20 mm, z: 10 mm})
-        .attach(pa: B2Anchor{x: 0, y: 0, z: 1}, ca: B2Anchor{x: 0, y: 0, z: -1}, child: b2_cyl(h: 8 mm, r: 3 mm))
+        .attach(pa: B2Anchor{x: 0, y: 0, z: 1}, ca: B2Anchor{x: 0, y: 0, z: -1}, child: b2_cyl(h: 8 mm, r: 3 mm), overlap: 0 mm)
         .position(a: B2Anchor{x: 1, y: 0, z: 1}, child: b2_sphere(r: 2 mm))
         .Solid()
 }

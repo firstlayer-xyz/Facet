@@ -146,23 +146,24 @@ func signedExpr(k int, expr string) string {
 // not be anchored. twoD rejects an off-plane (TOP/BOTTOM) anchor. Without anchor=
 // the shape is returned unchanged.
 func (e *Emitter) applyAnchor(n *ast.ModuleCall, shape string, size [3]string, twoD bool, mode anchorMode) string {
-	return e.applyAnchorFn(n, shape, twoD, mode, func([3]int) [3]string { return size })
+	return e.applyAnchorFn(n, shape, twoD, mode, [3]int{}, func([3]int) [3]string { return size })
 }
 
 // applyAnchorFn is applyAnchor for shapes whose extent depends on the anchor
 // itself — a prismoid/trapezoid samples its tapered width at the anchored level —
-// so the size is supplied as sizeFn(v) once v is known.
-func (e *Emitter) applyAnchorFn(n *ast.ModuleCall, shape string, twoD bool, mode anchorMode, sizeFn func([3]int) [3]string) string {
-	a, has := arg(n, "anchor", -1)
-	if !has {
-		return shape
-	}
-	v, ok := anchorVec(a)
-	if !ok {
-		return e.errf(n.Pos(), "%s: unsupported anchor (use a named anchor or a ±1/0 vector)", n.Name)
-	}
-	if twoD && v[2] != 0 {
-		return e.errf(n.Pos(), "%s: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)", n.Name)
+// so the size is supplied as sizeFn(v) once v is known. def is the shape's BOSL2
+// DEFAULT anchor, applied when the call has no anchor= (most shapes default
+// CENTER = [3]int{}; prismoid/rect_tube default BOTTOM, so they sit on the plate).
+func (e *Emitter) applyAnchorFn(n *ast.ModuleCall, shape string, twoD bool, mode anchorMode, def [3]int, sizeFn func([3]int) [3]string) string {
+	v := def
+	if a, has := arg(n, "anchor", -1); has {
+		var ok bool
+		if v, ok = anchorVec(a); !ok {
+			return e.errf(n.Pos(), "%s: unsupported anchor (use a named anchor or a ±1/0 vector)", n.Name)
+		}
+		if twoD && v[2] != 0 {
+			return e.errf(n.Pos(), "%s: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)", n.Name)
+		}
 	}
 	return shape + anchorOffset(v, sizeFn(v), mode)
 }
@@ -433,6 +434,9 @@ func (e *Emitter) b2PositionLink(n *ast.ModuleCall, removedOuter bool) string {
 // attach(P) reorients the child to point out the P anchor (any direction,
 // including combined edge/corner anchors) and emits B2.attachReorient.
 func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
+	// pa (pos 0), ca (pos 1), overlap (pos 2 or named). align/inset/shiftout/spin/
+	// norot/from/to are not translated and error rather than silently dropping.
+	e.rejectExtraArgs(n, 3, "overlap")
 	pa, ok := arg(n, "", 0)
 	if !ok {
 		return e.errf(n.Pos(), "attach without an anchor")
@@ -446,6 +450,10 @@ func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 		return e.errf(n.Pos(), "attach: child is not an attachable shape")
 	}
 	removed := removedOuter || removedChild
+	overlap := "0 mm"
+	if o, ok := arg(n, "overlap", 2); ok {
+		overlap = e.expr(o, kLength)
+	}
 
 	if ca, has := arg(n, "", 1); has {
 		cdir, ok := anchorVec(ca)
@@ -455,11 +463,11 @@ func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
 		// Any child anchor: the runtime rotates the child so ca faces opposite pa
 		// (a no-op when ca is already anti-parallel to pa).
 		return "." + pick(removed, "attachRemove", "attach") +
-			"(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ")"
+			"(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ", overlap: " + overlap + ")"
 	}
 
 	return "." + pick(removed, "attachReorientRemove", "attachReorient") +
-		"(pa: " + anchorLit(pdir) + ", child: " + child + ")"
+		"(pa: " + anchorLit(pdir) + ", child: " + child + ", overlap: " + overlap + ")"
 }
 
 // b2AlignLink emits a BOSL2 align(anchor, [inside=]) child: the child is seated

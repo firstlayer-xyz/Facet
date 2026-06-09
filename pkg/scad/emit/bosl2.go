@@ -303,21 +303,33 @@ func (e *Emitter) bosl2Diff(n *ast.ModuleCall) string {
 // zflip_copy): the child plus a copy mirrored across the plane normal to `axis`.
 // An `offset` shifts the mirror plane (reflection across axis = offset).
 func (e *Emitter) bosl2FlipCopy(n *ast.ModuleCall, axis string) string {
-	e.rejectExtraArgs(n, 1, "offset")
+	e.rejectExtraArgs(n, 2, "offset", axis)
 	child := e.childExpr(n)
 	if child == "" {
 		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
 	}
-	mirror := child + ".Mirror(" + axis + ": 1)"
+	// BOSL2 offsets the children along +axis by `offset` BEFORE copying (so the
+	// original and its mirror end up ±offset apart), then mirrors across the plane
+	// at axis=<x/y/z> (default 0).
+	kept := child
 	if off, ok := arg(n, "offset", 0); ok {
-		mirror += ".Move(" + axis + ": 2 * (" + e.expr(off, kLength) + "))"
+		kept = "(" + child + ").Move(" + axis + ": " + e.expr(off, kLength) + ")"
 	}
-	return "(" + child + " + " + mirror + ")"
+	mirror := kept + ".Mirror(" + axis + ": 1)"
+	if p, ok := arg(n, axis, 1); ok {
+		pc := e.expr(p, kLength)
+		mirror = kept + ".Move(" + axis + ": -(" + pc + ")).Mirror(" + axis + ": 1).Move(" + axis + ": " + pc + ")"
+	}
+	return "(" + kept + " + " + mirror + ")"
 }
 
 // bosl2MirrorCopy emits BOSL2's mirror_copy(v): the child plus a copy mirrored
 // across the plane with normal v. Reuses the OpenSCAD mirror mapping.
 func (e *Emitter) bosl2MirrorCopy(n *ast.ModuleCall) string {
+	// offset=/cp= (shift along / plane through an arbitrary v) aren't translated;
+	// reject them rather than silently dropping. Axis-aligned offsets go through
+	// xflip_copy/yflip_copy/zflip_copy.
+	e.rejectExtraArgs(n, 1, "v")
 	child := e.childExpr(n)
 	if child == "" {
 		return e.errf(n.Pos(), "mirror_copy has no child geometry")
@@ -460,7 +472,7 @@ func (e *Emitter) bosl2RotCopies(n *ast.ModuleCall) string {
 // as an outer box minus an inner one of equal height. The outer footprint is
 // `size` ([x,y] or scalar); the inner is `isize`, or `size` minus 2·`wall`.
 func (e *Emitter) bosl2RectTube(n *ast.ModuleCall) string {
-	e.rejectExtraArgs(n, 1, "h", "l", "height", "size", "isize", "wall", "$fn", "$fa", "$fs")
+	e.rejectExtraArgs(n, 1, "h", "l", "height", "size", "isize", "wall", "anchor", "$fn", "$fa", "$fs")
 	h, ok := cylHeightArg(n)
 	if !ok {
 		return e.errf(n.Pos(), "rect_tube without height")
@@ -481,8 +493,13 @@ func (e *Emitter) bosl2RectTube(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "rect_tube needs an inner size (isize) or a wall thickness (wall)")
 	}
 	hStr := e.expr(h, kLength)
-	return fmt.Sprintf("(Cube(x: %s, y: %s, z: %s).AlignCenter(pos: Vec3{}) - Cube(x: %s, y: %s, z: %s).AlignCenter(pos: Vec3{}))",
+	shape := fmt.Sprintf("(Cube(x: %s, y: %s, z: %s).AlignCenter(pos: Vec3{}) - Cube(x: %s, y: %s, z: %s).AlignCenter(pos: Vec3{}))",
 		ox, oy, hStr, ix, iy, hStr)
+	// Like tube/prismoid, rect_tube's bounding box is [outer, outer, h]; its BOSL2
+	// default anchor is BOTTOM, so with no anchor= it sits on the plate.
+	return e.applyAnchorFn(n, shape, false, anchorBox, [3]int{0, 0, -1}, func([3]int) [3]string {
+		return [3]string{ox, oy, hStr}
+	})
 }
 
 // bosl2Rect emits BOSL2's 2D rect — a rectangle centered on the origin (a
@@ -537,7 +554,8 @@ func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
 		"], heights: [0 mm, " + hStr + "]).AlignCenter(pos: Vec3{})"
 	// BOSL2 anchors a prismoid on its tapered face: a side anchor samples the
 	// width at the anchored z-level (bottom size1, top size2, average between).
-	return e.applyAnchorFn(n, shape, false, anchorBox, func(v [3]int) [3]string {
+	// Its default anchor is BOTTOM, so with no anchor= the base sits on the plate.
+	return e.applyAnchorFn(n, shape, false, anchorBox, [3]int{0, 0, -1}, func(v [3]int) [3]string {
 		return [3]string{taperWidth(x1, x2, v[2]), taperWidth(y1, y2, v[2]), hStr}
 	})
 }
@@ -641,7 +659,7 @@ func (e *Emitter) bosl2Trapezoid(n *ast.ModuleCall) string {
 		a, hs, a, hs, b, hs, b, hs)
 	// 2D prismoid: the width tapers along the height (y), so a left/right anchor
 	// samples it at the anchored y-level — bottom w1 (FWD), top w2 (BACK), average.
-	return e.applyAnchorFn(n, shape, true, anchorBox, func(v [3]int) [3]string {
+	return e.applyAnchorFn(n, shape, true, anchorBox, [3]int{}, func(v [3]int) [3]string {
 		return [3]string{taperWidth(a, b, v[1]), hs, ""}
 	})
 }
