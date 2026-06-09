@@ -654,15 +654,20 @@ func (e *Emitter) bosl2Trapezoid(n *ast.ModuleCall) string {
 // error via rejectExtraArgs.
 func (e *Emitter) bosl2RegularNgon(n *ast.ModuleCall, fixedN string, rPos int) string {
 	nStr := fixedN
+	sides := 0
 	if fixedN == "" {
-		e.rejectExtraArgs(n, 2, "n", "r", "d", "or", "od", "$fn", "$fa", "$fs")
+		e.rejectExtraArgs(n, 2, "n", "r", "d", "or", "od", "anchor", "$fn", "$fa", "$fs")
 		nArg, ok := arg(n, "n", 0)
 		if !ok {
 			return e.errf(n.Pos(), "regular_ngon without a side count n")
 		}
 		nStr = e.expr(nArg, kNumber)
+		if f, isLit := literalNumber(nArg); isLit {
+			sides = int(f)
+		}
 	} else {
-		e.rejectExtraArgs(n, 1, "r", "d", "or", "od", "$fn", "$fa", "$fs")
+		e.rejectExtraArgs(n, 1, "r", "d", "or", "od", "anchor", "$fn", "$fa", "$fs")
+		sides, _ = strconv.Atoi(fixedN)
 	}
 	r, ok := e.ngonRadius(n, rPos)
 	if !ok {
@@ -670,8 +675,22 @@ func (e *Emitter) bosl2RegularNgon(n *ast.ModuleCall, fixedN string, rPos int) s
 	}
 	v := e.freshLoopVar()
 	ang := "(360 - " + v + " * 360 / " + nStr + ") * 1 deg"
-	return "Polygon(points: for " + v + " [0:" + nStr + " - 1] { yield Vec2{x: " +
+	poly := "Polygon(points: for " + v + " [0:" + nStr + " - 1] { yield Vec2{x: " +
 		r + " * Cos(a: " + ang + "), y: " + r + " * Sin(a: " + ang + ")} })"
+	// BOSL2 anchors a 2D polygon by its path: a vector anchor lands on the
+	// perimeter where the center-ray crosses it (verified vs OpenSCAD: hexagon
+	// RIGHT+BACK -> (6.34,6.34), not the bbox corner). Needs a literal side count.
+	if _, has := arg(n, "anchor", -1); has {
+		if sides < 3 {
+			return e.errf(n.Pos(), "%s: anchor= requires a literal side count of at least 3", n.Name)
+		}
+		move, ok := e.ngonAnchorMove(n, sides, r)
+		if !ok {
+			return move
+		}
+		return poly + move
+	}
+	return poly
 }
 
 // ngonRadius renders a polygon's circumradius from r/or, or d/od (halved), or

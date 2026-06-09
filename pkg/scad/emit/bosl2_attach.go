@@ -200,6 +200,98 @@ func (e *Emitter) applySpin(n *ast.ModuleCall, shape string) string {
 	return shape + ".Rotate(z: " + e.expr(s, kAngle) + ")"
 }
 
+// hasAttachArgs reports whether a call carries any BOSL2 attachable-transform
+// argument (anchor/spin/orient). In a BOSL2 file the core cube/sphere/cylinder
+// take the attachable path only when one is present; otherwise they keep their
+// plain OpenSCAD origin.
+func hasAttachArgs(n *ast.ModuleCall) bool {
+	for _, name := range []string{"anchor", "spin", "orient"} {
+		if _, has := arg(n, name, -1); has {
+			return true
+		}
+	}
+	return false
+}
+
+// bosl2CoreLeaf places a CENTERED core primitive (cube/sphere/cylinder — in a
+// BOSL2 file these are BOSL2's attachable overrides of the OpenSCAD built-ins) by
+// its BOSL2 anchor, then spin, then orient (BOSL2 order). `def` is the anchor used
+// when none is given — the one that reproduces the primitive's OpenSCAD origin
+// (cube ALLNEG/CENTER, cylinder BOTTOM/CENTER, sphere CENTER); an explicit anchor=
+// overrides it. mode selects the _find_anchor geometry (anchorBox for the cube,
+// anchorSphere for the sphere; the cylinder uses anchorCyl via cylinderAnchored).
+func (e *Emitter) bosl2CoreLeaf(n *ast.ModuleCall, centered string, size [3]string, def [3]int, mode anchorMode) string {
+	v := def
+	if a, has := arg(n, "anchor", -1); has {
+		var ok bool
+		if v, ok = anchorVec(a); !ok {
+			return e.errf(n.Pos(), "%s: unsupported anchor (use a named anchor or a ±1/0 vector)", n.Name)
+		}
+	}
+	return e.applyOrient(n, e.applySpin(n, centered+anchorOffset(v, size, mode)))
+}
+
+// ngonAnchorMove appends the trailing .Move that places a regular `sides`-gon
+// (built centered, with a vertex on +X and circumradius rExpr) so its BOSL2 anchor
+// point lands on the origin. BOSL2 anchors a 2D polygon by its path (extent=false),
+// so a vector anchor lands where the ray from the center crosses the polygon
+// perimeter — computed on the unit polygon (which scales linearly with rExpr) and
+// scaled by rExpr. An out-of-plane (z) anchor errors; ok=false means an error was
+// recorded.
+func (e *Emitter) ngonAnchorMove(n *ast.ModuleCall, sides int, rExpr string) (string, bool) {
+	a, has := arg(n, "anchor", -1)
+	if !has {
+		return "", true
+	}
+	v, ok := anchorVec(a)
+	if !ok {
+		return e.errf(n.Pos(), "%s: unsupported anchor (use a named anchor or a ±1/0 vector)", n.Name), false
+	}
+	if v[2] != 0 {
+		return e.errf(n.Pos(), "%s: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)", n.Name), false
+	}
+	if v[0] == 0 && v[1] == 0 {
+		return "", true // CENTER
+	}
+	ux, uy := ngonPerimeterPoint(sides, float64(v[0]), float64(v[1]))
+	var parts []string
+	if cx := coeffStr(-ux); cx != "0" {
+		parts = append(parts, "x: "+cx+" * ("+rExpr+")")
+	}
+	if cy := coeffStr(-uy); cy != "0" {
+		parts = append(parts, "y: "+cy+" * ("+rExpr+")")
+	}
+	if len(parts) == 0 {
+		return "", true
+	}
+	return ".Move(" + strings.Join(parts, ", ") + ")", true
+}
+
+// ngonPerimeterPoint returns the point (on the unit-circumradius regular n-gon
+// with a vertex on +X) where the ray from the center toward (dx,dy) crosses the
+// perimeter. The boundary distance along angle φ is inradius/cos(φ−ψ), with ψ the
+// nearest edge-normal angle (edge normals sit at the odd multiples of π/n, the
+// bisectors between vertices at the even multiples).
+func ngonPerimeterPoint(sides int, dx, dy float64) (float64, float64) {
+	phi := math.Atan2(dy, dx)
+	half := math.Pi / float64(sides)
+	k := math.Round((phi/half - 1) / 2)
+	psi := (2*k + 1) * half
+	rho := math.Cos(half) / math.Cos(phi-psi)
+	return rho * math.Cos(phi), rho * math.Sin(phi)
+}
+
+// coeffStr formats a numeric Move coefficient, rounding away floating-point dust
+// so a vertex-aligned anchor emits a clean "1"/"-1" and an on-axis anchor drops
+// its zero component.
+func coeffStr(x float64) string {
+	x = math.Round(x*1e9) / 1e9
+	if x == 0 {
+		return "0"
+	}
+	return strconv.FormatFloat(x, 'g', -1, 64)
+}
+
 // bosl2AttachGuard blocks a leaf shape that has children — in BOSL2 a child of a
 // shape is an attachment, and only cuboid/cyl carry a known attachment geometry
 // (handled by bosl2AttachChain). Any other shape with children (a bare child, or

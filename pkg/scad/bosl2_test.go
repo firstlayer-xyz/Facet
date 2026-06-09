@@ -1394,3 +1394,40 @@ func TestBOSL2_AxisRotScalarPivotErrors(t *testing.T) {
 		t.Fatalf("error should explain cp must be a vector, got: %v", err)
 	}
 }
+
+// Error paths for the core-primitive and ngon anchors — these never render, so
+// the ground-truth harness can't cover them; assert the no-fallback guards.
+func TestBOSL2_CoreAnchorErrors(t *testing.T) {
+	mustErr := func(src, why string) {
+		if _, err := Transpile("include <BOSL2/std.scad>\n"+src+"\n", "part.scad"); err == nil {
+			t.Fatalf("%s: expected an error (%s)", src, why)
+		}
+	}
+	// A tapered cylinder has no single bounding diameter for an x/y anchor.
+	mustErr("cylinder(h=10, r1=4, r2=2, anchor=RIGHT);", "tapered x/y anchor")
+	// A z anchor on a cone is fine (uses the height) — must NOT error.
+	if _, err := Transpile("include <BOSL2/std.scad>\ncylinder(h=10, r1=4, r2=2, anchor=TOP);\n", "part.scad"); err != nil {
+		t.Fatalf("cone z anchor should transpile, got: %v", err)
+	}
+	// regular_ngon needs a literal side count for its perimeter anchor.
+	mustErr("sides = 6;\nregular_ngon(n=sides, r=10, anchor=RIGHT);", "non-literal n")
+	// Out-of-plane anchor on a 2D polygon.
+	mustErr("hexagon(10, anchor=TOP);", "out-of-plane on 2D")
+	// star anchor is nonlinear in the two radii — unsupported (precise error).
+	mustErr("star(n=5, r=10, ir=4, anchor=RIGHT);", "star anchor unsupported")
+}
+
+// Outside a BOSL2 file the core primitives keep pure OpenSCAD semantics and reject
+// anchor; inside one, the plain (unanchored) form keeps the OpenSCAD origin.
+func TestBOSL2_CoreAnchorGating(t *testing.T) {
+	if _, err := Transpile("cube(10, anchor=BOTTOM);\n", "part.scad"); err == nil {
+		t.Fatal("non-BOSL2 cube(anchor=) should error (anchor is not an OpenSCAD cube arg)")
+	}
+	res, err := Transpile("include <BOSL2/std.scad>\ncube(10);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("plain cube should transpile, got: %v", err)
+	}
+	if strings.Contains(res.Facet, ".Move(") || strings.Contains(res.Facet, ".AlignCenter") {
+		t.Fatalf("plain cube should stay corner-origin:\n%s", res.Facet)
+	}
+}

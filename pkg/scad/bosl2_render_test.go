@@ -644,3 +644,32 @@ func TestBOSL2Render_EllipseAnchorDiagonal(t *testing.T) {
 		t.Errorf("maxY = %v, want ~0.53 (ray-perimeter anchor at y=4.47)", maxY)
 	}
 }
+
+// Anchor-placement regression guards with values verified against real
+// OpenSCAD+BOSL2 (see TestBOSL2GroundTruth). These run in CI where openscad is
+// absent. The bbox CENTER is the anchor signal (faceting cancels in the midpoint).
+func TestBOSL2Render_CoreAnchorPlacement(t *testing.T) {
+	center := func(lo, hi float64) float64 { return (lo + hi) / 2 }
+	// sphere diagonal anchor lands on the SURFACE: r·unit(1,1,0) = (7.07,7.07,0),
+	// so the sphere center sits at (-7.07,-7.07,0) — NOT the bbox corner (-10,-10).
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nsphere(r=10, $fn=64, anchor=RIGHT+BACK);\n")
+	minX, minY, _, maxX, maxY, _ := s.BoundingBox()
+	if !near(center(minX, maxX), -7.071, 0.1) || !near(center(minY, maxY), -7.071, 0.1) {
+		t.Errorf("sphere diag center = (%.3f,%.3f), want (-7.07,-7.07) [surface, not bbox]", center(minX, maxX), center(minY, maxY))
+	}
+	// cylinder diagonal anchor is radial on the rim (7.07,7.07), z centered.
+	s = renderBosl2Solid(t, "include <BOSL2/std.scad>\ncylinder(h=20, r=10, $fn=64, anchor=RIGHT+BACK);\n")
+	minX, minY, minZ, maxX, maxY, maxZ := s.BoundingBox()
+	if !near(center(minX, maxX), -7.071, 0.1) || !near(center(minY, maxY), -7.071, 0.1) {
+		t.Errorf("cyl diag center = (%.3f,%.3f), want (-7.07,-7.07) [rim, not bbox]", center(minX, maxX), center(minY, maxY))
+	}
+	if !near(minZ, -10, 0.05) || !near(maxZ, 10, 0.05) {
+		t.Errorf("cyl diag z = [%.3f,%.3f], want [-10,10] (z centered)", minZ, maxZ)
+	}
+	// cube anchor=BOTTOM sits the box on the plate.
+	s = renderBosl2Solid(t, "include <BOSL2/std.scad>\ncube([10,20,30], anchor=BOTTOM);\n")
+	_, _, minZ, _, _, maxZ = s.BoundingBox()
+	if !near(minZ, 0, 0.02) || !near(maxZ, 30, 0.02) {
+		t.Errorf("cube anchor=BOTTOM z = [%.3f,%.3f], want [0,30]", minZ, maxZ)
+	}
+}
