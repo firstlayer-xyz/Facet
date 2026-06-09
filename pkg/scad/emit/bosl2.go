@@ -494,7 +494,7 @@ func (e *Emitter) bosl2Rect(n *ast.ModuleCall) string {
 		return e.errf(n.Pos(), "rect without size")
 	}
 	x, y := e.pair2(size, kLength)
-	return e.applyAnchor(n, e.centeredSquare(x, y), [3]string{x, y, ""}, true, false)
+	return e.applyAnchor(n, e.centeredSquare(x, y), [3]string{x, y, ""}, true, anchorBox)
 }
 
 // centeredSquare renders a Square of the given side-length expressions recentered
@@ -535,10 +535,26 @@ func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
 	hStr := e.expr(h, kLength)
 	shape := "Loft(profiles: [" + e.centeredSquare(x1, y1) + ", " + e.centeredSquare(x2, y2) +
 		"], heights: [0 mm, " + hStr + "]).AlignCenter(pos: Vec3{})"
-	// The anchor bounding box spans the wider of the two ends on each axis.
-	sx := "Max(a: " + x1 + ", b: " + x2 + ")"
-	sy := "Max(a: " + y1 + ", b: " + y2 + ")"
-	return e.applyAnchor(n, shape, [3]string{sx, sy, hStr}, false, false)
+	// BOSL2 anchors a prismoid on its tapered face: a side anchor samples the
+	// width at the anchored z-level (bottom size1, top size2, average between).
+	return e.applyAnchorFn(n, shape, false, anchorBox, func(v [3]int) [3]string {
+		return [3]string{taperWidth(x1, x2, v[2]), taperWidth(y1, y2, v[2]), hStr}
+	})
+}
+
+// taperWidth samples a prismoid/trapezoid width that runs from w0 at the low end
+// to w1 at the high end, at the level the anchor picks along the taper axis: the
+// low end (-1), the high end (+1), or their average (0) — matching BOSL2's
+// lerp(size/2, size2/2, (axis+1)/2).
+func taperWidth(w0, w1 string, level int) string {
+	switch {
+	case level < 0:
+		return w0
+	case level > 0:
+		return w1
+	default:
+		return "(" + w0 + " + " + w1 + ") / 2"
+	}
 }
 
 // isBosl22D reports whether a BOSL2 shape name yields a 2D Sketch.
@@ -598,9 +614,7 @@ func (e *Emitter) bosl2Ellipse(n *ast.ModuleCall) string {
 	circ := "Circle(r: " + rx + e.segmentsSuffix(n, 0, false) + ")"
 	shape := fmt.Sprintf("%s.Move(x: -(%s), y: -(%s)).Scale(x: 1, y: Number(from: %s) / Number(from: %s))",
 		circ, rx, rx, ry, rx)
-	// round: the ellipse is a scaled circle, so a diagonal anchor lands on the
-	// perimeter (rx·v/|v|, ry·v/|v|), not the bounding-box corner.
-	return e.applyAnchor(n, shape, [3]string{"2 * (" + rx + ")", "2 * (" + ry + ")", ""}, true, true)
+	return e.applyAnchor(n, shape, [3]string{rx, ry, ""}, true, anchorEllipse)
 }
 
 // bosl2Trapezoid emits BOSL2's 2D isosceles trapezoid, centered on the origin:
@@ -625,7 +639,11 @@ func (e *Emitter) bosl2Trapezoid(n *ast.ModuleCall) string {
 		"Vec2{x: (%s) / 2, y: -(%s) / 2}, Vec2{x: (%s) / 2, y: (%s) / 2}, "+
 		"Vec2{x: -(%s) / 2, y: (%s) / 2}])",
 		a, hs, a, hs, b, hs, b, hs)
-	return e.applyAnchor(n, shape, [3]string{"Max(a: " + a + ", b: " + b + ")", hs, ""}, true, false)
+	// 2D prismoid: the width tapers along the height (y), so a left/right anchor
+	// samples it at the anchored y-level — bottom w1 (FWD), top w2 (BACK), average.
+	return e.applyAnchorFn(n, shape, true, anchorBox, func(v [3]int) [3]string {
+		return [3]string{taperWidth(a, b, v[1]), hs, ""}
+	})
 }
 
 // bosl2RegularNgon emits a BOSL2 regular polygon (regular_ngon, or the named
@@ -862,7 +880,7 @@ func (e *Emitter) bosl2Spheroid(n *ast.ModuleCall) string {
 	}
 	shape := ctor + ".AlignCenter(pos: Vec3{})"
 	dia := "2 * (" + radius + ")"
-	shape = e.applyAnchor(n, shape, [3]string{dia, dia, dia}, false, false)
+	shape = e.applyAnchor(n, shape, [3]string{dia, dia, dia}, false, anchorSphere)
 	return e.applySpin(n, shape)
 }
 
@@ -890,7 +908,7 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	}
 	shape := e.cubeCtor(size, fillet, chamfer) + ".AlignCenter(pos: Vec3{})"
 	sx, sy, sz := e.cubeSizeComponents(size)
-	shape = e.applyAnchor(n, shape, [3]string{sx, sy, sz}, false, false)
+	shape = e.applyAnchor(n, shape, [3]string{sx, sy, sz}, false, anchorBox)
 	return e.applyOrient(n, e.applySpin(n, shape))
 }
 
@@ -1009,7 +1027,7 @@ func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 			}
 			dia = d
 		}
-		shape += anchorMove(v, [3]string{dia, dia, hStr}, false)
+		shape += anchorOffset(v, [3]string{dia, dia, hStr}, anchorCyl)
 	}
 	return e.applyOrient(n, e.applySpin(n, shape)), true
 }
@@ -1070,7 +1088,7 @@ func (e *Emitter) bosl2Tube(n *ast.ModuleCall) string {
 		outer, hStr, inner, hStr)
 	// The tube's bounding box is [outer diameter, outer diameter, h].
 	dia := "2 * (" + outer + ")"
-	return e.applyAnchor(n, shape, [3]string{dia, dia, hStr}, false, false)
+	return e.applyAnchor(n, shape, [3]string{dia, dia, hStr}, false, anchorCyl)
 }
 
 // bosl2Torus emits BOSL2's torus by revolving a minor-radius circle, offset to

@@ -1303,9 +1303,9 @@ func TestBOSL2_TubeAnchor(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
-// prismoid(anchor=) shifts the tapered box by its anchor point over the bounding
-// box [max(size1.x,size2.x), max(...y), h]. BOTTOM sits it on the plate (z);
-// RIGHT uses the wider end on x via Max.
+// prismoid(anchor=) places the anchor on BOSL2's tapered face. BOTTOM sits it on
+// the plate (z); RIGHT (a mid-height side anchor) uses the AVERAGE of the two end
+// half-widths — lerp(size1.x/2, size2.x/2, 0.5) — not the wider end.
 func TestBOSL2_PrismoidAnchor(t *testing.T) {
 	res, err := Transpile("include <BOSL2/std.scad>\nprismoid(size1=[20, 20], size2=[10, 10], h=15, anchor=BOTTOM);\n", "part.scad")
 	if err != nil {
@@ -1320,21 +1320,22 @@ func TestBOSL2_PrismoidAnchor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prismoid RIGHT anchor should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, "Max(a: 20 mm, b: 10 mm)") {
-		t.Fatalf("expected x bound via Max of the two ends in:\n%s", res.Facet)
+	if !strings.Contains(res.Facet, ".Move(x: -0.5 * ((20 mm + 10 mm) / 2))") {
+		t.Fatalf("expected RIGHT shift by the averaged mid-height width in:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 }
 
 // ellipse(anchor=) and trapezoid(anchor=) shift the centered 2D shape by its
-// anchor point (in-plane only). ellipse uses [2rx, 2ry]; trapezoid uses
-// [max(w1,w2), h]. A z-bearing anchor is a located error on a 2D shape.
+// anchor point (in-plane only). ellipse anchors on the perimeter (cardinal RIGHT
+// = rx); trapezoid anchors on the slant-face center (RIGHT = averaged width). A
+// z-bearing anchor is a located error on a 2D shape.
 func TestBOSL2_Shape2DAnchor(t *testing.T) {
 	res, err := Transpile("include <BOSL2/std.scad>\nellipse(r=[10, 5], anchor=RIGHT);\n", "part.scad")
 	if err != nil {
 		t.Fatalf("ellipse anchor should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, ".Move(x: -0.5 * (2 * 10 mm))") {
+	if !strings.Contains(res.Facet, ".Move(x: -10 mm)") {
 		t.Fatalf("expected RIGHT shift by rx in:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
@@ -1343,8 +1344,8 @@ func TestBOSL2_Shape2DAnchor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("trapezoid anchor should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, "Max(a: 20 mm, b: 8 mm)") {
-		t.Fatalf("expected x bound via Max of the two widths in:\n%s", res.Facet)
+	if !strings.Contains(res.Facet, ".Move(x: -0.5 * ((20 mm + 8 mm) / 2))") {
+		t.Fatalf("expected RIGHT shift by the averaged width in:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 

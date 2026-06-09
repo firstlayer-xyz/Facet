@@ -558,31 +558,44 @@ func TestBOSL2Render_AxisRotPivot(t *testing.T) {
 	}
 }
 
-// prismoid(anchor=RIGHT) exercises the Max-of-two-ends X extent: a 20->10 taper
-// is 20 wide at the base, so the right bounding plane is at +10; RIGHT shifts it
-// onto the origin, giving x:-20..0 (y/z stay centered).
+// prismoid(anchor=RIGHT) anchors on the slanted face center, NOT the bounding box:
+// BOSL2 places RIGHT at x=lerp(size1.x/2, size2.x/2, 0.5)=(10+5)/2=7.5 for a
+// 20->10 taper, so the shape (base x:-10..10) shifts -7.5 to x:-17.5..2.5.
 func TestBOSL2Render_PrismoidAnchorRight(t *testing.T) {
 	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nprismoid(size1=[20, 20], size2=[10, 10], h=15, anchor=RIGHT);\n")
 	minX, _, _, maxX, _, _ := s.BoundingBox()
-	if !near(minX, -20, 0.1) || !near(maxX, 0, 0.1) {
-		t.Errorf("x range [%v, %v], want [-20, 0] (right edge of the 20-wide base on origin)", minX, maxX)
+	if !near(minX, -17.5, 0.1) || !near(maxX, 2.5, 0.1) {
+		t.Errorf("x range [%v, %v], want [-17.5, 2.5] (slant-face center at x=7.5 on origin)", minX, maxX)
 	}
 }
 
-// trapezoid(anchor=RIGHT) exercises the Max(w1,w2) X extent: w1=20 is the wider
-// edge, so the right bounding plane is at +10; RIGHT shifts it onto the origin,
-// giving x:-20..0.
+// prismoid(anchor=RIGHT+TOP) samples the TOP rectangle (size2): x=size2.x/2=5,
+// z=+h/2=7.5. So the shape shifts (-5,_,-7.5): x:-15..5, z:-15..0.
+func TestBOSL2Render_PrismoidAnchorTop(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nprismoid(size1=[20, 20], size2=[10, 10], h=15, anchor=RIGHT+TOP);\n")
+	_, _, minZ, maxX, _, maxZ := s.BoundingBox()
+	if !near(maxX, 5, 0.1) {
+		t.Errorf("maxX = %v, want 5 (top-rectangle right edge at x=5 on origin)", maxX)
+	}
+	if !near(minZ, -15, 0.1) || !near(maxZ, 0, 0.1) {
+		t.Errorf("z range [%v, %v], want [-15, 0] (top on origin)", minZ, maxZ)
+	}
+}
+
+// trapezoid(anchor=RIGHT) anchors on the slant-face center: BOSL2 places RIGHT at
+// x=lerp(w1/2, w2/2, 0.5)=(10+4)/2=7 for w1=20,w2=8, so the shape (base x:-10..10)
+// shifts -7 to x:-17..3.
 func TestBOSL2Render_TrapezoidAnchorRight(t *testing.T) {
 	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nlinear_extrude(height=3) trapezoid(h=10, w1=20, w2=8, anchor=RIGHT);\n")
 	minX, _, _, maxX, _, _ := s.BoundingBox()
-	if !near(minX, -20, 0.1) || !near(maxX, 0, 0.1) {
-		t.Errorf("x range [%v, %v], want [-20, 0] (widest edge on origin)", minX, maxX)
+	if !near(minX, -17, 0.1) || !near(maxX, 3, 0.1) {
+		t.Errorf("x range [%v, %v], want [-17, 3] (slant-face center at x=7 on origin)", minX, maxX)
 	}
 }
 
-// A combined edge anchor (TOP+RIGHT) drives the multi-axis branch of anchorMove:
-// a tube h=10 or=8 shifts on both X (by -8) and Z (by -5), landing x:-16..0,
-// z:-10..0 with both faces on the origin.
+// A combined edge anchor (TOP+RIGHT) on a tube: the radial part [1,0] has
+// magnitude 1, so X is the full radius (8); Z is half-height (5). Shifts to
+// x:-16..0, z:-10..0.
 func TestBOSL2Render_TubeAnchorCorner(t *testing.T) {
 	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ntube(h=10, or=8, ir=4, anchor=TOP+RIGHT);\n")
 	minX, _, minZ, maxX, _, maxZ := s.BoundingBox()
@@ -594,18 +607,40 @@ func TestBOSL2Render_TubeAnchorCorner(t *testing.T) {
 	}
 }
 
-// ellipse(anchor=RIGHT+BACK) lands the diagonal anchor on the ellipse PERIMETER,
-// not the bounding-box corner. For rx=10,ry=5 the perimeter point in the (1,1)
-// direction is (rx,ry)/sqrt(2) ~ (7.07, 3.54), so the shape shifts by that and
-// its far extents become maxX ~ 10-7.07 = 2.93, maxY ~ 5-3.54 = 1.46. A
-// bounding-box-corner shift (the old behavior) would instead give maxX=maxY=0.
+// cyl(anchor=RIGHT+BACK) is a radial diagonal: BOSL2 lands it on the cylinder
+// wall at r·unit([1,1]) = (10/sqrt2, 10/sqrt2) ~ (7.07, 7.07), NOT the bbox corner
+// (10,10). The shape (x,y:-10..10) shifts -7.07 to maxX=maxY ~ 2.93.
+func TestBOSL2Render_CylAnchorRadial(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\ncyl(r=10, h=20, anchor=RIGHT+BACK);\n")
+	_, _, _, maxX, maxY, _ := s.BoundingBox()
+	if !near(maxX, 2.93, 0.2) || !near(maxY, 2.93, 0.2) {
+		t.Errorf("maxX,maxY = %v,%v, want ~2.93 (wall point, not bbox corner at 0)", maxX, maxY)
+	}
+}
+
+// spheroid(anchor=RIGHT+UP) lands on the sphere surface at r·unit([1,0,1]) =
+// (10/sqrt2, 0, 10/sqrt2) ~ (7.07, 0, 7.07), NOT the bbox corner. The sphere
+// (x,z:-10..10) shifts -7.07 to maxX=maxZ ~ 2.93.
+func TestBOSL2Render_SpheroidAnchorDiagonal(t *testing.T) {
+	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nspheroid(r=10, anchor=RIGHT+UP);\n")
+	_, _, _, maxX, _, maxZ := s.BoundingBox()
+	if !near(maxX, 2.93, 0.3) || !near(maxZ, 2.93, 0.3) {
+		t.Errorf("maxX,maxZ = %v,%v, want ~2.93 (surface point, not bbox corner at 0)", maxX, maxZ)
+	}
+}
+
+// ellipse(anchor=RIGHT+BACK) lands the diagonal on the perimeter where the ray
+// along [1,1] meets the ellipse: for rx=10,ry=5 that is (rx·ry/sqrt(rx^2+ry^2)) in
+// each axis = (4.472, 4.472), per BOSL2's solve_ellipse (NOT the scaled-circle
+// point (7.07,3.54), and NOT the bbox corner). The shape shifts -4.472, so
+// maxX = 10-4.472 = 5.53 and maxY = 5-4.472 = 0.53.
 func TestBOSL2Render_EllipseAnchorDiagonal(t *testing.T) {
 	s := renderBosl2Solid(t, "include <BOSL2/std.scad>\nlinear_extrude(height=3) ellipse(r=[10, 5], anchor=RIGHT+BACK);\n")
 	_, _, _, maxX, maxY, _ := s.BoundingBox()
-	if !near(maxX, 2.93, 0.6) {
-		t.Errorf("maxX = %v, want ~2.93 (perimeter anchor, not bbox corner at 0)", maxX)
+	if !near(maxX, 5.53, 0.3) {
+		t.Errorf("maxX = %v, want ~5.53 (ray-perimeter anchor at x=4.47)", maxX)
 	}
-	if !near(maxY, 1.46, 0.6) {
-		t.Errorf("maxY = %v, want ~1.46 (perimeter anchor, not bbox corner at 0)", maxY)
+	if !near(maxY, 0.53, 0.3) {
+		t.Errorf("maxY = %v, want ~0.53 (ray-perimeter anchor at y=4.47)", maxY)
 	}
 }
