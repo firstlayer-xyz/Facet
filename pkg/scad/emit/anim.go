@@ -38,9 +38,8 @@ func eachExprIdent(x ast.Expr, visit func(name string)) {
 			eachExprIdent(el, visit)
 		}
 	case *ast.ListComp:
-		eachExprIdent(n.Body, visit)
-		for _, it := range n.Iters {
-			eachExprIdent(it.Range, visit)
+		for _, el := range n.Elems {
+			walkCompElem(el, func(string) {}, func(x ast.Expr) { eachExprIdent(x, visit) })
 		}
 	case *ast.Range:
 		eachExprIdent(n.Start, visit)

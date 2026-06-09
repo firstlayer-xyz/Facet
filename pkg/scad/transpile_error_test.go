@@ -82,6 +82,31 @@ func TestTranspileLookup(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// OpenSCAD list comprehensions — values interspersed with for/if/let/each
+// clauses — map to Facet for-comprehensions (filter via conditional yield), list
+// concatenation (mixed elements, each), and fold (each/nested-for flatten).
+func TestTranspileListComprehensions(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"a = [for(i=[0:3]) i*2];\ncube(a[0]+1);\n", "for i [0:3] { yield i * 2 }"},
+		{"a = [for(i=[0:3]) if(i>1) i];\ncube(a[0]+1);\n", "if i > 1 { yield i }"},
+		{"a = [-5, for(i=[0:2]) i, 5];\ncube(a[0]+10);\n", "[-5] + for i [0:2] { yield i } + [5]"},
+		{"a = [for(i=[0:2]) each [i, i+1]];\ncube(a[0]+1);\n", "fold"},
+		// each over an EMPTY source yields [] (fold alone would error on empty).
+		{"pts = [];\na = [for(p=pts) each [p, p]];\ncube(len(a)+1);\n", "== 0 ? []"},
+		{"polygon([[0,0], for(i=[1:3]) [i, i*i], [4,0]]);\n", "[[0, 0]] + for i [1:3] { yield [i, i * i] } + [[4, 0]]"},
+	}
+	for _, c := range cases {
+		res, err := Transpile(c.src, "part.scad")
+		if err != nil {
+			t.Fatalf("%q should transpile, got: %v", c.src, err)
+		}
+		if !strings.Contains(res.Facet, c.want) {
+			t.Fatalf("%q: expected %q in:\n%s", c.src, c.want, res.Facet)
+		}
+		assertTypeChecks(t, res.Facet)
+	}
+}
+
 // An unsupported construct must fail the transpile with a located error and
 // produce no output — never a placeholder.
 func TestTranspileErrorsOnUnsupported(t *testing.T) {

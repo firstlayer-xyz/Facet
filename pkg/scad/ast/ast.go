@@ -161,14 +161,49 @@ type Vector struct {
 	P     Pos
 }
 
-// ListComp is `[for (var = range, …) body]`. The body is an expression
-// (commonly another vector, a function call, or a scalar). Multiple iterator
-// clauses form a Cartesian product, matching OpenSCAD semantics.
+// ListComp is a list `[...]` holding at least one comprehension clause
+// (for/if/let/each); a bracket of only values is a Vector instead. The elements
+// are concatenated to build the list.
 type ListComp struct {
-	Iters []ForIter
-	Body  Expr
+	Elems []CompElem
 	P     Pos
 }
+
+// CompElem is one element of a list comprehension: a plain value, or a
+// for/if/let/each clause wrapping a nested element. `each` flattens its list into
+// the surrounding list.
+type CompElem interface{ compElem() }
+
+// ValueElem is a plain value element `expr`.
+type ValueElem struct{ X Expr }
+
+// ForElem is `for (var = range, …) body` — body is produced once per iteration
+// (multiple clauses form a Cartesian product, matching OpenSCAD).
+type ForElem struct {
+	Iters []ForIter
+	Body  CompElem
+}
+
+// IfElem is `if (cond) then [else else]` as a list element.
+type IfElem struct {
+	Cond       Expr
+	Then, Else CompElem // Else is nil when absent
+}
+
+// LetElem is `let (binds) body` as a list element.
+type LetElem struct {
+	Binds []Assign
+	Body  CompElem
+}
+
+// EachElem is `each expr` — it flattens expr's elements into the list.
+type EachElem struct{ X Expr }
+
+func (*ValueElem) compElem() {}
+func (*ForElem) compElem()   {}
+func (*IfElem) compElem()    {}
+func (*LetElem) compElem()   {}
+func (*EachElem) compElem()  {}
 
 // Range is `[start:end]` or `[start:step:end]` (OpenSCAD step-MIDDLE order).
 type Range struct {

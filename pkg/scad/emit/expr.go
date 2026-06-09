@@ -80,28 +80,7 @@ func (e *Emitter) expr(x ast.Expr, k kind) string {
 		}
 		return "[" + e.expr(n.Start, kNumber) + ":" + e.expr(n.End, kNumber) + "]"
 	case *ast.ListComp:
-		// SCAD `[for (v = iter, …) body]` maps to Facet's
-		// `for v iter, … { yield body }`. Multiple iterators form a Cartesian
-		// product in both languages. The ranges see the enclosing scope, but the
-		// loop variables shadow any same-named let() binding in the body — pop
-		// them from letScope while the body emits, else the binding's value would
-		// be wrongly inlined over the loop variable.
-		clauses := make([]string, 0, len(n.Iters))
-		for _, it := range n.Iters {
-			clauses = append(clauses, it.Var+" "+e.expr(it.Range, kNumber))
-		}
-		shadowed := make(map[string]string, len(n.Iters))
-		for _, it := range n.Iters {
-			if v, ok := e.letScope[it.Var]; ok {
-				shadowed[it.Var] = v
-				delete(e.letScope, it.Var)
-			}
-		}
-		body := e.expr(n.Body, kNumber)
-		for name, v := range shadowed {
-			e.letScope[name] = v
-		}
-		return "for " + strings.Join(clauses, ", ") + " { yield " + body + " }"
+		return e.emitListComp(n)
 	case *ast.Let:
 		return e.emitLet(n, k)
 	case *ast.Vector:
@@ -156,16 +135,21 @@ func (e *Emitter) operand(x ast.Expr, k kind) string {
 }
 
 // emitLet inlines an OpenSCAD `let(name = value, …) body`. Facet has no let
-// expression, so each binding is emitted (with earlier bindings already in scope)
-// and substituted for its name at every use in the body — sound because let
-// bindings are pure. Bindings are pushed onto e.letScope while the body emits and
-// restored afterward, so they shadow only within the let (incl. nested lets).
+// expression, so the bindings are substituted into the body (see withLetBinds).
 func (e *Emitter) emitLet(n *ast.Let, k kind) string {
+	return e.withLetBinds(n.Binds, func() string { return e.expr(n.Body, k) })
+}
+
+// withLetBinds pushes let bindings onto e.letScope (each value emitted with the
+// earlier bindings already in scope — bindings are sequential and pure), runs fn
+// with them active, then restores the prior scope so they shadow only within the
+// let. Used by both let-expressions and let list-comprehension elements.
+func (e *Emitter) withLetBinds(binds []ast.Assign, fn func() string) string {
 	if e.letScope == nil {
 		e.letScope = map[string]string{}
 	}
-	prev := make(map[string]*string, len(n.Binds))
-	for _, b := range n.Binds {
+	prev := make(map[string]*string, len(binds))
+	for _, b := range binds {
 		if _, seen := prev[b.Name]; !seen {
 			if old, ok := e.letScope[b.Name]; ok {
 				v := old
@@ -176,7 +160,7 @@ func (e *Emitter) emitLet(n *ast.Let, k kind) string {
 		}
 		e.letScope[b.Name] = "(" + e.expr(b.Value, kNumber) + ")"
 	}
-	body := e.expr(n.Body, k)
+	out := fn()
 	for name, old := range prev {
 		if old == nil {
 			delete(e.letScope, name)
@@ -184,5 +168,5 @@ func (e *Emitter) emitLet(n *ast.Let, k kind) string {
 			e.letScope[name] = *old
 		}
 	}
-	return body
+	return out
 }

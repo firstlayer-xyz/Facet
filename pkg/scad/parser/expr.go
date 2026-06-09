@@ -158,50 +158,30 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	return nil, p.errf("unexpected token %q in expression", t.Text)
 }
 
-// parseBracket parses either a list comprehension `[for (var = iter, …) body]`,
-// a vector `[a, b, …]`, or a range `[a:b]` / `[a:s:b]`.
+// parseBracket parses a `[...]`: a range `[a:b]`/`[a:s:b]`, a plain vector
+// `[a, b, …]`, or a list comprehension whose elements may be values interspersed
+// with for/if/let/each clauses (`[a, for(i=r) f(i), each L]`).
 func (p *parser) parseBracket() (ast.Expr, error) {
 	lb := p.advance() // [
 	if p.at(token.RBracket) {
 		p.advance()
 		return &ast.Vector{P: curPos(lb)}, nil
 	}
-	if p.at(token.For) {
-		return p.parseListComp(lb)
-	}
-	first, err := p.parseExpr()
+	first, err := p.parseCompElem()
 	if err != nil {
 		return nil, err
 	}
-	if p.at(token.Colon) { // range
-		p.advance()
-		second, err := p.parseExpr()
-		if err != nil {
-			return nil, err
-		}
-		rng := &ast.Range{Start: first, End: second, P: curPos(lb)}
-		if p.at(token.Colon) { // [start:step:end] — OpenSCAD step in MIDDLE
-			p.advance()
-			third, err := p.parseExpr()
-			if err != nil {
-				return nil, err
-			}
-			rng.Step = second
-			rng.End = third
-		}
-		if _, err := p.expect(token.RBracket); err != nil {
-			return nil, err
-		}
-		return rng, nil
+	// Range `[expr : …]` — only when the first element is a plain value.
+	if v, ok := first.(*ast.ValueElem); ok && p.at(token.Colon) {
+		return p.parseRangeRest(lb, v.X)
 	}
-	// vector
-	elems := []ast.Expr{first}
+	elems := []ast.CompElem{first}
 	for p.at(token.Comma) {
 		p.advance()
 		if p.at(token.RBracket) { // trailing comma
 			break
 		}
-		e, err := p.parseExpr()
+		e, err := p.parseCompElem()
 		if err != nil {
 			return nil, err
 		}
@@ -210,16 +190,131 @@ func (p *parser) parseBracket() (ast.Expr, error) {
 	if _, err := p.expect(token.RBracket); err != nil {
 		return nil, err
 	}
-	return &ast.Vector{Elems: elems, P: curPos(lb)}, nil
+	// A bracket of only plain values is a Vector; any clause makes it a
+	// comprehension.
+	if vec, ok := allValueElems(elems); ok {
+		return &ast.Vector{Elems: vec, P: curPos(lb)}, nil
+	}
+	return &ast.ListComp{Elems: elems, P: curPos(lb)}, nil
 }
 
-// parseListComp parses `[for (var = iter, …) body]`. The opening `[` is
-// already consumed; `lb` is its token for position tracking.
-func (p *parser) parseListComp(lb token.Token) (ast.Expr, error) {
-	p.advance() // consume `for`
-	if _, err := p.expect(token.LParen); err != nil {
+// allValueElems returns the wrapped expressions when every element is a plain
+// value (so the bracket is a Vector, not a comprehension); ok=false otherwise.
+func allValueElems(elems []ast.CompElem) ([]ast.Expr, bool) {
+	out := make([]ast.Expr, 0, len(elems))
+	for _, e := range elems {
+		v, ok := e.(*ast.ValueElem)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, v.X)
+	}
+	return out, true
+}
+
+// parseRangeRest parses the `: …]` tail of a range whose start expr is already
+// consumed. OpenSCAD ranges are `[start:end]` or `[start:step:end]` (step middle).
+func (p *parser) parseRangeRest(lb token.Token, start ast.Expr) (ast.Expr, error) {
+	p.advance() // :
+	second, err := p.parseExpr()
+	if err != nil {
 		return nil, err
 	}
+	rng := &ast.Range{Start: start, End: second, P: curPos(lb)}
+	if p.at(token.Colon) { // [start:step:end] — step in the MIDDLE
+		p.advance()
+		third, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		rng.Step = second
+		rng.End = third
+	}
+	if _, err := p.expect(token.RBracket); err != nil {
+		return nil, err
+	}
+	return rng, nil
+}
+
+// parseCompElem parses one list element: a for/if/let/each clause (each wrapping a
+// nested element), or a plain value expression.
+func (p *parser) parseCompElem() (ast.CompElem, error) {
+	switch {
+	case p.at(token.For):
+		p.advance()
+		if _, err := p.expect(token.LParen); err != nil {
+			return nil, err
+		}
+		iters, err := p.parseForIters()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(token.RParen); err != nil {
+			return nil, err
+		}
+		body, err := p.parseCompElem()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.ForElem{Iters: iters, Body: body}, nil
+	case p.at(token.If):
+		p.advance()
+		if _, err := p.expect(token.LParen); err != nil {
+			return nil, err
+		}
+		cond, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(token.RParen); err != nil {
+			return nil, err
+		}
+		then, err := p.parseCompElem()
+		if err != nil {
+			return nil, err
+		}
+		var els ast.CompElem
+		if p.at(token.Else) {
+			p.advance()
+			els, err = p.parseCompElem()
+			if err != nil {
+				return nil, err
+			}
+		}
+		return &ast.IfElem{Cond: cond, Then: then, Else: els}, nil
+	case p.at(token.Let):
+		p.advance()
+		if _, err := p.expect(token.LParen); err != nil {
+			return nil, err
+		}
+		binds, err := p.parseLetBinds() // consumes the closing ')'
+		if err != nil {
+			return nil, err
+		}
+		body, err := p.parseCompElem()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.LetElem{Binds: binds, Body: body}, nil
+	case p.at(token.Each):
+		p.advance()
+		x, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.EachElem{X: x}, nil
+	default:
+		x, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.ValueElem{X: x}, nil
+	}
+}
+
+// parseForIters parses `var = range (, var = range)*` (the inside of a for
+// clause's parentheses, already consumed by the caller).
+func (p *parser) parseForIters() ([]ast.ForIter, error) {
 	var iters []ast.ForIter
 	for {
 		v, err := p.expect(token.Ident)
@@ -239,17 +334,7 @@ func (p *parser) parseListComp(lb token.Token) (ast.Expr, error) {
 		}
 		p.advance()
 	}
-	if _, err := p.expect(token.RParen); err != nil {
-		return nil, err
-	}
-	body, err := p.parseExpr()
-	if err != nil {
-		return nil, err
-	}
-	if _, err := p.expect(token.RBracket); err != nil {
-		return nil, err
-	}
-	return &ast.ListComp{Iters: iters, Body: body, P: curPos(lb)}, nil
+	return iters, nil
 }
 
 func (p *parser) parseLetExpr() (ast.Expr, error) {
