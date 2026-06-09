@@ -97,6 +97,9 @@ func (e *Emitter) firstGeomIs2D(body []ast.Stmt, seen map[string]bool) bool {
 // child is emitted bare; multiple children are unioned and parenthesized so the
 // transform method applies to the whole union.
 func (e *Emitter) childExpr(n *ast.ModuleCall) string {
+	if e.probeChild != "" {
+		return e.probeChild
+	}
 	body := e.unionStmts(n.Children)
 	if len(n.Children) > 1 {
 		return "(" + body + ")"

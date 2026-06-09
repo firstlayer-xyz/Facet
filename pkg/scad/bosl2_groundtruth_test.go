@@ -265,6 +265,12 @@ func TestBOSL2GroundTruth_CSG(t *testing.T) {
 		// nested tag: a keep INSIDE a remove group is unioned back, not subtracted
 		// (the inner tag overrides the outer). Was a silent miscompile (6776 vs 7856).
 		{"diff_nested_keep", `diff(){ cuboid([20,20,20]); tag("remove"){ cuboid([30,6,6]); tag("keep") cuboid([6,30,6]); } }`, 0.005},
+		// cross-parent remove: a tag("remove") attached to one parent (positioned by
+		// right(8)) reaches into a SIBLING parent and must cut it too — the remove
+		// surfaces to the scope and is subtracted from all untagged geometry.
+		{"diff_cross_parent", `diff(){ cuboid([10,10,10]); right(8) cuboid([10,10,10]){ tag("remove") position(LEFT) cuboid([16,3,3]); } }`, 0.01},
+		// tag below a transform: the remove rides through up(6) and still cuts the base.
+		{"diff_tag_under_transform", `diff(){ cuboid([20,20,20]); up(6) tag("remove") cuboid([30,6,6]); }`, 0.005},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

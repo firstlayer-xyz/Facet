@@ -80,9 +80,12 @@ type Emitter struct {
 	// loopVarSeq names fresh loop variables for emitted for-comprehensions (BOSL2
 	// distributors), so nested distributors don't collide.
 	loopVarSeq int
-	// inDiff is true while emitting inside a BOSL2 diff(): a `tag("remove")`
-	// attachment is then subtracted from its parent instead of unioned.
-	inDiff bool
+	// probeChild, when non-empty, makes childExpr return it verbatim instead of
+	// emitting the real children. transformSuffix uses this to extract a
+	// transform's trailing method chain (the part after its child) by running the
+	// transform's own emitter over a sentinel child — no duplication of suffix
+	// logic across the ~dozen transform emitters.
+	probeChild string
 }
 
 // freshLoopVar returns a unique, reserved-prefix loop variable name for an
