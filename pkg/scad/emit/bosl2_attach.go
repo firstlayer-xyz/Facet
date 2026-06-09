@@ -382,177 +382,187 @@ func tagValue(mc *ast.ModuleCall) string {
 	return ""
 }
 
-// unwrapTags peels any leading tag() wrappers off a call, returning the inner
-// geometry call and whether a "remove" tag was seen while inside a diff() (which
-// means the geometry should be subtracted). Outside diff(), tags are inert.
-func (e *Emitter) unwrapTags(mc *ast.ModuleCall) (*ast.ModuleCall, bool) {
-	removed := false
-	for mc != nil && (mc.Name == "tag" || mc.Name == "tag_this" || mc.Name == "force_tag") {
-		if e.inDiff && tagValue(mc) == "remove" {
-			removed = true
-		}
-		inner, ok := singleChildCall(mc)
-		if !ok {
-			return nil, removed
-		}
-		mc = inner
-	}
-	return mc, removed
+
+// attachSpec is one resolved attachment link. Every B2 placement op has a
+// `.<method>(args)` form (unions the placed child into the parent's chain) and a
+// `.<method>Placed(args)` twin (the placed child standalone, in world space).
+// union() builds the former; placed() the latter — used when a tag surfaces the
+// child out to an enclosing diff/intersect scope so it can cut other parents too.
+// role is the child's CSG role (from its tags, inheriting the parent's otherwise).
+type attachSpec struct {
+	role   tagRole
+	method string
+	args   string
 }
 
-// b2Link emits one attachment-chain link for a child of an attachment parent:
-// `.position(...)` / `.attach(...)`, or — for a plain (non-position/attach)
-// child — `.position(...)` at the CENTER anchor (BOSL2 places bare children at
-// the parent origin). A leading `tag("remove")` inside diff() turns the union
-// into a subtraction (the *Remove variants).
+func (s attachSpec) union() string  { return "." + s.method + "(" + s.args + ")" }
+func (s attachSpec) placed() string { return "." + s.method + "Placed(" + s.args + ")" }
+
+// b2Link emits one attachment-chain link for the parent's own union chain (the
+// non-scope path; tags are inert here, so everything unions).
 func (e *Emitter) b2Link(c ast.Stmt) string {
+	spec, ok := e.b2LinkSpec(c, nil, roleUntagged)
+	if !ok {
+		return ""
+	}
+	return spec.union()
+}
+
+// b2LinkSpec resolves one attachment child of an attachable parent into an
+// attachSpec. cfg maps tag names to CSG roles; parentRole is inherited by an
+// untagged child. The role combines the outer tag (on the link) and the inner
+// child's own tag (innermost wins), matching BOSL2's $tag inheritance.
+func (e *Emitter) b2LinkSpec(c ast.Stmt, cfg map[string]tagRole, parentRole tagRole) (attachSpec, bool) {
 	raw, ok := c.(*ast.ModuleCall)
 	if !ok {
-		return e.errf(c.Pos(), "attachment child must be a shape")
+		e.errf(c.Pos(), "attachment child must be a shape")
+		return attachSpec{}, false
 	}
-	mc, removed := e.unwrapTags(raw)
-	if mc == nil {
-		return e.errf(raw.Pos(), "tag without a child shape")
+	inner, outer := peelTags(raw)
+	role := parentRole
+	if r, ok := cfg[outer]; ok {
+		role = r
+	}
+	mc, ok := inner.(*ast.ModuleCall)
+	if !ok {
+		e.errf(raw.Pos(), "tag without a child shape")
+		return attachSpec{}, false
 	}
 	switch mc.Name {
 	case "position":
-		return e.b2PositionLink(mc, removed)
+		return e.b2PositionSpec(mc, cfg, role)
 	case "attach":
-		return e.b2AttachLink(mc, removed)
+		return e.b2AttachSpec(mc, cfg, role)
 	case "align":
-		return e.b2AlignLink(mc, removed)
+		return e.b2AlignSpec(mc, cfg, role)
 	default:
 		child, ok := e.b2ChildPrimitive(mc)
 		if !ok {
-			return e.errf(mc.Pos(), "%s: not an attachable shape", mc.Name)
+			e.errf(mc.Pos(), "%s: not an attachable shape", mc.Name)
+			return attachSpec{}, false
 		}
-		return "." + pick(removed, "positionRemove", "position") +
-			"(a: B2Anchor{x: 0, y: 0, z: 0}, child: " + child + ")"
+		return attachSpec{role: role, method: "position", args: "a: B2Anchor{x: 0, y: 0, z: 0}, child: " + child}, true
 	}
 }
 
-// pick returns r when cond is true, else u — chooses the Remove vs union method.
-func pick(cond bool, r, u string) string {
-	if cond {
-		return r
-	}
-	return u
-}
-
-// b2PositionLink emits `.position(a: <anchor>, child: <B2>)` (or .positionRemove
-// when the child is remove-tagged inside a diff()).
-func (e *Emitter) b2PositionLink(n *ast.ModuleCall, removedOuter bool) string {
+// b2PositionSpec resolves a position(anchor) child.
+func (e *Emitter) b2PositionSpec(n *ast.ModuleCall, cfg map[string]tagRole, role tagRole) (attachSpec, bool) {
 	a, ok := arg(n, "", 0)
 	if !ok {
-		return e.errf(n.Pos(), "position without an anchor")
+		e.errf(n.Pos(), "position without an anchor")
+		return attachSpec{}, false
 	}
 	dir, ok := anchorVec(a)
 	if !ok {
-		return e.errf(n.Pos(), "position: unsupported anchor expression")
+		e.errf(n.Pos(), "position: unsupported anchor expression")
+		return attachSpec{}, false
 	}
-	child, removedChild, ok := e.b2ChildOf(n)
+	child, crole, ok := e.b2ChildSpec(n, cfg, role)
 	if !ok {
-		return e.errf(n.Pos(), "position: child is not an attachable shape")
+		e.errf(n.Pos(), "position: child is not an attachable shape")
+		return attachSpec{}, false
 	}
-	return "." + pick(removedOuter || removedChild, "positionRemove", "position") +
-		"(a: " + anchorLit(dir) + ", child: " + child + ")"
+	return attachSpec{role: crole, method: "position", args: "a: " + anchorLit(dir) + ", child: " + child}, true
 }
 
-// b2AttachLink emits one attach link. The two-anchor form attach(P, C) mates the
-// child's C anchor onto the parent's P anchor, rotating the child so C faces
-// opposite P — emitted as B2.attach (the rotation is the identity when C is
-// already anti-parallel to P, e.g. attach(TOP, BOTTOM)). The single-anchor form
-// attach(P) reorients the child to point out the P anchor (any direction,
-// including combined edge/corner anchors) and emits B2.attachReorient.
-func (e *Emitter) b2AttachLink(n *ast.ModuleCall, removedOuter bool) string {
-	// pa (pos 0), ca (pos 1), overlap (pos 2 or named). align/inset/shiftout/spin/
-	// norot/from/to are not translated and error rather than silently dropping.
+// b2AttachSpec resolves an attach(pa[, ca][, overlap]) child. The two-anchor form
+// mates the child's ca anchor onto the parent's pa (rotating ca to face opposite
+// pa); the single-anchor form reorients the child to point out the pa face.
+func (e *Emitter) b2AttachSpec(n *ast.ModuleCall, cfg map[string]tagRole, role tagRole) (attachSpec, bool) {
 	e.rejectExtraArgs(n, 3, "overlap")
 	pa, ok := arg(n, "", 0)
 	if !ok {
-		return e.errf(n.Pos(), "attach without an anchor")
+		e.errf(n.Pos(), "attach without an anchor")
+		return attachSpec{}, false
 	}
 	pdir, ok := anchorVec(pa)
 	if !ok {
-		return e.errf(n.Pos(), "attach: unsupported parent anchor")
+		e.errf(n.Pos(), "attach: unsupported parent anchor")
+		return attachSpec{}, false
 	}
-	child, removedChild, ok := e.b2ChildOf(n)
+	child, crole, ok := e.b2ChildSpec(n, cfg, role)
 	if !ok {
-		return e.errf(n.Pos(), "attach: child is not an attachable shape")
+		e.errf(n.Pos(), "attach: child is not an attachable shape")
+		return attachSpec{}, false
 	}
-	removed := removedOuter || removedChild
 	overlap := "0 mm"
 	if o, ok := arg(n, "overlap", 2); ok {
 		overlap = e.expr(o, kLength)
 	}
-
 	if ca, has := arg(n, "", 1); has {
 		cdir, ok := anchorVec(ca)
 		if !ok {
-			return e.errf(n.Pos(), "attach: unsupported child anchor")
+			e.errf(n.Pos(), "attach: unsupported child anchor")
+			return attachSpec{}, false
 		}
-		// Any child anchor: the runtime rotates the child so ca faces opposite pa
-		// (a no-op when ca is already anti-parallel to pa).
-		return "." + pick(removed, "attachRemove", "attach") +
-			"(pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ", overlap: " + overlap + ")"
+		return attachSpec{role: crole, method: "attach",
+			args: "pa: " + anchorLit(pdir) + ", ca: " + anchorLit(cdir) + ", child: " + child + ", overlap: " + overlap}, true
 	}
-
-	return "." + pick(removed, "attachReorientRemove", "attachReorient") +
-		"(pa: " + anchorLit(pdir) + ", child: " + child + ", overlap: " + overlap + ")"
+	return attachSpec{role: crole, method: "attachReorient",
+		args: "pa: " + anchorLit(pdir) + ", child: " + child + ", overlap: " + overlap}, true
 }
 
-// b2AlignLink emits a BOSL2 align(anchor, [inside=]) child: the child is seated
-// flush against the parent's anchor face, aligned by bounding box and keeping its
-// orientation (unlike attach, which mates anchor points and reorients). inside=
-// true seats the child inside the parent (for subtraction under diff()).
-func (e *Emitter) b2AlignLink(n *ast.ModuleCall, removedOuter bool) string {
+// b2AlignSpec resolves an align(anchor, [inside=]) child. inside=true seats the
+// child inside the parent and, per BOSL2, defaults its tag to "remove" — so under
+// a subtractive (diff) scope an untagged inside child becomes a remove.
+func (e *Emitter) b2AlignSpec(n *ast.ModuleCall, cfg map[string]tagRole, role tagRole) (attachSpec, bool) {
 	e.rejectExtraArgs(n, 1, "inside")
 	a, ok := arg(n, "", 0)
 	if !ok {
-		return e.errf(n.Pos(), "align without an anchor")
+		e.errf(n.Pos(), "align without an anchor")
+		return attachSpec{}, false
 	}
 	dir, ok := anchorVec(a)
 	if !ok {
-		return e.errf(n.Pos(), "align: unsupported anchor expression")
+		e.errf(n.Pos(), "align: unsupported anchor expression")
+		return attachSpec{}, false
 	}
 	push := "1"
 	inside := false
 	if ins, has := arg(n, "inside", -1); has {
 		b, isBool := ins.(*ast.Bool)
 		if !isBool {
-			return e.errf(n.Pos(), "align: inside must be a literal true or false")
+			e.errf(n.Pos(), "align: inside must be a literal true or false")
+			return attachSpec{}, false
 		}
 		inside = b.Val
 		if inside {
 			push = "-1"
 		}
 	}
-	child, removedChild, ok := e.b2ChildOf(n)
+	child, crole, ok := e.b2ChildSpec(n, cfg, role)
 	if !ok {
-		return e.errf(n.Pos(), "align: child is not an attachable shape")
+		e.errf(n.Pos(), "align: child is not an attachable shape")
+		return attachSpec{}, false
 	}
-	// inside=true defaults the child's tag to "remove" (BOSL2), so inside an
-	// active diff() it subtracts the seated child rather than unioning it.
-	removed := removedOuter || removedChild || (inside && e.inDiff)
-	return "." + pick(removed, "alignRemove", "align") +
-		"(a: " + anchorLit(dir) + ", child: " + child + ", dir: " + push + ")"
+	// inside=true defaults an otherwise-untagged child to the scope's remove role.
+	if inside && crole == roleUntagged {
+		if r, ok := cfg["remove"]; ok {
+			crole = r
+		}
+	}
+	return attachSpec{role: crole, method: "align", args: "a: " + anchorLit(dir) + ", child: " + child + ", dir: " + push}, true
 }
 
-// b2ChildOf emits the single geometry child of a position/attach node as a B2,
-// peeling any tag() wrappers. It returns the emitted child, whether a "remove"
-// tag (inside diff()) applied to it, and ok=false if it is not an attachable
-// shape.
-func (e *Emitter) b2ChildOf(n *ast.ModuleCall) (child string, removed bool, ok bool) {
+// b2ChildSpec resolves the single geometry child of a position/attach/align node:
+// the emitted B2, plus its CSG role (its own tag, innermost-wins, else the role
+// inherited from the link). ok is false if it is not an attachable shape.
+func (e *Emitter) b2ChildSpec(n *ast.ModuleCall, cfg map[string]tagRole, fallback tagRole) (string, tagRole, bool) {
 	raw, ok := singleChildCall(n)
 	if !ok {
-		return "", false, false
+		return "", 0, false
 	}
-	mc, removed := e.unwrapTags(raw)
-	if mc == nil {
-		return "", removed, false
+	inner, tag := peelTags(raw)
+	role := fallback
+	if r, ok := cfg[tag]; ok {
+		role = r
 	}
-	child, ok = e.b2ChildPrimitive(mc)
-	return child, removed, ok
+	mc, ok := inner.(*ast.ModuleCall)
+	if !ok {
+		return "", 0, false
+	}
+	child, ok := e.b2ChildPrimitive(mc)
+	return child, role, ok
 }
 
 // b2ChildPrimitive emits an attached child shape as a B2 constructor, rejecting a

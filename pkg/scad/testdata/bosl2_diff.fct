@@ -150,11 +150,13 @@ fn B2.alignRemove(a B2Anchor, child B2, dir Number) B2 {
 }
 
 fn Main() Solid {
-    return b2_cuboid(size: Vec3{x: 40 mm, y: 24 mm, z: 10 mm}).positionRemove(
+    return b2_cuboid(size: Vec3{x: 40 mm, y: 24 mm, z: 10 mm}).Solid() - (b2_cuboid(
+        size: Vec3{x: 40 mm, y: 24 mm, z: 10 mm}
+    ).positionPlaced(
         a: B2Anchor{x: 0, y: 0, z: 0},
         child: b2_cyl(h: 30 mm, r: 8 mm / 2)
-    ).positionRemove(
+    ) + b2_cuboid(size: Vec3{x: 40 mm, y: 24 mm, z: 10 mm}).positionPlaced(
         a: B2Anchor{x: 0, y: 0, z: 1},
         child: b2_cyl(h: 6 mm, r: 16 mm / 2)
-    ).Solid()
+    ))
 }

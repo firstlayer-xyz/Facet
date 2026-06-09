@@ -176,9 +176,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 	case "intersect":
 		return e.bosl2Intersect(n), true
 	case "tag", "tag_this", "force_tag":
-		// Outside an attachable parent (top level / under a transform) a tag is
-		// inert — its effect on diff() is resolved where the parent emits its
-		// attachment children (see unwrapTags). Emit the child geometry.
+		// Outside a diff/intersect scope a tag is inert (its CSG role is resolved by
+		// the scope walker, which peels tags itself). Emit the child geometry.
 		return e.childExpr(n), true
 	}
 	return "", false

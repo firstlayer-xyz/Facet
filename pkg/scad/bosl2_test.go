@@ -698,22 +698,24 @@ func TestBOSL2_DiffRemovePlain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("diff+tag should transpile, got: %v", err)
 	}
-	if !strings.Contains(mainBody(t, res.Facet), ".positionRemove(") {
-		t.Fatalf("expected a subtractive positionRemove in:\n%s", res.Facet)
+	mb := mainBody(t, res.Facet)
+	if !strings.Contains(mb, ".positionPlaced(") || !strings.Contains(mb, " - ") {
+		t.Fatalf("expected the removed child surfaced as a subtracted positionPlaced in:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 }
 
-// diff() with a tag("remove") attach child subtracts the attached shape (a
-// pocket on a face) — emitted via attachReorientRemove for a 1-anchor attach.
+// diff() with a tag("remove") attach child subtracts the attached shape (a pocket
+// on a face) — the child surfaces to the scope as a subtracted attachReorientPlaced.
 func TestBOSL2_DiffRemoveAttach(t *testing.T) {
 	src := "include <BOSL2/std.scad>\ndiff() cuboid([20, 20, 20]) attach(TOP) tag(\"remove\") cyl(h=10, d=6);\n"
 	res, err := Transpile(src, "part.scad")
 	if err != nil {
 		t.Fatalf("diff+attach+tag should transpile, got: %v", err)
 	}
-	if !strings.Contains(mainBody(t, res.Facet), ".attachReorientRemove(") {
-		t.Fatalf("expected a subtractive attachReorientRemove in:\n%s", res.Facet)
+	mb := mainBody(t, res.Facet)
+	if !strings.Contains(mb, ".attachReorientPlaced(") || !strings.Contains(mb, " - ") {
+		t.Fatalf("expected the removed child surfaced as a subtracted attachReorientPlaced in:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 }
@@ -1255,13 +1257,15 @@ func TestBOSL2_Align(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 
-	// diff() + inside makes it subtractive (alignRemove).
+	// diff() + inside makes it subtractive: the inside child surfaces to the scope
+	// as a subtracted alignPlaced (inside defaults its tag to "remove").
 	res, err = Transpile("include <BOSL2/std.scad>\ndiff() cuboid([20, 20, 10]) { align(TOP, inside=true) cuboid([4, 4, 4]); }\n", "part.scad")
 	if err != nil {
 		t.Fatalf("diff align should transpile, got: %v", err)
 	}
-	if !strings.Contains(mainBody(t, res.Facet), ".alignRemove(") {
-		t.Fatalf("expected subtractive alignRemove in Main:\n%s", res.Facet)
+	mb := mainBody(t, res.Facet)
+	if !strings.Contains(mb, ".alignPlaced(") || !strings.Contains(mb, " - ") {
+		t.Fatalf("expected a subtracted alignPlaced in Main:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 }
