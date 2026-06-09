@@ -34,11 +34,9 @@ func (e *Emitter) checkReservedNames(f *ast.File) {
 			}
 			walkExpr(n.Body)
 		case *ast.ListComp:
-			for _, it := range n.Iters {
-				check(it.Var, n.Pos())
-				walkExpr(it.Range)
+			for _, el := range n.Elems {
+				walkCompElem(el, func(nm string) { check(nm, n.Pos()) }, walkExpr)
 			}
-			walkExpr(n.Body)
 		case *ast.Vector:
 			for _, el := range n.Elems {
 				walkExpr(el)
