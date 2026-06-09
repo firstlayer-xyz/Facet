@@ -1,14 +1,8 @@
 fn Main() Solid {
     return Square(x: 24 mm, y: 14 mm).Move(x: -24 mm / 2, y: -14 mm / 2)
-        .Extrude(z: 2 mm) + Polygon(
-        points: for scad_i0 [0:6 - 1] {
-            yield Vec2{x: 10 mm * Cos(a: (360 - scad_i0 * 360 / 6) * 1 deg),
-                y: 10 mm * Sin(a: (360 - scad_i0 * 360 / 6) * 1 deg)}
-        }
-    ).Extrude(z: 3 mm).Move(x: 30 mm) + Polygon(
-        points: for scad_i1 [0:5 - 1] {
-            yield Vec2{x: 8 mm * Cos(a: (360 - scad_i1 * 360 / 5) * 1 deg),
-                y: 8 mm * Sin(a: (360 - scad_i1 * 360 / 5) * 1 deg)}
-        }
-    ).Extrude(z: 2 mm).Move(y: 30 mm)
+        .Extrude(z: 2 mm) + Ngon(n: 6, r: 10 mm)
+        .Move(x: -1 * 10 mm, y: -0.866025404 * 10 mm).Extrude(z: 3 mm)
+        .Move(x: 30 mm) + Ngon(n: 5, r: 8 mm)
+        .Move(x: -0.809016994 * 8 mm, y: -0.951056516 * 8 mm).Extrude(z: 2 mm)
+        .Move(y: 30 mm)
 }

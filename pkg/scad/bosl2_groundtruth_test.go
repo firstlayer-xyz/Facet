@@ -131,6 +131,19 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		{"hexagon_right", "linear_extrude(2) hexagon(r=10, anchor=RIGHT);", 0.02},
 		{"hexagon_diag", "linear_extrude(2) hexagon(r=10, anchor=RIGHT+BACK);", 0.02},
 		{"octagon_left", "linear_extrude(2) octagon(r=10, anchor=LEFT);", 0.02},
+		// Plain CENTER anchor: the Ngon/Star recenter must land on BOSL2's
+		// construction origin. Pentagon (odd) and star are NOT bbox-symmetric, so
+		// these catch a bounding-center vs construction-center mistake.
+		{"hexagon_center", "linear_extrude(2) hexagon(r=10);", 0.02},
+		{"pentagon_center", "linear_extrude(2) pentagon(r=8);", 0.02},
+		{"star_center", "linear_extrude(2) star(n=5, r=12, ir=5);", 0.02},
+		{"star_even_center", "linear_extrude(2) star(n=8, r=10, ir=7);", 0.02},
+		// Wedge (this branch) — corner-anchored ramp, centered form, and an
+		// OpenSCAD-side slice that makes the bbox sensitive to ramp DIRECTION
+		// (a mirrored ramp would change the z extent of the y<=4 slab).
+		{"wedge_corner", "wedge([10,8,6]);", 0.02},
+		{"wedge_centered", "wedge([16,16,10], center=true);", 0.02},
+		{"wedge_ramp_dir", "intersection() { wedge([10,8,6]); cube([10,4,6]); }", 0.02},
 		// #124 native shapes — sanity that the harness agrees with the merged fix.
 		{"cyl_diag", "cyl(h=20, r=10, $fn=64, anchor=RIGHT+BACK);", 0.3},
 		{"spheroid_diag", "spheroid(r=10, $fn=64, anchor=RIGHT+FWD);", 0.3},
