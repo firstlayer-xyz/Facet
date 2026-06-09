@@ -2,6 +2,7 @@ package emit
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -62,21 +63,51 @@ func anchorLit(d [3]int) string {
 // anchorMove returns the trailing .Move that repositions a CENTER-anchored box of
 // the given per-axis sizes so the BOSL2 anchor v lands on the origin. In a
 // centered box the anchor point sits at v*size/2, so the box is shifted by
-// -v*size/2 on each anchored axis. Returns "" for CENTER (v all zero).
-func anchorMove(v [3]int, size [3]string) string {
+// -v*size/2 on each anchored axis. When round, a diagonal anchor resolves to the
+// elliptical/spherical perimeter point instead of the bounding-box corner: the
+// shift is divided by the anchor direction's magnitude, so v/|v| is a unit
+// direction and v*size/2 lands on the curve. Returns "" for CENTER (v all zero).
+func anchorMove(v [3]int, size [3]string, round bool) string {
 	axes := [3]string{"x", "y", "z"}
+	mag := 1.0
+	if round {
+		if sq := v[0]*v[0] + v[1]*v[1] + v[2]*v[2]; sq > 0 {
+			mag = math.Sqrt(float64(sq))
+		}
+	}
 	var parts []string
 	for i := 0; i < 3; i++ {
 		if v[i] == 0 {
 			continue
 		}
-		coeff := strconv.FormatFloat(-float64(v[i])/2, 'g', -1, 64)
+		coeff := strconv.FormatFloat(-float64(v[i])/(2*mag), 'g', -1, 64)
 		parts = append(parts, fmt.Sprintf("%s: %s * (%s)", axes[i], coeff, size[i]))
 	}
 	if len(parts) == 0 {
 		return ""
 	}
 	return ".Move(" + strings.Join(parts, ", ") + ")"
+}
+
+// applyAnchor appends the trailing .Move that places a centered `shape` by its
+// BOSL2 anchor= argument — the anchor point lands on the origin. size is the full
+// bounding-box extent per axis; an "" axis (a 2D shape's z) must not be anchored.
+// twoD rejects an off-plane (TOP/BOTTOM) anchor; round resolves a diagonal anchor
+// to the elliptical perimeter point rather than the bounding-box corner. Without
+// anchor= the shape is returned unchanged.
+func (e *Emitter) applyAnchor(n *ast.ModuleCall, shape string, size [3]string, twoD, round bool) string {
+	a, has := arg(n, "anchor", -1)
+	if !has {
+		return shape
+	}
+	v, ok := anchorVec(a)
+	if !ok {
+		return e.errf(n.Pos(), "%s: unsupported anchor (use a named anchor or a ±1/0 vector)", n.Name)
+	}
+	if twoD && v[2] != 0 {
+		return e.errf(n.Pos(), "%s: anchor must be in-plane (no TOP/BOTTOM on a 2D shape)", n.Name)
+	}
+	return shape + anchorMove(v, size, round)
 }
 
 // anchorVec3Lit renders a direction vector as a Facet Vec3 literal (mm units).
