@@ -1023,8 +1023,8 @@ canvas {
 
 #share-popover .share-qr {
   display: block;
-  width: 240px;
-  height: 240px;
+  width: 288px;
+  height: 288px;
   cursor: pointer;
   /* QR PNGs carry their own quiet zone; white background + a little padding
      keep that margin against the dark popover surface. */
