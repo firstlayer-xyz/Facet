@@ -5,6 +5,25 @@ import (
 	"testing"
 )
 
+// BOSL2 path_sweep(shape, path) sweeps a 2D profile along a 3D path; it maps to
+// Facet's Sketch.Sweep, with the path converted to []Vec3 by scad_v3. Only the
+// basic two-argument form is supported; options like closed=/twist= error.
+func TestTranspilePathSweep(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\npath=[[0,0,0],[0,0,20]];\npath_sweep(circle(d=4,$fn=48), path);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("path_sweep should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Sweep(path: scad_v3(ps: path))") {
+		t.Fatalf("expected a Sweep over the converted path:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// an option with no Sweep equivalent is a located error, not silently dropped.
+	if _, err := Transpile("include <BOSL2/std.scad>\npath_sweep(circle(d=4), [[0,0,0],[0,0,5]], closed=true);\n", "part.scad"); err == nil {
+		t.Fatal("path_sweep with closed= should fail to transpile (unsupported), got none")
+	}
+}
+
 // OpenSCAD `let(name=value, …) expr` has no Facet equivalent, so each binding is
 // inlined: substituted for its name at every use (later bindings and the body).
 func TestTranspileLetExpr(t *testing.T) {
