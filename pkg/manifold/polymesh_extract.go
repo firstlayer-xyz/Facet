@@ -83,5 +83,11 @@ func createSolidFromMeshWithFaceIDs(verts []float32, indices, faceIDs []uint32) 
 	if s == nil {
 		return nil, fmt.Errorf("createSolidFromMeshWithFaceIDs: manifold creation failed")
 	}
+	if s.NumComponents() == 0 {
+		// Same check as CreateSolidFromMesh: the kernel accepted the data but
+		// produced an empty manifold — the input is not a valid closed
+		// 2-manifold. Error rather than hand back vanished geometry.
+		return nil, fmt.Errorf("createSolidFromMeshWithFaceIDs: mesh is not a valid closed manifold (open, self-intersecting, or non-orientable)")
+	}
 	return s, nil
 }

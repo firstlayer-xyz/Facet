@@ -328,6 +328,11 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
+		// The kernel normalizes the plane normal — a zero vector becomes NaN
+		// and the cut silently produces garbage (Mirror already rejects this).
+		if nx == 0 && ny == 0 && nz == 0 {
+			return nil, fmt.Errorf("%s() plane normal must be non-zero", name)
+		}
 		return r.TrimByPlane(nx, ny, nz, offset), nil
 	})
 
@@ -383,6 +388,17 @@ func init() {
 		l, err := requireLength(name, 1, args[0])
 		if err != nil {
 			return nil, err
+		}
+		// The kernel divides each edge length by l with no guards: zero is a
+		// division-by-zero (saturating to INT_MAX subdivisions = OOM), and a
+		// negative is silently abs()ed. Require a positive length and cap the
+		// implied subdivision factor like Refine(maxRefine) does.
+		if l <= 0 {
+			return nil, fmt.Errorf("%s() edgeLength must be positive, got %v mm", name, l)
+		}
+		minX, minY, minZ, maxX, maxY, maxZ := r.BoundingBox()
+		if longest := math.Max(maxX-minX, math.Max(maxY-minY, maxZ-minZ)); longest/l > float64(maxRefine) {
+			return nil, fmt.Errorf("%s() edgeLength %v mm implies more than %d subdivisions across the shape — use a larger edge length", name, l, maxRefine)
 		}
 		return r.RefineToLength(l), nil
 	})
@@ -463,6 +479,9 @@ func init() {
 		offset, err := requireLength(name, 4, args[3])
 		if err != nil {
 			return nil, err
+		}
+		if nx == 0 && ny == 0 && nz == 0 {
+			return nil, fmt.Errorf("%s() plane normal must be non-zero", name)
 		}
 		pair := manifold.SplitSolidByPlane(r, nx, ny, nz, offset)
 		return array{elems: []value{pair[0], pair[1]}, elemType: "Solid"}, nil

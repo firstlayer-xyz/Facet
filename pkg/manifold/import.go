@@ -29,7 +29,14 @@ func ImportMesh(path string) (*Solid, error) {
 		}
 		return nil, fmt.Errorf("ImportMesh %s: %s", path, msg)
 	}
-	return newSolidWithOrigin(ret), nil
+	s := newSolidWithOrigin(ret)
+	if s.NumComponents() == 0 {
+		// The file parsed but the kernel produced an empty manifold: the mesh
+		// is not a valid closed 2-manifold (open shell, self-intersecting, or
+		// non-orientable). Error rather than silently render nothing.
+		return nil, fmt.Errorf("ImportMesh %s: mesh is not a valid closed manifold (open, self-intersecting, or non-orientable)", path)
+	}
+	return s, nil
 }
 
 // CreateSolidFromMesh creates a Manifold Solid from raw vertex and index data.

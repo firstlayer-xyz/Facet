@@ -210,6 +210,21 @@ func init() {
 			if !ok3 || !ok4 {
 				return nil, fmt.Errorf("_level_set() Box min/max must be Vec3")
 			}
+			// The kernel computes gridSize = dim/edgeLength with no guards: a
+			// zero or negative edge length is division-by-zero UB, inverted
+			// bounds give a negative grid, and a tiny edge length allocates the
+			// full voxel grid unbounded (bad_alloc through cgo kills the
+			// process). Validate the domain and cap the voxel count here.
+			if edgeLen <= 0 {
+				return nil, fmt.Errorf("LevelSet() edgeLength must be positive, got %v mm", edgeLen)
+			}
+			if !(maxX > minX && maxY > minY && maxZ > minZ) {
+				return nil, fmt.Errorf("LevelSet() bounds must have positive extent on every axis (min [%v %v %v], max [%v %v %v])", minX, minY, minZ, maxX, maxY, maxZ)
+			}
+			voxels := ((maxX-minX)/edgeLen + 1) * ((maxY-minY)/edgeLen + 1) * ((maxZ-minZ)/edgeLen + 1)
+			if !(voxels <= float64(maxRangeSize)) {
+				return nil, fmt.Errorf("LevelSet() grid would have %.0f voxels (limit %d) — increase edgeLength or shrink the bounds", voxels, maxRangeSize)
+			}
 			var lsErr error
 			solid := manifold.LevelSet(func(x, y, z float64) float64 {
 				if lsErr != nil {
@@ -325,6 +340,11 @@ func structValToPolyMesh(sv *structVal) (*manifold.PolyMesh, error) {
 			n, err := requireNumber("PolyMesh.faces", j+1, idx)
 			if err != nil {
 				return nil, err
+			}
+			// Bounds-check here: a negative index would wrap through uint32 in
+			// the mesh build and reach the kernel as garbage.
+			if n != math.Trunc(n) || n < 0 || int(n) >= len(vertsArr.elems) {
+				return nil, fmt.Errorf("PolyMesh.faces[%d][%d] = %v is not a valid vertex index (0..%d)", i, j, n, len(vertsArr.elems)-1)
 			}
 			face[j] = int(n)
 		}
