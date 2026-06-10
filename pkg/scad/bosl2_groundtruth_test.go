@@ -213,6 +213,10 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		{"list_utils", "cube([reverse([1,2,9])[1], 1, last([1,2,9])]);", 0.01},
 		// reverse([]) == [] (not an error): len 0 → the cube's x is 1.
 		{"reverse_empty", "e=[]; cube([len(reverse(e))+1, 1, 1]);", 0.01},
+		// path_sweep: a circle profile swept along a 3D path → Sketch.Sweep. A
+		// vertical straight path gives a clean tube whose bbox must match (profile
+		// centered on the path, capped ends).
+		{"path_sweep_tube", "path_sweep(circle(d=8, $fn=48), [[0,0,0],[0,0,20]]);", 0.3},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
