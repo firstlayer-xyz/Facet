@@ -41,6 +41,25 @@ func TestTranspileAttachableAnchor(t *testing.T) {
 	}
 }
 
+// A recursive geometry module (a module that calls itself, e.g. a fractal) maps
+// to a recursive Facet fn. Conditional geometry combined with siblings — the
+// `cube(); if(n>0) …recurse…;` shape — unions as Union(arr: [G] + (cond ? [..] : [])),
+// so the empty-list false branch terminates the recursion.
+func TestTranspileRecursion(t *testing.T) {
+	src := "module spiral(n) {\n  cube([2,2,2]);\n  if (n > 0) translate([3,0,0]) rotate([0,0,15]) spiral(n-1);\n}\nspiral(3);\n"
+	res, err := Transpile(src, "part.scad")
+	if err != nil {
+		t.Fatalf("recursive module should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fn spiral(") || !strings.Contains(res.Facet, "spiral(n: n - 1)") {
+		t.Fatalf("expected a recursive spiral fn:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "(n > 0 ? [") || !strings.Contains(res.Facet, "] : [])") {
+		t.Fatalf("expected the conditional list (empty on the false branch):\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // OpenSCAD `let(name=value, …) expr` has no Facet equivalent, so each binding is
 // inlined: substituted for its name at every use (later bindings and the body).
 func TestTranspileLetExpr(t *testing.T) {
