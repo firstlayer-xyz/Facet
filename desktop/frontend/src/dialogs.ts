@@ -1,5 +1,7 @@
 // dialogs.ts — Standalone UI dialogs (window.prompt doesn't work in WKWebView).
 
+import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
+
 /** Show a dialog for creating a new library: pick/create folder + name. */
 export function promptNewLibrary(folders: string[]): Promise<{folder: string; name: string; isNewFolder: boolean} | null> {
   return new Promise(resolve => {
@@ -130,45 +132,123 @@ export function promptNewLibrary(folders: string[]): Promise<{folder: string; na
   });
 }
 
+/**
+ * Append `pop` to the document, positioned beside `anchorEl`, dismissing on
+ * click-outside or Escape. Returns close(); `dispose` runs exactly once,
+ * however the popover closes.
+ *
+ * The dismiss handlers attach synchronously, not via setTimeout: a deferred
+ * attach can lose a race against the next input event, leaving a popover with
+ * no dismiss handlers. The anchor-exclusion in closeHandler (contains, not
+ * identity — the anchor buttons hold svg children) is what keeps the click
+ * that opened the popover from instantly closing it.
+ */
+function openAnchoredPopover(pop: HTMLElement, anchorEl: HTMLElement, dispose: () => void): () => void {
+  const close = () => {
+    pop.remove();
+    document.removeEventListener('click', closeHandler);
+    document.removeEventListener('keydown', keyHandler, true);
+    dispose();
+  };
+  const closeHandler = (e: MouseEvent) => {
+    if (!pop.contains(e.target as Node) && !anchorEl.contains(e.target as Node)) close();
+  };
+  const keyHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') close();
+  };
+
+  const rect = anchorEl.getBoundingClientRect();
+  document.body.appendChild(pop);
+  const top = Math.min(rect.top, window.innerHeight - pop.offsetHeight - 8);
+  pop.style.left = (rect.right + 4) + 'px';
+  pop.style.top = Math.max(8, top) + 'px';
+
+  document.addEventListener('click', closeHandler);
+  // Capture phase: Escape must close the popover even when focus sits in a
+  // widget (e.g. the Monaco editor) that swallows bubbling keydown events.
+  document.addEventListener('keydown', keyHandler, true);
+  return close;
+}
+
 /** Show a slicer picker dropdown. Returns the selected slicer ID or null. */
+let closeSlicerPicker: (() => void) | null = null;
+
 export function showSlicerPicker(
   slicers: { id: string; name: string }[],
   anchorEl: HTMLElement,
 ): Promise<string | null> {
   return new Promise(resolve => {
-    // Close existing dropdown if open
-    const existing = document.getElementById('slicer-dropdown');
-    if (existing) { existing.remove(); resolve(null); return; }
+    // Toggle: re-invoking while open closes it. The open invocation resolves
+    // null through its dispose; this one resolves null directly.
+    if (closeSlicerPicker) { closeSlicerPicker(); resolve(null); return; }
 
     const dropdown = document.createElement('div');
     dropdown.id = 'slicer-dropdown';
 
+    let picked: string | null = null;
     for (const slicer of slicers) {
       const item = document.createElement('button');
       item.className = 'slicer-item';
       item.textContent = slicer.name;
       item.addEventListener('click', () => {
-        dropdown.remove();
-        document.removeEventListener('click', closeHandler);
-        resolve(slicer.id);
+        picked = slicer.id;
+        closeSlicerPicker?.();
       });
       dropdown.appendChild(item);
     }
 
-    const rect = anchorEl.getBoundingClientRect();
-    document.body.appendChild(dropdown);
-    const menuH = dropdown.offsetHeight;
-    const top = Math.min(rect.top, window.innerHeight - menuH - 8);
-    dropdown.style.left = (rect.right + 4) + 'px';
-    dropdown.style.top = Math.max(8, top) + 'px';
+    closeSlicerPicker = openAnchoredPopover(dropdown, anchorEl, () => {
+      closeSlicerPicker = null;
+      resolve(picked);
+    });
+  });
+}
 
-    const closeHandler = (e: MouseEvent) => {
-      if (!dropdown.contains(e.target as Node) && e.target !== anchorEl) {
-        dropdown.remove();
-        document.removeEventListener('click', closeHandler);
-        resolve(null);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', closeHandler), 0);
+/**
+ * Show the share popover anchored next to the Share button: a QR code of the
+ * share URL (scan with a phone, or click to open the default browser), or a
+ * too-large note with an explicit open button when the URL exceeds QR
+ * capacity. Re-invoking while open closes it (toggle).
+ */
+let closeSharePopover: (() => void) | null = null;
+
+export function showSharePopover(link: { url: string; qrpng: string }, anchorEl: HTMLElement): void {
+  if (closeSharePopover) { closeSharePopover(); return; }
+
+  const pop = document.createElement('div');
+  pop.id = 'share-popover';
+
+  const open = () => {
+    closeSharePopover?.();
+    BrowserOpenURL(link.url);
+  };
+
+  if (link.qrpng) {
+    const img = document.createElement('img');
+    img.className = 'share-qr';
+    img.src = 'data:image/png;base64,' + link.qrpng;
+    img.title = 'Scan with a phone, or click to open in your browser';
+    img.addEventListener('click', open);
+    pop.appendChild(img);
+
+    const hint = document.createElement('div');
+    hint.className = 'share-hint';
+    hint.textContent = 'Scan or click to open';
+    pop.appendChild(hint);
+  } else {
+    const note = document.createElement('div');
+    note.className = 'share-hint';
+    note.textContent = 'Model too large for a QR code.';
+    pop.appendChild(note);
+
+    const btn = document.createElement('button');
+    btn.className = 'share-open-btn';
+    btn.textContent = 'Open in browser';
+    btn.addEventListener('click', open);
+    pop.appendChild(btn);
+  }
+
+  closeSharePopover = openAnchoredPopover(pop, anchorEl, () => {
+    closeSharePopover = null;
   });
 }

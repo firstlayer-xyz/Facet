@@ -28,7 +28,7 @@ import { AssistantPanel, applyEdit } from './assistant';
 
 import {
   app, editorPanel, divider, viewportPanel, canvasContainer,
-  centerBtn, autoRotateBtn, headTrackBtn, newBtn, openBtn, saveBtn, settingsBtn, docsBtn, runBtn,
+  centerBtn, autoRotateBtn, headTrackBtn, newBtn, openBtn, saveBtn, shareBtn, settingsBtn, docsBtn, runBtn,
   debugBtn, assistantBtn, exportBtn, slicerBtn, fullCodeBtn, codeBtn, errorDiv, tabBar,
   debugBar, debugPrevBtn, debugNextBtn, debugSlider, debugLabel, statsBar, compilingOverlay,
   debugRestartBtn, debugContinueBtn, debugStopBtn,
@@ -45,7 +45,7 @@ import {
   initApp, setEditor, setInitialFile, setEditorWordWrap, setFormatOnSave, setHighlightMode,
   run, autoRun, toggleRun,
   showDebugStep, showDebugStepPrev, showDebugStepNext, continueDebug,
-  openExample, openFile, openRecentFile, saveFile, saveFileAs, newFile, exportMesh, sendToSlicer,
+  openExample, openFile, openRecentFile, saveFile, saveFileAs, newFile, exportMesh, sendToSlicer, shareToWeb,
   reeval, toggleDebug, toggleDocs, openDocsToEntry, openLibraryFile, openLibraryTab,
   switchToTab, closeActiveTab,
   getSources, getActiveTabValue, isActiveTabReadOnly, assistantCreateFile, getActiveLabel, addRestoredTab, renderTabs,
@@ -803,6 +803,7 @@ clearDimsBtn.addEventListener('click', () => {
 
 
 exportBtn.addEventListener('click', () => exportMesh());
+shareBtn.addEventListener('click', () => shareToWeb(shareBtn));
 
 async function pickAndSendToSlicer() {
   const slicers = await DetectSlicers();

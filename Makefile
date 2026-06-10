@@ -111,16 +111,28 @@ test-race: go-toolchain manifold
 # Starts serve-web in the background, runs the playwright suite under
 # web/test/, then kills the server. Requires the wasm artifacts to be
 # present in web/ — run `make wasm` first if you haven't.
+#
+# The server is built and exec'd directly (not `go run`) so the recorded PID
+# is the listener itself — killing a `go run` wrapper leaves its child server
+# alive, squatting on port 8000 long after the test run. The until-loop also
+# fails loudly if the server dies (e.g. port already in use) instead of
+# silently testing against whatever else is answering on 8000.
 test-web: go-toolchain
 	@if [ ! -d web/test/node_modules ]; then \
 		echo "installing playwright..."; \
 		(cd web/test && npm install); \
 	fi
 	@echo "starting serve-web..."
-	@$(GO) run scripts/serve-web.go > /tmp/facet-test-web.log 2>&1 & \
+	@$(GO) build -o build/bin/serve-web scripts/serve-web.go
+	@build/bin/serve-web > /tmp/facet-test-web.log 2>&1 & \
 		echo $$! > /tmp/facet-test-web.pid; \
 		trap 'kill $$(cat /tmp/facet-test-web.pid) 2>/dev/null; rm -f /tmp/facet-test-web.pid' EXIT; \
-		until curl -sf http://localhost:8000/ > /dev/null 2>&1; do sleep 0.2; done; \
+		until curl -sf http://localhost:8000/ > /dev/null 2>&1; do \
+			if ! kill -0 $$(cat /tmp/facet-test-web.pid) 2>/dev/null; then \
+				echo "serve-web failed to start:"; cat /tmp/facet-test-web.log; exit 1; \
+			fi; \
+			sleep 0.2; \
+		done; \
 		(cd web/test && npm test)
 
 # Desktop frontend Playwright suite (vite + mocked Wails harness).

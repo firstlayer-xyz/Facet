@@ -1,6 +1,7 @@
 // app.ts — Run/debug orchestration logic.
 
-import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, GetDocCatalog, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
+import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, BuildShareLink, GetDocCatalog, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
+import { showSharePopover } from './dialogs';
 import type { EntryPoint } from './function-preview';
 import { on } from './events';
 import { Viewer } from './viewer';
@@ -1086,6 +1087,18 @@ export async function exportMesh(format: string = '3mf') {
   try {
     const p = currentEvalParams();
     await ExportMesh(format, p.sources, p.key, p.entry, p.overrides);
+  } catch (err) {
+    showError(err);
+  }
+}
+
+// shareToWeb shows a QR popover for the active tab's buffer; scanning it with
+// a phone or clicking it opens the hosted web preview with the source
+// rendered (transported in the URL hash).
+export async function shareToWeb(anchorEl: HTMLElement) {
+  try {
+    const link = await BuildShareLink(editor.getContent());
+    showSharePopover(link, anchorEl);
   } catch (err) {
     showError(err);
   }

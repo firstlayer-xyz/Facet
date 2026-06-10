@@ -5,7 +5,7 @@
   "description": "Playwright smoke tests for the Facet wasm browser viewer.",
   "type": "commonjs",
   "scripts": {
-    "test": "node parse-simple.test.js && node eval.test.js && node export.test.js && node lib-import.test.js && node examples.test.js && node examples-smoke.test.js && node colors.test.js && node insert.test.js && node param-types.test.js && node animation.test.js"
+    "test": "node parse-simple.test.js && node eval.test.js && node export.test.js && node lib-import.test.js && node examples.test.js && node examples-smoke.test.js && node colors.test.js && node insert.test.js && node param-types.test.js && node animation.test.js && node share-hash.test.js"
   },
   "dependencies": {
     "playwright": "^1.59.1"
