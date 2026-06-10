@@ -409,6 +409,19 @@ fn Solid.Trim(
     return _trim(self, x, y, z, offset)
 }
 
+# Grow (delta>0) or shrink (delta<0) a solid by `delta`. Approximate: resamples
+# the whole body via a signed-distance field (marching cubes), so it does not
+# preserve exact planar faces — it is the general-solid counterpart to the exact
+# primitive fillets (Cube(fillet:), Cylinder(fillet:)). `resolution` is the
+# sampling edge length; 0 mm auto-derives it from `delta` and the bounds. A
+# delta of 0 mm is a no-op.
+# ```
+# fn Main() { Sphere(r: 10 mm).Offset(delta: 2 mm) }
+# ```
+fn Solid.Offset(delta Length, resolution Length = 0 mm) Solid {
+    return _solid_offset(self, delta, resolution)
+}
+
 # Smooths edges sharper than `minSharpAngle` using Laplacian relaxation; `minSmoothness` in [0,1].
 # Best results after `.Refine()`. `Refine(n)` subdivides every triangle `n` times (4× per pass).
 fn Solid.Smooth(minSharpAngle Angle, minSmoothness Number) Solid {
