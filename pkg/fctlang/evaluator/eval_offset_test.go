@@ -2,6 +2,7 @@ package evaluator
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -59,5 +60,22 @@ fn Main() {
 	prog := parseTestProg(t, src)
 	if _, err := evalMerged(context.Background(), prog, nil); err != nil {
 		t.Fatalf("eval error: %v", err)
+	}
+}
+
+func TestStdlibOffsetOverErosionErrors(t *testing.T) {
+	// A 4mm cube eroded by 3mm vanishes.
+	prog := parseTestProg(t, `fn Main() { return Cube(s: 4 mm).Offset(delta: -3 mm) }`)
+	_, err := evalMerged(context.Background(), prog, nil)
+	if err == nil || !strings.Contains(err.Error(), "removed the entire solid") {
+		t.Fatalf("want 'removed the entire solid' error, got %v", err)
+	}
+}
+
+func TestStdlibOffsetNegativeResolutionErrors(t *testing.T) {
+	prog := parseTestProg(t, `fn Main() { return Cube(s: 20 mm).Offset(delta: 2 mm, resolution: -1 mm) }`)
+	_, err := evalMerged(context.Background(), prog, nil)
+	if err == nil || !strings.Contains(err.Error(), "resolution must be >= 0") {
+		t.Fatalf("want 'resolution must be >= 0' error, got %v", err)
 	}
 }
