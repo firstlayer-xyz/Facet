@@ -158,7 +158,9 @@ func (e *evaluator) evalFunction(fn *parser.Function, args map[string]value) (va
 			// further down with a less-actionable error.
 			return nil, e.errAt(fn.Pos, "%s() missing internal argument %q (evaluator bug — please report)", fn.Name, param.Name)
 		}
-		v := unwrap(bound)
+		// Value semantics: a struct argument binds a copy, so a field
+		// assignment in the body affects only the parameter, never the caller.
+		v := copyValue(bound)
 		if param.Constraint != nil {
 			if err := e.validateConstraint(param.Name, param.Constraint, v, locals); err != nil {
 				return nil, err
@@ -197,7 +199,10 @@ func (e *evaluator) evalMethodFunction(fn *parser.Function, self value, args map
 	}
 	locals["self"] = self
 	for _, param := range fn.Params {
-		v := unwrap(args[param.Name])
+		// Params copy (value semantics); self deliberately does NOT — a method
+		// mutating self is the language's one in-place mutation channel, and
+		// the mutation persists to the receiver variable.
+		v := copyValue(args[param.Name])
 		if param.Constraint != nil {
 			if err := e.validateConstraint(param.Name, param.Constraint, v, locals); err != nil {
 				return nil, err
@@ -256,21 +261,42 @@ func (e *evaluator) callFunctionVal(fv *functionVal, args map[string]value) (val
 	for k, v := range defGlobals {
 		scope[k] = v
 	}
+	// Each CALL gets fresh copies of the captured snapshot: a body field
+	// assignment must not persist into the next invocation (an Animation frame
+	// closure mutating a captured struct made Frame(t) history-dependent).
 	for k, v := range fv.captured {
-		scope[k] = v
+		scope[k] = copyValue(v)
 	}
 	for name, val := range args {
-		scope[name] = val
+		scope[name] = copyValue(val)
 	}
 	return e.execBody(fv.body, fv.retType, scope)
 }
 
 // evalFieldAssign evaluates a struct field assignment: receiver.field = value
 func (e *evaluator) evalFieldAssign(s *parser.FieldAssignStmt, locals map[string]value) error {
-	// Check if receiver is a const binding.
-	if ident, ok := s.Receiver.(*parser.IdentExpr); ok {
-		if v, exists := locals[ident.Name]; exists && isConst(v) {
-			return e.errAt(s.Pos, "cannot mutate field on const %q", ident.Name)
+	// Arrays are immutable: their backing slice is shared across bindings
+	// (copyValue passes arrays through), so writing through an element would
+	// co-mutate every binding of the array. Rejected, not copied.
+	if parser.ReceiverHasIndex(s.Receiver) {
+		return e.errAt(s.Pos, "cannot assign through an array element — arrays are immutable (build a new array with a comprehension)")
+	}
+	if root := parser.ReceiverRoot(s.Receiver); root != nil {
+		if v, exists := locals[root.Name]; exists {
+			// Deep const: cfg.inner.x = … is as much a mutation of const cfg
+			// as cfg.x = ….
+			if isConst(v) {
+				return e.errAt(s.Pos, "cannot mutate field on const %q", root.Name)
+			}
+			// A module-level struct reaches function locals by reference (the
+			// globals map is the scope fallback). Mutating it from a function
+			// would be spooky action at a distance — reassign at top level or
+			// work on a local copy instead.
+			if gv, isGlobal := e.globals[root.Name]; isGlobal && unwrap(gv) == unwrap(v) {
+				if _, isStruct := unwrap(v).(*structVal); isStruct {
+					return e.errAt(s.Pos, "cannot mutate module-level %q from inside a function (assign it to a local first, or reassign it at top level)", root.Name)
+				}
+			}
 		}
 	}
 	recv, err := e.evalExpr(s.Receiver, locals)

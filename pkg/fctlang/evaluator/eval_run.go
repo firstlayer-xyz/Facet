@@ -64,10 +64,12 @@ func (e *evaluator) run() (*EvalResult, error) {
 			if err != nil {
 				return nil, err
 			}
+			// Value semantics at top level too: `var b = a` binds a copy.
+			cv := copyValue(v)
 			if g.IsConst {
-				e.globals[g.Name] = &constVal{inner: v}
+				e.globals[g.Name] = &constVal{inner: cv}
 			} else {
-				e.globals[g.Name] = v
+				e.globals[g.Name] = cv
 			}
 		}
 		if g.Constraint != nil {

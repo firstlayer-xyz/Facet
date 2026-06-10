@@ -86,7 +86,7 @@ func (e *evaluator) blockYield(s *parser.YieldStmt, locals map[string]value) err
 		if err != nil {
 			return err
 		}
-		*e.foldAcc = v
+		*e.foldAcc = copyValue(v)
 		return nil
 	case e.yieldTarget != nil:
 		if s.Value == nil {
@@ -157,7 +157,7 @@ func (e *evaluator) evalForYieldOptional(ex *parser.ForYieldExpr, opt *optionalV
 	for k, v := range locals {
 		iterLocals[k] = v
 	}
-	iterLocals[clause.Var] = opt.inner
+	iterLocals[clause.Var] = copyValue(opt.inner)
 	if clause.Index != "" {
 		iterLocals[clause.Index] = float64(0)
 	}
@@ -213,7 +213,9 @@ func (e *evaluator) evalForClauses(clauses []*parser.ForClause, idx int, first v
 		if clause.Index != "" {
 			iterLocals[clause.Index] = float64(i)
 		}
-		iterLocals[clause.Var] = elem
+		// Value semantics: the loop variable binds a COPY of the element, so a
+		// field assignment on it cannot rewrite the source array.
+		iterLocals[clause.Var] = copyValue(elem)
 
 		if err := e.evalForClauses(clauses, idx+1, nil, body, iterLocals, results); err != nil {
 			return err
@@ -319,7 +321,7 @@ func (e *evaluator) evalFold(ex *parser.FoldExpr, locals map[string]value) (valu
 	}
 
 	// First element is the initial accumulator
-	acc := unwrap(arr.elems[0])
+	acc := copyValue(arr.elems[0])
 
 	// Save and set foldAcc so yield writes to the accumulator. defer the
 	// restores so a panic inside the body (CGo invariant, runtime panic)
@@ -343,7 +345,7 @@ func (e *evaluator) evalFold(ex *parser.FoldExpr, locals map[string]value) (valu
 			iterLocals[k] = v
 		}
 		iterLocals[ex.AccVar] = acc
-		iterLocals[ex.ElemVar] = elem
+		iterLocals[ex.ElemVar] = copyValue(elem)
 
 		// Propagate returnSignal — return inside fold exits the function.
 		if _, err := e.evalBlock(ex.Body, iterLocals); err != nil {
@@ -372,7 +374,7 @@ func (e *evaluator) evalIfStmt(s *parser.IfStmt, locals map[string]value) error 
 		}
 		if opt.present {
 			shadowed, hadShadowed := locals[s.BindVar]
-			locals[s.BindVar] = opt.inner
+			locals[s.BindVar] = copyValue(opt.inner)
 			_, err := e.evalBlock(s.Then, locals)
 			if hadShadowed {
 				locals[s.BindVar] = shadowed

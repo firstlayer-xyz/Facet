@@ -264,8 +264,24 @@ func (c *checker) checkStmts(stmts []parser.Stmt, env *typeEnv) typeInfo {
 				c.recordVarType(s.Name, env)
 			}
 		case *parser.FieldAssignStmt:
-			if ident, ok := s.Receiver.(*parser.IdentExpr); ok && env.isConst(ident.Name) {
-				c.addError(s.Pos, fmt.Sprintf("cannot mutate field on const %q", ident.Name))
+			// Arrays are immutable: the backing slice is shared across bindings,
+			// so writing through an element would co-mutate every binding.
+			if parser.ReceiverHasIndex(s.Receiver) {
+				c.addError(s.Pos, "cannot assign through an array element — arrays are immutable (build a new array with a comprehension)")
+				break
+			}
+			if root := parser.ReceiverRoot(s.Receiver); root != nil && root.Name != "self" {
+				// Deep const: cfg.inner.x mutates const cfg just as cfg.x does.
+				if env.isConst(root.Name) {
+					c.addError(s.Pos, fmt.Sprintf("cannot mutate field on const %q", root.Name))
+					break
+				}
+				// Module-level structs reach function bodies by reference;
+				// mutating them from a function is rejected (evaluator agrees).
+				if env.resolvesToModuleScope(root.Name) {
+					c.addError(s.Pos, fmt.Sprintf("cannot mutate module-level %q from inside a function (assign it to a local first, or reassign it at top level)", root.Name))
+					break
+				}
 			}
 			recvType := c.inferExpr(s.Receiver, env)
 			if recvType.ft == typeUnknown {

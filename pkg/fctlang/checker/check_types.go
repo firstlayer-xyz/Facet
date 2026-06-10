@@ -342,6 +342,22 @@ type typeEnv struct {
 	// assignment that crosses this boundary would be silently discarded at
 	// runtime — the checker rejects it (see assignCrossesComprehension).
 	comprehension bool
+	// module marks the per-source global scope (stdlib + module globals).
+	// Field assignment through a binding that resolves here is rejected:
+	// mutating a module-level struct from inside a function would be action
+	// at a distance (the evaluator enforces the same rule).
+	module bool
+}
+
+// resolvesToModuleScope reports whether name's defining scope is the module
+// (global) env rather than any function-local scope.
+func (e *typeEnv) resolvesToModuleScope(name string) bool {
+	for env := e; env != nil; env = env.parent {
+		if _, ok := env.types[name]; ok {
+			return env.module
+		}
+	}
+	return false
 }
 
 // assignCrossesComprehension reports whether assigning to name from this scope
