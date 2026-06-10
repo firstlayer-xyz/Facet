@@ -929,7 +929,7 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
 	}
-	e.rejectExtraArgs(n, 1, "size", "rounding", "chamfer", "orient", "anchor", "spin")
+	e.rejectExtraArgs(n, 1, "size", "rounding", "chamfer", "edges", "orient", "anchor", "spin", "$fn", "$fa", "$fs")
 	size, ok := arg(n, "size", 0)
 	if !ok {
 		return e.errf(n.Pos(), "cuboid without size")
@@ -942,10 +942,37 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if c, has := arg(n, "chamfer", -1); has {
 		chamfer = e.expr(c, kLength)
 	}
-	shape := e.cubeCtor(size, fillet, chamfer) + ".AlignCenter(pos: Vec3{})"
+	edges := ""
+	if ea, has := arg(n, "edges", -1); has {
+		es, ok := bosl2EdgeSetExpr(ea)
+		if !ok {
+			return e.errf(ea.Pos(), "cuboid: unsupported edges selector (only the axis groups \"X\", \"Y\", \"Z\" are supported)")
+		}
+		edges = es
+	}
+	shape := e.cubeCtor(size, fillet, chamfer, edges) + ".AlignCenter(pos: Vec3{})"
 	sx, sy, sz := e.cubeSizeComponents(size)
 	shape = e.applyAnchor(n, shape, [3]string{sx, sy, sz}, false, anchorBox)
 	return e.applyOrient(n, e.applySpin(n, shape))
+}
+
+// bosl2EdgeSetExpr maps a BOSL2 cuboid edges= selector to a Facet EdgeSet
+// expression. Only the three axis groups (the string "X"/"Y"/"Z", selecting the
+// four edges parallel to that axis) are supported so far; individual edges, face
+// groups, and except= are not yet expressible (Facet rounds a full axis group or
+// all edges), so anything else returns ok=false for a located error.
+func bosl2EdgeSetExpr(x ast.Expr) (string, bool) {
+	if s, ok := x.(*ast.Str); ok {
+		switch s.Value {
+		case "X":
+			return "EdgesAlongX()", true
+		case "Y":
+			return "EdgesAlongY()", true
+		case "Z":
+			return "EdgesAlongZ()", true
+		}
+	}
+	return "", false
 }
 
 // bosl2Wedge emits BOSL2's wedge — a triangular ramp — via the stdlib Wedge

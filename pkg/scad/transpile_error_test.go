@@ -37,6 +37,35 @@ func TestTranspileLetExpr(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// BOSL2 cuboid(rounding=/chamfer=, edges="X"/"Y"/"Z") maps to Cube's per-edge
+// fillet/chamfer over the matching axis group; an edges selector Facet can't
+// express yet (individual edges, faces, except=) is a located error, not wrong
+// geometry.
+func TestTranspileCuboidEdges(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([10,20,30], rounding=2, edges=\"Z\");\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cuboid edges=Z should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fillet: 2 mm") || !strings.Contains(res.Facet, "edges: EdgesAlongZ()") {
+		t.Fatalf("expected fillet + EdgesAlongZ():\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	res, err = Transpile("include <BOSL2/std.scad>\ncuboid(10, chamfer=2, edges=\"X\");\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cuboid chamfer edges=X should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "chamfer: 2 mm") || !strings.Contains(res.Facet, "edges: EdgesAlongX()") {
+		t.Fatalf("expected chamfer + EdgesAlongX():\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// An individual-edge selector isn't expressible yet — must error.
+	if _, err := Transpile("include <BOSL2/std.scad>\ncuboid(10, rounding=2, edges=[RIGHT+BACK]);\n", "part.scad"); err == nil {
+		t.Fatal("an unsupported edges selector should fail to transpile, got none")
+	}
+}
+
 // An unsupported construct must fail the transpile with a located error and
 // produce no output — never a placeholder.
 func TestTranspileErrorsOnUnsupported(t *testing.T) {

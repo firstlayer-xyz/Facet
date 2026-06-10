@@ -1,0 +1,127 @@
+# ---------------------------------------------------------------------------
+# Edge selection
+# ---------------------------------------------------------------------------
+# Selects a subset of an axis-aligned box's twelve edges, for per-edge rounding
+# or chamfering (see Cube's `edges`). Each field names the two faces the edge
+# lies on — front/back are the −Y/+Y faces, left/right the −X/+X faces, and
+# bottom/top the −Z/+Z faces; the third, unnamed axis is the direction the edge
+# runs. Build a selection with the helpers (EDGES_ALL, EdgesAlongZ(), TopEdges(),
+# …) and combine with .Or()/.Except() rather than setting fields by hand.
+type EdgeSet {
+    # the four edges that run along Z (the verticals)
+    frontLeft Bool
+    frontRight Bool
+    backLeft Bool
+    backRight Bool
+    # the four edges that run along X
+    frontBottom Bool
+    frontTop Bool
+    backBottom Bool
+    backTop Bool
+    # the four edges that run along Y
+    leftBottom Bool
+    leftTop Bool
+    rightBottom Bool
+    rightTop Bool
+}
+
+# All twelve edges.
+const EDGES_ALL = EdgeSet{
+    frontLeft: true, frontRight: true, backLeft: true, backRight: true,
+    frontBottom: true, frontTop: true, backBottom: true, backTop: true,
+    leftBottom: true, leftTop: true, rightBottom: true, rightTop: true,
+}
+
+# No edges (the default zero value).
+const EDGES_NONE = EdgeSet{}
+
+# The four edges parallel to the X axis.
+fn EdgesAlongX() EdgeSet {
+    return EdgeSet{frontBottom: true, frontTop: true, backBottom: true, backTop: true}
+}
+
+# The four edges parallel to the Y axis.
+fn EdgesAlongY() EdgeSet {
+    return EdgeSet{leftBottom: true, leftTop: true, rightBottom: true, rightTop: true}
+}
+
+# The four edges parallel to the Z axis (the verticals).
+fn EdgesAlongZ() EdgeSet {
+    return EdgeSet{frontLeft: true, frontRight: true, backLeft: true, backRight: true}
+}
+
+# The four edges bounding the +Z (top) face.
+fn TopEdges() EdgeSet {
+    return EdgeSet{frontTop: true, backTop: true, leftTop: true, rightTop: true}
+}
+
+# The four edges bounding the −Z (bottom) face.
+fn BottomEdges() EdgeSet {
+    return EdgeSet{frontBottom: true, backBottom: true, leftBottom: true, rightBottom: true}
+}
+
+# The four edges bounding the −X (left) face.
+fn LeftEdges() EdgeSet {
+    return EdgeSet{frontLeft: true, backLeft: true, leftTop: true, leftBottom: true}
+}
+
+# The four edges bounding the +X (right) face.
+fn RightEdges() EdgeSet {
+    return EdgeSet{frontRight: true, backRight: true, rightTop: true, rightBottom: true}
+}
+
+# The four edges bounding the −Y (front) face.
+fn FrontEdges() EdgeSet {
+    return EdgeSet{frontLeft: true, frontRight: true, frontTop: true, frontBottom: true}
+}
+
+# The four edges bounding the +Y (back) face.
+fn BackEdges() EdgeSet {
+    return EdgeSet{backLeft: true, backRight: true, backTop: true, backBottom: true}
+}
+
+# Union: edges selected in either set.
+fn EdgeSet.Or(o EdgeSet) EdgeSet {
+    return EdgeSet{
+        frontLeft: self.frontLeft || o.frontLeft,
+        frontRight: self.frontRight || o.frontRight,
+        backLeft: self.backLeft || o.backLeft,
+        backRight: self.backRight || o.backRight,
+        frontBottom: self.frontBottom || o.frontBottom,
+        frontTop: self.frontTop || o.frontTop,
+        backBottom: self.backBottom || o.backBottom,
+        backTop: self.backTop || o.backTop,
+        leftBottom: self.leftBottom || o.leftBottom,
+        leftTop: self.leftTop || o.leftTop,
+        rightBottom: self.rightBottom || o.rightBottom,
+        rightTop: self.rightTop || o.rightTop,
+    }
+}
+
+# Difference: edges selected here but not in `o`.
+fn EdgeSet.Except(o EdgeSet) EdgeSet {
+    return EdgeSet{
+        frontLeft: self.frontLeft && !o.frontLeft,
+        frontRight: self.frontRight && !o.frontRight,
+        backLeft: self.backLeft && !o.backLeft,
+        backRight: self.backRight && !o.backRight,
+        frontBottom: self.frontBottom && !o.frontBottom,
+        frontTop: self.frontTop && !o.frontTop,
+        backBottom: self.backBottom && !o.backBottom,
+        backTop: self.backTop && !o.backTop,
+        leftBottom: self.leftBottom && !o.leftBottom,
+        leftTop: self.leftTop && !o.leftTop,
+        rightBottom: self.rightBottom && !o.rightBottom,
+        rightTop: self.rightTop && !o.rightTop,
+    }
+}
+
+# True when both selections contain exactly the same edges.
+fn EdgeSet.Eq(o EdgeSet) Bool {
+    return self.frontLeft == o.frontLeft && self.frontRight == o.frontRight
+        && self.backLeft == o.backLeft && self.backRight == o.backRight
+        && self.frontBottom == o.frontBottom && self.frontTop == o.frontTop
+        && self.backBottom == o.backBottom && self.backTop == o.backTop
+        && self.leftBottom == o.leftBottom && self.leftTop == o.leftTop
+        && self.rightBottom == o.rightBottom && self.rightTop == o.rightTop
+}

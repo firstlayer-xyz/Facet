@@ -22,56 +22,75 @@ fn Cube(
     x, y, z Length,
     fillet Length = 0 mm,
     chamfer Length = 0 mm,
+    edges EdgeSet = EDGES_ALL,
 ) Solid {
     if fillet == 0 mm && chamfer == 0 mm { return _cube(x, y, z) }
     assert fillet == 0 mm || chamfer == 0 mm, "Cube: use fillet or chamfer, not both"
-    if chamfer > 0 mm {
-        assert 2 * chamfer <= x, "Cube: chamfer too large for x dimension"
-        assert 2 * chamfer <= y, "Cube: chamfer too large for y dimension"
-        assert 2 * chamfer <= z, "Cube: chamfer too large for z dimension"
+    # Exactly one of fillet/chamfer is nonzero; r is its size, bevel its kind.
+    var r = fillet + chamfer
+    var bevel = chamfer > 0 mm
 
-        var o = Octahedron(r: chamfer)
+    if edges.Eq(o: EDGES_NONE) { return _cube(x, y, z) }
+
+    if edges.Eq(o: EDGES_ALL) {
+        assert 2 * r <= x, "Cube: rounding too large for x dimension"
+        assert 2 * r <= y, "Cube: rounding too large for y dimension"
+        assert 2 * r <= z, "Cube: rounding too large for z dimension"
+        # Every edge: the convex hull of a rounding solid at each inset corner —
+        # a sphere (fillet) or an octahedron whose 45° faces are the bevels.
+        var c = bevel ? Octahedron(r: r) : Sphere(r: r)
         return Hull(
             arr: [
-                o, o.Move(x: x - 2 * chamfer), o.Move(y: y - 2 * chamfer),
-                o.Move(x: x - 2 * chamfer, y: y - 2 * chamfer),
-                o.Move(z: z - 2 * chamfer),
-                o.Move(x: x - 2 * chamfer, z: z - 2 * chamfer),
-                o.Move(y: y - 2 * chamfer, z: z - 2 * chamfer),
-                o.Move(x: x - 2 * chamfer, y: y - 2 * chamfer, z: z - 2 * chamfer)
+                c, c.Move(x: x - 2 * r), c.Move(y: y - 2 * r),
+                c.Move(x: x - 2 * r, y: y - 2 * r), c.Move(z: z - 2 * r),
+                c.Move(x: x - 2 * r, z: z - 2 * r), c.Move(y: y - 2 * r, z: z - 2 * r),
+                c.Move(x: x - 2 * r, y: y - 2 * r, z: z - 2 * r)
             ]
         )
     }
-    assert 2 * fillet <= x, "Cube: fillet too large for x dimension"
-    assert 2 * fillet <= y, "Cube: fillet too large for y dimension"
-    assert 2 * fillet <= z, "Cube: fillet too large for z dimension"
 
-    var s = Sphere(r: fillet)
-    return Hull(
-        arr: [
-            s, s.Move(x: x - 2 * fillet), s.Move(y: y - 2 * fillet),
-            s.Move(x: x - 2 * fillet, y: y - 2 * fillet), s.Move(z: z - 2 * fillet),
-            s.Move(x: x - 2 * fillet, z: z - 2 * fillet),
-            s.Move(y: y - 2 * fillet, z: z - 2 * fillet),
-            s.Move(x: x - 2 * fillet, y: y - 2 * fillet, z: z - 2 * fillet)
-        ]
-    )
+    # A single full axis group rounds the four edges parallel to that axis: round
+    # the 2D cross-section perpendicular to the axis, extrude, then orient so the
+    # bbox still spans (0,0,0)..(x,y,z). For chamfer, `r` is the leg cut from each
+    # face (as for all-edges); Sketch.Chamfer takes the 45° face width, which is
+    # r·√2, so the cut-back along each edge matches.
+    var cham = r * Sqrt(n: 2)
+    if edges.Eq(o: EdgesAlongZ()) {
+        assert 2 * r <= x && 2 * r <= y, "Cube: rounding too large for the Z-edge cross-section"
+        var prof = bevel ? Square(x: x, y: y).Chamfer(distance: cham) : Square(x: x, y: y).Fillet(r: r)
+        return prof.Extrude(z: z)
+    }
+    if edges.Eq(o: EdgesAlongY()) {
+        assert 2 * r <= x && 2 * r <= z, "Cube: rounding too large for the Y-edge cross-section"
+        var prof = bevel ? Square(x: x, y: z).Chamfer(distance: cham) : Square(x: x, y: z).Fillet(r: r)
+        return prof.Extrude(z: y).Rotate(x: -90 deg).Move(z: z)
+    }
+    if edges.Eq(o: EdgesAlongX()) {
+        assert 2 * r <= y && 2 * r <= z, "Cube: rounding too large for the X-edge cross-section"
+        var prof = bevel ? Square(x: z, y: y).Chamfer(distance: cham) : Square(x: z, y: y).Fillet(r: r)
+        return prof.Extrude(z: x).Rotate(y: 90 deg).Move(z: z)
+    }
+
+    assert false, "Cube: per-edge rounding currently supports EDGES_ALL, EDGES_NONE, or one full axis group (EdgesAlongX/Y/Z)"
+    return _cube(x, y, z) # unreachable: the assert above always fails
 }
 
 fn Cube(
     s Vec3,
     fillet Length = 0 mm,
     chamfer Length = 0 mm,
+    edges EdgeSet = EDGES_ALL,
 ) Solid {
-    return Cube(x: s.x, y: s.y, z: s.z, fillet: fillet, chamfer: chamfer)
+    return Cube(x: s.x, y: s.y, z: s.z, fillet: fillet, chamfer: chamfer, edges: edges)
 }
 
 fn Cube(
     s Length,
     fillet Length = 0 mm,
     chamfer Length = 0 mm,
+    edges EdgeSet = EDGES_ALL,
 ) Solid {
-    return Cube(x: s, y: s, z: s, fillet: fillet, chamfer: chamfer)
+    return Cube(x: s, y: s, z: s, fillet: fillet, chamfer: chamfer, edges: edges)
 }
 
 # UV sphere with bounding-box min corner at (0,0,0) (diameter extends from
