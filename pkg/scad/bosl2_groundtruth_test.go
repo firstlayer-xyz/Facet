@@ -170,6 +170,10 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		{"top_half", "top_half() sphere(r=10, $fn=64);", 0.3},
 		// local assignments inside a geometry for-loop body (block-scoped bindings).
 		{"forbody_assign", "for(i=[0:2]){ x = i*5; translate([x,0,0]) cube(2); }", 0.02},
+		// lookup() linear interpolation: lookup(0.75, [[0,0],[0.5,10],[1,4]]) == 7
+		// (interp on the [0.5,1] segment), so the cube's z height must be exactly 7
+		// — a direct check that our interpolation matches OpenSCAD's.
+		{"lookup_interp", "cube([4, 3, lookup(0.75, [[0,0],[0.5,10],[1,4]])]);", 0.01},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

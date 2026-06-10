@@ -45,6 +45,8 @@ type Emitter struct {
 	usesV3     bool
 	usesFaces  bool
 	usesV2Path bool
+	// usesLookup is set when lookup() is emitted, so File injects scad_lookup.
+	usesLookup bool
 	// childUse records, per module, whether it consumes children() and whether
 	// those children are 2D (see analyzeChildren). A module that uses children
 	// gains a `children []Solid`/`[]Sketch` parameter.

@@ -45,6 +45,27 @@ const scadV2PathHelper = `fn scad_v2_path(ps [][]Number, indices []Number) []Vec
 	}
 }`
 
+// scadLookupHelper implements OpenSCAD's lookup(key, table): linear interpolation
+// of value over a [[key, value], …] table sorted by key, clamped at the ends.
+// Each segment [k0, k1) contributes its interpolated value only when the key
+// falls inside it (half-open, so an interior knot belongs to exactly one
+// segment); summing the per-segment contributions yields the single match.
+const scadLookupHelper = `fn scad_lookup(key Number, table [][]Number) Number {
+	const n = Size(of: table)
+	if key <= table[0][0] { return table[0][1] }
+	if key >= table[n - 1][0] { return table[n - 1][1] }
+	const contribs = for i [0 : n - 2] {
+		const k0 = table[i][0]
+		const k1 = table[i + 1][0]
+		if key >= k0 && key < k1 {
+			yield table[i][1] + (key - k0) / (k1 - k0) * (table[i + 1][1] - table[i][1])
+		} else {
+			yield 0
+		}
+	}
+	return fold acc, c contribs { yield acc + c }
+}`
+
 // helperPreamble returns the definitions of every emitted helper the program
 // references, each followed by a blank line. Unreferenced helpers are omitted.
 func (e *Emitter) helperPreamble() string {
@@ -57,6 +78,7 @@ func (e *Emitter) helperPreamble() string {
 		{e.usesV3, scadV3Helper},
 		{e.usesFaces, scadFacesHelper},
 		{e.usesV2Path, scadV2PathHelper},
+		{e.usesLookup, scadLookupHelper},
 	} {
 		if h.used {
 			w.write(h.src)
