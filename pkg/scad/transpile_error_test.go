@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+// OpenSCAD str(a, b, …) concatenates the string forms of its arguments; it maps
+// to Facet String concatenation, with String(a:) converting non-string values.
+// text() accepts the resulting computed string (not just a literal).
+func TestTranspileStr(t *testing.T) {
+	res, err := Transpile("a=5;\nlinear_extrude(1) text(str(\"x=\", a, \" mm\"));\n", "part.scad")
+	if err != nil {
+		t.Fatalf("str()/text(computed) should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, `"x=" + String(a: a) + " mm"`) {
+		t.Fatalf("expected string concatenation with String() conversion:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // OpenSCAD `let(name=value, …) expr` has no Facet equivalent, so each binding is
 // inlined: substituted for its name at every use (later bindings and the body).
 func TestTranspileLetExpr(t *testing.T) {

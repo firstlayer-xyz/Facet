@@ -624,15 +624,18 @@ func (e *Emitter) text(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "text without string")
 	}
-	s, ok := t.(*ast.Str)
-	if !ok {
-		return e.errf(n.Pos(), "text with non-literal string")
+	// A literal becomes a quoted string; any other expression (str(…), a string
+	// variable) passes through as a String — Facet's Text(text:) takes a String,
+	// and the type checker rejects a non-string.
+	textExpr := e.expr(t, kNumber)
+	if s, isStr := t.(*ast.Str); isStr {
+		textExpr = strconv.Quote(s.Value)
 	}
 	sizeStr := "10 mm"
 	if sz, found := arg(n, "size", -1); found {
 		sizeStr = e.expr(sz, kLength)
 	}
-	out := fmt.Sprintf("Text(text: %s, s: %s", strconv.Quote(s.Value), sizeStr)
+	out := fmt.Sprintf("Text(text: %s, s: %s", textExpr, sizeStr)
 	// font/halign/valign are pass-through string literals with matching names.
 	for _, name := range []string{"font", "halign", "valign"} {
 		v, found := arg(n, name, -1)

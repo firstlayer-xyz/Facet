@@ -71,6 +71,22 @@ func (e *Emitter) call(n *ast.Call) string {
 			}
 			return strings.Join(parts, " + ")
 		}
+	case "str":
+		// str(a, b, …) concatenates the string forms of its arguments. Facet's
+		// String(a:) converts any value to its text; string concatenation is `+`.
+		// A bare string literal is already a String, so it needs no conversion.
+		if len(n.Args) == 0 {
+			return `""`
+		}
+		parts := make([]string, len(n.Args))
+		for i, a := range n.Args {
+			if _, isStr := a.Value.(*ast.Str); isStr {
+				parts[i] = e.expr(a.Value, kNumber)
+			} else {
+				parts[i] = "String(a: " + e.expr(a.Value, kNumber) + ")"
+			}
+		}
+		return strings.Join(parts, " + ")
 	case "search":
 		// search(match_value, vector) returns the LIST of indices where the value
 		// occurs, so it maps to IndicesOf(arr: vector, value: match_value) (the
