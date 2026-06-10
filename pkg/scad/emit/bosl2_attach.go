@@ -369,7 +369,19 @@ func (e *Emitter) bosl2AttachChain(n *ast.ModuleCall) string {
 	for _, c := range n.Children {
 		chain += e.b2Link(c)
 	}
-	return chain + ".Solid()"
+	assembly := chain + ".Solid()"
+	// The parent's own anchor/spin/orient place the WHOLE assembly — children move
+	// with the parent. The leaf is centered on the parent's center (so are the
+	// attached children, resolved against it), so the same anchor offset as the
+	// no-children path applies to the assembled solid. The helpers are no-ops when
+	// the args are absent, so a plain attachable parent stays centered (CENTER).
+	if n.Name == "cuboid" {
+		size, _ := arg(n, "size", 0)
+		sx, sy, sz := e.cubeSizeComponents(size)
+		assembly = e.applyAnchor(n, assembly, [3]string{sx, sy, sz}, false, anchorBox)
+		assembly = e.applyOrient(n, e.applySpin(n, assembly))
+	}
+	return assembly
 }
 
 // tagValue returns the string tag of a tag()/tag_this()/force_tag() call.
@@ -593,7 +605,9 @@ func singleChildCall(n *ast.ModuleCall) (*ast.ModuleCall, bool) {
 func (e *Emitter) bosl2PrimitiveB2(mc *ast.ModuleCall) (string, bool) {
 	switch mc.Name {
 	case "cuboid":
-		e.rejectExtraArgs(mc, 1, "size", "rounding", "chamfer", "edges", "$fn", "$fa", "$fs")
+		// anchor/spin/orient are the PARENT's placement; they are consumed by
+		// bosl2AttachChain (applied to the whole assembly), so allow them here.
+		e.rejectExtraArgs(mc, 1, "size", "rounding", "chamfer", "edges", "anchor", "spin", "orient", "$fn", "$fa", "$fs")
 		size, ok := arg(mc, "size", 0)
 		if !ok {
 			return e.errf(mc.Pos(), "cuboid without size"), true

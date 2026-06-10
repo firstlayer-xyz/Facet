@@ -19,6 +19,28 @@ func TestTranspileStr(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// anchor/spin/orient on an attachable PARENT (a cuboid with children) place the
+// whole assembly; the parent's anchor offset is applied to the assembled solid.
+func TestTranspileAttachableAnchor(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([20,20,10], anchor=BOTTOM) attach(TOP) cyl(d=6,h=8,$fn=24);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("anchored attachable cuboid should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, ".Solid().Move(z:") {
+		t.Fatalf("expected the parent anchor to move the whole assembly:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+
+	// no anchor → assembly stays centered (no trailing Move) — regression guard.
+	plain, err := Transpile("include <BOSL2/std.scad>\ncuboid([20,20,10]) attach(TOP) cyl(d=6,h=8,$fn=24);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("plain attachable cuboid should transpile, got: %v", err)
+	}
+	if strings.Contains(plain.Facet, ".Solid().Move(") {
+		t.Fatalf("a plain attachable parent must stay centered (no anchor Move):\n%s", plain.Facet)
+	}
+}
+
 // OpenSCAD `let(name=value, …) expr` has no Facet equivalent, so each binding is
 // inlined: substituted for its name at every use (later bindings and the body).
 func TestTranspileLetExpr(t *testing.T) {
