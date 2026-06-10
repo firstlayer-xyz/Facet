@@ -23,8 +23,16 @@ type B2 {
     size  Vec3
 }
 
-fn b2_cuboid(size Vec3) B2 {
-    return B2{solid: Cube(x: size.x, y: size.y, z: size.z).AlignCenter(pos: Vec3{}), size: size}
+fn b2_cuboid(
+    size Vec3,
+    fillet Length = 0 mm,
+    chamfer Length = 0 mm,
+    edges EdgeSet = EDGES_ALL,
+) B2 {
+    return B2{
+        solid: Cube(x: size.x, y: size.y, z: size.z, fillet: fillet, chamfer: chamfer, edges: edges).AlignCenter(pos: Vec3{}),
+        size: size,
+    }
 }
 
 fn b2_cyl(h Length, r Length) B2 {

@@ -37,6 +37,19 @@ func TestTranspileLetExpr(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// A rounded ATTACHABLE cuboid (with children) flows its rounding/edges through
+// the attachment chain's b2_cuboid, not just the plain path.
+func TestTranspileAttachableCuboidRounding(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\ncuboid([20,20,10], rounding=3, edges=\"Z\") attach(TOP) cyl(d=6,h=8,$fn=24);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("attachable rounded cuboid should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "b2_cuboid(") || !strings.Contains(res.Facet, "fillet: 3 mm") || !strings.Contains(res.Facet, "edges: EdgesAlongZ()") {
+		t.Fatalf("expected b2_cuboid with fillet + edges:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // BOSL2 cuboid(rounding=/chamfer=, edges="X"/"Y"/"Z") maps to Cube's per-edge
 // fillet/chamfer over the matching axis group; an edges selector Facet can't
 // express yet (individual edges, faces, except=) is a located error, not wrong

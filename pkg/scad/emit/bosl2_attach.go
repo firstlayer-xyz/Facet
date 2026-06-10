@@ -593,13 +593,27 @@ func singleChildCall(n *ast.ModuleCall) (*ast.ModuleCall, bool) {
 func (e *Emitter) bosl2PrimitiveB2(mc *ast.ModuleCall) (string, bool) {
 	switch mc.Name {
 	case "cuboid":
-		e.rejectExtraArgs(mc, 1, "size")
+		e.rejectExtraArgs(mc, 1, "size", "rounding", "chamfer", "edges", "$fn", "$fa", "$fs")
 		size, ok := arg(mc, "size", 0)
 		if !ok {
 			return e.errf(mc.Pos(), "cuboid without size"), true
 		}
+		fillet, chamfer, edges, good := e.cuboidRoundingArgs(mc)
+		if !good {
+			return "", true
+		}
 		x, y, z := e.boxSizeComponents(size)
-		return fmt.Sprintf("b2_cuboid(size: Vec3{x: %s, y: %s, z: %s})", x, y, z), true
+		args := fmt.Sprintf("size: Vec3{x: %s, y: %s, z: %s}", x, y, z)
+		if fillet != "" {
+			args += ", fillet: " + fillet
+		}
+		if chamfer != "" {
+			args += ", chamfer: " + chamfer
+		}
+		if edges != "" {
+			args += ", edges: " + edges
+		}
+		return "b2_cuboid(" + args + ")", true
 	case "cyl":
 		e.rejectExtraArgs(mc, 2, "h", "l", "height", "r", "d", "$fn", "$fa", "$fs")
 		h, ok := cylHeightArg(mc)

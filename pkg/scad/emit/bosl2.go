@@ -934,26 +934,36 @@ func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "cuboid without size")
 	}
-	fillet := ""
-	if r, has := arg(n, "rounding", -1); has {
-		fillet = e.expr(r, kLength)
-	}
-	chamfer := ""
-	if c, has := arg(n, "chamfer", -1); has {
-		chamfer = e.expr(c, kLength)
-	}
-	edges := ""
-	if ea, has := arg(n, "edges", -1); has {
-		es, ok := bosl2EdgeSetExpr(ea)
-		if !ok {
-			return e.errf(ea.Pos(), "cuboid: unsupported edges selector (only the axis groups \"X\", \"Y\", \"Z\" are supported)")
-		}
-		edges = es
+	fillet, chamfer, edges, good := e.cuboidRoundingArgs(n)
+	if !good {
+		return ""
 	}
 	shape := e.cubeCtor(size, fillet, chamfer, edges) + ".AlignCenter(pos: Vec3{})"
 	sx, sy, sz := e.cubeSizeComponents(size)
 	shape = e.applyAnchor(n, shape, [3]string{sx, sy, sz}, false, anchorBox)
 	return e.applyOrient(n, e.applySpin(n, shape))
+}
+
+// cuboidRoundingArgs extracts a cuboid's rounding/chamfer/edges as Facet argument
+// snippets (each "" when the option is absent), shared by the plain and
+// attachable cuboid paths. good is false (with a located error already recorded)
+// when the edges selector is one Facet can't express yet.
+func (e *Emitter) cuboidRoundingArgs(n *ast.ModuleCall) (fillet, chamfer, edges string, good bool) {
+	if r, has := arg(n, "rounding", -1); has {
+		fillet = e.expr(r, kLength)
+	}
+	if c, has := arg(n, "chamfer", -1); has {
+		chamfer = e.expr(c, kLength)
+	}
+	if ea, has := arg(n, "edges", -1); has {
+		es, ok := bosl2EdgeSetExpr(ea)
+		if !ok {
+			e.errf(ea.Pos(), "cuboid: unsupported edges selector (only the axis groups \"X\", \"Y\", \"Z\" are supported)")
+			return "", "", "", false
+		}
+		edges = es
+	}
+	return fillet, chamfer, edges, true
 }
 
 // bosl2EdgeSetExpr maps a BOSL2 cuboid edges= selector to a Facet EdgeSet

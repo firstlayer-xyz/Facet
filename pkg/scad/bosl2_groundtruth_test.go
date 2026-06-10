@@ -290,6 +290,12 @@ func TestBOSL2GroundTruth_CSG(t *testing.T) {
 		{"cuboid_chamfer_z", `cuboid([10,20,30], chamfer=2, edges="Z");`, 0.005},
 		{"cuboid_chamfer_x", `cuboid([10,20,30], chamfer=2, edges="X");`, 0.005},
 		{"cuboid_chamfer_all", `cuboid([10,20,30], chamfer=2);`, 0.02},
+		// rounding on an ATTACHABLE cuboid (has children): the rounding/edges must
+		// flow through the attachment chain (b2_cuboid), and attach must still place
+		// the child. The rounding is a large fraction of volume (r=4 on a 12×12 face)
+		// and edges="Z" is orientation-sensitive, so a missing or mis-axised round
+		// shows up in the volume.
+		{"attach_round_cuboid", `cuboid([12,12,40], rounding=4, edges="Z") attach(TOP) cyl(d=6, h=6, $fn=48);`, 0.02},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
