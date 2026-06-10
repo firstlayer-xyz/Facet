@@ -132,46 +132,75 @@ export function promptNewLibrary(folders: string[]): Promise<{folder: string; na
   });
 }
 
+/**
+ * Append `pop` to the document, positioned beside `anchorEl`, dismissing on
+ * click-outside or Escape. Returns close(); `dispose` runs exactly once,
+ * however the popover closes.
+ *
+ * The dismiss handlers attach synchronously, not via setTimeout: a deferred
+ * attach can lose a race against the next input event, leaving a popover with
+ * no dismiss handlers. The anchor-exclusion in closeHandler (contains, not
+ * identity — the anchor buttons hold svg children) is what keeps the click
+ * that opened the popover from instantly closing it.
+ */
+function openAnchoredPopover(pop: HTMLElement, anchorEl: HTMLElement, dispose: () => void): () => void {
+  const close = () => {
+    pop.remove();
+    document.removeEventListener('click', closeHandler);
+    document.removeEventListener('keydown', keyHandler, true);
+    dispose();
+  };
+  const closeHandler = (e: MouseEvent) => {
+    if (!pop.contains(e.target as Node) && !anchorEl.contains(e.target as Node)) close();
+  };
+  const keyHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') close();
+  };
+
+  const rect = anchorEl.getBoundingClientRect();
+  document.body.appendChild(pop);
+  const top = Math.min(rect.top, window.innerHeight - pop.offsetHeight - 8);
+  pop.style.left = (rect.right + 4) + 'px';
+  pop.style.top = Math.max(8, top) + 'px';
+
+  document.addEventListener('click', closeHandler);
+  // Capture phase: Escape must close the popover even when focus sits in a
+  // widget (e.g. the Monaco editor) that swallows bubbling keydown events.
+  document.addEventListener('keydown', keyHandler, true);
+  return close;
+}
+
 /** Show a slicer picker dropdown. Returns the selected slicer ID or null. */
+let closeSlicerPicker: (() => void) | null = null;
+
 export function showSlicerPicker(
   slicers: { id: string; name: string }[],
   anchorEl: HTMLElement,
 ): Promise<string | null> {
   return new Promise(resolve => {
-    // Close existing dropdown if open
-    const existing = document.getElementById('slicer-dropdown');
-    if (existing) { existing.remove(); resolve(null); return; }
+    // Toggle: re-invoking while open closes it. The open invocation resolves
+    // null through its dispose; this one resolves null directly.
+    if (closeSlicerPicker) { closeSlicerPicker(); resolve(null); return; }
 
     const dropdown = document.createElement('div');
     dropdown.id = 'slicer-dropdown';
 
+    let picked: string | null = null;
     for (const slicer of slicers) {
       const item = document.createElement('button');
       item.className = 'slicer-item';
       item.textContent = slicer.name;
       item.addEventListener('click', () => {
-        dropdown.remove();
-        document.removeEventListener('click', closeHandler);
-        resolve(slicer.id);
+        picked = slicer.id;
+        closeSlicerPicker?.();
       });
       dropdown.appendChild(item);
     }
 
-    const rect = anchorEl.getBoundingClientRect();
-    document.body.appendChild(dropdown);
-    const menuH = dropdown.offsetHeight;
-    const top = Math.min(rect.top, window.innerHeight - menuH - 8);
-    dropdown.style.left = (rect.right + 4) + 'px';
-    dropdown.style.top = Math.max(8, top) + 'px';
-
-    const closeHandler = (e: MouseEvent) => {
-      if (!dropdown.contains(e.target as Node) && e.target !== anchorEl) {
-        dropdown.remove();
-        document.removeEventListener('click', closeHandler);
-        resolve(null);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    closeSlicerPicker = openAnchoredPopover(dropdown, anchorEl, () => {
+      closeSlicerPicker = null;
+      resolve(picked);
+    });
   });
 }
 
@@ -189,14 +218,8 @@ export function showSharePopover(link: { url: string; qrpng: string }, anchorEl:
   const pop = document.createElement('div');
   pop.id = 'share-popover';
 
-  const close = () => {
-    pop.remove();
-    document.removeEventListener('click', closeHandler);
-    document.removeEventListener('keydown', keyHandler, true);
-    closeSharePopover = null;
-  };
   const open = () => {
-    close();
+    closeSharePopover?.();
     BrowserOpenURL(link.url);
   };
 
@@ -225,26 +248,7 @@ export function showSharePopover(link: { url: string; qrpng: string }, anchorEl:
     pop.appendChild(btn);
   }
 
-  const rect = anchorEl.getBoundingClientRect();
-  document.body.appendChild(pop);
-  const popH = pop.offsetHeight;
-  const top = Math.min(rect.top, window.innerHeight - popH - 8);
-  pop.style.left = (rect.right + 4) + 'px';
-  pop.style.top = Math.max(8, top) + 'px';
-
-  const closeHandler = (e: MouseEvent) => {
-    if (!pop.contains(e.target as Node) && !anchorEl.contains(e.target as Node)) close();
-  };
-  const keyHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') close();
-  };
-  // Attached synchronously, not via setTimeout: a deferred attach can lose a
-  // race against the next input event, leaving a popover with no dismiss
-  // handlers. The anchor-exclusion in closeHandler already keeps the click
-  // that opened the popover from instantly closing it.
-  document.addEventListener('click', closeHandler);
-  // Capture phase: Escape must close the popover even when focus sits in a
-  // widget (e.g. the Monaco editor) that swallows bubbling keydown events.
-  document.addEventListener('keydown', keyHandler, true);
-  closeSharePopover = close;
+  closeSharePopover = openAnchoredPopover(pop, anchorEl, () => {
+    closeSharePopover = null;
+  });
 }
