@@ -168,6 +168,8 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		{"zrot_copies_ring", "zrot_copies(n=5, r=15) cuboid([3,3,3]);", 0.02},
 		{"mirror_copy", "mirror_copy([1,0,0]) right(10) cuboid([2,2,2]);", 0.02},
 		{"top_half", "top_half() sphere(r=10, $fn=64);", 0.3},
+		// local assignments inside a geometry for-loop body (block-scoped bindings).
+		{"forbody_assign", "for(i=[0:2]){ x = i*5; translate([x,0,0]) cube(2); }", 0.02},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

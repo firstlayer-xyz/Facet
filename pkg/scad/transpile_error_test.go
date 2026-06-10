@@ -82,6 +82,20 @@ func TestTranspileErrorsOnUnsupported(t *testing.T) {
 	}
 }
 
+// Local assignments in a geometry for-loop body (`for(i=…){ x = f(i); …x… }`)
+// are OpenSCAD block-scoped bindings; they emit as Facet consts inside the
+// for-yield body so the geometry can reference them.
+func TestTranspileForBodyLocalAssign(t *testing.T) {
+	res, err := Transpile("for(i=[0:2]){ x = i*3; y = x+1; translate([x,y,0]) cube(1); }\n", "part.scad")
+	if err != nil {
+		t.Fatalf("for-body local assign should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "const x = i * 3") || !strings.Contains(res.Facet, "const y = x + 1") {
+		t.Fatalf("expected for-body assigns emitted as consts:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // A list comprehension `[for (var = range) body]` renders to a Facet
 // `for var range { yield body }`. Used heavily in real OpenSCAD models that
 // build polygon points by sampling a function over a range.
