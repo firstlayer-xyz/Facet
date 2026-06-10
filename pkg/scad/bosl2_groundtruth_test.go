@@ -290,6 +290,20 @@ func TestBOSL2GroundTruth_CSG(t *testing.T) {
 		{"cuboid_chamfer_z", `cuboid([10,20,30], chamfer=2, edges="Z");`, 0.005},
 		{"cuboid_chamfer_x", `cuboid([10,20,30], chamfer=2, edges="X");`, 0.005},
 		{"cuboid_chamfer_all", `cuboid([10,20,30], chamfer=2);`, 0.02},
+		// rounding on an ATTACHABLE cuboid (has children): the rounding/edges must
+		// flow through the attachment chain (b2_cuboid), and attach must still place
+		// the child. The rounding is a large fraction of volume (r=4 on a 12×12 face)
+		// and edges="Z" is orientation-sensitive, so a missing or mis-axised round
+		// shows up in the volume.
+		{"attach_round_cuboid", `cuboid([12,12,40], rounding=4, edges="Z") attach(TOP) cyl(d=6, h=6, $fn=48);`, 0.02},
+		// edges="Z" leaves the TOP face flat, so the attach point is trivially
+		// unaffected. These three round the attach face itself — default all-edges
+		// and edges="X" both round the top edge, and chamfer is the bevel variant —
+		// confirming the attach anchor stays on the (still-flat) face center while
+		// the parent geometry matches BOSL2.
+		{"attach_round_all", `cuboid([12,12,40], rounding=4) attach(TOP) cyl(d=6, h=6, $fn=48);`, 0.02},
+		{"attach_round_x", `cuboid([12,12,40], rounding=4, edges="X") attach(TOP) cyl(d=6, h=6, $fn=48);`, 0.02},
+		{"attach_chamfer_all", `cuboid([12,12,40], chamfer=3) attach(TOP) cyl(d=6, h=6, $fn=48);`, 0.02},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
