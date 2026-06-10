@@ -18,6 +18,7 @@
 #endif
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,75 @@ extern "C" {
 
 using namespace manifold;
 using namespace facet_cxx_internal;  // as_cpp, as_cpp_cs, wrap, wrap_cs, solid_size, sketch_size
+
+namespace {
+constexpr double kFourPi = 4.0 * 3.14159265358979323846;
+
+// Squared distance from p to triangle (a,b,c). Ericson, Real-Time Collision
+// Detection — closest point on triangle, returns the squared distance.
+double dist2_point_tri(const vec3& p, const vec3& a, const vec3& b, const vec3& c) {
+  const double abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z;
+  const double acx = c.x - a.x, acy = c.y - a.y, acz = c.z - a.z;
+  const double apx = p.x - a.x, apy = p.y - a.y, apz = p.z - a.z;
+  const double d1 = abx * apx + aby * apy + abz * apz;
+  const double d2 = acx * apx + acy * apy + acz * apz;
+  if (d1 <= 0 && d2 <= 0) return apx * apx + apy * apy + apz * apz;
+  const double bpx = p.x - b.x, bpy = p.y - b.y, bpz = p.z - b.z;
+  const double d3 = abx * bpx + aby * bpy + abz * bpz;
+  const double d4 = acx * bpx + acy * bpy + acz * bpz;
+  if (d3 >= 0 && d4 <= d3) return bpx * bpx + bpy * bpy + bpz * bpz;
+  const double vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+    const double v = d1 / (d1 - d3);
+    const double qx = apx - v * abx, qy = apy - v * aby, qz = apz - v * abz;
+    return qx * qx + qy * qy + qz * qz;
+  }
+  const double cpx = p.x - c.x, cpy = p.y - c.y, cpz = p.z - c.z;
+  const double d5 = abx * cpx + aby * cpy + abz * cpz;
+  const double d6 = acx * cpx + acy * cpy + acz * cpz;
+  if (d6 >= 0 && d5 <= d6) return cpx * cpx + cpy * cpy + cpz * cpz;
+  const double vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+    const double w = d2 / (d2 - d6);
+    const double qx = apx - w * acx, qy = apy - w * acy, qz = apz - w * acz;
+    return qx * qx + qy * qy + qz * qz;
+  }
+  const double va = d3 * d6 - d5 * d4;
+  if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
+    const double w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+    const double bcx = c.x - b.x, bcy = c.y - b.y, bcz = c.z - b.z;
+    const double qx = bpx - w * bcx, qy = bpy - w * bcy, qz = bpz - w * bcz;
+    return qx * qx + qy * qy + qz * qz;
+  }
+  const double denom = 1.0 / (va + vb + vc);
+  const double v = vb * denom, w = vc * denom;
+  const double qx = apx - v * abx - w * acx;
+  const double qy = apy - v * aby - w * acy;
+  const double qz = apz - v * abz - w * acz;
+  return qx * qx + qy * qy + qz * qz;
+}
+
+// Signed solid angle subtended by triangle (A,B,C) at p (Van Oosterom &
+// Strackee). Summed over a closed mesh and divided by 4*pi, |sum| > 0.5 means p
+// is inside — robust for the watertight meshes Manifold guarantees.
+double signed_solid_angle(const vec3& p, const vec3& A, const vec3& B, const vec3& C) {
+  const double ax = A.x - p.x, ay = A.y - p.y, az = A.z - p.z;
+  const double bx = B.x - p.x, by = B.y - p.y, bz = B.z - p.z;
+  const double cx = C.x - p.x, cy = C.y - p.y, cz = C.z - p.z;
+  const double la = std::sqrt(ax * ax + ay * ay + az * az);
+  const double lb = std::sqrt(bx * bx + by * by + bz * bz);
+  const double lc = std::sqrt(cx * cx + cy * cy + cz * cz);
+  const double crx = by * cz - bz * cy;
+  const double cry = bz * cx - bx * cz;
+  const double crz = bx * cy - by * cx;
+  const double num = ax * crx + ay * cry + az * crz;
+  const double ab = ax * bx + ay * by + az * bz;
+  const double bc = bx * cx + by * cy + bz * cz;
+  const double ca = cx * ax + cy * ay + cz * az;
+  const double den = la * lb * lc + ab * lc + bc * la + ca * lb;
+  return 2.0 * std::atan2(num, den);
+}
+}  // namespace
 
 extern "C" {
 
@@ -792,6 +862,51 @@ void facet_refine(ManifoldPtr* m, int n, FacetSolidRet* out) {
 
 void facet_simplify(ManifoldPtr* m, double tolerance, FacetSolidRet* out) {
   wrap(new Manifold(as_cpp(m)->Simplify(tolerance)), out);
+}
+
+void facet_offset(ManifoldPtr* m, double delta, double edge_length, FacetSolidRet* out) {
+  Manifold* mp = as_cpp(m);
+  MeshGL mesh = mp->GetMeshGL();
+  const uint32_t nProp = mesh.numProp;
+
+  struct Tri { vec3 a, b, c; };
+  auto V = [&](uint32_t i) -> vec3 {
+    const size_t o = static_cast<size_t>(i) * nProp;
+    return vec3{static_cast<double>(mesh.vertProperties[o]),
+                static_cast<double>(mesh.vertProperties[o + 1]),
+                static_cast<double>(mesh.vertProperties[o + 2])};
+  };
+  std::vector<Tri> tris;
+  tris.reserve(mesh.triVerts.size() / 3);
+  for (size_t t = 0; t + 2 < mesh.triVerts.size(); t += 3) {
+    tris.push_back({V(mesh.triVerts[t]), V(mesh.triVerts[t + 1]), V(mesh.triVerts[t + 2])});
+  }
+
+  // Sampling region: the mesh bbox grown to enclose the offset surface.
+  Box bb = mp->BoundingBox();
+  const double pad = std::abs(delta) + 3.0 * edge_length;
+  Box bounds{vec3{bb.min.x - pad, bb.min.y - pad, bb.min.z - pad},
+             vec3{bb.max.x + pad, bb.max.y + pad, bb.max.z + pad}};
+
+  // POSITIVE-inside signed distance (Manifold LevelSet convention).
+  auto sdf = [&tris](vec3 p) -> double {
+    double best2 = std::numeric_limits<double>::max();
+    double omega = 0.0;
+    for (const Tri& tr : tris) {
+      const double d2 = dist2_point_tri(p, tr.a, tr.b, tr.c);
+      if (d2 < best2) best2 = d2;
+      omega += signed_solid_angle(p, tr.a, tr.b, tr.c);
+    }
+    const double dist = std::sqrt(best2);
+    const bool inside = std::abs(omega / kFourPi) > 0.5;
+    return inside ? dist : -dist;
+  };
+
+  // Offset by delta => mesh the {sdf > -delta} interior. canParallel=false to
+  // match facet_level_set.
+  wrap(new Manifold(
+           Manifold::LevelSet(sdf, bounds, edge_length, -delta, -1.0, false).AsOriginal()),
+       out);
 }
 
 void facet_refine_to_length(ManifoldPtr* m, double length, FacetSolidRet* out) {

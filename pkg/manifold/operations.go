@@ -131,6 +131,17 @@ func (s *Solid) RefineToLength(length float64) *Solid {
 	return transformSolid(s, ret)
 }
 
+// Offset grows (delta>0) or shrinks (delta<0) a solid by delta via an SDF
+// re-mesh at edgeLen resolution (marching cubes). Approximate: resamples the
+// whole body, not just the edges. Returns a possibly-empty solid (the caller
+// checks Volume() for annihilation).
+func (s *Solid) Offset(delta, edgeLen float64) *Solid {
+	var ret C.FacetSolidRet
+	C.facet_offset(s.ptr, C.double(delta), C.double(edgeLen), &ret)
+	runtime.KeepAlive(s)
+	return newSolid(ret)
+}
+
 // SplitSolid splits m by cutter, returning [inside, outside]. Both halves
 // originate from m's geometry, so both carry m's FaceMap; cutter's FaceMap is
 // intentionally not propagated — its faces don't appear in either result.
