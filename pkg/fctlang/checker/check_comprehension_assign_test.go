@@ -132,3 +132,65 @@ fn Main() Solid {
 		}
 	}
 }
+
+// Value-semantics mutability rules (mirrored by the evaluator): array-element
+// receivers and module-level structs reject field assignment; deep const roots
+// are caught through field chains.
+func TestCheckFieldAssignMutabilityRules(t *testing.T) {
+	errs := checkSource(t, `
+fn Main() Solid {
+    var pts = [Vec3{x: 1 mm, y: 1 mm, z: 1 mm}]
+    pts[0].x = 99 mm
+    return Cube(s: 1 mm)
+}
+`)
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Message, "array element") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected an array-element error, got: %v", errs)
+	}
+
+	errs = checkSource(t, `
+var cfg = Vec3{x: 1 mm, y: 1 mm, z: 1 mm}
+fn Poke() Number {
+    cfg.x = 99 mm
+    return 0
+}
+fn Main() Solid {
+    return Cube(s: cfg)
+}
+`)
+	found = false
+	for _, e := range errs {
+		if strings.Contains(e.Message, "module-level") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a module-level mutation error, got: %v", errs)
+	}
+
+	errs = checkSource(t, `
+type Outer {
+    inner Vec3
+}
+fn Main() Solid {
+    const cfg = Outer{inner: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}}
+    cfg.inner.x = 99 mm
+    return Cube(s: cfg.inner)
+}
+`)
+	found = false
+	for _, e := range errs {
+		if strings.Contains(e.Message, "const") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a deep-const error, got: %v", errs)
+	}
+}

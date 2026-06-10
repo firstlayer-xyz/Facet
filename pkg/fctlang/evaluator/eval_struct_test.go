@@ -17,14 +17,14 @@ func TestCoerceAnonymousStructUnknownTypeErrors(t *testing.T) {
 		libEvalCache: map[string]map[string]value{},
 	}
 	sv := &structVal{fields: map[string]value{"x": float64(1)}}
-	err := e.coerceAnonymousStruct(sv, "NotDeclaredAnywhere", nil)
+	out, err := e.coerceAnonymousStruct(sv, "NotDeclaredAnywhere", nil)
 	if err == nil {
-		t.Fatal("expected error when target struct type is not declared")
+		t.Fatalf("expected error when target struct type is not declared, got %v", out)
 	}
 	if !strings.Contains(err.Error(), "NotDeclaredAnywhere") {
 		t.Errorf("error should name the missing type: %v", err)
 	}
 	if sv.typeName != "" {
-		t.Errorf("typeName should remain empty on coercion failure, got %q", sv.typeName)
+		t.Errorf("input must stay untouched on coercion failure, got typeName %q", sv.typeName)
 	}
 }

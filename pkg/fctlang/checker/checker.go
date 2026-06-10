@@ -98,6 +98,7 @@ func (c *checker) checkGlobals(prog loader.Program) {
 		}
 		c.currentSrcKey = srcKey
 		env := c.newStdEnv()
+		env.module = true
 		for _, g := range src.Globals() {
 			t := c.inferExpr(g.Value, env)
 			kind := "var"

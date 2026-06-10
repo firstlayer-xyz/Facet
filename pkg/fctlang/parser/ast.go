@@ -652,3 +652,35 @@ type LambdaExpr struct {
 }
 
 func (*LambdaExpr) exprNode() {}
+
+// ReceiverRoot walks a field-assignment receiver chain (a.b.c) to its root
+// identifier. Returns nil when the chain passes through anything else (an
+// index, a call, …). Shared by the checker and the evaluator so the two
+// layers apply identical mutability rules.
+func ReceiverRoot(x Expr) *IdentExpr {
+	for {
+		switch r := x.(type) {
+		case *IdentExpr:
+			return r
+		case *FieldAccessExpr:
+			x = r.Receiver
+		default:
+			return nil
+		}
+	}
+}
+
+// ReceiverHasIndex reports whether a receiver chain passes through an array
+// index (arr[i].f, a.list[0].f, …).
+func ReceiverHasIndex(x Expr) bool {
+	for {
+		switch r := x.(type) {
+		case *IndexExpr:
+			return true
+		case *FieldAccessExpr:
+			x = r.Receiver
+		default:
+			return false
+		}
+	}
+}

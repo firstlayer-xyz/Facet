@@ -217,10 +217,15 @@ func (e *evaluator) zeroStructRec(typeName string, visiting []string) (value, er
 	return &structVal{typeName: typeName, fields: fields, decl: decl, lib: e.currentLib}, nil
 }
 
-// coerceAnonymousStruct coerces an anonymous struct to a named struct type.
-// The target type's declaration must be reachable from the evaluator; otherwise
-// coercion fails with a hard error (no silent duck-typing).
-func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, locals map[string]value) error {
+// coerceAnonymousStruct coerces an anonymous struct to a named struct type,
+// returning a NEW struct value — the input is never mutated. (Stamping the
+// shared input in place corrupted overload resolution: a REJECTED candidate's
+// trial coercion left its type and defaults on the caller's value, making
+// resolution declaration-order dependent.) The target type's declaration must
+// be reachable from the evaluator; otherwise coercion fails with a hard error
+// (no silent duck-typing).
+func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, locals map[string]value) (*structVal, error) {
+	var lib *libRef
 	decl, ok := e.structDecls[targetType]
 	if !ok {
 		// Try qualified name: split into libVar.StructName and search specific library.
@@ -231,7 +236,7 @@ func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, loca
 				for _, sd := range e.prog.Sources[e.prog.Resolve(lv.path)].StructDecls() {
 					if sd.Name == bareName {
 						decl = sd
-						sv.lib = lv
+						lib = lv
 						break
 					}
 				}
@@ -243,7 +248,7 @@ func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, loca
 				for _, sd := range e.prog.Sources[e.prog.Resolve(libPath)].StructDecls() {
 					if sd.Name == targetType {
 						decl = sd
-						sv.lib = &libRef{path: libPath}
+						lib = &libRef{path: libPath}
 						break
 					}
 				}
@@ -253,7 +258,7 @@ func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, loca
 			}
 		}
 		if decl == nil {
-			return fmt.Errorf("cannot coerce anonymous struct to %s: no such struct type in scope", targetType)
+			return nil, fmt.Errorf("cannot coerce anonymous struct to %s: no such struct type in scope", targetType)
 		}
 	}
 	// Check for unknown fields
@@ -263,42 +268,42 @@ func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, loca
 	}
 	for name := range sv.fields {
 		if !declFields[name] {
-			return fmt.Errorf("anonymous struct has field %q which is not in %s", name, targetType)
+			return nil, fmt.Errorf("anonymous struct has field %q which is not in %s", name, targetType)
 		}
 	}
-	// Validate declared fields: fill defaults for missing, coerce and type-check provided
+	// Validate declared fields into a fresh struct: fill defaults for missing,
+	// coerce and type-check provided (copies, so the input stays untouched).
+	fields := make(map[string]value, len(decl.Fields))
 	for _, f := range decl.Fields {
 		if f.Type != "" && !e.isAccessibleType(f.Type) {
-			return fmt.Errorf("field %q of %s has unknown type %q", f.Name, targetType, f.Type)
+			return nil, fmt.Errorf("field %q of %s has unknown type %q", f.Name, targetType, f.Type)
 		}
 		v, provided := sv.fields[f.Name]
 		if !provided {
 			def, err := e.resolveFieldDefault(f, locals)
 			if err != nil {
-				return fmt.Errorf("anonymous struct missing field %q (required by %s)", f.Name, targetType)
+				return nil, fmt.Errorf("anonymous struct missing field %q (required by %s)", f.Name, targetType)
 			}
-			sv.fields[f.Name] = def
+			fields[f.Name] = def
 			continue
 		}
-		v = e.coerceToType(f.Type, unwrap(v), locals)
-		sv.fields[f.Name] = v
+		v = e.coerceToType(f.Type, copyValue(v), locals)
+		fields[f.Name] = v
 		if !checkType(f.Type, v) {
-			return fmt.Errorf("field %q of %s must be %s, got %s", f.Name, targetType, f.Type, typeName(v))
+			return nil, fmt.Errorf("field %q of %s must be %s, got %s", f.Name, targetType, f.Type, typeName(v))
 		}
 	}
 	// Use the bare type name (strip library qualifier) so method dispatch
 	// matches the function's ReceiverType which is always bare.
+	bare := targetType
 	if dotIdx := strings.IndexByte(targetType, '.'); dotIdx >= 0 {
-		sv.typeName = targetType[dotIdx+1:]
-	} else {
-		sv.typeName = targetType
+		bare = targetType[dotIdx+1:]
 	}
-	sv.decl = decl
-	// Ensure library context is set so method dispatch can find library methods.
-	if sv.lib == nil {
-		sv.lib = e.currentLib
+	// Library context lets method dispatch find library methods.
+	if lib == nil {
+		lib = e.currentLib
 	}
-	return nil
+	return &structVal{typeName: bare, fields: fields, decl: decl, lib: lib}, nil
 }
 
 func (e *evaluator) evalFieldAccess(ex *parser.FieldAccessExpr, locals map[string]value) (value, error) {

@@ -8,11 +8,17 @@ import (
 	"facet/pkg/manifold"
 )
 
-// copyValue returns a shallow copy of v if it is a struct, otherwise returns v unchanged.
-// This gives structs value semantics: assignment copies the struct rather than aliasing it.
+// copyValue returns a deep copy of v if it is (or wraps) a struct, otherwise
+// returns v unchanged. This gives structs value semantics: every binding
+// boundary (var, param, lambda arg/capture, loop var, fold acc, if-var bind)
+// copies the struct rather than aliasing it, so a field assignment only ever
+// affects the binding it is written through. Arrays pass through unchanged —
+// they are immutable (field assignment through an element is rejected), so
+// sharing the backing slice is safe.
 func copyValue(v value) value {
 	v = unwrap(v)
-	if sv, ok := v.(*structVal); ok {
+	switch sv := v.(type) {
+	case *structVal:
 		fields := make(map[string]value, len(sv.fields))
 		for k, fv := range sv.fields {
 			fields[k] = copyValue(fv)
@@ -23,6 +29,16 @@ func copyValue(v value) value {
 			decl:     sv.decl,
 			lib:      sv.lib,
 		}
+	case *optionalVal:
+		// Only a Some(struct) needs a fresh wrapper; everything else inside an
+		// Optional is immutable. (No interface != here — arrays are
+		// uncomparable and would panic.)
+		if sv.present {
+			if _, isStruct := unwrap(sv.inner).(*structVal); isStruct {
+				return &optionalVal{present: true, inner: copyValue(sv.inner), innerType: sv.innerType}
+			}
+		}
+		return v
 	}
 	return v
 }
@@ -245,8 +261,8 @@ func (e *evaluator) coerceToType(declType string, v value, locals map[string]val
 		}
 	default:
 		if sv, ok := v.(*structVal); ok && sv.typeName == "" {
-			if err := e.coerceAnonymousStruct(sv, declType, locals); err == nil {
-				return sv
+			if out, err := e.coerceAnonymousStruct(sv, declType, locals); err == nil {
+				return out
 			}
 		}
 	}
@@ -271,7 +287,7 @@ func (e *evaluator) coerceArgs(fnName string, params []*parser.Param, args map[s
 		}
 		// Surface detailed error for anonymous struct coercion failures
 		if sv, ok := unwrap(coerced).(*structVal); ok && sv.typeName == "" {
-			if err := e.coerceAnonymousStruct(sv, param.Type, locals); err != nil {
+			if _, err := e.coerceAnonymousStruct(sv, param.Type, locals); err != nil {
 				return fmt.Errorf("%s() parameter %q: %s", fnName, param.Name, err)
 			}
 		}
