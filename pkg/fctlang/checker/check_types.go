@@ -337,6 +337,28 @@ type typeEnv struct {
 	declPos  map[string]parser.Pos  // declaration site for each binding in this scope
 	declKind map[string]string      // semantic kind for each binding: "var", "const", "param", "fn", etc.
 	parent   *typeEnv
+	// comprehension marks the scope a for-yield/fold body runs in. Each
+	// iteration evaluates against its own copy of the enclosing scope, so an
+	// assignment that crosses this boundary would be silently discarded at
+	// runtime — the checker rejects it (see assignCrossesComprehension).
+	comprehension bool
+}
+
+// assignCrossesComprehension reports whether assigning to name from this scope
+// would cross a comprehension boundary — i.e. the binding lives outside the
+// nearest enclosing for-yield/fold body. Loop variables and vars declared
+// inside the body resolve before the boundary and are fine.
+func (e *typeEnv) assignCrossesComprehension(name string) bool {
+	crossed := false
+	for env := e; env != nil; env = env.parent {
+		if _, ok := env.types[name]; ok {
+			return crossed
+		}
+		if env.comprehension {
+			crossed = true
+		}
+	}
+	return false
 }
 
 func (c *checker) newEnv() *typeEnv {

@@ -245,6 +245,11 @@ func (c *checker) checkStmts(stmts []parser.Stmt, env *typeEnv) typeInfo {
 				c.addError(s.Pos, fmt.Sprintf("cannot assign to undefined variable %q", s.Name))
 			} else if env.isConst(s.Name) {
 				c.addError(s.Pos, fmt.Sprintf("cannot reassign const %q", s.Name))
+			} else if env.assignCrossesComprehension(s.Name) {
+				// Each iteration of a for-yield/fold body runs against its own
+				// copy of the enclosing scope, so this write would be silently
+				// discarded — reject it instead.
+				c.addError(s.Pos, fmt.Sprintf("cannot assign to outer variable %q from a for/fold body; comprehension bodies are isolated per iteration (yield a value or use fold's accumulator instead)", s.Name))
 			} else {
 				newType := c.inferExpr(s.Value, env)
 				if newType.ft != typeUnknown && existing.ft != typeUnknown && !c.typeCompatible(existing, newType) {
