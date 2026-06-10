@@ -12,6 +12,7 @@
       color: #e0e0e0;
       display: flex;
       height: 100vh;
+      height: 100dvh; /* dvh tracks the visible area as mobile browser chrome shows/hides */
       overflow: hidden;
     }
     #sidebar {
@@ -194,9 +195,64 @@
       font-size: 13px;
       color: #aaa;
     }
+
+    /* The ☰ button and the backdrop exist only to drive the mobile drawer; on
+       desktop the sidebar is always in-flow, so both stay hidden. */
+    #menu-toggle, #sidebar-backdrop { display: none; }
+
+    /* Narrow screens (phones): the 3D view is the focus, so it fills the whole
+       screen and the controls become a slide-in drawer over it. */
+    @media (max-width: 640px) {
+      #sidebar {
+        position: fixed;
+        top: 0; left: 0; bottom: 0;
+        width: min(280px, 85vw);
+        z-index: 50;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        box-shadow: 2px 0 16px rgba(0,0,0,0.5);
+      }
+      body.sidebar-open #sidebar { transform: none; }
+
+      #sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        background: rgba(0,0,0,0.5);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+      }
+      body.sidebar-open #sidebar-backdrop { opacity: 1; pointer-events: auto; }
+
+      #menu-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        top: 10px; left: 10px;
+        z-index: 45;
+        width: 40px; height: 40px;
+        border: 1px solid #333;
+        border-radius: 6px;
+        background: rgba(34,34,34,0.85);
+        color: #e0e0e0;
+        font-size: 18px;
+        cursor: pointer;
+        -webkit-backdrop-filter: blur(4px);
+        backdrop-filter: blur(4px);
+      }
+      /* When the drawer is open the sidebar covers the button; hide it so it
+         doesn't float over the panel. */
+      body.sidebar-open #menu-toggle { display: none; }
+    }
   </style>
 </head>
 <body>
+
+<button id="menu-toggle" aria-label="Toggle controls">☰</button>
+<div id="sidebar-backdrop"></div>
 
 <div id="sidebar">
   <div id="sidebar-header">
@@ -813,7 +869,18 @@ function initExamples(autoloadDefault) {
 exampleSelect.addEventListener('change', e => {
   const name = e.target.value;
   if (name) loadExample(name);
+  closeMobileSidebar();
 });
+
+// ── Mobile drawer ─────────────────────────────────────────────────────────────
+// On narrow screens the sidebar is a slide-in overlay (see the max-width:640px
+// media query). Toggle it with the ☰ button; the backdrop and any action that
+// changes the model close it so the 3D view is unobscured.
+const menuToggle = document.getElementById('menu-toggle');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+function closeMobileSidebar() { document.body.classList.remove('sidebar-open'); }
+menuToggle.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+sidebarBackdrop.addEventListener('click', closeMobileSidebar);
 
 // ── Parse ─────────────────────────────────────────────────────────────────────
 async function doParse() {
@@ -1144,7 +1211,7 @@ function setPlaying(p) {
   if (playing) requestAnimationFrame(playbackTick);
 }
 
-playBtn.addEventListener('click', () => setPlaying(!playing));
+playBtn.addEventListener('click', () => { setPlaying(!playing); closeMobileSidebar(); });
 
 function playbackTick() {
   if (!playing) return;
