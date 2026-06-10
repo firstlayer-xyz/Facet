@@ -302,3 +302,38 @@ func TestBOSL2GroundTruth_CSG(t *testing.T) {
 		})
 	}
 }
+
+// List comprehensions (plain OpenSCAD, no BOSL2) build polygon point lists; the
+// extruded result's bounding box must match the reference — i.e. the comprehension
+// produced the right points. Covers a pure for, a mixed value+for list, and each.
+func TestGroundTruth_Comprehension(t *testing.T) {
+	bin, lib := findOpenSCAD(t)
+	if bin == "" {
+		t.Skip("openscad + BOSL2 unavailable (set OPENSCAD_BOSL2_PARENT)")
+	}
+	cases := []struct {
+		name string
+		body string
+		tol  float64
+	}{
+		{"comp_octagon", "linear_extrude(2) polygon([for(a=[0:45:315]) [10*cos(a), 10*sin(a)]]);", 0.05},
+		{"comp_mixed", "linear_extrude(2) polygon([[12,-2], for(i=[0:3]) [i*4-6, 8], [12,2]]);", 0.05},
+		{"comp_each", "linear_extrude(2) polygon([for(i=[0:3]) each [[i*5,-3],[i*5+2,5]]]);", 0.05},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rmin, rmax := openscadBBox(t, bin, lib, c.body+"\n")
+			s := renderBosl2Solid(t, c.body+"\n")
+			fminX, fminY, fminZ, fmaxX, fmaxY, fmaxZ := s.BoundingBox()
+			fmin := [3]float64{fminX, fminY, fminZ}
+			fmax := [3]float64{fmaxX, fmaxY, fmaxZ}
+			ax := [3]string{"x", "y", "z"}
+			for i := 0; i < 3; i++ {
+				if math.Abs(rmin[i]-fmin[i]) > c.tol || math.Abs(rmax[i]-fmax[i]) > c.tol {
+					t.Errorf("%s axis: openscad [%.3f, %.3f] vs facet [%.3f, %.3f] (tol %.2f)",
+						ax[i], rmin[i], rmax[i], fmin[i], fmax[i], c.tol)
+				}
+			}
+		})
+	}
+}
