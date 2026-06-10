@@ -48,6 +48,14 @@ func TestTranspileAttachableCuboidRounding(t *testing.T) {
 		t.Fatalf("expected b2_cuboid with fillet + edges:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
+
+	// An edges selector Facet can't express yet is a located error on the
+	// ATTACHABLE path too (not just the plain cuboid) — both paths run the same
+	// cuboidRoundingArgs helper, so the !good branch in bosl2PrimitiveB2 must
+	// surface the error rather than emit broken geometry.
+	if _, err := Transpile("include <BOSL2/std.scad>\ncuboid(10, rounding=2, edges=[RIGHT+BACK]) attach(TOP) cyl(d=6,h=8,$fn=24);\n", "part.scad"); err == nil {
+		t.Fatal("an unsupported edges selector on an attachable cuboid should fail to transpile, got none")
+	}
 }
 
 // BOSL2 cuboid(rounding=/chamfer=, edges="X"/"Y"/"Z") maps to Cube's per-edge
