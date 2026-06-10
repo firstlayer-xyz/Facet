@@ -47,13 +47,10 @@ type stmtPolicy struct {
 	// unexpected here.
 	onYield func(s *parser.YieldStmt, locals map[string]value) error
 
-	// onVar, if non-nil, is invoked after a VarStmt has bound its value.
-	// Used by evalBlock to record block-locality.
+	// onVar, if non-nil, is invoked BEFORE a VarStmt binds its value, while
+	// the binding the declaration will shadow is still observable. Used by
+	// evalBlock to record block-local declarations for rollback.
 	onVar func(name string)
-
-	// onAssign, if non-nil, is invoked after an AssignStmt has committed
-	// its new value. Used by evalBlock to propagate the update outward.
-	onAssign func(name string, newVal value)
 
 	// catchReturnSignal controls whether a *returnSignal bubbling out of
 	// a sub-expression/sub-statement should be treated as a function
@@ -96,20 +93,16 @@ func (e *evaluator) dispatchStmt(stmt parser.Stmt, locals map[string]value, p *s
 		}
 		return false, nil, p.onYield(s, locals)
 	case *parser.VarStmt:
-		if err := e.bindVar(s, locals); err != nil {
-			return e.maybeCatchReturn(err, p, locals)
-		}
 		if p.onVar != nil {
 			p.onVar(s.Name)
 		}
-		return false, nil, nil
-	case *parser.AssignStmt:
-		newVal, err := e.reassignVar(s, locals)
-		if err != nil {
+		if err := e.bindVar(s, locals); err != nil {
 			return e.maybeCatchReturn(err, p, locals)
 		}
-		if p.onAssign != nil {
-			p.onAssign(s.Name, newVal)
+		return false, nil, nil
+	case *parser.AssignStmt:
+		if err := e.reassignVar(s, locals); err != nil {
+			return e.maybeCatchReturn(err, p, locals)
 		}
 		return false, nil, nil
 	case *parser.FieldAssignStmt:
@@ -189,26 +182,24 @@ func (e *evaluator) bindVar(s *parser.VarStmt, locals map[string]value) error {
 
 // reassignVar evaluates an AssignStmt's RHS, checks const-ness,
 // re-validates the binding's constraint if it has one, and commits the
-// new value to locals. The committed value is returned so executors
-// that need to mirror the update into an enclosing scope can do so
-// without re-reading locals.
-func (e *evaluator) reassignVar(s *parser.AssignStmt, locals map[string]value) (value, error) {
+// new value to locals.
+func (e *evaluator) reassignVar(s *parser.AssignStmt, locals map[string]value) error {
 	existing, ok := locals[s.Name]
 	if !ok {
-		return nil, e.errAt(s.Pos, "cannot assign to undefined variable %q", s.Name)
+		return e.errAt(s.Pos, "cannot assign to undefined variable %q", s.Name)
 	}
 	if isConst(existing) {
-		return nil, e.errAt(s.Pos, "cannot reassign const %q", s.Name)
+		return e.errAt(s.Pos, "cannot reassign const %q", s.Name)
 	}
 	v, err := e.evalExpr(s.Value, locals)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var newVal value
 	if cv, isCon := getConstraint(existing); isCon {
 		newVal = copyValue(v)
 		if cerr := e.validateConstraint(cv.name, cv.constraint, newVal, locals); cerr != nil {
-			return nil, e.wrapErr(s.Pos, cerr)
+			return e.wrapErr(s.Pos, cerr)
 		}
 		newVal = &constrainedVal{inner: newVal, constraint: cv.constraint, name: cv.name}
 	} else {
@@ -216,5 +207,5 @@ func (e *evaluator) reassignVar(s *parser.AssignStmt, locals map[string]value) (
 	}
 	locals[s.Name] = newVal
 	e.trackIfSolid(s.Pos, newVal)
-	return newVal, nil
+	return nil
 }

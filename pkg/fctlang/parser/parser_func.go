@@ -37,7 +37,15 @@ func (p *parser) parseLambda() (*LambdaExpr, error) {
 	if _, err := p.expect(TokenLBrace); err != nil {
 		return nil, err
 	}
+	// A lambda body is a fresh function scope: yield is NOT valid inside it,
+	// even when the lambda literal appears inside a for-yield/fold body. Reset
+	// the comprehension nesting for the body so a stray yield is a parse error
+	// here rather than escaping at runtime into whatever comprehension happens
+	// to be active when the lambda is called.
+	savedForYield := p.inForYield
+	p.inForYield = 0
 	body, err := p.parseBodyStmts(false, "lambda")
+	p.inForYield = savedForYield
 	if err != nil {
 		return nil, err
 	}

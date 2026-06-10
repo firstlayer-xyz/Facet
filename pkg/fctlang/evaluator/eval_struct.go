@@ -174,6 +174,19 @@ func zeroValue(tn string) (value, error) {
 
 // zeroStruct returns a zero-valued struct instance, recursively zeroing all fields.
 func (e *evaluator) zeroStruct(typeName string) (value, error) {
+	return e.zeroStructRec(typeName, nil)
+}
+
+// zeroStructRec is zeroStruct with cycle detection: a struct type that contains
+// itself by value (directly or through other structs) has no finite zero value —
+// error instead of recursing until the Go stack overflows (a process crash).
+func (e *evaluator) zeroStructRec(typeName string, visiting []string) (value, error) {
+	for _, anc := range visiting {
+		if anc == typeName {
+			return nil, fmt.Errorf("struct type %q contains itself (via %s) and has no zero value", typeName, strings.Join(append(visiting, typeName), " → "))
+		}
+	}
+	visiting = append(visiting, typeName)
 	decl, ok := e.structDecls[typeName]
 	if !ok {
 		return nil, fmt.Errorf("unknown struct type %q", typeName)
@@ -189,7 +202,7 @@ func (e *evaluator) zeroStruct(typeName string) (value, error) {
 		} else if zv, err := zeroValue(f.Type); err == nil {
 			fields[f.Name] = zv
 		} else if _, ok := e.structDecls[f.Type]; ok {
-			sv, err := e.zeroStruct(f.Type)
+			sv, err := e.zeroStructRec(f.Type, visiting)
 			if err != nil {
 				return nil, err
 			}

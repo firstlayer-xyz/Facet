@@ -44,6 +44,7 @@ func Check(prog loader.Program) *Result {
 	c.registerLibraries(prog)
 	c.checkGlobals(prog)
 	c.checkStructDefaults(prog)
+	c.checkRecursiveStructTypes(prog)
 	c.checkDuplicateFunctions(prog)
 	c.inferReturnTypes(prog)
 	c.validateFunctions(prog)
@@ -147,6 +148,48 @@ func (c *checker) checkStructDefaults(prog loader.Program) {
 					c.addError(sd.Pos, fmt.Sprintf("field %q of %s: default value is %s, expected %s",
 						f.Name, sd.Name, defType.displayName(), f.Type))
 				}
+			}
+		}
+	}
+}
+
+// checkRecursiveStructTypes rejects a struct type that contains itself by
+// value (directly or through other structs): no finite value of such a type
+// can exist, and constructing its zero value would recurse without bound.
+// Array ([]T) and Optional (T?) fields break the cycle — their zero values
+// (empty / None) are finite.
+func (c *checker) checkRecursiveStructTypes(prog loader.Program) {
+	// cycleFrom reports whether following by-value struct fields from `name`
+	// reaches a type already on the path.
+	var cycleFrom func(name string, path []string) []string
+	cycleFrom = func(name string, path []string) []string {
+		for _, anc := range path {
+			if anc == name {
+				return append(path, name)
+			}
+		}
+		decl, ok := c.structDecls[name]
+		if !ok {
+			return nil
+		}
+		path = append(path, name)
+		for _, f := range decl.Fields {
+			t := f.Type
+			if strings.HasPrefix(t, "[]") || strings.HasSuffix(t, "?") || strings.HasPrefix(t, "fn(") {
+				continue
+			}
+			if cyc := cycleFrom(t, path); cyc != nil {
+				return cyc
+			}
+		}
+		return nil
+	}
+	for srcKey, src := range prog.Sources {
+		c.currentSrcKey = srcKey
+		for _, sd := range src.StructDecls() {
+			if cyc := cycleFrom(sd.Name, nil); cyc != nil && cyc[0] == sd.Name {
+				c.addError(sd.Pos, fmt.Sprintf("struct type %q contains itself by value (%s); use an Optional (%s?) or array field to break the cycle",
+					sd.Name, strings.Join(cyc, " → "), cyc[len(cyc)-2]))
 			}
 		}
 	}

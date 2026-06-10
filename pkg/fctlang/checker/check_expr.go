@@ -259,6 +259,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 
 	case *parser.ForYieldExpr:
 		childEnv := env.child()
+		childEnv.comprehension = true
 		var yieldType typeInfo
 		// Detect Optional source: a single-clause `for v opt { ... }` yields
 		// a U? (Optional collection of 0-or-1 element). Mirrors the eval-time
@@ -323,6 +324,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 			c.addError(ex.Pos, fmt.Sprintf("fold: expected Array to iterate over, got %s", iterType.displayName()))
 		}
 		childEnv := env.child()
+		childEnv.comprehension = true
 		// Set acc/elem vars to element type if known
 		elemType := unknown()
 		if iterType.ft == typeArray && iterType.elem != nil {

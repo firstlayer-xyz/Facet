@@ -82,6 +82,17 @@ func (e *evaluator) catchReturn(err error, retType string, locals map[string]val
 // and callFunctionVal. It catches returnSignal errors from nested blocks/ifs and treats
 // them as function-level returns.
 func (e *evaluator) execBody(stmts []parser.Stmt, retType string, locals map[string]value) (value, error) {
+	// yield is lexically scoped to comprehension bodies, but it routes through
+	// the evaluator-global yieldTarget/foldAcc, which have dynamic extent. Cut
+	// both at the function boundary so a function called from inside a
+	// comprehension can never inject values into the caller's loop (e.g. a
+	// lambda body smuggling a yield).
+	prevYield, prevFold := e.yieldTarget, e.foldAcc
+	e.yieldTarget, e.foldAcc = nil, nil
+	defer func() {
+		e.yieldTarget = prevYield
+		e.foldAcc = prevFold
+	}()
 	policy := &stmtPolicy{
 		context:           "body",
 		catchReturnSignal: true,
@@ -168,6 +179,12 @@ func (e *evaluator) evalFunction(fn *parser.Function, args map[string]value) (va
 
 // evalMethodFunction evaluates a stdlib method definition, injecting `self` into the local scope.
 func (e *evaluator) evalMethodFunction(fn *parser.Function, self value, args map[string]value) (value, error) {
+	e.callDepth++
+	if e.callDepth > maxCallDepth {
+		e.callDepth--
+		return nil, e.errAt(fn.Pos, "maximum call depth exceeded (%d) — possible infinite recursion", maxCallDepth)
+	}
+	defer func() { e.callDepth-- }()
 	if err := e.fillDefaults(fn, args, e.globals); err != nil {
 		return nil, err
 	}

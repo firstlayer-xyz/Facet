@@ -18,16 +18,27 @@ func (r *returnSignal) Error() string { return "return" }
 // evalBlock executes a block of statements. A `return` inside a block produces
 // a returnSignal error that propagates to the enclosing function (C/Go semantics).
 //
-// New variables declared with `var` are block-local and don't leak out.
-// Assignments to existing enclosing variables propagate to the enclosing scope.
-func (e *evaluator) evalBlock(body []parser.Stmt, enclosing map[string]value) (value, error) {
-	// Copy enclosing scope so block vars don't leak out.
-	locals := make(map[string]value, len(enclosing))
-	for k, v := range enclosing {
-		locals[k] = v
+// Block scoping is shadow-restore over the enclosing scope: statements execute
+// directly against `locals`, so an assignment to an enclosing variable is
+// visible at any nesting depth (an if inside an if inside a block all write the
+// same map). A `var` declared in the block records what it shadowed and is
+// rolled back on exit, so block-locals never leak and a shadowed enclosing
+// binding is restored.
+func (e *evaluator) evalBlock(body []parser.Stmt, locals map[string]value) (value, error) {
+	type shadow struct {
+		val value
+		had bool
 	}
-	// Track which vars are declared inside this block (don't propagate).
-	blockLocal := make(map[string]bool)
+	declared := make(map[string]shadow)
+	defer func() {
+		for name, sh := range declared {
+			if sh.had {
+				locals[name] = sh.val
+			} else {
+				delete(locals, name)
+			}
+		}
+	}()
 
 	policy := &stmtPolicy{
 		context: "block",
@@ -42,11 +53,12 @@ func (e *evaluator) evalBlock(body []parser.Stmt, enclosing map[string]value) (v
 			return e.blockYield(s, locals)
 		},
 		onVar: func(name string) {
-			blockLocal[name] = true
-		},
-		onAssign: func(name string, newVal value) {
-			if !blockLocal[name] {
-				enclosing[name] = newVal
+			// Called before bindVar commits, so the shadowed binding (or its
+			// absence) is still observable. Only the first declaration of a name
+			// records — rollback restores the pre-block state.
+			if _, seen := declared[name]; !seen {
+				old, had := locals[name]
+				declared[name] = shadow{val: old, had: had}
 			}
 		},
 	}
@@ -92,31 +104,41 @@ func (e *evaluator) blockYield(s *parser.YieldStmt, locals map[string]value) err
 }
 
 func (e *evaluator) evalForYield(ex *parser.ForYieldExpr, locals map[string]value) (value, error) {
-	// A single-clause loop over an Optional source produces an Optional
-	// (Map / Filter on T?). Anything else (multi-clause, or single-clause
-	// over an array) takes the array path.
+	// The first clause's iterable is evaluated exactly once, here: it decides
+	// between the Optional path (a single-clause loop over an Optional is
+	// Map/Filter on T?) and the array path, which receives the value rather
+	// than re-evaluating the expression (it may have side effects like solid
+	// tracking).
+	first, err := e.evalExpr(ex.Clauses[0].Iter, locals)
+	if err != nil {
+		return nil, err
+	}
 	if len(ex.Clauses) == 1 {
-		iterVal, err := e.evalExpr(ex.Clauses[0].Iter, locals)
-		if err != nil {
-			return nil, err
-		}
-		if opt, ok := iterVal.(*optionalVal); ok {
+		if opt, ok := first.(*optionalVal); ok {
 			return e.evalForYieldOptional(ex, opt, locals)
 		}
 	}
-	return e.evalForYieldArray(ex, locals)
+	return e.evalForYieldArray(ex, locals, first)
 }
 
-func (e *evaluator) evalForYieldArray(ex *parser.ForYieldExpr, locals map[string]value) (value, error) {
+func (e *evaluator) evalForYieldArray(ex *parser.ForYieldExpr, locals map[string]value, first value) (value, error) {
 	var results []value
-	prev := e.yieldTarget
+	prevYield := e.yieldTarget
 	e.yieldTarget = &results
-	// defer the restore so a panic inside the body (CGo invariant, ctx cancel
+	// A yield in this loop's body must collect here, not into an enclosing
+	// fold's accumulator — clear foldAcc for the loop's extent (mirroring
+	// evalFold, which clears yieldTarget).
+	prevFold := e.foldAcc
+	e.foldAcc = nil
+	// defer the restores so a panic inside the body (CGo invariant, ctx cancel
 	// via runtime panic, etc.) doesn't leave the global yieldTarget pointing
 	// at this stack-local slice — a later, unrelated yield would otherwise
 	// write to a freed slot.
-	defer func() { e.yieldTarget = prev }()
-	if err := e.evalForClauses(ex.Clauses, 0, ex.Body, locals, &results); err != nil {
+	defer func() {
+		e.yieldTarget = prevYield
+		e.foldAcc = prevFold
+	}()
+	if err := e.evalForClauses(ex.Clauses, 0, first, ex.Body, locals, &results); err != nil {
 		return nil, err
 	}
 	return array{elems: results, elemType: inferElemType(results)}, nil
@@ -158,16 +180,22 @@ func (e *evaluator) evalForYieldOptional(ex *parser.ForYieldExpr, opt *optionalV
 
 // evalForClauses recursively iterates over for-yield clauses (cartesian product).
 // When all clauses are bound, it executes the body and collects yielded values.
-func (e *evaluator) evalForClauses(clauses []*parser.ForClause, idx int, body []parser.Stmt, locals map[string]value, results *[]value) error {
+// first is the already-evaluated iterable for clause 0 (evalForYield evaluates it
+// once to choose the Optional/array path); deeper clauses evaluate their own.
+func (e *evaluator) evalForClauses(clauses []*parser.ForClause, idx int, first value, body []parser.Stmt, locals map[string]value, results *[]value) error {
 	if idx >= len(clauses) {
 		// All clauses bound — execute body
 		return e.evalForBody(body, locals, results)
 	}
 
 	clause := clauses[idx]
-	iterVal, err := e.evalExpr(clause.Iter, locals)
-	if err != nil {
-		return err
+	iterVal := first
+	if idx > 0 {
+		var err error
+		iterVal, err = e.evalExpr(clause.Iter, locals)
+		if err != nil {
+			return err
+		}
 	}
 	arr, ok := iterVal.(array)
 	if !ok {
@@ -187,7 +215,7 @@ func (e *evaluator) evalForClauses(clauses []*parser.ForClause, idx int, body []
 		}
 		iterLocals[clause.Var] = elem
 
-		if err := e.evalForClauses(clauses, idx+1, body, iterLocals, results); err != nil {
+		if err := e.evalForClauses(clauses, idx+1, nil, body, iterLocals, results); err != nil {
 			return err
 		}
 	}
