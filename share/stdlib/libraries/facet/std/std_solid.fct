@@ -414,7 +414,8 @@ fn Solid.Trim(
 # preserve exact planar faces — it is the general-solid counterpart to the exact
 # primitive fillets (Cube(fillet:), Cylinder(fillet:)). `resolution` is the
 # sampling edge length; 0 mm auto-derives it from `delta` and the bounds. A
-# delta of 0 mm is a no-op.
+# delta of 0 mm is a no-op. The remesh leaves coplanar triangles across flat
+# faces; call `.Simplify(tolerance:)` to collapse them.
 # ```
 # fn Main() { Sphere(r: 10 mm).Offset(delta: 2 mm) }
 # ```
