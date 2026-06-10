@@ -294,17 +294,54 @@ func asNumber2(v value) float64 {
 	return 0
 }
 
-// valuesEqual checks if two runtime values are equal.
+// valuesEqual checks if two runtime values are equal. It is the single
+// structural-equality predicate behind IndexOf/IndicesOf, `in`-set
+// constraints, and Optional comparison — and it must agree with the `==`
+// operator: Length↔Number compares like evalCompare does (5 mm == 5), structs
+// compare field-wise, arrays element-wise. (It used to return a silent false
+// for every struct and array, so IndexOf over struct arrays never matched.)
 func valuesEqual(a, b value) bool {
 	a, b = unwrap(a), unwrap(b)
 	switch av := a.(type) {
 	case float64:
-		if bv, ok := b.(float64); ok {
+		switch bv := b.(type) {
+		case float64:
 			return floatEqual(av, bv)
+		case length:
+			// Mirror evalCompare: a bare Number compares against a Length's mm.
+			return floatEqual(av, bv.mm)
 		}
 	case length:
-		if bv, ok := b.(length); ok {
+		switch bv := b.(type) {
+		case length:
 			return floatEqual(av.mm, bv.mm)
+		case float64:
+			return floatEqual(av.mm, bv)
+		}
+	case array:
+		if bv, ok := b.(array); ok {
+			if len(av.elems) != len(bv.elems) {
+				return false
+			}
+			for i := range av.elems {
+				if !valuesEqual(av.elems[i], bv.elems[i]) {
+					return false
+				}
+			}
+			return true
+		}
+	case *structVal:
+		if bv, ok := b.(*structVal); ok {
+			if av.typeName != bv.typeName || len(av.fields) != len(bv.fields) {
+				return false
+			}
+			for k, fv := range av.fields {
+				bf, ok := bv.fields[k]
+				if !ok || !valuesEqual(fv, bf) {
+					return false
+				}
+			}
+			return true
 		}
 	case angle:
 		if bv, ok := b.(angle); ok {

@@ -66,20 +66,35 @@ func (e *evaluator) evalCompare(op string, lv, rv value, pos parser.Pos) (value,
 		}
 	case *optionalVal:
 		// Two Nones are equal regardless of inner type; two Somes recurse
-		// on their inner values.
-		if r, rok := rv.(*optionalVal); rok && (op == "==" || op == "!=") {
+		// on their inner values. An Optional also compares against a DEFINITE
+		// value (the checker accepts `opt == 5` since T? is compatible with
+		// T): None is never equal to a definite, Some(x) compares x.
+		if op == "==" || op == "!=" {
 			eq := false
-			switch {
-			case !l.present && !r.present:
-				eq = true
-			case l.present && r.present:
-				eq = valuesEqual(l.inner, r.inner)
+			if r, rok := rv.(*optionalVal); rok {
+				switch {
+				case !l.present && !r.present:
+					eq = true
+				case l.present && r.present:
+					eq = valuesEqual(l.inner, r.inner)
+				}
+			} else {
+				eq = l.present && valuesEqual(l.inner, rv)
 			}
 			if op == "==" {
 				return eq, nil
 			}
 			return !eq, nil
 		}
+	}
+	// Mirror: definite == Optional (the Optional case above only fires when
+	// the LEFT side is Optional).
+	if r, rok := rv.(*optionalVal); rok && (op == "==" || op == "!=") {
+		eq := r.present && valuesEqual(lv, r.inner)
+		if op == "==" {
+			return eq, nil
+		}
+		return !eq, nil
 	}
 
 	if !ok {
