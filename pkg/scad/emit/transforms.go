@@ -187,7 +187,10 @@ func (e *Emitter) linearExtrudeMethod(n *ast.ModuleCall) string {
 	out := "Extrude(z: " + e.expr(h, kLength)
 	twist, hasTwist := arg(n, "twist", -1)
 	if hasTwist {
-		out += ", twist: " + e.expr(twist, kAngle)
+		// OpenSCAD twists clockwise looking down +Z; Facet's Extrude twists the
+		// opposite way, so negate to match (an asymmetric profile is otherwise
+		// mirror-twisted — verified against OpenSCAD).
+		out += ", twist: -(" + e.expr(twist, kAngle) + ")"
 	}
 	if s := e.extrudeSlices(n, twist, hasTwist); s != "" {
 		out += ", slices: " + s
@@ -269,6 +272,14 @@ func (e *Emitter) projectionMethod(n *ast.ModuleCall) string {
 func (e *Emitter) offsetMethod(n *ast.ModuleCall) string {
 	e.rejectExtraArgs(n, 1, "delta", "r")
 	if d, found := arg(n, "delta", -1); found {
+		// KNOWN DIVERGENCE (tracked): OpenSCAD's offset(delta=) keeps sharp,
+		// MITERED corners, but Facet's kernel offset (facet_cs_offset in
+		// pkg/manifold/cxx/src/bindings.cpp) hardwires JoinType::Round, so this
+		// silently rounds the convex corners (~5% volume off on a square —
+		// ground-truthed vs OpenSCAD). offset(r=) is correct (round == round).
+		// The faithful fix is to expose JoinType::Miter through the binding and
+		// emit it here for delta=; until then this is a documented round-only
+		// approximation, NOT a faithful delta offset.
 		return "Offset(delta: " + e.expr(d, kLength) + ")"
 	}
 	if r, found := arg(n, "r", 0); found {
