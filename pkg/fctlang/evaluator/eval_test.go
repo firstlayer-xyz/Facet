@@ -159,8 +159,8 @@ func TestEvalRoundedCubeRadiusTooLarge(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected assertion failure for r > s/2")
 	}
-	if !strings.Contains(err.Error(), "fillet too large") {
-		t.Fatalf("expected 'fillet too large' in error, got: %v", err)
+	if !strings.Contains(err.Error(), "rounding too large") {
+		t.Fatalf("expected 'rounding too large' in error, got: %v", err)
 	}
 }
 

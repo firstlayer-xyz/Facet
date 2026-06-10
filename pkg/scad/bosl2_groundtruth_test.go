@@ -275,6 +275,15 @@ func TestBOSL2GroundTruth_CSG(t *testing.T) {
 		{"hide", `hide("bar"){ cuboid([20,20,20]); tag("bar") cuboid([30,6,6]); }`, 0.005},
 		// show_only(tags): only the tagged children are kept.
 		{"show_only", `show_only("bar"){ cuboid([20,20,20]); tag("bar") cuboid([30,6,6]); }`, 0.005},
+		// per-edge rounding/chamfer of one axis group. The box is asymmetric so the
+		// volume differs by axis (the rounded edges' length = that axis's extent) —
+		// this verifies BOTH the amount removed AND that the correct edges round.
+		{"cuboid_round_z", `cuboid([10,20,30], rounding=2, edges="Z", $fn=64);`, 0.01},
+		{"cuboid_round_x", `cuboid([10,20,30], rounding=2, edges="X", $fn=64);`, 0.01},
+		{"cuboid_round_y", `cuboid([10,20,30], rounding=2, edges="Y", $fn=64);`, 0.01},
+		{"cuboid_chamfer_z", `cuboid([10,20,30], chamfer=2, edges="Z");`, 0.005},
+		{"cuboid_chamfer_x", `cuboid([10,20,30], chamfer=2, edges="X");`, 0.005},
+		{"cuboid_chamfer_all", `cuboid([10,20,30], chamfer=2);`, 0.02},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

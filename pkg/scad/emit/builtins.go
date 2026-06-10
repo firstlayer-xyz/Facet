@@ -195,10 +195,10 @@ func (e *Emitter) cube(n *ast.ModuleCall) string {
 			def = [3]int{0, 0, 0}
 		}
 		sx, sy, sz := e.cubeSizeComponents(size)
-		centered := e.cubeCtor(size, "", "") + ".AlignCenter(pos: Vec3{})"
+		centered := e.cubeCtor(size, "", "", "") + ".AlignCenter(pos: Vec3{})"
 		return e.bosl2CoreLeaf(n, centered, [3]string{sx, sy, sz}, def, anchorBox)
 	}
-	dims := e.cubeCtor(size, "", "")
+	dims := e.cubeCtor(size, "", "", "")
 	if boolArg(n, "center", 1) {
 		dims += ".AlignCenter(pos: Vec3{})"
 	}
@@ -222,13 +222,16 @@ func (e *Emitter) cubeSizeComponents(size ast.Expr) (x, y, z string) {
 // fillet (a Length expression) rounds every edge — BOSL2's cuboid(rounding=);
 // plain OpenSCAD cube passes "". The result is corner-origin (the caller
 // recenters when needed).
-func (e *Emitter) cubeCtor(size ast.Expr, fillet, chamfer string) string {
+func (e *Emitter) cubeCtor(size ast.Expr, fillet, chamfer, edges string) string {
 	extra := ""
 	if fillet != "" {
 		extra += ", fillet: " + fillet
 	}
 	if chamfer != "" {
 		extra += ", chamfer: " + chamfer
+	}
+	if edges != "" {
+		extra += ", edges: " + edges
 	}
 	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) == 3 {
 		return fmt.Sprintf("Cube(x: %s, y: %s, z: %s%s)",
