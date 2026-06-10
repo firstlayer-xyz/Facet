@@ -243,11 +243,17 @@ func (e *evaluator) callFunctionVal(fv *functionVal, args map[string]value) (val
 	// evalFunction / evalMethodFunction. Without this a lambda declared
 	// `fn(x Number)` called with a Length value would see a Length in the
 	// body and any numeric op would fail with a confusing type error.
-	if err := e.coerceArgs("lambda", fv.params, args, e.globals); err != nil {
+	//
+	// Free names resolve against the lambda's DEFINING globals, not the
+	// invoking evaluator's — a library or stdlib body calling a user lambda
+	// must not substitute its own globals for the user's. (Every functionVal
+	// is built by the LambdaExpr case with globals set.)
+	defGlobals := fv.globals
+	if err := e.coerceArgs("lambda", fv.params, args, defGlobals); err != nil {
 		return nil, err
 	}
-	scope := make(map[string]value, len(e.globals)+len(fv.captured)+len(fv.params))
-	for k, v := range e.globals {
+	scope := make(map[string]value, len(defGlobals)+len(fv.captured)+len(fv.params))
+	for k, v := range defGlobals {
 		scope[k] = v
 	}
 	for k, v := range fv.captured {

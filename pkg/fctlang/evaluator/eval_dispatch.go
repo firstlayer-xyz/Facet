@@ -3,7 +3,6 @@ package evaluator
 import (
 	"strings"
 
-	"facet/pkg/fctlang/loader"
 	"facet/pkg/fctlang/parser"
 	"facet/pkg/manifold"
 )
@@ -113,6 +112,7 @@ func (e *evaluator) newLibEval(lib *libRef) *evaluator {
 		prog:         e.prog,
 		currentKey:   diskPath,
 		globals:      e.libEvalCache[lib.path],
+		stdGlobals:   e.stdGlobals,
 		debug:        e.debug,
 		libEvalCache: e.libEvalCache,
 		libLoadStack: e.libLoadStack,
@@ -149,9 +149,7 @@ func (e *evaluator) evalMethodCall(mc *parser.MethodCallExpr, locals map[string]
 	// stdlibCall returns a callback that evaluates fn as a stdlib method on receiver.
 	stdlibCall := func(receiver value) func(fn *parser.Function, args map[string]value) (value, error) {
 		return func(fn *parser.Function, args map[string]value) (value, error) {
-			savedFile := e.file
-			e.file = loader.StdlibPath
-			defer func() { e.file = savedFile }()
+			defer e.enterStdlib()()
 			return e.evalMethodFunction(fn, receiver, args)
 		}
 	}

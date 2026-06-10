@@ -106,11 +106,16 @@ func none(innerType string) *optionalVal {
 
 // functionVal represents a first-class function (lambda) value.
 // captured holds a snapshot of the local scope at the time the lambda was created.
+// globals is the DEFINING context's global scope — calls resolve free names
+// against it rather than against whoever happens to invoke the lambda (a
+// library or stdlib body calling a user lambda must not substitute its own
+// globals for the user's).
 type functionVal struct {
 	params   []*parser.Param
 	retType  string
 	body     []parser.Stmt
 	captured map[string]value
+	globals  map[string]value
 }
 
 // DebugMesh captures a single mesh tagged with a role for debug visualization.
@@ -281,6 +286,8 @@ type evaluator struct {
 	prog         loader.Program
 	currentKey   string                  // which source file we're executing ("::main" or lib path)
 	globals      map[string]value
+	stdGlobals   map[string]value       // the stdlib's own globals (PI, …), hermetic from user redefinition
+	inStdlib     bool                   // true while a stdlib function/method body executes
 	entryPoint   string                 // entry function name (default "Main")
 	debug        bool
 	steps        []DebugStep
