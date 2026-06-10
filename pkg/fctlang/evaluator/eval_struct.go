@@ -88,9 +88,12 @@ func (e *evaluator) evalStructLit(ex *parser.StructLitExpr, locals map[string]va
 			return nil, e.errAt(ex.Pos, "field %q of %s has unknown type %q", f.Name, ex.TypeName, f.Type)
 		}
 		if !provided[f.Name] {
-			// Use explicit default if available
+			// Use explicit default if available. Defaults evaluate in MODULE
+			// scope (globals), like zeroStruct — not in the instantiating
+			// caller's locals, where a same-named local would silently change
+			// the default (dynamic scoping).
 			if f.Default != nil {
-				def, err := e.evalExpr(f.Default, locals)
+				def, err := e.evalExpr(f.Default, e.globals)
 				if err != nil {
 					return nil, err
 				}

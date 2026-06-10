@@ -109,27 +109,36 @@ func (e *evaluator) evalCall(call *parser.CallExpr, locals map[string]value) (va
 		return nil, err
 	}
 
-	// Filter user candidates by arity
+	// Filter both candidate sets by arity
 	var userArityMatch []*parser.Function
 	for _, fn := range userCandidates {
 		if fn.ArgsInRange(len(argMap)) {
 			userArityMatch = append(userArityMatch, fn)
 		}
 	}
-	if v, ok, err := e.resolveCall(call, userArityMatch, argMap, locals, false); err != nil {
-		return nil, err
-	} else if ok {
-		return v, nil
-	}
-
-	// Filter stdlib candidates by arity
 	var stdArityMatch []*parser.Function
 	for _, fn := range stdCandidates {
 		if fn.ArgsInRange(len(argMap)) {
 			stdArityMatch = append(stdArityMatch, fn)
 		}
 	}
-	if v, ok, err := e.resolveCall(call, stdArityMatch, argMap, locals, true); err != nil {
+
+	// User code resolves user functions first (they may deliberately shadow a
+	// stdlib name). A STDLIB body resolves stdlib-first: its internal calls are
+	// lexically stdlib code, and a same-named user function must not hijack
+	// them (e.g. a user Sqrt() corrupting Normalize()).
+	first, second := userArityMatch, stdArityMatch
+	firstIsStd, secondIsStd := false, true
+	if e.inStdlib {
+		first, second = stdArityMatch, userArityMatch
+		firstIsStd, secondIsStd = true, false
+	}
+	if v, ok, err := e.resolveCall(call, first, argMap, locals, firstIsStd); err != nil {
+		return nil, err
+	} else if ok {
+		return v, nil
+	}
+	if v, ok, err := e.resolveCall(call, second, argMap, locals, secondIsStd); err != nil {
 		return nil, err
 	} else if ok {
 		return v, nil
@@ -170,6 +179,23 @@ func (e *evaluator) resolveCall(call *parser.CallExpr, candidates []*parser.Func
 	return nil, false, err
 }
 
+// enterStdlib switches the evaluator into stdlib-execution context: error/debug
+// attribution moves to the stdlib file, free names resolve against the hermetic
+// stdlib globals (a user `var PI = 3` must not leak in), and evalCall prefers
+// stdlib candidates (a user function named like a stdlib helper must not hijack
+// stdlib internals). Returns the restore func for defer.
+func (e *evaluator) enterStdlib() func() {
+	savedFile, savedGlobals, savedIn := e.file, e.globals, e.inStdlib
+	e.file = loader.StdlibPath
+	if e.stdGlobals != nil {
+		e.globals = e.stdGlobals
+	}
+	e.inStdlib = true
+	return func() {
+		e.file, e.globals, e.inStdlib = savedFile, savedGlobals, savedIn
+	}
+}
+
 // callResolved evaluates a resolved function call, handling stdlib file
 // attribution and debug step recording.
 func (e *evaluator) callResolved(call *parser.CallExpr, fn *parser.Function, args map[string]value, stdlib bool) (value, error) {
@@ -177,8 +203,7 @@ func (e *evaluator) callResolved(call *parser.CallExpr, fn *parser.Function, arg
 	// attributed to the caller's source, not the function body's file.
 	callSiteFile := e.file
 	if stdlib {
-		e.file = loader.StdlibPath
-		defer func() { e.file = callSiteFile }()
+		defer e.enterStdlib()()
 	}
 	result, err := e.evalFunction(fn, args)
 	if err != nil {

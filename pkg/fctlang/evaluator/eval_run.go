@@ -35,19 +35,23 @@ func (e *evaluator) run() (*EvalResult, error) {
 	e.opFuncs = buildOpFuncs(e.prog, e.currentKey)
 
 	e.globals = make(map[string]value)
+	e.stdGlobals = make(map[string]value)
 
-	// Evaluate stdlib globals (PI, TAU, E, etc.)
+	// Evaluate stdlib globals (PI, TAU, E, etc.). They are kept in a separate
+	// hermetic map as well: a user `var PI = 3` shadows PI for USER code, but
+	// stdlib bodies must keep seeing the stdlib's own value.
 	if stdSrc := e.prog.Std(); stdSrc != nil {
 		for _, g := range stdSrc.Globals() {
-			v, err := e.evalExpr(g.Value, e.globals)
+			v, err := e.evalExpr(g.Value, e.stdGlobals)
 			if err != nil {
 				return nil, fmt.Errorf("stdlib: %v", err)
 			}
+			var wrapped value = v
 			if g.IsConst {
-				e.globals[g.Name] = &constVal{inner: v}
-			} else {
-				e.globals[g.Name] = v
+				wrapped = &constVal{inner: v}
 			}
+			e.stdGlobals[g.Name] = wrapped
+			e.globals[g.Name] = wrapped
 		}
 	}
 

@@ -307,6 +307,7 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 			retType:  ex.ReturnType,
 			body:     ex.Body,
 			captured: captured,
+			globals:  e.globals,
 		}, nil
 
 	default:
