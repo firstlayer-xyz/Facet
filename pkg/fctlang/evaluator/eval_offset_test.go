@@ -25,3 +25,38 @@ fn Main() {
 		t.Fatal("expected non-empty mesh")
 	}
 }
+
+// Round(cube, r) ~ the exact Cube(fillet: r): opening rounds the 12 convex
+// edges by r, like the analytic hull-of-spheres. Volumes agree within 10%.
+func TestStdlibRoundMatchesExactFillet(t *testing.T) {
+	src := `
+fn Main() {
+    var approx = Cube(s: 20 mm).Round(r: 3 mm).Volume();
+    var exact  = Cube(s: 20 mm, fillet: 3 mm).Volume();
+    var ratio = approx / exact;
+    assert ratio > 0.9 && ratio < 1.1, "Round should match exact fillet within 10%";
+    return Cube(s: 20 mm).Round(r: 3 mm);
+}
+`
+	prog := parseTestProg(t, src)
+	if _, err := evalMerged(context.Background(), prog, nil); err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+}
+
+// Cove fills a concave (interior) edge, so an L-shape gains volume.
+func TestStdlibCoveAddsMaterialAtConcaveEdge(t *testing.T) {
+	src := `
+fn Main() {
+    var l     = Cube(x: 20 mm, y: 20 mm, z: 8 mm) + Cube(x: 8 mm, y: 20 mm, z: 20 mm);
+    var coved = l.Cove(r: 3 mm);
+    var ratio = coved.Volume() / l.Volume();
+    assert ratio > 1.0, "Cove should add material at the concave edge";
+    return coved;
+}
+`
+	prog := parseTestProg(t, src)
+	if _, err := evalMerged(context.Background(), prog, nil); err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+}

@@ -422,6 +422,27 @@ fn Solid.Offset(delta Length, resolution Length = 0 mm) Solid {
     return _solid_offset(self, delta, resolution)
 }
 
+# Round all CONVEX (exterior) edges by `r` — morphological opening (erode then
+# dilate). Removes protrusions thinner than 2r; the bounding box and flat faces
+# are preserved while convex corners are cut back by r. Approximate (see Offset).
+# It is the general-solid counterpart to the exact Cube(fillet:)/Cylinder(fillet:).
+# ```
+# fn Main() { Cube(s: 20 mm).Round(r: 3 mm) }
+# ```
+fn Solid.Round(r Length, resolution Length = 0 mm) Solid {
+    return self.Offset(delta: -r, resolution: resolution).Offset(delta: r, resolution: resolution)
+}
+
+# Fillet all CONCAVE (interior) edges by `r` — morphological closing (dilate then
+# erode). Fills gaps and cracks narrower than 2r. This is the inside-corner /
+# weld fillet. Approximate (see Offset).
+# ```
+# fn Main() { Cube(s: 20 mm) + Cube(x: 8 mm, y: 20 mm, z: 20 mm) |> Cove(r: 3 mm) }
+# ```
+fn Solid.Cove(r Length, resolution Length = 0 mm) Solid {
+    return self.Offset(delta: r, resolution: resolution).Offset(delta: -r, resolution: resolution)
+}
+
 # Smooths edges sharper than `minSharpAngle` using Laplacian relaxation; `minSmoothness` in [0,1].
 # Best results after `.Refine()`. `Refine(n)` subdivides every triangle `n` times (4× per pass).
 fn Solid.Smooth(minSharpAngle Angle, minSmoothness Number) Solid {
