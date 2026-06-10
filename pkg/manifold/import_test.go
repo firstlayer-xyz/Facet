@@ -11,47 +11,39 @@ import (
 	"testing"
 )
 
-func TestImportMeshSTLBinary(t *testing.T) {
-	// Create a minimal binary STL with 1 triangle
-	dir := t.TempDir()
-	path := filepath.Join(dir, "test.stl")
-
+// writeBinarySTL writes a binary STL of the given triangles (each 3 vertices
+// of 3 coords) to path.
+func writeBinarySTL(t *testing.T, path string, tris [][9]float32) {
+	t.Helper()
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer f.Close()
+	f.Write(make([]byte, 80)) // header
+	binary.Write(f, binary.LittleEndian, uint32(len(tris)))
+	for _, tri := range tris {
+		// Normal (ignored by the importer's manifold build)
+		for i := 0; i < 3; i++ {
+			binary.Write(f, binary.LittleEndian, float32(0))
+		}
+		for _, c := range tri {
+			binary.Write(f, binary.LittleEndian, c)
+		}
+		binary.Write(f, binary.LittleEndian, uint16(0))
+	}
+}
 
-	// 80-byte header
-	header := make([]byte, 80)
-	f.Write(header)
-
-	// Triangle count: 1
-	binary.Write(f, binary.LittleEndian, uint32(1))
-
-	// Normal (0,0,1)
-	binary.Write(f, binary.LittleEndian, float32(0))
-	binary.Write(f, binary.LittleEndian, float32(0))
-	binary.Write(f, binary.LittleEndian, float32(1))
-
-	// Vertex 1: (0, 0, 0)
-	binary.Write(f, binary.LittleEndian, float32(0))
-	binary.Write(f, binary.LittleEndian, float32(0))
-	binary.Write(f, binary.LittleEndian, float32(0))
-
-	// Vertex 2: (10, 0, 0)
-	binary.Write(f, binary.LittleEndian, float32(10))
-	binary.Write(f, binary.LittleEndian, float32(0))
-	binary.Write(f, binary.LittleEndian, float32(0))
-
-	// Vertex 3: (0, 10, 0)
-	binary.Write(f, binary.LittleEndian, float32(0))
-	binary.Write(f, binary.LittleEndian, float32(10))
-	binary.Write(f, binary.LittleEndian, float32(0))
-
-	// Attribute byte count
-	binary.Write(f, binary.LittleEndian, uint16(0))
-
-	f.Close()
+func TestImportMeshSTLBinary(t *testing.T) {
+	// A closed tetrahedron — ImportMesh requires a closed 2-manifold.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.stl")
+	writeBinarySTL(t, path, [][9]float32{
+		{0, 0, 0, 5, 10, 0, 10, 0, 0},
+		{0, 0, 0, 10, 0, 0, 5, 5, 10},
+		{10, 0, 0, 5, 10, 0, 5, 5, 10},
+		{0, 0, 0, 5, 5, 10, 5, 10, 0},
+	})
 
 	solid, err := ImportMesh(path)
 	if err != nil {
@@ -60,18 +52,57 @@ func TestImportMeshSTLBinary(t *testing.T) {
 	if solid == nil {
 		t.Fatal("expected non-nil Solid")
 	}
+	if v := solid.Volume(); v <= 0 {
+		t.Fatalf("expected positive volume, got %v", v)
+	}
+}
+
+// An OPEN shell (a single triangle) is not a closed manifold: ImportMesh must
+// error clearly instead of returning a silently-empty solid.
+func TestImportMeshOpenShellErrors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "open.stl")
+	writeBinarySTL(t, path, [][9]float32{
+		{0, 0, 0, 10, 0, 0, 0, 10, 0},
+	})
+	_, err := ImportMesh(path)
+	if err == nil || !strings.Contains(err.Error(), "closed manifold") {
+		t.Fatalf("expected a closed-manifold error, got: %v", err)
+	}
 }
 
 func TestImportMeshSTLASCII(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.stl")
 
+	// A closed tetrahedron — ImportMesh requires a closed 2-manifold.
 	content := `solid test
-facet normal 0 0 1
+facet normal 0 0 0
+  outer loop
+    vertex 0 0 0
+    vertex 5 10 0
+    vertex 10 0 0
+  endloop
+endfacet
+facet normal 0 0 0
   outer loop
     vertex 0 0 0
     vertex 10 0 0
-    vertex 0 10 0
+    vertex 5 5 10
+  endloop
+endfacet
+facet normal 0 0 0
+  outer loop
+    vertex 10 0 0
+    vertex 5 10 0
+    vertex 5 5 10
+  endloop
+endfacet
+facet normal 0 0 0
+  outer loop
+    vertex 0 0 0
+    vertex 5 5 10
+    vertex 5 10 0
   endloop
 endfacet
 endsolid test

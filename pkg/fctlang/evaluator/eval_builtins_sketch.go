@@ -98,6 +98,14 @@ func init() {
 				return nil, err
 			}
 		}
+		// The kernel clamps only angles > 360. A NEGATIVE angle drives the
+		// slice count negative while cap triangles are still emitted —
+		// indexing with -1 into the vertex array (memory corruption); zero
+		// yields NaN vertex math and a silent empty solid. Both are domain
+		// errors here.
+		if degrees <= 0 {
+			return nil, fmt.Errorf("%s() angle must be positive (up to 360 deg), got %v deg", name, degrees)
+		}
 		return pf.Revolve(segments, degrees)
 	})
 

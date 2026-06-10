@@ -17,8 +17,10 @@ import (
 
 // Extrude extrudes a sketch upward by height.
 func (p *Sketch) Extrude(height float64, slices int, twist, scaleX, scaleY float64) (*Solid, error) {
-	if height == 0 {
-		return nil, fmt.Errorf("Extrude: height must be non-zero")
+	// The kernel returns an Invalid (empty) manifold for height <= 0 rather
+	// than erroring — a negative height silently produced an empty model.
+	if height <= 0 {
+		return nil, fmt.Errorf("Extrude: height must be positive, got %v", height)
 	}
 	var ret C.FacetSolidRet
 	C.facet_extrude(p.ptr, C.double(height), C.int(slices), C.double(twist), C.double(scaleX), C.double(scaleY), &ret)
