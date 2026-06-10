@@ -89,6 +89,21 @@ func (s *Solid) RefineToLength(length float64) *Solid {
 	return transformSolid(s, id)
 }
 
+func (s *Solid) Offset(delta, edgeLen float64) *Solid {
+	id := js.Global().Call("_mf_offset", s.id, delta, edgeLen).Int()
+	r := newSolid(id)
+	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
+	fi := FaceInfo{Color: NoColor}
+	for _, v := range s.FaceMap {
+		if v.Color != NoColor {
+			fi.Color = v.Color
+			break
+		}
+	}
+	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	return r
+}
+
 func SplitSolid(m, cutter *Solid) [2]*Solid {
 	arr := js.Global().Call("_mf_split", m.id, cutter.id)
 	fm := mergeFaceMaps(m.FaceMap, cutter.FaceMap)
