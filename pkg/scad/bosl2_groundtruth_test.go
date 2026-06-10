@@ -159,6 +159,9 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		// (cuboid + attached child) up so the cuboid's bottom sits at z=0 — bbox
 		// z spans [0, 18] instead of the centered [-5, 13].
 		{"attach_anchor_bottom", "cuboid([20,20,10], anchor=BOTTOM) attach(TOP) cyl(d=6, h=8, $fn=48);", 0.3},
+		{"attach_anchor_diag", "cuboid([20,20,10], anchor=RIGHT+BACK+TOP) attach(TOP) cyl(d=6, h=8, $fn=48);", 0.3},
+		{"attach_spin", "cuboid([20,30,10], spin=45) attach(TOP) cyl(d=6, h=8, $fn=48);", 0.3},
+		{"attach_orient", "cuboid([20,20,10], orient=RIGHT) attach(TOP) cyl(d=6, h=8, $fn=48);", 0.3},
 		{"xflip_copy_offset", "xflip_copy(offset=5) right(10) cuboid([2,2,2]);", 0.02},
 		// broader vocabulary sweep against the reference.
 		{"torus", "torus(r_maj=20, r_min=5, $fn=48);", 0.3},
