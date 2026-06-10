@@ -181,6 +181,15 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		// (interp on the [0.5,1] segment), so the cube's z height must be exactly 7
 		// — a direct check that our interpolation matches OpenSCAD's.
 		{"lookup_interp", "cube([4, 3, lookup(0.75, [[0,0],[0.5,10],[1,4]])]);", 0.01},
+		// linear_extrude twist DIRECTION: an asymmetric triangle twisted 90°,
+		// sliced at the top so the apex's swing is bbox-visible. A flipped twist
+		// sign mirrors the top slab (apex to +Y instead of −Y). slices=48 pins
+		// both engines to the same slicing so only the direction is compared; a
+		// full-height bbox can't see this — the slice is the point.
+		{"extrude_twist_dir", "intersection(){ linear_extrude(20, twist=90, slices=48) polygon([[0,-2],[8,0],[0,2]]); translate([-20,-20,19]) cube([40,40,1]); }", 0.05},
+		// resize() with a 0 component keeps that axis's original size (OpenSCAD
+		// semantics): x→20, y and z unchanged. Previously errored (Scale by 0).
+		{"resize_keep_axis", "resize([20,0,0]) cube([10,4,2]);", 0.02},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

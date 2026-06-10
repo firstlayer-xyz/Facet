@@ -380,10 +380,15 @@ fn Solid.Resize(
     var d = Number(from: b.Depth())
     var h = Number(from: b.Height())
     if w == 0 || d == 0 || h == 0 { return self }
+    # A 0 target component means "keep this axis at its original size" (factor
+    # 1) — matching OpenSCAD resize(), where 0 leaves that axis unchanged.
+    var sx = Number(from: size.x)
+    var sy = Number(from: size.y)
+    var sz = Number(from: size.z)
     return self.Scale(
-        x: Number(from: size.x) / w,
-        y: Number(from: size.y) / d,
-        z: Number(from: size.z) / h,
+        x: sx == 0 ? 1 : sx / w,
+        y: sy == 0 ? 1 : sy / d,
+        z: sz == 0 ? 1 : sz / h,
         around: around
     )
 }
