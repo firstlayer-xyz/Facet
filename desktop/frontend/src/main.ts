@@ -803,7 +803,7 @@ clearDimsBtn.addEventListener('click', () => {
 
 
 exportBtn.addEventListener('click', () => exportMesh());
-shareBtn.addEventListener('click', () => shareToWeb());
+shareBtn.addEventListener('click', () => shareToWeb(shareBtn));
 
 async function pickAndSendToSlicer() {
   const slicers = await DetectSlicers();

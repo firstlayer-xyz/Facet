@@ -36,6 +36,45 @@ func TestShareURLRoundtrip(t *testing.T) {
 	}
 }
 
+func TestBuildShareLinkQR(t *testing.T) {
+	link, err := (&App{}).BuildShareLink("fn Main() Solid {\n    return Sphere(d: 10 mm);\n}\n")
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if !strings.HasPrefix(link.URL, facetWebPreviewURL+"#code=") {
+		t.Fatalf("url %q lacks share prefix", link.URL)
+	}
+	png, err := base64.StdEncoding.DecodeString(link.QRPNG)
+	if err != nil {
+		t.Fatalf("QRPNG is not valid base64: %v", err)
+	}
+	magic := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+	if !bytes.HasPrefix(png, magic) {
+		t.Errorf("QRPNG does not start with PNG magic: % x", png[:min(8, len(png))])
+	}
+}
+
+func TestBuildShareLinkSkipsQRWhenTooLong(t *testing.T) {
+	// Incompressible input past QR byte capacity but within the URL cap: the
+	// link must still be produced, with the QR explicitly absent.
+	buf := make([]byte, 2400)
+	rand.New(rand.NewSource(2)).Read(buf)
+
+	link, err := (&App{}).BuildShareLink(string(buf))
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if len(link.URL) <= maxQRBytes {
+		t.Fatalf("test input too small: url %d chars does not exceed maxQRBytes %d", len(link.URL), maxQRBytes)
+	}
+	if len(link.URL) > maxShareURLLen {
+		t.Fatalf("test input too large: url %d chars exceeds the URL cap %d", len(link.URL), maxShareURLLen)
+	}
+	if link.QRPNG != "" {
+		t.Errorf("expected empty QRPNG for a %d-char url", len(link.URL))
+	}
+}
+
 func TestShareURLTooLarge(t *testing.T) {
 	// Seeded-random input is incompressible, so the compressed payload alone
 	// already exceeds the URL cap before base64 expansion.

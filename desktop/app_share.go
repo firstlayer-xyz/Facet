@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	qrcode "github.com/skip2/go-qrcode"
 )
 
 // facetWebPreviewURL is the hosted browser preview (GitHub Pages, deployed
@@ -16,6 +16,20 @@ const facetWebPreviewURL = "https://firstlayer-xyz.github.io/Facet/"
 // maxShareURLLen caps share URLs at Windows' ShellExecute command-line limit;
 // a longer URL would be truncated or rejected when opening the browser.
 const maxShareURLLen = 32000
+
+// maxQRBytes is the byte-mode capacity of a version-40 QR code at
+// error-correction level M. URLs longer than this still work by click but
+// cannot be rendered as a QR code.
+const maxQRBytes = 2331
+
+// ShareLink is the payload behind the Share button: the web-preview URL
+// carrying the encoded source, plus a QR rendering of that URL for scanning
+// with a phone. QRPNG is a base64-encoded PNG, empty when the URL exceeds
+// maxQRBytes.
+type ShareLink struct {
+	URL   string `json:"url"`
+	QRPNG string `json:"qrpng"`
+}
 
 // shareURL encodes source into the web preview's share-link form:
 // the #code= hash fragment carrying base64url(deflate-raw(utf8 source)).
@@ -40,13 +54,21 @@ func shareURL(source string) (string, error) {
 	return url, nil
 }
 
-// ShareToWeb opens the default browser on the hosted web preview with the
-// given source rendered. The source travels in the URL hash — see shareURL.
-func (a *App) ShareToWeb(source string) error {
+// BuildShareLink encodes the given source into a share URL and a QR rendering
+// of it. The frontend shows the QR in a popover; opening the browser happens
+// there via the wails runtime.
+func (a *App) BuildShareLink(source string) (*ShareLink, error) {
 	url, err := shareURL(source)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	wailsRuntime.BrowserOpenURL(a.ctx, url)
-	return nil
+	link := &ShareLink{URL: url}
+	if len(url) <= maxQRBytes {
+		png, err := qrcode.Encode(url, qrcode.Medium, 512)
+		if err != nil {
+			return nil, fmt.Errorf("QR encode: %w", err)
+		}
+		link.QRPNG = base64.StdEncoding.EncodeToString(png)
+	}
+	return link, nil
 }
