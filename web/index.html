@@ -738,7 +738,27 @@ async function inflateBase64Url(b64url) {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Response(stream).text();
+  // Cap the inflated size: the link is attacker-controlled input, and deflate
+  // expands up to ~1000:1 — an uncapped read would let a crafted URL balloon
+  // to gigabytes in the visitor's browser. 4 MiB is far beyond any real model.
+  const MAX_INFLATED = 4 << 20;
+  const reader = stream.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > MAX_INFLATED) {
+      reader.cancel();
+      throw new Error('shared model is larger than the 4 MiB limit');
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { joined.set(c, off); off += c.length; }
+  return new TextDecoder().decode(joined);
 }
 
 // ── Bundled examples ───────────────────────────────────────────────────────────

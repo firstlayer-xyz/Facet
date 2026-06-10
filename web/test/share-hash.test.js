@@ -51,5 +51,14 @@ runTest('share-hash', async ({ page }) => {
     throw new Error(`corrupt hash still loaded a source: ${JSON.stringify(leaked)}`);
   }
 
-  console.log('  shared source rendered; corrupt payload errored visibly');
+  // Decompression bomb: a payload inflating past the 4 MiB cap must error,
+  // not balloon in the visitor's browser.
+  await page.goto(URL + '#code=' + encodeShareHash('//'.padEnd(8 << 20, 'x')));
+  await page.reload();
+  await page.waitForFunction(
+    () => document.getElementById('error-box').textContent.includes('Failed to decode shared model'),
+    null, { timeout: 60_000 },
+  );
+
+  console.log('  shared source rendered; corrupt payload + bomb errored visibly');
 }, chromium);
