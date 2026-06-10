@@ -5,15 +5,25 @@ import (
 	"math"
 )
 
+// requireFinite rejects NaN/Inf. Builtin numeric arguments flow into the C++
+// geometry kernel, whose `x <= 0` style guards pass NaN (every comparison with
+// NaN is false) — the model would then silently vanish instead of erroring.
+func requireFinite(funcName string, argNum int, n float64) (float64, error) {
+	if math.IsNaN(n) || math.IsInf(n, 0) {
+		return 0, fmt.Errorf("%s() argument %d must be finite, got %v", funcName, argNum, n)
+	}
+	return n, nil
+}
+
 // requireLength extracts the mm value from a length argument.
 // Also accepts bare numbers (float64), treating them as mm.
 func requireLength(funcName string, argNum int, v value) (float64, error) {
 	v = unwrap(v)
 	switch n := v.(type) {
 	case length:
-		return n.mm, nil
+		return requireFinite(funcName, argNum, n.mm)
 	case float64:
-		return n, nil
+		return requireFinite(funcName, argNum, n)
 	default:
 		return 0, fmt.Errorf("%s() argument %d must be a Length (e.g. 10 mm), got %s", funcName, argNum, typeName(v))
 	}
@@ -25,7 +35,7 @@ func requireLength(funcName string, argNum int, v value) (float64, error) {
 func requireNumber(funcName string, argNum int, v value) (float64, error) {
 	v = unwrap(v)
 	if n, ok := v.(float64); ok {
-		return n, nil
+		return requireFinite(funcName, argNum, n)
 	}
 	return 0, fmt.Errorf("%s() argument %d must be a Number, got %s (use Number(from: x) to convert Length explicitly)", funcName, argNum, typeName(v))
 }
@@ -55,7 +65,7 @@ func requireAngle(funcName string, argNum int, v value) (float64, error) {
 	if !ok {
 		return 0, fmt.Errorf("%s() argument %d must be an Angle (e.g. 45 deg), got %s", funcName, argNum, typeName(v))
 	}
-	return a.deg, nil
+	return requireFinite(funcName, argNum, a.deg)
 }
 
 // requireString extracts a string from a value.

@@ -94,19 +94,25 @@ func (e *evaluator) evalCompare(op string, lv, rv value, pos parser.Pos) (value,
 		return nil, e.errAt(pos, "operator %s: incompatible types %s and %s", op, typeName(lv), typeName(rv))
 	}
 
+	// All six comparisons share floatEqual's epsilon so trichotomy holds:
+	// for any pair, exactly one of <, ==, > is true, and a == b implies both
+	// a <= b and a >= b. With exact IEEE ordering next to epsilon equality,
+	// 0.1 + 0.2 was simultaneously == 0.3 and > 0.3 — an `if x == limit` and
+	// an `if x > limit` branch could both fire on the same value.
+	eq := floatEqual(lf, rf)
 	switch op {
 	case "<":
-		return lf < rf, nil
+		return lf < rf && !eq, nil
 	case ">":
-		return lf > rf, nil
+		return lf > rf && !eq, nil
 	case "<=":
-		return lf <= rf, nil
+		return lf < rf || eq, nil
 	case ">=":
-		return lf >= rf, nil
+		return lf > rf || eq, nil
 	case "==":
-		return floatEqual(lf, rf), nil
+		return eq, nil
 	case "!=":
-		return !floatEqual(lf, rf), nil
+		return !eq, nil
 	default:
 		return nil, e.errAt(pos, "unknown comparison operator %q", op)
 	}

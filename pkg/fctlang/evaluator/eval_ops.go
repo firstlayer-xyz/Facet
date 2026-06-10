@@ -124,6 +124,11 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 	// — for struct/Solid arrays where broadcasting has no meaning).
 	if larr, lok := lv.(array); lok && ex.Op == "+" {
 		if rarr, rok := rv.(array); rok {
+			// Same cap as ranges/comprehensions: without it, doubling an array
+			// in a fold (acc + acc) grows exponentially and OOMs the host.
+			if len(larr.elems)+len(rarr.elems) > maxRangeSize {
+				return nil, e.errAt(ex.Pos, "array concatenation would produce %d elements (limit %d)", len(larr.elems)+len(rarr.elems), maxRangeSize)
+			}
 			result := make([]value, len(larr.elems)+len(rarr.elems))
 			copy(result, larr.elems)
 			copy(result[len(larr.elems):], rarr.elems)

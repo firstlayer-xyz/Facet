@@ -203,11 +203,29 @@ func init() {
 
 	builtinRegistry["_bounding_box"] = func(e *evaluator, args []value) (value, error) {
 		const name = "_bounding_box"
-		sanitize := func(v float64) float64 {
-			if math.IsInf(v, 0) || math.IsNaN(v) {
-				return 0
+		// An EMPTY solid reports ±Inf bounds (Manifold's empty box) — map those
+		// to 0 so an empty shape has zero extent. NaN is different: it means
+		// corrupted geometry reached the kernel, and mapping it to 0 would mask
+		// the corruption — error loudly instead.
+		sanitize := func(v float64) (float64, error) {
+			if math.IsNaN(v) {
+				return 0, fmt.Errorf("%s: the shape's bounds are NaN (corrupted geometry)", name)
 			}
-			return v
+			if math.IsInf(v, 0) {
+				return 0, nil
+			}
+			return v, nil
+		}
+		sanitizeAll := func(vs ...float64) ([]float64, error) {
+			out := make([]float64, len(vs))
+			for i, v := range vs {
+				s, err := sanitize(v)
+				if err != nil {
+					return nil, err
+				}
+				out[i] = s
+			}
+			return out, nil
 		}
 		switch r := args[0].(type) {
 		case *manifold.Solid:
@@ -215,13 +233,15 @@ func init() {
 				return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
 			}
 			minX, minY, minZ, maxX, maxY, maxZ := r.BoundingBox()
-			minX, minY, minZ = sanitize(minX), sanitize(minY), sanitize(minZ)
-			maxX, maxY, maxZ = sanitize(maxX), sanitize(maxY), sanitize(maxZ)
+			b, err := sanitizeAll(minX, minY, minZ, maxX, maxY, maxZ)
+			if err != nil {
+				return nil, err
+			}
 			return &structVal{
 				typeName: "Box",
 				fields: map[string]value{
-					"min": makePtVecStruct3("Vec3", minX, minY, minZ),
-					"max": makePtVecStruct3("Vec3", maxX, maxY, maxZ),
+					"min": makePtVecStruct3("Vec3", b[0], b[1], b[2]),
+					"max": makePtVecStruct3("Vec3", b[3], b[4], b[5]),
 				},
 			}, nil
 		case *manifold.Sketch:
@@ -229,13 +249,15 @@ func init() {
 				return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args)-1)
 			}
 			minX, minY, maxX, maxY := r.BoundingBox()
-			minX, minY = sanitize(minX), sanitize(minY)
-			maxX, maxY = sanitize(maxX), sanitize(maxY)
+			b, err := sanitizeAll(minX, minY, maxX, maxY)
+			if err != nil {
+				return nil, err
+			}
 			return &structVal{
 				typeName: "Box",
 				fields: map[string]value{
-					"min": makePtVecStruct3("Vec3", minX, minY, 0),
-					"max": makePtVecStruct3("Vec3", maxX, maxY, 0),
+					"min": makePtVecStruct3("Vec3", b[0], b[1], 0),
+					"max": makePtVecStruct3("Vec3", b[2], b[3], 0),
 				},
 			}, nil
 		default:

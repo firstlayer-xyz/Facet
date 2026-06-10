@@ -187,6 +187,11 @@ func builtinSqrt(_ *evaluator, args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Domain error, like Asin/Acos — math.Sqrt would return NaN, which then
+	// poisons any geometry it reaches (the model silently vanishes).
+	if n < 0 {
+		return nil, fmt.Errorf("Sqrt() argument must be non-negative, got %v", n)
+	}
 	return math.Sqrt(n), nil
 }
 
@@ -202,7 +207,13 @@ func builtinPow(_ *evaluator, args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
-	return math.Pow(base, exp), nil
+	// A non-finite result (overflow, or a fractional power of a negative base)
+	// would poison downstream geometry — error at the source instead.
+	r := math.Pow(base, exp)
+	if math.IsNaN(r) || math.IsInf(r, 0) {
+		return nil, fmt.Errorf("Pow(base: %v, exp: %v) has no finite result", base, exp)
+	}
+	return r, nil
 }
 
 func builtinFloor(_ *evaluator, args []value) (value, error) {

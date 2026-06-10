@@ -147,13 +147,22 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 		if stepF < 0 && startF < endF {
 			return nil, e.errAt(ex.Pos, "range step is negative but start (%v) < end (%v)", startF, endF)
 		}
-		// Estimate range size and reject if too large
-		estimatedSize := int(math.Abs((endF-startF)/stepF)) + 1
-		if estimatedSize > maxRangeSize {
-			return nil, e.errAt(ex.Pos, "range would produce %d elements (limit %d)", estimatedSize, maxRangeSize)
+		// Estimate range size and reject if too large. The comparison stays in
+		// float space: converting a huge estimate to int first would overflow
+		// to a negative value and slip past the cap (and a NaN bound fails the
+		// negated <=, so non-finite ranges are rejected too).
+		estimatedSize := math.Abs((endF-startF)/stepF) + 1
+		if !(estimatedSize <= float64(maxRangeSize)) {
+			return nil, e.errAt(ex.Pos, "range would produce %.0f elements (limit %d)", estimatedSize, maxRangeSize)
 		}
 		// Use counter-based iteration to avoid floating-point accumulation drift.
 		// Instead of i += step (which drifts), compute i = start + count * step.
+		// The endpoint comparisons carry an epsilon of |step|·1e-9 so a
+		// fractional step whose last value rounds just past the bound (e.g.
+		// [0:0.7:0.1] landing on 0.7000000000000001) still includes/excludes the
+		// documented endpoint; values are a full step apart, so the epsilon can
+		// never affect any other element.
+		eps := math.Abs(stepF) * 1e-9
 		var elems []value
 		for count := 0; ; count++ {
 			if err := e.ctx.Err(); err != nil {
@@ -162,21 +171,21 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 			i := startF + float64(count)*stepF
 			if stepF > 0 {
 				if ex.Exclusive {
-					if i >= endF {
+					if i >= endF-eps {
 						break
 					}
 				} else {
-					if i > endF {
+					if i > endF+eps {
 						break
 					}
 				}
 			} else {
 				if ex.Exclusive {
-					if i <= endF {
+					if i <= endF+eps {
 						break
 					}
 				} else {
-					if i < endF {
+					if i < endF-eps {
 						break
 					}
 				}
