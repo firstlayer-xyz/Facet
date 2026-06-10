@@ -1023,12 +1023,19 @@ canvas {
 
 #share-popover .share-qr {
   display: block;
-  width: 192px;
-  height: 192px;
+  width: 240px;
+  height: 240px;
   cursor: pointer;
-  /* QR PNGs carry their own quiet zone; white background keeps them
-     scannable on dark themes. */
+  /* QR PNGs carry their own quiet zone; white background + a little padding
+     keep that margin against the dark popover surface. */
   background: #fff;
+  padding: 8px;
+  /* The PNG is a high-res QR (512px) shown smaller. The browser's DEFAULT
+     bilinear smoothing blurs adjacent QR modules into each other — for a dense
+     QR (a real-size model) that destroys the finder corners and makes it
+     unscannable. Force nearest-neighbour so module edges stay crisp. */
+  image-rendering: -moz-crisp-edges;
+  image-rendering: pixelated;
 }
 
 #share-popover .share-hint {
