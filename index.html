@@ -712,6 +712,55 @@ function loadFile(file) {
   reader.readAsText(file);
 }
 
+// ── Shared source via URL hash ─────────────────────────────────────────────────
+// The desktop app's Share button encodes a .fct source into the URL as
+// #code=<base64url(deflate-raw(utf8))>. Returns 'none' when the hash carries
+// no shared code, 'loaded' after handing the source to loadSource, or 'failed'
+// after surfacing a decode error.
+async function loadSharedFromHash() {
+  const m = location.hash.match(/^#code=(.+)$/);
+  if (!m) return 'none';
+  let text;
+  try {
+    text = await inflateBase64Url(m[1]);
+  } catch (e) {
+    showError('Failed to decode shared model from URL: ' + (e.message || e));
+    setStatus('Error');
+    return 'failed';
+  }
+  loadSource(text, 'shared.fct');
+  return 'loaded';
+}
+
+async function inflateBase64Url(b64url) {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  // Cap the inflated size: the link is attacker-controlled input, and deflate
+  // expands up to ~1000:1 — an uncapped read would let a crafted URL balloon
+  // to gigabytes in the visitor's browser. 4 MiB is far beyond any real model.
+  const MAX_INFLATED = 4 << 20;
+  const reader = stream.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > MAX_INFLATED) {
+      reader.cancel();
+      throw new Error('shared model is larger than the 4 MiB limit');
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { joined.set(c, off); off += c.length; }
+  return new TextDecoder().decode(joined);
+}
+
 // ── Bundled examples ───────────────────────────────────────────────────────────
 function populateExamples(names) {
   exampleSelect.innerHTML = '';
@@ -734,7 +783,7 @@ function loadExample(name) {
   loadSource(src, name);
 }
 
-function initExamples() {
+function initExamples(autoloadDefault) {
   // Surface failures instead of leaving a silently-empty selector — the most
   // likely cause is a stale cached facet.wasm (no facetExamples export) loaded
   // against a fresh index.html.
@@ -753,7 +802,7 @@ function initExamples() {
   }
   populateExamples(names);
   const def = names.includes('Tutorial.fct') ? 'Tutorial.fct' : names[0];
-  if (def && !currentSource) {
+  if (autoloadDefault && def && !currentSource) {
     exampleSelect.value = def;
     loadExample(def);
   } else {
@@ -1619,7 +1668,8 @@ function mulMat4(a,b) {
 
     wasmReady = true;
     updateDownloadUI();   // a file dropped before wasm finished loading can now export
-    initExamples();
+    const shared = await loadSharedFromHash();
+    initExamples(shared === 'none');
   } catch (e) {
     setStatus('Failed: ' + e.message);
     showError('Init failed: ' + e);
