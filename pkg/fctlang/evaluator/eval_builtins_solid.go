@@ -380,6 +380,47 @@ func init() {
 		return r.Simplify(tol), nil
 	})
 
+	builtinRegistry["_solid_offset"] = solidMethod("_solid_offset", func(r *manifold.Solid, args []value) (value, error) {
+		const name = "_solid_offset"
+		if len(args) != 2 {
+			return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args))
+		}
+		delta, err := requireLength(name, 1, args[0])
+		if err != nil {
+			return nil, err
+		}
+		resolution, err := requireLength(name, 2, args[1])
+		if err != nil {
+			return nil, err
+		}
+		if delta == 0 {
+			return r, nil // no-op
+		}
+		if resolution < 0 {
+			return nil, fmt.Errorf("%s() resolution must be >= 0 (0 = auto), got %v mm", name, resolution)
+		}
+		minX, minY, minZ, maxX, maxY, maxZ := r.BoundingBox()
+		dx, dy, dz := maxX-minX, maxY-minY, maxZ-minZ
+		edgeLen := resolution
+		if edgeLen == 0 { // auto: a quarter of |delta|, floored so the grid stays bounded
+			edgeLen = math.Abs(delta) / 4
+			diag := math.Sqrt(dx*dx + dy*dy + dz*dz)
+			if floor := diag / 200; edgeLen < floor {
+				edgeLen = floor
+			}
+		}
+		// Guard against a too-fine grid (OOM/hang). extent includes the dilation pad.
+		extent := math.Max(dx, math.Max(dy, dz)) + 2*math.Abs(delta)
+		if cells := extent / edgeLen; cells*cells*cells > 6e7 {
+			return nil, fmt.Errorf("%s() resolution %v mm is too fine for this solid; use a coarser resolution", name, edgeLen)
+		}
+		result := r.Offset(delta, edgeLen)
+		if result == nil || result.Volume() <= 0 {
+			return nil, fmt.Errorf("%s() offset by %v mm removed the entire solid", name, delta)
+		}
+		return result, nil
+	})
+
 	builtinRegistry["_refine_to_length"] = solidMethod("_refine_to_length", func(r *manifold.Solid, args []value) (value, error) {
 		const name = "_refine_to_length"
 		if len(args) != 1 {

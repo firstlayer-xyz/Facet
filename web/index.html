@@ -467,6 +467,7 @@ function setupBridge() {
   globalThis._mf_refine           = (id, n)                   => (M._facet_refine(id, n, SOLID_RET),                       solidPtr());
   globalThis._mf_simplify         = (id, tol)                 => (M._facet_simplify(id, tol, SOLID_RET),                   solidPtr());
   globalThis._mf_refine_to_length = (id, len)                 => (M._facet_refine_to_length(id, len, SOLID_RET),           solidPtr());
+  globalThis._mf_offset           = (id, delta, el)           => (M._facet_offset(id, delta, el, SOLID_RET),               solidPtr());
   // FacetSolidPair {FacetSolidRet first; FacetSolidRet second} — first.ptr at
   // byte 0, second.ptr at byte 12 (sizeof FacetSolidRet on wasm32).
   globalThis._mf_split = (mid, cid) => {

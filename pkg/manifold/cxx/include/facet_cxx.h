@@ -178,6 +178,12 @@ void facet_refine(ManifoldPtr* m, int n, FacetSolidRet* out);
 void facet_simplify(ManifoldPtr* m, double tolerance, FacetSolidRet* out);
 void facet_refine_to_length(ManifoldPtr* m, double length, FacetSolidRet* out);
 
+// Offset (SDF re-mesh): grows (delta>0) or shrinks (delta<0) the solid by delta,
+// computing a signed-distance field from the mesh and meshing the result with
+// Manifold's positive-inside LevelSet at level=-delta. edge_length is the
+// marching-cubes sampling resolution. Approximate; resamples the whole body.
+void facet_offset(ManifoldPtr* m, double delta, double edge_length, FacetSolidRet* out);
+
 // Split returns two manifolds: the part of m inside cutter and the part outside.
 void facet_split(ManifoldPtr* m, ManifoldPtr* cutter, FacetSolidPair* out);
 void facet_split_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset, FacetSolidPair* out);
