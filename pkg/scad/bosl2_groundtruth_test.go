@@ -199,6 +199,9 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		// linear base case.
 		{"recursion_deep", "module spiral(n){ cube([2,2,2]); if(n>0) translate([3,0,0]) rotate([0,0,15]) spiral(n-1); } spiral(9);", 0.05},
 		{"recursion_branch", "module tree(n){ cube([2,2,2]); if(n>0){ translate([5,0,0]) tree(n-1); translate([0,5,0]) tree(n-1); } } tree(3);", 0.05},
+		// exp(1) == e and sign(-4) == -1 drive the cube dimensions, checking the
+		// Pow(base: E) mapping and the sign ternary against OpenSCAD's values.
+		{"exp_sign", "cube([exp(1), sign(-4)+3, 1]);", 0.01},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

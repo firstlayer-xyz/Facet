@@ -50,6 +50,15 @@ func (e *Emitter) call(n *ast.Call) string {
 			// asin -> Asin, acos -> Acos.
 			return "Number(from: A" + n.Name[1:] + "(n: " + e.expr(a, kNumber) + "))"
 		}
+	case "exp": // exp(x) == e^x; Facet has no exp(), so Pow(base: E, exp: x).
+		if a, ok := soleArg(n); ok {
+			return "Pow(base: E, exp: " + e.expr(a, kNumber) + ")"
+		}
+	case "sign": // sign(x) -> -1 / 0 / +1 (Facet has no sign(); a pure ternary).
+		if a, ok := soleArg(n); ok {
+			x := e.operand(a, kNumber)
+			return "(" + x + " > 0 ? 1 : (" + x + " < 0 ? -1 : 0))"
+		}
 	case "atan": // atan(x) == Atan2(y: x, x: 1)
 		if a, ok := soleArg(n); ok {
 			return "Number(from: Atan2(y: " + e.expr(a, kNumber) + ", x: 1))"

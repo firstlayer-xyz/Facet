@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+// exp(x) and sign(x) have no Facet builtin: exp maps to Pow(base: E, exp: x),
+// and sign to a pure -1/0/+1 ternary.
+func TestTranspileExpSign(t *testing.T) {
+	res, err := Transpile("cube([exp(1), sign(-4)+3, 1]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("exp/sign should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "Pow(base: E, exp: 1)") {
+		t.Fatalf("expected exp -> Pow(base: E, …):\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "> 0 ? 1 :") || !strings.Contains(res.Facet, "< 0 ? -1 : 0") {
+		t.Fatalf("expected sign -> ternary:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // OpenSCAD str(a, b, …) concatenates the string forms of its arguments; it maps
 // to Facet String concatenation, with String(a:) converting non-string values.
 // text() accepts the resulting computed string (not just a literal).
