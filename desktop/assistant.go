@@ -1,7 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"facet/pkg/fctlang/doc"
 	"facet/share/docs"
@@ -203,6 +207,13 @@ func isKnownCLI(id string) bool {
 // queryModels attempts to list available models for a CLI.
 // Returns nil on failure (caller falls back to hardcoded list).
 func queryModels(cliID, binPath string) []string {
+	// Claude has no "list models" subcommand; discover via the Anthropic
+	// Models API instead. nil (no API key, or request failure) falls back to
+	// the hardcoded aliases.
+	if cliID == "claude" {
+		return queryClaudeModels()
+	}
+
 	var cmd *exec.Cmd
 	switch cliID {
 	case "ollama":
@@ -253,6 +264,60 @@ func queryModels(cliID, binPath string) []string {
 		default:
 			// aichat, chatgpt: one model per line
 			models = append(models, line)
+		}
+	}
+	return models
+}
+
+// queryClaudeModels lists available Claude models via the Anthropic Models API
+// (GET /v1/models). It requires ANTHROPIC_API_KEY; when that's unset or the
+// request fails it returns nil, so detectAssistantCLIs falls back to the
+// hardcoded sonnet/opus/haiku aliases. The returned IDs (e.g. claude-opus-4-8)
+// are accepted directly by the claude CLI's --model flag, so new models appear
+// in the picker automatically as Anthropic releases them.
+func queryClaudeModels() []string {
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	if key == "" {
+		return nil
+	}
+	// limit=1000 returns the full catalogue in one page (there are far fewer);
+	// no pagination needed.
+	req, err := http.NewRequest(http.MethodGet, "https://api.anthropic.com/v1/models?limit=1000", nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("x-api-key", key)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil
+	}
+	return parseAnthropicModels(body)
+}
+
+// parseAnthropicModels extracts model IDs from an Anthropic /v1/models response
+// body. Returns nil on malformed JSON or an empty list.
+func parseAnthropicModels(body []byte) []string {
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	var models []string
+	for _, m := range payload.Data {
+		if m.ID != "" {
+			models = append(models, m.ID)
 		}
 	}
 	return models

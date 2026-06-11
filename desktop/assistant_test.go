@@ -149,3 +149,33 @@ func TestParseEffortLevels(t *testing.T) {
 		t.Errorf("expected nil when the levels group is unterminated, got %v", lv)
 	}
 }
+
+// TestParseAnthropicModels verifies model-ID extraction from a /v1/models
+// response, and that malformed or empty payloads yield nil so the caller falls
+// back to the hardcoded aliases.
+func TestParseAnthropicModels(t *testing.T) {
+	body := []byte(`{
+		"data": [
+			{"type": "model", "id": "claude-opus-4-8", "display_name": "Claude Opus 4.8"},
+			{"type": "model", "id": "claude-sonnet-4-6", "display_name": "Claude Sonnet 4.6"}
+		],
+		"has_more": false
+	}`)
+	got := parseAnthropicModels(body)
+	want := []string{"claude-opus-4-8", "claude-sonnet-4-6"}
+	if len(got) != len(want) {
+		t.Fatalf("parseAnthropicModels = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("model[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	if r := parseAnthropicModels([]byte("not json")); r != nil {
+		t.Errorf("malformed JSON: got %v, want nil", r)
+	}
+	if r := parseAnthropicModels([]byte(`{"data":[]}`)); r != nil {
+		t.Errorf("empty data: got %v, want nil", r)
+	}
+}
