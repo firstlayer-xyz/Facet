@@ -21,6 +21,26 @@ func TestTranspileExpSign(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// OpenSCAD min/max take a single list (min([a,b,c])) or two-or-more scalars
+// (min(a,b,c)). Facet's Min/Max are binary, so a list reduces with fold and
+// multiple scalars left-fold; the two-arg form is unchanged.
+func TestTranspileMinMaxVariadic(t *testing.T) {
+	res, err := Transpile("cube([min([3,1,2])+4, max(2,5,1), min(3,1)+1]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("min/max variadic should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "fold acc, x [3, 1, 2] { yield Min(a: acc, b: x) }") {
+		t.Fatalf("expected min(list) to reduce with fold:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Max(a: Max(a: 2, b: 5), b: 1)") {
+		t.Fatalf("expected max(a,b,c) to left-fold:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "Min(a: 3, b: 1)") {
+		t.Fatalf("expected two-arg min unchanged:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // OpenSCAD str(a, b, …) concatenates the string forms of its arguments; it maps
 // to Facet String concatenation, with String(a:) converting non-string values.
 // text() accepts the resulting computed string (not just a literal).
