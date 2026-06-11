@@ -1360,6 +1360,8 @@ const FOV  = 60;     // match desktop perspective FOV
 const DAMP = 0.2;    // ease fraction toward goal per frame (smooth inertia)
 const cam  = { yaw: 30, pitch: 25, dist: 150, cx: 0, cy: 0, cz: 0 };
 const goal = { yaw: 30, pitch: 25, dist: 150, cx: 0, cy: 0, cz: 0 };
+// Read-only camera state for the orbit-direction regression test.
+globalThis.__camGoal = () => ({ yaw: goal.yaw, pitch: goal.pitch, dist: goal.dist });
 let needsFrame = true;     // re-fit the camera on the next model load
 let animating  = false;    // rAF damping loop running?
 let dragMode   = null;     // 'rotate' | 'pan' | null
@@ -1563,9 +1565,11 @@ function renderMesh(positions, colors, edges, isFrame = false) {
 
 // ── Camera control + damping ────────────────────────────────────────────────
 function orbitBy(dx, dy) {
-  goal.yaw  += dx * 0.4;
+  goal.yaw  -= dx * 0.4;
   goal.pitch = Math.max(-89, Math.min(89, goal.pitch + dy * 0.4));
 }
+// Test hook: drive orbit directly so the orbit-direction test needn't boot WebGL.
+globalThis.__orbitBy = orbitBy;
 
 // Screen-space pan: shift the pivot in the camera's right/up plane so the point
 // under the cursor tracks it. k scales 1 screen px to the world distance at the
