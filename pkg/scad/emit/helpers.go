@@ -66,6 +66,15 @@ const scadLookupHelper = `fn scad_lookup(key Number, table [][]Number) Number {
 	return fold acc, c contribs { yield acc + c }
 }`
 
+// scadUnionHelper unions a runtime list of solids whose length isn't known at
+// transpile time (conditional geometry — Union(arr: [G] + (cond ? [..] : []))).
+// The stdlib Union requires at least two elements; a one-element list is just its
+// element. (A zero-element list has no Solid form — Union then reports it.)
+const scadUnionHelper = `fn scad_union(arr []Solid) Solid {
+	if Size(of: arr) == 1 { return arr[0] }
+	return Union(arr: arr)
+}`
+
 // helperPreamble returns the definitions of every emitted helper the program
 // references, each followed by a blank line. Unreferenced helpers are omitted.
 func (e *Emitter) helperPreamble() string {
@@ -79,6 +88,7 @@ func (e *Emitter) helperPreamble() string {
 		{e.usesFaces, scadFacesHelper},
 		{e.usesV2Path, scadV2PathHelper},
 		{e.usesLookup, scadLookupHelper},
+		{e.usesUnion, scadUnionHelper},
 	} {
 		if h.used {
 			w.write(h.src)

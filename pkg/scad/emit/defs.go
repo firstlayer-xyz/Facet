@@ -129,11 +129,21 @@ func (e *Emitter) emitGeomBody(w *writer, body []ast.Stmt, ctx string, pos ast.P
 			return
 		}
 	}
+	// Conditional geometry mixed with other geometry (e.g. `cube(); if(c) …;`, the
+	// shape of a recursive module) unions as an array: each `if` contributes a
+	// conditional list, which the `+` operator can't express without an empty
+	// solid. See geomListExpr.
+	hasIf := false
 	for _, s := range geom {
-		if ifs, ok := s.(*ast.If); ok {
-			e.errf(ifs.Pos(), "%s: conditional geometry combined with other geometry is not supported", ctx)
-			return
+		if _, ok := s.(*ast.If); ok {
+			hasIf = true
+			break
 		}
+	}
+	if hasIf {
+		e.usesUnion = true
+		w.writef("\treturn scad_union(arr: %s)\n", e.geomListExpr(geom))
+		return
 	}
 	g := e.unionStmts(geom)
 	if g == "" {
@@ -141,6 +151,42 @@ func (e *Emitter) emitGeomBody(w *writer, body []ast.Stmt, ctx string, pos ast.P
 		return
 	}
 	w.writef("\treturn %s\n", g)
+}
+
+// geomListExpr renders a geometry body as an []Solid expression: runs of plain
+// geometry become literal array elements `[a, b]`, and each `if` becomes a
+// conditional list `(cond ? [then…] : [else…])` — an empty list when a branch
+// produces nothing (an `if` with no `else`). Joined with `+` (list concat), the
+// result is the array for Union(arr: …), letting conditional geometry combine
+// with its siblings (which the `+` union operator can't, lacking an empty solid).
+func (e *Emitter) geomListExpr(stmts []ast.Stmt) string {
+	var groups []string
+	var plain []string
+	flush := func() {
+		if len(plain) > 0 {
+			groups = append(groups, "["+strings.Join(plain, ", ")+"]")
+			plain = nil
+		}
+	}
+	for _, s := range stmts {
+		if ifs, ok := s.(*ast.If); ok {
+			flush()
+			els := "[]"
+			if len(ifs.Else) > 0 {
+				els = e.geomListExpr(ifs.Else)
+			}
+			groups = append(groups, "("+e.cond(ifs.Cond)+" ? "+e.geomListExpr(ifs.Then)+" : "+els+")")
+			continue
+		}
+		if g := e.stmt(s); g != "" {
+			plain = append(plain, g)
+		}
+	}
+	flush()
+	if len(groups) == 0 {
+		return "[]"
+	}
+	return strings.Join(groups, " + ")
 }
 
 // writeGeomIf renders a geometry `if` as a return-bearing Facet conditional:

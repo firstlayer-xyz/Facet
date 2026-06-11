@@ -190,6 +190,15 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		// resize() with a 0 component keeps that axis's original size (OpenSCAD
 		// semantics): x→20, y and z unchanged. Previously errored (Scale by 0).
 		{"resize_keep_axis", "resize([20,0,0]) cube([10,4,2]);", 0.02},
+		// recursion-as-geometry: a recursive module unioning a cube per level via a
+		// conditional list (empty-list false branch terminates). Both OpenSCAD and the
+		// transpiler run the same recurrence, so the spiral of cubes' bbox matches.
+		{"recursion_spiral", "module spiral(n){ cube([2,2,2]); if(n>0) translate([3,0,0]) rotate([0,0,15]) spiral(n-1); } spiral(4);", 0.05},
+		// deeper linear recursion + a BRANCHING recursion (two recursive calls per
+		// level — a binary tree) exercise the conditional-list union beyond the
+		// linear base case.
+		{"recursion_deep", "module spiral(n){ cube([2,2,2]); if(n>0) translate([3,0,0]) rotate([0,0,15]) spiral(n-1); } spiral(9);", 0.05},
+		{"recursion_branch", "module tree(n){ cube([2,2,2]); if(n>0){ translate([5,0,0]) tree(n-1); translate([0,5,0]) tree(n-1); } } tree(3);", 0.05},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
