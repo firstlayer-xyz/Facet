@@ -223,15 +223,20 @@ func (e *Emitter) cubeSizeComponents(size ast.Expr) (x, y, z string) {
 // plain OpenSCAD cube passes "". The result is corner-origin (the caller
 // recenters when needed).
 func (e *Emitter) cubeCtor(size ast.Expr, fillet, chamfer, edges string) string {
+	// fillet and chamfer are SEPARATE Cube overloads (never both); `edges` is
+	// only meaningful alongside a rounding, so it is emitted only with one of
+	// them and dropped for a plain box (which has no edges parameter).
 	extra := ""
 	if fillet != "" {
-		extra += ", fillet: " + fillet
-	}
-	if chamfer != "" {
-		extra += ", chamfer: " + chamfer
-	}
-	if edges != "" {
-		extra += ", edges: " + edges
+		extra = ", fillet: " + fillet
+		if edges != "" {
+			extra += ", edges: " + edges
+		}
+	} else if chamfer != "" {
+		extra = ", chamfer: " + chamfer
+		if edges != "" {
+			extra += ", edges: " + edges
+		}
 	}
 	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) == 3 {
 		return fmt.Sprintf("Cube(x: %s, y: %s, z: %s%s)",

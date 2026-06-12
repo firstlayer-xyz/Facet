@@ -29,10 +29,15 @@ fn b2_cuboid(
     chamfer Length = 0 mm,
     edges EdgeSet = EDGES_ALL,
 ) B2 {
-    return B2{
-        solid: Cube(x: size.x, y: size.y, z: size.z, fillet: fillet, chamfer: chamfer, edges: edges).AlignCenter(pos: Vec3{}),
-        size: size,
-    }
+    # Cube keeps fillet and chamfer as separate overloads, so dispatch to the
+    # matching rounding builtin (at most one is non-zero — BOSL2 cuboid is
+    # rounded OR chamfered, never both).
+    var box = chamfer > 0 mm ?
+        _cube_rounded(size.x, size.y, size.z, chamfer, true, edges) :
+        fillet > 0 mm ?
+            _cube_rounded(size.x, size.y, size.z, fillet, false, edges) :
+            _cube(size.x, size.y, size.z)
+    return B2{solid: box.AlignCenter(pos: Vec3{}), size: size}
 }
 
 fn b2_cyl(h Length, r Length) B2 {

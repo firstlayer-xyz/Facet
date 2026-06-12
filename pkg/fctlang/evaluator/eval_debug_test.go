@@ -20,17 +20,14 @@ fn Main() {
 	if len(result.Solids) == 0 {
 		t.Fatal("expected non-empty solids")
 	}
-	// Cube(s: Vec3) delegates to Cube(x,y,z,r) so the tracer records both
-	// frames; the user-facing op label remains "Cube" on both.
-	if len(result.Steps) != 3 {
-		t.Fatalf("expected 3 steps (Cube delegation + Move), got %d", len(result.Steps))
+	// Cube(s: Vec3) delegates straight to the _cube builtin, so the tracer
+	// records one Cube frame plus the Move.
+	if len(result.Steps) != 2 {
+		t.Fatalf("expected 2 steps (Cube + Move), got %d", len(result.Steps))
 	}
 
 	if result.Steps[0].Op != "Cube" {
 		t.Errorf("step 0: expected op Cube, got %s", result.Steps[0].Op)
-	}
-	if result.Steps[1].Op != "Cube" {
-		t.Errorf("step 1: expected op Cube (delegation), got %s", result.Steps[1].Op)
 	}
 
 	// Last step: Move transform
@@ -68,12 +65,10 @@ fn Main() {
 	if len(result.Solids) == 0 {
 		t.Fatal("expected non-empty solids")
 	}
-	// Steps: Cube(Vec3) -> Cube(x,y,z), Sphere, Difference. The Vec3
-	// overload delegates to the (x,y,z,r) overload so the debug tracer
-	// records both calls — a known UX wart of the rounded-Cube refactor.
-	// The final step is the Difference produced by `-`.
-	if len(result.Steps) != 4 {
-		t.Fatalf("expected 4 steps, got %d", len(result.Steps))
+	// Steps: Cube, Sphere, Difference. Cube(Vec3) delegates straight to the
+	// _cube builtin (one frame). The final step is the Difference from `-`.
+	if len(result.Steps) != 3 {
+		t.Fatalf("expected 3 steps, got %d", len(result.Steps))
 	}
 	last := len(result.Steps) - 1
 	if result.Steps[last].Op != "Difference" {

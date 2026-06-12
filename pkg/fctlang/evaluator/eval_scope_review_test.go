@@ -98,15 +98,16 @@ fn Main() {
 	if err != nil {
 		t.Fatalf("eval error: %v", err)
 	}
-	// Cube(s: Vec3) delegates to Cube(x,y,z,r): one user call = 2 Cube steps.
+	// Cube(s: Vec3) delegates straight to the _cube builtin: one user call =
+	// one Cube step. A doubly-evaluated iterable would record two.
 	cubes := 0
 	for _, s := range result.Steps {
 		if s.Op == "Cube" {
 			cubes++
 		}
 	}
-	if cubes != 2 {
-		t.Errorf("expected 2 Cube steps (one call, delegated), got %d — the iterable was evaluated %d times", cubes, cubes/2)
+	if cubes != 1 {
+		t.Errorf("expected 1 Cube step (iterable evaluated once), got %d — evaluated %d times", cubes, cubes)
 	}
 }
 

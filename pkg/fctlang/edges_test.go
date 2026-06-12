@@ -19,13 +19,14 @@ func TestCubeEdgeSelection(t *testing.T) {
 		return evalMerged(context.Background(), prog, nil)
 	}
 
-	// Supported: each axis group (fillet and chamfer), no edges, and a selector
-	// that resolves to all edges (exercises EDGES_ALL/.Except/.Eq).
+	// Supported: each axis group (fillet and chamfer), EDGES_NONE (a rounding
+	// with no selected edges → plain box), and a selector that resolves to all
+	// edges (exercises EDGES_ALL/.Except/.Eq).
 	for _, body := range []string{
 		"return Cube(x: 10 mm, y: 20 mm, z: 30 mm, fillet: 2 mm, edges: EdgesAlongZ())",
 		"return Cube(x: 10 mm, y: 20 mm, z: 30 mm, fillet: 2 mm, edges: EdgesAlongY())",
 		"return Cube(x: 10 mm, y: 20 mm, z: 30 mm, chamfer: 2 mm, edges: EdgesAlongX())",
-		"return Cube(s: 10 mm, edges: EDGES_NONE)",
+		"return Cube(s: 10 mm, fillet: 2 mm, edges: EDGES_NONE)",
 		"return Cube(s: 10 mm, fillet: 2 mm, edges: EDGES_ALL.Except(o: EDGES_NONE))",
 	} {
 		mesh, err := render(body)

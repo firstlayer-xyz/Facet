@@ -104,11 +104,12 @@ func TestEvalChamferedCylinder(t *testing.T) {
 	}
 }
 
-// fillet and chamfer are mutually exclusive — an edge is rounded or beveled, not
-// both.
+// fillet and chamfer are SEPARATE overloads — an edge is rounded or beveled, not
+// both. Passing both has no matching overload (a compile-time rejection, rather
+// than the old runtime "use one, not both" assert).
 func TestEvalCubeFilletAndChamferErrors(t *testing.T) {
-	if msg := evalErr(t, `fn Main() Solid { return Cube(s: 20 mm, fillet: 2 mm, chamfer: 2 mm); }`); !strings.Contains(msg, "not both") {
-		t.Errorf("expected a fillet-or-chamfer error, got: %s", msg)
+	if msg := evalErr(t, `fn Main() Solid { return Cube(s: 20 mm, fillet: 2 mm, chamfer: 2 mm); }`); !strings.Contains(msg, "no matching overload") {
+		t.Errorf("expected a no-matching-overload error for fillet+chamfer, got: %s", msg)
 	}
 }
 
