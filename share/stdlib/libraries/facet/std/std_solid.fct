@@ -6,91 +6,53 @@
 # Use .Move() or .AlignCenter() to reposition.
 # 
 # Axis-aligned box with bounding-box min corner at (0,0,0) and max at (x,y,z).
-# Optional `fillet` rounds every edge by that radius (corners become spherical,
-# edges quarter-cylindrical); optional `chamfer` bevels every edge with a flat
-# 45° cut of that size (corners become triangular facets) — pass one or the
-# other, not both. The bounding box still spans (0,0,0)..(x,y,z), and the inset
-# must be at most half the smallest dimension. The rounded form is the convex
-# hull of eight spheres at the inset corners; the chamfered form swaps each
-# sphere for an octahedron (whose 45° faces are the bevels).
+# `fillet` and `chamfer` are SEPARATE overloads (a box is rounded OR beveled,
+# never both): `fillet` rounds every edge by that radius (corners become
+# spherical, edges quarter-cylindrical); `chamfer` bevels every edge with a flat
+# 45° cut of that size (corners become triangular facets). The bounding box still
+# spans (0,0,0)..(x,y,z), and the inset must be at most half the smallest
+# dimension. The rounded form is the convex hull of eight spheres at the inset
+# corners; the chamfered form swaps each sphere for an octahedron (whose 45°
+# faces are the bevels). `edges` restricts rounding to a subset (default all).
 # ```
 # fn Main() { Cube(s: Vec3{x: 20 mm, y: 10 mm, z: 5 mm}) }
 # fn Main() { Cube(s: 20 mm, fillet: 2 mm) }
 # fn Main() { Cube(s: 20 mm, chamfer: 2 mm) }
 # ```
-fn Cube(
-    x, y, z Length,
-    fillet Length = 0 mm,
-    chamfer Length = 0 mm,
-    edges EdgeSet = EDGES_ALL,
-) Solid {
-    if fillet == 0 mm && chamfer == 0 mm { return _cube(x, y, z) }
-    assert fillet == 0 mm || chamfer == 0 mm, "Cube: use fillet or chamfer, not both"
-    # Exactly one of fillet/chamfer is nonzero; r is its size, bevel its kind.
-    var r = fillet + chamfer
-    var bevel = chamfer > 0 mm
-
-    if edges.Eq(o: EDGES_NONE) { return _cube(x, y, z) }
-
-    if edges.Eq(o: EDGES_ALL) {
-        assert 2 * r <= x, "Cube: rounding too large for x dimension"
-        assert 2 * r <= y, "Cube: rounding too large for y dimension"
-        assert 2 * r <= z, "Cube: rounding too large for z dimension"
-        # Every edge: the convex hull of a rounding solid at each inset corner —
-        # a sphere (fillet) or an octahedron whose 45° faces are the bevels.
-        var c = bevel ? Octahedron(r: r) : Sphere(r: r)
-        return Hull(
-            arr: [
-                c, c.Move(x: x - 2 * r), c.Move(y: y - 2 * r),
-                c.Move(x: x - 2 * r, y: y - 2 * r), c.Move(z: z - 2 * r),
-                c.Move(x: x - 2 * r, z: z - 2 * r), c.Move(y: y - 2 * r, z: z - 2 * r),
-                c.Move(x: x - 2 * r, y: y - 2 * r, z: z - 2 * r)
-            ]
-        )
-    }
-
-    # A single full axis group rounds the four edges parallel to that axis: round
-    # the 2D cross-section perpendicular to the axis, extrude, then orient so the
-    # bbox still spans (0,0,0)..(x,y,z). For chamfer, `r` is the leg cut from each
-    # face (as for all-edges); Sketch.Chamfer takes the 45° face width, which is
-    # r·√2, so the cut-back along each edge matches.
-    var cham = r * Sqrt(n: 2)
-    if edges.Eq(o: EdgesAlongZ()) {
-        assert 2 * r <= x && 2 * r <= y, "Cube: rounding too large for the Z-edge cross-section"
-        var prof = bevel ? Square(x: x, y: y).Chamfer(distance: cham) : Square(x: x, y: y).Fillet(r: r)
-        return prof.Extrude(z: z)
-    }
-    if edges.Eq(o: EdgesAlongY()) {
-        assert 2 * r <= x && 2 * r <= z, "Cube: rounding too large for the Y-edge cross-section"
-        var prof = bevel ? Square(x: x, y: z).Chamfer(distance: cham) : Square(x: x, y: z).Fillet(r: r)
-        return prof.Extrude(z: y).Rotate(x: -90 deg).Move(z: z)
-    }
-    if edges.Eq(o: EdgesAlongX()) {
-        assert 2 * r <= y && 2 * r <= z, "Cube: rounding too large for the X-edge cross-section"
-        var prof = bevel ? Square(x: z, y: y).Chamfer(distance: cham) : Square(x: z, y: y).Fillet(r: r)
-        return prof.Extrude(z: x).Rotate(y: 90 deg).Move(z: z)
-    }
-
-    assert false, "Cube: per-edge rounding currently supports EDGES_ALL, EDGES_NONE, or one full axis group (EdgesAlongX/Y/Z)"
-    return _cube(x, y, z) # unreachable: the assert above always fails
+fn Cube(x, y, z Length) Solid {
+    return _cube(x, y, z)
 }
 
-fn Cube(
-    s Vec3,
-    fillet Length = 0 mm,
-    chamfer Length = 0 mm,
-    edges EdgeSet = EDGES_ALL,
-) Solid {
-    return Cube(x: s.x, y: s.y, z: s.z, fillet: fillet, chamfer: chamfer, edges: edges)
+fn Cube(x, y, z Length, fillet Length, edges EdgeSet = EDGES_ALL) Solid {
+    return _cube_rounded(x, y, z, fillet, false, edges)
 }
 
-fn Cube(
-    s Length,
-    fillet Length = 0 mm,
-    chamfer Length = 0 mm,
-    edges EdgeSet = EDGES_ALL,
-) Solid {
-    return Cube(x: s, y: s, z: s, fillet: fillet, chamfer: chamfer, edges: edges)
+fn Cube(x, y, z Length, chamfer Length, edges EdgeSet = EDGES_ALL) Solid {
+    return _cube_rounded(x, y, z, chamfer, true, edges)
+}
+
+fn Cube(s Vec3) Solid {
+    return _cube(s.x, s.y, s.z)
+}
+
+fn Cube(s Vec3, fillet Length, edges EdgeSet = EDGES_ALL) Solid {
+    return _cube_rounded(s.x, s.y, s.z, fillet, false, edges)
+}
+
+fn Cube(s Vec3, chamfer Length, edges EdgeSet = EDGES_ALL) Solid {
+    return _cube_rounded(s.x, s.y, s.z, chamfer, true, edges)
+}
+
+fn Cube(s Length) Solid {
+    return _cube(s, s, s)
+}
+
+fn Cube(s Length, fillet Length, edges EdgeSet = EDGES_ALL) Solid {
+    return _cube_rounded(s, s, s, fillet, false, edges)
+}
+
+fn Cube(s Length, chamfer Length, edges EdgeSet = EDGES_ALL) Solid {
+    return _cube_rounded(s, s, s, chamfer, true, edges)
 }
 
 # UV sphere with bounding-box min corner at (0,0,0) (diameter extends from
@@ -160,83 +122,65 @@ fn Octahedron(r Length) Solid {
 
 # Uniform cylinder with bounding-box min corner at (0,0,0): axis runs along Z
 # from Z=0 to Z=`h`. Also accepts diameter `d`. Optional `segments` controls
-# smoothness (default 32); use 6 for a hexagonal prism. `fillet` rounds the
-# top and bottom rims (0 = sharp edges).
+# smoothness (default 32); use 6 for a hexagonal prism. `fillet` and `chamfer`
+# are SEPARATE overloads (round OR bevel the top and bottom rims, never both).
 # ```
 # fn Main() { Cylinder(r: 5 mm, h: 20 mm, fillet: 1 mm) }
 # ```
-fn Cylinder(
-    r, h Length,
-    segments Number = 0,
-    fillet Length = 0 mm,
-    chamfer Length = 0 mm,
-) Solid {
-    if fillet == 0 mm && chamfer == 0 mm { return _cylinder(h, r, r, segments) }
-    return Frustum(r1: r, r2: r, h: h, segments: segments, fillet: fillet, chamfer: chamfer)
+fn Cylinder(r, h Length, segments Number = 0) Solid {
+    return _cylinder(h, r, r, segments)
 }
 
-fn Cylinder(
-    d, h Length,
-    segments Number = 0,
-    fillet Length = 0 mm,
-    chamfer Length = 0 mm,
-) Solid {
-    if fillet == 0 mm && chamfer == 0 mm { return _cylinder(h, d / 2, d / 2, segments) }
-    return Frustum(r1: d / 2, r2: d / 2, h: h, segments: segments, fillet: fillet, chamfer: chamfer)
+fn Cylinder(r, h Length, fillet Length, segments Number = 0) Solid {
+    return _frustum_rounded(r, r, h, fillet, false, segments)
+}
+
+fn Cylinder(r, h Length, chamfer Length, segments Number = 0) Solid {
+    return _frustum_rounded(r, r, h, chamfer, true, segments)
+}
+
+fn Cylinder(d, h Length, segments Number = 0) Solid {
+    return _cylinder(h, d / 2, d / 2, segments)
+}
+
+fn Cylinder(d, h Length, fillet Length, segments Number = 0) Solid {
+    return _frustum_rounded(d / 2, d / 2, h, fillet, false, segments)
+}
+
+fn Cylinder(d, h Length, chamfer Length, segments Number = 0) Solid {
+    return _frustum_rounded(d / 2, d / 2, h, chamfer, true, segments)
 }
 
 # Frustum (truncated cone) along Z from Z=0 to Z=`h`. `r1` is the bottom
 # radius, `r2` the top; set either to 0 for a true cone. Also accepts diameters
-# `d1`/`d2`. Optional `segments` controls smoothness (default 32). `fillet`
-# rounds the top and bottom rims (0 = sharp edges); it must not exceed either
-# radius or half the height, and a rounded end needs a non-zero radius.
+# `d1`/`d2`. Optional `segments` controls smoothness (default 32). `fillet` and
+# `chamfer` are SEPARATE overloads (round OR bevel the rims, never both); the
+# inset must not exceed either radius or half the height.
 # ```
 # fn Main() { Frustum(r1: 8 mm, r2: 3 mm, h: 20 mm, fillet: 1 mm) }
 # ```
-fn Frustum(
-    r1, r2, h Length,
-    segments Number = 0,
-    fillet Length = 0 mm,
-    chamfer Length = 0 mm,
-) Solid {
-    if fillet == 0 mm && chamfer == 0 mm { return _cylinder(h, r1, r2, segments) }
-    assert fillet == 0 mm || chamfer == 0 mm, "Frustum: use fillet or chamfer, not both"
-    if chamfer > 0 mm {
-        # The chamfer is a flat 45° rim cut. The cross-section is a rectangle with
-        # its two outer corners clipped; revolving it gives the chamfered cylinder.
-        # A tapered frustum's rim cut is not this simple revolve, so require equal
-        # radii rather than emit a wrong shape.
-        assert r1 == r2, "Frustum: chamfer is only supported on equal-radius cylinders (r1 == r2)"
-        assert chamfer <= r1, "Frustum: chamfer too large for radius"
-        assert 2 * chamfer <= h, "Frustum: chamfer too large for height"
-        var profile = Polygon(
-            points: [
-                Vec2{x: 0 mm, y: 0 mm}, Vec2{x: r1 - chamfer, y: 0 mm},
-                Vec2{x: r1, y: chamfer}, Vec2{x: r1, y: h - chamfer},
-                Vec2{x: r1 - chamfer, y: h}, Vec2{x: 0 mm, y: h}
-            ]
-        )
-        return profile.Revolve(segments: segments).Move(x: r1, y: r1)
-    }
-    assert fillet <= r1, "Frustum: fillet too large for r1"
-    assert fillet <= r2, "Frustum: fillet too large for r2"
-    assert 2 * fillet <= h, "Frustum: fillet too large for height"
-    # The rim tori are centered on the Z axis; shift so the bounding box's min
-    # corner sits at the origin, matching the plain _cylinder convention.
-    var rmax = Max(a: r1, b: r2)
-    var tb = Torus(r_maj: r1 - fillet, r_min: fillet, segments: segments)
-    var tt = Torus(r_maj: r2 - fillet, r_min: fillet, segments: segments)
-    return Hull(arr: [tb.Move(z: fillet), tt.Move(z: h - fillet)]).Move(x: rmax, y: rmax)
+fn Frustum(r1, r2, h Length, segments Number = 0) Solid {
+    return _cylinder(h, r1, r2, segments)
 }
 
-fn Frustum(
-    d1, d2, h Length,
-    segments Number = 0,
-    fillet Length = 0 mm,
-    chamfer Length = 0 mm,
-) Solid {
-    if fillet == 0 mm && chamfer == 0 mm { return _cylinder(h, d1 / 2, d2 / 2, segments) }
-    return Frustum(r1: d1 / 2, r2: d2 / 2, h: h, segments: segments, fillet: fillet, chamfer: chamfer)
+fn Frustum(r1, r2, h Length, fillet Length, segments Number = 0) Solid {
+    return _frustum_rounded(r1, r2, h, fillet, false, segments)
+}
+
+fn Frustum(r1, r2, h Length, chamfer Length, segments Number = 0) Solid {
+    return _frustum_rounded(r1, r2, h, chamfer, true, segments)
+}
+
+fn Frustum(d1, d2, h Length, segments Number = 0) Solid {
+    return _cylinder(h, d1 / 2, d2 / 2, segments)
+}
+
+fn Frustum(d1, d2, h Length, fillet Length, segments Number = 0) Solid {
+    return _frustum_rounded(d1 / 2, d2 / 2, h, fillet, false, segments)
+}
+
+fn Frustum(d1, d2, h Length, chamfer Length, segments Number = 0) Solid {
+    return _frustum_rounded(d1 / 2, d2 / 2, h, chamfer, true, segments)
 }
 
 # Cone along Z from Z=0 to Z=`h` with base radius `r`.

@@ -18,13 +18,14 @@ type builtinFn func(e *evaluator, args []value) (value, error)
 // Populated by init() to avoid package-level initialization cycles.
 var builtinRegistry map[string]builtinFn
 
-
 func init() {
 	builtinRegistry = map[string]builtinFn{
 		// 3D primitives
-		"_cube":     func(e *evaluator, args []value) (value, error) { return e.builtinCube(args) },
-		"_sphere":   func(e *evaluator, args []value) (value, error) { return e.builtinSphere(args) },
-		"_cylinder": func(e *evaluator, args []value) (value, error) { return e.builtinCylinder(args) },
+		"_cube":            func(e *evaluator, args []value) (value, error) { return e.builtinCube(args) },
+		"_sphere":          func(e *evaluator, args []value) (value, error) { return e.builtinSphere(args) },
+		"_cylinder":        func(e *evaluator, args []value) (value, error) { return e.builtinCylinder(args) },
+		"_cube_rounded":    func(e *evaluator, args []value) (value, error) { return e.builtinCubeRounded(args) },
+		"_frustum_rounded": func(e *evaluator, args []value) (value, error) { return e.builtinFrustumRounded(args) },
 		// 2D primitives
 		"_square": func(e *evaluator, args []value) (value, error) { return e.builtinSquare(args) },
 		"_circle": func(e *evaluator, args []value) (value, error) { return e.builtinCircle(args) },
@@ -468,9 +469,15 @@ func meshVertexNormals(sv *structVal, args []value) (value, error) {
 		if ln > 0 {
 			nx, ny, nz = nx/ln, ny/ln, nz/ln
 		}
-		acc[i0][0] += nx; acc[i0][1] += ny; acc[i0][2] += nz
-		acc[i1][0] += nx; acc[i1][1] += ny; acc[i1][2] += nz
-		acc[i2][0] += nx; acc[i2][1] += ny; acc[i2][2] += nz
+		acc[i0][0] += nx
+		acc[i0][1] += ny
+		acc[i0][2] += nz
+		acc[i1][0] += nx
+		acc[i1][1] += ny
+		acc[i1][2] += nz
+		acc[i2][0] += nx
+		acc[i2][1] += ny
+		acc[i2][2] += nz
 	}
 
 	// Normalize per-vertex normals
