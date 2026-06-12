@@ -75,6 +75,17 @@ const scadUnionHelper = `fn scad_union(arr []Solid) Solid {
 	return Union(arr: arr)
 }`
 
+// scadCrossHelper is OpenSCAD's cross(a, b): the 3D vector cross product, kept in
+// the []Number vector model (Facet's Cross takes Vec3, which would need a
+// round-trip through Vec3 components and back).
+const scadCrossHelper = `fn scad_cross(a, b []Number) []Number {
+	return [
+		a[1] * b[2] - a[2] * b[1],
+		a[2] * b[0] - a[0] * b[2],
+		a[0] * b[1] - a[1] * b[0],
+	]
+}`
+
 // helperPreamble returns the definitions of every emitted helper the program
 // references, each followed by a blank line. Unreferenced helpers are omitted.
 func (e *Emitter) helperPreamble() string {
@@ -89,6 +100,7 @@ func (e *Emitter) helperPreamble() string {
 		{e.usesV2Path, scadV2PathHelper},
 		{e.usesLookup, scadLookupHelper},
 		{e.usesUnion, scadUnionHelper},
+		{e.usesCross, scadCrossHelper},
 	} {
 		if h.used {
 			w.write(h.src)
