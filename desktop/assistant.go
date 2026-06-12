@@ -43,7 +43,7 @@ type cliDef struct {
 }
 
 var knownCLIs = []cliDef{
-	{ID: "claude", Name: "Claude", Bin: "claude", Models: []string{"sonnet", "opus", "haiku"}, DefaultModel: "sonnet"},
+	{ID: "claude", Name: "Claude", Bin: "claude", Models: []string{"sonnet", "opus", "haiku", "fable"}, DefaultModel: "sonnet"},
 	{ID: "ollama", Name: "Ollama", Bin: "ollama", Models: []string{"llama3", "codellama", "mistral", "deepseek-coder"}, DefaultModel: "llama3"},
 	{ID: "aichat", Name: "AIChat", Bin: "aichat", Models: []string{}, DefaultModel: ""},
 	{ID: "llm", Name: "LLM", Bin: "llm", Models: []string{}, DefaultModel: ""},
