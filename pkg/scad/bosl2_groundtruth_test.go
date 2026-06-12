@@ -202,6 +202,9 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		// exp(1) == e and sign(-4) == -1 drive the cube dimensions, checking the
 		// Pow(base: E) mapping and the sign ternary against OpenSCAD's values.
 		{"exp_sign", "cube([exp(1), sign(-4)+3, 1]);", 0.01},
+		// BOSL2 last/reverse: reverse([1,2,9])[1] == 2 and last([1,2,9]) == 9 drive
+		// the cube dims — checks the index/comprehension mappings vs OpenSCAD.
+		{"list_utils", "cube([reverse([1,2,9])[1], 1, last([1,2,9])]);", 0.01},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
