@@ -20,8 +20,6 @@ var mathBuiltins = map[string]mathBuiltin{
 	"floor": {"Floor", []string{"n"}},
 	"ceil":  {"Ceil", []string{"n"}},
 	"round": {"Round", []string{"n"}},
-	"min":   {"Min", []string{"a", "b"}},
-	"max":   {"Max", []string{"a", "b"}},
 	"len":   {"Size", []string{"of"}},
 }
 
@@ -67,6 +65,31 @@ func (e *Emitter) call(n *ast.Call) string {
 		if len(n.Args) == 2 {
 			return "Number(from: Atan2(" + e.mapArgs("atan2", n.Args, []string{"y", "x"}) + "))"
 		}
+	case "min", "max":
+		// OpenSCAD min/max take either a single list — min([a,b,c]) — or two-or-more
+		// scalars — min(a, b, c). Facet's Min/Max are strictly binary, so a list
+		// reduces with fold and multiple scalars left-fold into nested calls.
+		fn := "Min"
+		if n.Name == "max" {
+			fn = "Max"
+		}
+		if len(n.Args) == 1 && n.Args[0].Name == "" {
+			// Parenthesized so it stays a single operand in a surrounding expression
+			// (e.g. min([…]) + 4).
+			return "(fold acc, x " + e.operand(n.Args[0].Value, kNumber) +
+				" { yield " + fn + "(a: acc, b: x) })"
+		}
+		if len(n.Args) >= 2 {
+			out := e.expr(n.Args[0].Value, kNumber)
+			for _, a := range n.Args[1:] {
+				if a.Name != "" {
+					return e.errf(n.Pos(), "%s takes positional arguments", n.Name)
+				}
+				out = fn + "(a: " + out + ", b: " + e.expr(a.Value, kNumber) + ")"
+			}
+			return out
+		}
+		return e.errf(n.Pos(), "%s expects a list or two-or-more values", n.Name)
 	case "norm": // norm(v) == Sqrt(Dot(v, v)) (Facet has no vector-length built-in)
 		if len(n.Args) == 1 && n.Args[0].Name == "" {
 			v := e.expr(n.Args[0].Value, kNumber)

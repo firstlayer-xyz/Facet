@@ -202,6 +202,9 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		// exp(1) == e and sign(-4) == -1 drive the cube dimensions, checking the
 		// Pow(base: E) mapping and the sign ternary against OpenSCAD's values.
 		{"exp_sign", "cube([exp(1), sign(-4)+3, 1]);", 0.01},
+		// min/max variadic: min([3,1,2])+4 == 5, max(2,5,1) == 5, min(3,1)+1 == 2
+		// drive the cube dims — checks the fold-reduce and nested-Min/Max mappings.
+		{"minmax_variadic", "cube([min([3,1,2])+4, max(2,5,1), min(3,1)+1]);", 0.01},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
