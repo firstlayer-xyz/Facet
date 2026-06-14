@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+// cross(a, b) is the 3D vector cross product; it maps to the injected scad_cross
+// helper, which stays in the []Number vector model.
+func TestTranspileCross(t *testing.T) {
+	res, err := Transpile("v = cross([1,0,0],[0,1,0]);\ncube([1,1,v[2]+1]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("cross should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "scad_cross(a: [1, 0, 0], b: [0, 1, 0])") {
+		t.Fatalf("expected scad_cross call:\n%s", res.Facet)
+	}
+	if !strings.Contains(res.Facet, "fn scad_cross(") {
+		t.Fatalf("expected scad_cross helper injected:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // exp(x) and sign(x) have no Facet builtin: exp maps to Pow(base: E, exp: x),
 // and sign to a pure -1/0/+1 ternary.
 func TestTranspileExpSign(t *testing.T) {

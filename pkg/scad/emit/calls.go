@@ -90,6 +90,13 @@ func (e *Emitter) call(n *ast.Call) string {
 			return out
 		}
 		return e.errf(n.Pos(), "%s expects a list or two-or-more values", n.Name)
+	case "cross": // cross(a, b): 3D vector cross product, via the scad_cross helper.
+		if len(n.Args) == 2 && n.Args[0].Name == "" && n.Args[1].Name == "" {
+			e.usesCross = true
+			return "scad_cross(a: " + e.expr(n.Args[0].Value, kNumber) +
+				", b: " + e.expr(n.Args[1].Value, kNumber) + ")"
+		}
+		return e.errf(n.Pos(), "cross expects two 3-vectors")
 	case "norm": // norm(v) == Sqrt(Dot(v, v)) (Facet has no vector-length built-in)
 		if len(n.Args) == 1 && n.Args[0].Name == "" {
 			v := e.expr(n.Args[0].Value, kNumber)

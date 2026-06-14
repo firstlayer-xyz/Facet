@@ -50,6 +50,8 @@ type Emitter struct {
 	// usesUnion is set when a conditional-geometry body is emitted as
 	// scad_union(arr:) (a runtime-length list union), so File injects scad_union.
 	usesUnion bool
+	// usesCross is set when cross() is emitted, so File injects scad_cross.
+	usesCross bool
 	// childUse records, per module, whether it consumes children() and whether
 	// those children are 2D (see analyzeChildren). A module that uses children
 	// gains a `children []Solid`/`[]Sketch` parameter.

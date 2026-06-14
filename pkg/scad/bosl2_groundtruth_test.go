@@ -205,6 +205,9 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		// min/max variadic: min([3,1,2])+4 == 5, max(2,5,1) == 5, min(3,1)+1 == 2
 		// drive the cube dims — checks the fold-reduce and nested-Min/Max mappings.
 		{"minmax_variadic", "cube([min([3,1,2])+4, max(2,5,1), min(3,1)+1]);", 0.01},
+		// cross([2,0,0],[0,3,0]) == [0,0,6]; its z drives the cube height (== 6),
+		// checking the scad_cross helper against OpenSCAD's cross product.
+		{"cross_z", "cube([1, 1, cross([2,0,0],[0,3,0])[2]]);", 0.01},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
