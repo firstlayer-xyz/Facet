@@ -21,6 +21,29 @@ func TestTranspileCross(t *testing.T) {
 	assertTypeChecks(t, res.Facet)
 }
 
+// BOSL2 last(list) / reverse(list): last indexes the final element; reverse maps
+// to a reverse-index comprehension (parenthesized so it composes as an operand).
+func TestTranspileListUtils(t *testing.T) {
+	res, err := Transpile("include <BOSL2/std.scad>\nv=[2,4,6];\ncube([reverse(v)[1], 1, last(v)]);\n", "part.scad")
+	if err != nil {
+		t.Fatalf("last/reverse should transpile, got: %v", err)
+	}
+	if !strings.Contains(res.Facet, "v[Size(of: v) - 1]") {
+		t.Fatalf("expected last -> v[Size-1]:\n%s", res.Facet)
+	}
+	// reverse -> a descending-index comprehension (the formatter may wrap it, so
+	// check the range and the yield separately).
+	if !strings.Contains(res.Facet, "for i [Size(of: v) - 1:0:-1]") || !strings.Contains(res.Facet, "yield v[Number(from: i)]") {
+		t.Fatalf("expected reverse -> reverse-index comprehension:\n%s", res.Facet)
+	}
+	// reverse() guards the empty list (the descending range would otherwise
+	// error), since reverse([]) == [] in OpenSCAD.
+	if !strings.Contains(res.Facet, "Size(of: v) == 0 ? []") {
+		t.Fatalf("expected reverse to guard the empty list:\n%s", res.Facet)
+	}
+	assertTypeChecks(t, res.Facet)
+}
+
 // exp(x) and sign(x) have no Facet builtin: exp maps to Pow(base: E, exp: x),
 // and sign to a pure -1/0/+1 ternary.
 func TestTranspileExpSign(t *testing.T) {

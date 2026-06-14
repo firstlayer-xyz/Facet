@@ -208,6 +208,11 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		// cross([2,0,0],[0,3,0]) == [0,0,6]; its z drives the cube height (== 6),
 		// checking the scad_cross helper against OpenSCAD's cross product.
 		{"cross_z", "cube([1, 1, cross([2,0,0],[0,3,0])[2]]);", 0.01},
+		// BOSL2 last/reverse: reverse([1,2,9])[1] == 2 and last([1,2,9]) == 9 drive
+		// the cube dims — checks the index/comprehension mappings vs OpenSCAD.
+		{"list_utils", "cube([reverse([1,2,9])[1], 1, last([1,2,9])]);", 0.01},
+		// reverse([]) == [] (not an error): len 0 → the cube's x is 1.
+		{"reverse_empty", "e=[]; cube([len(reverse(e))+1, 1, 1]);", 0.01},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

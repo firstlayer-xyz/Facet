@@ -52,6 +52,21 @@ func (e *Emitter) call(n *ast.Call) string {
 		if a, ok := soleArg(n); ok {
 			return "Pow(base: E, exp: " + e.expr(a, kNumber) + ")"
 		}
+	case "last": // BOSL2 last(list) -> the final element, list[len-1].
+		if a, ok := soleArg(n); ok {
+			v := e.operand(a, kNumber)
+			return v + "[Size(of: " + v + ") - 1]"
+		}
+	case "reverse": // BOSL2 reverse(list) -> elements in reverse index order.
+		if a, ok := soleArg(n); ok {
+			v := e.operand(a, kNumber)
+			// Facet ranges are [start:end:step] (step last); reverse counts down.
+			// An empty list reverses to []: the descending range [-1:0:-1] would
+			// otherwise error (negative step with start < end), so guard it —
+			// reverse([]) == [] in OpenSCAD. Parenthesized so it stays one operand.
+			sz := "Size(of: " + v + ")"
+			return "(" + sz + " == 0 ? [] : (for i [" + sz + " - 1 : 0 : -1] { yield " + v + "[Number(from: i)] }))"
+		}
 	case "sign": // sign(x) -> -1 / 0 / +1 (Facet has no sign(); a pure ternary).
 		if a, ok := soleArg(n); ok {
 			x := e.operand(a, kNumber)
