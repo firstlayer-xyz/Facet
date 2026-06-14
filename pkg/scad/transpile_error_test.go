@@ -31,8 +31,15 @@ func TestTranspileListUtils(t *testing.T) {
 	if !strings.Contains(res.Facet, "v[Size(of: v) - 1]") {
 		t.Fatalf("expected last -> v[Size-1]:\n%s", res.Facet)
 	}
-	if !strings.Contains(res.Facet, "for i [Size(of: v) - 1:0:-1] { yield v[Number(from: i)] }") {
+	// reverse -> a descending-index comprehension (the formatter may wrap it, so
+	// check the range and the yield separately).
+	if !strings.Contains(res.Facet, "for i [Size(of: v) - 1:0:-1]") || !strings.Contains(res.Facet, "yield v[Number(from: i)]") {
 		t.Fatalf("expected reverse -> reverse-index comprehension:\n%s", res.Facet)
+	}
+	// reverse() guards the empty list (the descending range would otherwise
+	// error), since reverse([]) == [] in OpenSCAD.
+	if !strings.Contains(res.Facet, "Size(of: v) == 0 ? []") {
+		t.Fatalf("expected reverse to guard the empty list:\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 }

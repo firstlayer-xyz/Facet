@@ -61,8 +61,11 @@ func (e *Emitter) call(n *ast.Call) string {
 		if a, ok := soleArg(n); ok {
 			v := e.operand(a, kNumber)
 			// Facet ranges are [start:end:step] (step last); reverse counts down.
-			// Parenthesized so it stays one operand (e.g. reverse(v)[0]).
-			return "(for i [Size(of: " + v + ") - 1 : 0 : -1] { yield " + v + "[Number(from: i)] })"
+			// An empty list reverses to []: the descending range [-1:0:-1] would
+			// otherwise error (negative step with start < end), so guard it —
+			// reverse([]) == [] in OpenSCAD. Parenthesized so it stays one operand.
+			sz := "Size(of: " + v + ")"
+			return "(" + sz + " == 0 ? [] : (for i [" + sz + " - 1 : 0 : -1] { yield " + v + "[Number(from: i)] }))"
 		}
 	case "sign": // sign(x) -> -1 / 0 / +1 (Facet has no sign(); a pure ternary).
 		if a, ok := soleArg(n); ok {
