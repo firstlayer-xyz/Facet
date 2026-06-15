@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +21,7 @@ import (
 	"facet/pkg/fctlang/loader"
 	"facet/pkg/fctlang/parser"
 	"facet/pkg/manifold"
+	"facet/pkg/render"
 )
 
 func usage() {
@@ -26,6 +32,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  -entry <name>    Entry point function (default: Main)\n")
 	fmt.Fprintf(os.Stderr, "  -set key=value   Override a parameter (repeatable)\n")
 	fmt.Fprintf(os.Stderr, "  -libdir <dir>    Library search directory\n")
+	fmt.Fprintf(os.Stderr, "  -size <px>       Image size for .png/.jpg output (default: 1024)\n")
 	fmt.Fprintf(os.Stderr, "  -ast             Dump parsed AST as JSON\n")
 	fmt.Fprintf(os.Stderr, "  -fmt             Format source code\n")
 	fmt.Fprintf(os.Stderr, "  -w               Write formatted output back to file (with -fmt)\n")
@@ -49,6 +56,7 @@ func parseValue(s string) interface{} {
 func main() {
 	var input, output, libDir, entry string
 	var dumpAST, doFmt, fmtWrite bool
+	var size int
 	overrides := map[string]interface{}{}
 
 	args := os.Args[1:]
@@ -83,6 +91,17 @@ func main() {
 			}
 			i++
 			libDir = args[i]
+		case "-size":
+			if i+1 >= len(args) {
+				usage()
+			}
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n <= 0 {
+				fmt.Fprintf(os.Stderr, "error: -size requires a positive integer, got %q\n", args[i])
+				os.Exit(1)
+			}
+			size = n
 		case "-ast":
 			dumpAST = true
 		case "-fmt":
@@ -191,8 +210,10 @@ func main() {
 		err = manifold.ExportSTLMulti(solids, output)
 	case ".obj":
 		err = manifold.ExportOBJMulti(solids, output)
+	case ".png", ".jpg", ".jpeg":
+		err = renderImage(solids, output, strings.ToLower(ext), size)
 	default:
-		err = fmt.Errorf("unsupported export format %q (supported: .3mf, .stl, .obj)", ext)
+		err = fmt.Errorf("unsupported export format %q (supported: .3mf, .stl, .obj, .png)", ext)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "export error: %v\n", err)
@@ -200,4 +221,52 @@ func main() {
 	}
 
 	fmt.Println(output)
+}
+
+// renderImage rasterizes the solids to a square PNG or JPEG preview. PNG keeps
+// the transparent background; JPEG (no alpha) is composited onto white.
+func renderImage(solids []*manifold.Solid, output, ext string, size int) error {
+	if size <= 0 {
+		size = 1024
+	}
+	dm := manifold.MergeExtractExpandedMeshes(solids, 40)
+	img := render.Mesh(expandedFloats(dm.ExpandedRaw), size, size)
+
+	f, err := os.Create(output)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if ext == ".png" {
+		return png.Encode(f, img)
+	}
+	// JPEG has no alpha: flatten onto white so the background isn't black.
+	bg := image.NewRGBA(img.Bounds())
+	for i := range bg.Pix {
+		bg.Pix[i] = 0xff
+	}
+	bg = compositeOver(bg, img)
+	return jpeg.Encode(f, bg, &jpeg.Options{Quality: 90})
+}
+
+// expandedFloats decodes the kernel's little-endian float32 position buffer.
+func expandedFloats(raw []byte) []float32 {
+	out := make([]float32, len(raw)/4)
+	for i := range out {
+		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[i*4:]))
+	}
+	return out
+}
+
+// compositeOver alpha-composites src over dst (premultiplied by src alpha).
+func compositeOver(dst, src *image.RGBA) *image.RGBA {
+	for i := 0; i < len(src.Pix); i += 4 {
+		a := uint32(src.Pix[i+3])
+		ia := 255 - a
+		for c := 0; c < 3; c++ {
+			dst.Pix[i+c] = uint8((uint32(src.Pix[i+c])*a + uint32(dst.Pix[i+c])*ia) / 255)
+		}
+		dst.Pix[i+3] = 0xff
+	}
+	return dst
 }
