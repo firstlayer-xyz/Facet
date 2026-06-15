@@ -77,3 +77,42 @@ func TestClaudeAssistantSingleTurn(t *testing.T) {
 	}
 	ca.Close()
 }
+
+func TestClaudeAssistantEmitsToolUseAndThinking(t *testing.T) {
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, nil, fakeBinPath())
+	ca.newCmd = fakeCmdFactory(t, "tools", "")
+	if err := ca.Send(Turn{UserMessage: "edit"}, SessionConfig{MaxTurns: 5}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	waitForEvent(t, rec, "assistant:done")
+	for _, want := range []string{"assistant:tool-use", "assistant:thinking"} {
+		found := false
+		for _, n := range rec.names() {
+			if n == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("missing %s; got %v", want, rec.names())
+		}
+	}
+	ca.Close()
+}
+
+func TestClaudeAssistantSurfacesResultError(t *testing.T) {
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, nil, fakeBinPath())
+	ca.newCmd = fakeCmdFactory(t, "error", "")
+	if err := ca.Send(Turn{UserMessage: "go"}, SessionConfig{MaxTurns: 3}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	waitForEvent(t, rec, "assistant:error")
+	// An is_error result must NOT also emit assistant:done.
+	for _, n := range rec.names() {
+		if n == "assistant:done" {
+			t.Fatalf("is_error result should not emit done; got %v", rec.names())
+		}
+	}
+	ca.Close()
+}

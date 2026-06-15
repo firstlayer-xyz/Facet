@@ -136,6 +136,68 @@ func TestHelperProcess(t *testing.T) {
 				"result": "echo: " + text, "session_id": sessionID})
 		}
 		os.Exit(0)
+	case "tools":
+		sessionID := argValue(realArgs, "--session-id")
+		if sessionID == "" {
+			sessionID = argValue(realArgs, "--resume")
+		}
+		if sessionID == "" {
+			sessionID = "fake-session"
+		}
+		out := bufio.NewWriter(os.Stdout)
+		emit := func(v any) {
+			b, _ := json.Marshal(v)
+			out.Write(b)
+			out.WriteByte('\n')
+			out.Flush()
+		}
+		emit(map[string]any{"type": "system", "subtype": "init", "session_id": sessionID})
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" {
+				continue
+			}
+			var in map[string]any
+			if json.Unmarshal([]byte(line), &in) != nil {
+				continue
+			}
+			if in["type"] == "control_request" {
+				emit(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success"}})
+				continue
+			}
+			// One tool round-trip, then a text answer, then the result.
+			emit(map[string]any{"type": "assistant", "message": map[string]any{
+				"role": "assistant", "content": []any{map[string]any{"type": "tool_use", "id": "t1", "name": "get_editor_code", "input": map[string]any{}}},
+			}})
+			emit(map[string]any{"type": "user", "message": map[string]any{
+				"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": "t1", "content": "code"}},
+			}})
+			emit(map[string]any{"type": "assistant", "message": map[string]any{
+				"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "done"}},
+			}})
+			emit(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": "done", "session_id": sessionID})
+		}
+		os.Exit(0)
+	case "error":
+		out := bufio.NewWriter(os.Stdout)
+		emit := func(v any) {
+			b, _ := json.Marshal(v)
+			out.Write(b)
+			out.WriteByte('\n')
+			out.Flush()
+		}
+		emit(map[string]any{"type": "system", "subtype": "init", "session_id": "fake-session"})
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
+		for sc.Scan() {
+			if strings.TrimSpace(sc.Text()) == "" {
+				continue
+			}
+			emit(map[string]any{"type": "result", "subtype": "error_max_turns", "is_error": true, "session_id": "fake-session"})
+		}
+		os.Exit(0)
 	}
 	os.Exit(0)
 }

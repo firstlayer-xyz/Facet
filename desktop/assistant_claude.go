@@ -118,7 +118,9 @@ type claudeAssistant struct {
 	sessionID string    // assigned UUID, stable across respawns of one conversation
 	sig       launchSig // signature the live proc was launched with
 	streaming bool
-	emitted   bool // any assistant text emitted during the current turn
+	emitted   bool   // any assistant text emitted during the current turn
+	tools     int    // tool_use count during the current turn
+	streamErr string // stream-level error captured this turn, surfaced on failure
 }
 
 func newClaudeAssistant(emit EventEmitter, mcp AssistantMCPBridge, binPath string) *claudeAssistant {
@@ -149,6 +151,8 @@ func (c *claudeAssistant) Send(turn Turn, cfg SessionConfig) error {
 	}
 	c.streaming = true
 	c.emitted = false
+	c.tools = 0
+	c.streamErr = ""
 	if _, err := c.proc.stdin.Write(append(frame, '\n')); err != nil {
 		c.streaming = false
 		return fmt.Errorf("write frame: %w", err)
@@ -225,12 +229,18 @@ func (c *claudeAssistant) read(p *claudeProc, stdout io.Reader) {
 	c.streaming = false
 	c.mu.Unlock()
 	if wasStreaming && p.ctx.Err() == nil {
-		c.emit.Emit("assistant:error", claudeExitError(err))
+		msg := c.takeStreamErr()
+		if msg == "" {
+			msg = claudeExitError(err)
+		}
+		c.emit.Emit("assistant:error", msg)
 	}
 }
 
-// handleLine parses one NDJSON event. Task 5 handles text + result only; Task 6
-// adds tool_use, thinking, user, error, and system events.
+// handleLine parses one NDJSON event and emits the matching assistant:* event.
+// Text streams as tokens; tool_use bumps the tool counter; tool-result user
+// events drive the thinking indicator; a result ends the turn. thinking blocks
+// and benign system/rate_limit events are ignored.
 func (c *claudeAssistant) handleLine(line []byte) {
 	if len(line) == 0 {
 		return
@@ -242,26 +252,49 @@ func (c *claudeAssistant) handleLine(line []byte) {
 	}
 	switch event["type"] {
 	case "assistant":
-		if msg, ok := event["message"].(map[string]any); ok {
-			if content, ok := msg["content"].([]any); ok {
-				for _, block := range content {
-					cb, ok := block.(map[string]any)
-					if !ok {
-						continue
-					}
-					if cb["type"] == "text" {
-						if text, ok := cb["text"].(string); ok && text != "" {
-							c.mu.Lock()
-							c.emitted = true
-							c.mu.Unlock()
-							c.emit.Emit("assistant:token", text)
-						}
-					}
-				}
-			}
-		}
+		c.handleAssistant(event)
+	case "user":
+		c.emit.Emit("assistant:thinking", c.toolCount())
 	case "result":
 		c.handleResult(event)
+	case "error":
+		c.setStreamErr(extractErrorMessage(event))
+	case "system":
+		if event["subtype"] == "error" {
+			c.setStreamErr(extractErrorMessage(event))
+		}
+	}
+}
+
+func (c *claudeAssistant) handleAssistant(event map[string]any) {
+	msg, ok := event["message"].(map[string]any)
+	if !ok {
+		return
+	}
+	content, ok := msg["content"].([]any)
+	if !ok {
+		return
+	}
+	for _, block := range content {
+		cb, ok := block.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch cb["type"] {
+		case "text":
+			if text, ok := cb["text"].(string); ok && text != "" {
+				c.mu.Lock()
+				c.emitted = true
+				c.mu.Unlock()
+				c.emit.Emit("assistant:token", text)
+			}
+		case "tool_use":
+			n := c.bumpToolCount()
+			if name, ok := cb["name"].(string); ok {
+				c.emit.Emit("assistant:tool-use", name, n)
+			}
+		}
+		// "thinking" blocks carry no user-facing surface and are ignored.
 	}
 }
 
@@ -271,16 +304,75 @@ func (c *claudeAssistant) handleResult(event map[string]any) {
 		c.sessionID = sid
 		c.mu.Unlock()
 	}
+	if isErr, _ := event["is_error"].(bool); isErr {
+		msg := ""
+		if text, ok := event["result"].(string); ok && text != "" {
+			msg = text
+		} else if sub, ok := event["subtype"].(string); ok && sub != "" {
+			msg = friendlyResultSubtypeError(sub, c.maxTurns())
+		} else {
+			msg = c.takeStreamErr()
+		}
+		c.endTurn()
+		c.emit.Emit("assistant:error", msg)
+		return
+	}
 	c.mu.Lock()
 	emitted := c.emitted
-	c.streaming = false
 	c.mu.Unlock()
 	if !emitted {
 		if text, ok := event["result"].(string); ok && text != "" {
 			c.emit.Emit("assistant:token", text)
 		}
 	}
+	c.endTurn()
 	c.emit.Emit("assistant:done", "")
+}
+
+// endTurn resets per-turn state under the lock. The process stays alive.
+func (c *claudeAssistant) endTurn() {
+	c.mu.Lock()
+	c.streaming = false
+	c.emitted = false
+	c.tools = 0
+	c.streamErr = ""
+	c.mu.Unlock()
+}
+
+func (c *claudeAssistant) bumpToolCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.tools++
+	return c.tools
+}
+
+func (c *claudeAssistant) toolCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.tools
+}
+
+func (c *claudeAssistant) maxTurns() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sig.maxTurns
+}
+
+func (c *claudeAssistant) setStreamErr(msg string) {
+	if msg == "" {
+		return
+	}
+	c.mu.Lock()
+	c.streamErr = msg
+	c.mu.Unlock()
+}
+
+func (c *claudeAssistant) takeStreamErr() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	m := c.streamErr
+	c.streamErr = ""
+	return m
 }
 
 // Interrupt is implemented in Task 8 (sends the stream-json interrupt control
