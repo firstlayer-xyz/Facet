@@ -8,7 +8,7 @@
         <key>CFBundleExecutable</key>
         <string>{{.OutputFilename}}</string>
         <key>CFBundleIdentifier</key>
-        <string>com.wails.{{.Name}}</string>
+        <string>xyz.firstlayer.facet</string>
         <key>CFBundleVersion</key>
         <string>{{.Info.ProductVersion}}</string>
         <key>CFBundleGetInfoString</key>
@@ -25,32 +25,56 @@
         <string>{{.Info.Copyright}}</string>
         <key>NSCameraUsageDescription</key>
         <string>Facet uses the camera for head tracking to create a 3D parallax effect in the viewport.</string>
-        {{if .Info.FileAssociations}}
         <key>CFBundleDocumentTypes</key>
         <array>
-          {{range .Info.FileAssociations}}
           <dict>
-            <key>CFBundleTypeExtensions</key>
-            <array>
-              <string>{{.Ext}}</string>
-            </array>
             <key>CFBundleTypeName</key>
-            <string>{{.Name}}</string>
+            <string>Facet Model</string>
             <key>CFBundleTypeRole</key>
-            <string>{{.Role}}</string>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>LSItemContentTypes</key>
+            <array>
+              <string>xyz.firstlayer.facet.fct</string>
+            </array>
             <key>CFBundleTypeIconFile</key>
-            <string>{{.IconName}}</string>
+            <string>iconfile</string>
           </dict>
-          {{end}}
         </array>
-        {{end}}
+        <key>UTExportedTypeDeclarations</key>
+        <array>
+          <dict>
+            <key>UTTypeIdentifier</key>
+            <string>xyz.firstlayer.facet.fct</string>
+            <key>UTTypeDescription</key>
+            <string>Facet Model</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+              <string>public.source-code</string>
+            </array>
+            <key>UTTypeIconFile</key>
+            <string>iconfile</string>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+              <key>public.filename-extension</key>
+              <array>
+                <string>fct</string>
+              </array>
+              <key>public.mime-type</key>
+              <array>
+                <string>text/x-facet</string>
+              </array>
+            </dict>
+          </dict>
+        </array>
         {{if .Info.Protocols}}
         <key>CFBundleURLTypes</key>
         <array>
           {{range .Info.Protocols}}
             <dict>
                 <key>CFBundleURLName</key>
-                <string>com.wails.{{.Scheme}}</string>
+                <string>xyz.firstlayer.{{.Scheme}}</string>
                 <key>CFBundleURLSchemes</key>
                 <array>
                     <string>{{.Scheme}}</string>
