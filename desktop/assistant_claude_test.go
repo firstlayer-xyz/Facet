@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -113,6 +115,69 @@ func TestClaudeAssistantSurfacesResultError(t *testing.T) {
 		if n == "assistant:done" {
 			t.Fatalf("is_error result should not emit done; got %v", rec.names())
 		}
+	}
+	ca.Close()
+}
+
+// mustTurn sends one turn and waits for it to finish, clearing the recorder so
+// the next turn's events are isolated.
+func mustTurn(t *testing.T, ca *claudeAssistant, rec *recordingEmitter, msg string, cfg SessionConfig) {
+	t.Helper()
+	rec.reset()
+	if err := ca.Send(Turn{UserMessage: msg}, cfg); err != nil {
+		t.Fatalf("Send(%q): %v", msg, err)
+	}
+	waitForEvent(t, rec, "assistant:done")
+}
+
+func hasFlag(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+func TestClaudeAssistantReusesProcessAcrossTurns(t *testing.T) {
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, nil, fakeBinPath())
+	ca.newCmd = fakeCmdFactory(t, "claude", "")
+
+	mustTurn(t, ca, rec, "one", SessionConfig{MaxTurns: 2})
+	pid1 := ca.pidForTest()
+	mustTurn(t, ca, rec, "two", SessionConfig{MaxTurns: 2})
+	pid2 := ca.pidForTest()
+	if pid1 == 0 || pid1 != pid2 {
+		t.Fatalf("expected same process across turns; pid1=%d pid2=%d", pid1, pid2)
+	}
+	ca.Close()
+}
+
+func TestClaudeAssistantRespawnsOnConfigChange(t *testing.T) {
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, nil, fakeBinPath())
+	var lastArgs []string
+	ca.newCmd = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		lastArgs = args
+		full := append([]string{"-test.run=TestHelperProcess", "--", "claude", ""}, args...)
+		cmd := exec.CommandContext(ctx, os.Args[0], full...)
+		cmd.Env = append(os.Environ(), "GO_WANT_FAKE_CLAUDE=1")
+		return cmd
+	}
+
+	mustTurn(t, ca, rec, "one", SessionConfig{Model: "opus", MaxTurns: 2})
+	pid1 := ca.pidForTest()
+	if !hasFlag(lastArgs, "--session-id") {
+		t.Fatalf("first launch should use --session-id; args=%v", lastArgs)
+	}
+	mustTurn(t, ca, rec, "two", SessionConfig{Model: "sonnet", MaxTurns: 2})
+	pid2 := ca.pidForTest()
+	if pid1 == pid2 {
+		t.Fatalf("model change should respawn; pid stayed %d", pid1)
+	}
+	if !hasFlag(lastArgs, "--resume") {
+		t.Fatalf("respawn should use --resume to preserve the conversation; args=%v", lastArgs)
 	}
 	ca.Close()
 }

@@ -469,6 +469,16 @@ func claudeEnv() []string {
 	return append(env, fmt.Sprintf("MCP_TOOL_TIMEOUT=%d", mcpToolTimeoutMS))
 }
 
+// pidForTest returns the live process's PID, or 0 if none. Test-only accessor.
+func (c *claudeAssistant) pidForTest() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.proc == nil || c.proc.cmd.Process == nil {
+		return 0
+	}
+	return c.proc.cmd.Process.Pid
+}
+
 // stderrLogger forwards a child's stderr to the app log, one line at a time.
 type stderrLogger struct{ buf []byte }
 
