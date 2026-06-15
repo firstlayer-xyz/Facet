@@ -118,9 +118,10 @@ type claudeAssistant struct {
 	sessionID string    // assigned UUID, stable across respawns of one conversation
 	sig       launchSig // signature the live proc was launched with
 	streaming bool
-	emitted   bool   // any assistant text emitted during the current turn
-	tools     int    // tool_use count during the current turn
-	streamErr string // stream-level error captured this turn, surfaced on failure
+	emitted      bool   // any assistant text emitted during the current turn
+	tools        int    // tool_use count during the current turn
+	streamErr    string // stream-level error captured this turn, surfaced on failure
+	interrupting bool   // true between an Interrupt and the resulting stop result
 }
 
 func newClaudeAssistant(emit EventEmitter, mcp AssistantMCPBridge, binPath string) *claudeAssistant {
@@ -153,6 +154,7 @@ func (c *claudeAssistant) Send(turn Turn, cfg SessionConfig) error {
 	c.emitted = false
 	c.tools = 0
 	c.streamErr = ""
+	c.interrupting = false
 	if _, err := c.proc.stdin.Write(append(frame, '\n')); err != nil {
 		c.streaming = false
 		return fmt.Errorf("write frame: %w", err)
@@ -305,6 +307,15 @@ func (c *claudeAssistant) handleResult(event map[string]any) {
 		c.mu.Unlock()
 	}
 	if isErr, _ := event["is_error"].(bool); isErr {
+		c.mu.Lock()
+		interrupting := c.interrupting
+		c.mu.Unlock()
+		if interrupting {
+			// We initiated this stop — end the turn cleanly, not as an error.
+			c.endTurn()
+			c.emit.Emit("assistant:done", "")
+			return
+		}
 		msg := ""
 		if text, ok := event["result"].(string); ok && text != "" {
 			msg = text
@@ -336,6 +347,7 @@ func (c *claudeAssistant) endTurn() {
 	c.emitted = false
 	c.tools = 0
 	c.streamErr = ""
+	c.interrupting = false
 	c.mu.Unlock()
 }
 
@@ -375,9 +387,23 @@ func (c *claudeAssistant) takeStreamErr() string {
 	return m
 }
 
-// Interrupt is implemented in Task 8 (sends the stream-json interrupt control
-// frame). Stub here so claudeAssistant satisfies the Assistant interface.
-func (c *claudeAssistant) Interrupt() {}
+// Interrupt stops the in-flight turn by sending the stream-json interrupt
+// control frame. The process and its warm prompt cache stay alive; the reader
+// sees the resulting interrupted result and ends the turn cleanly. A no-op when
+// no turn is in flight.
+func (c *claudeAssistant) Interrupt() {
+	c.mu.Lock()
+	if c.proc == nil || !c.streaming {
+		c.mu.Unlock()
+		return
+	}
+	c.interrupting = true
+	stdin := c.proc.stdin
+	c.mu.Unlock()
+	if _, err := stdin.Write([]byte(`{"type":"control_request","request_id":"int","request":{"subtype":"interrupt"}}` + "\n")); err != nil {
+		log.Printf("[assistant] interrupt write failed: %v", err)
+	}
+}
 
 // Reset discards the session so the next Send starts a brand-new conversation.
 func (c *claudeAssistant) Reset() {

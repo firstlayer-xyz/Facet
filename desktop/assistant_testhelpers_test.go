@@ -198,6 +198,46 @@ func TestHelperProcess(t *testing.T) {
 			emit(map[string]any{"type": "result", "subtype": "error_max_turns", "is_error": true, "session_id": "fake-session"})
 		}
 		os.Exit(0)
+	case "interruptible":
+		out := bufio.NewWriter(os.Stdout)
+		emit := func(v any) {
+			b, _ := json.Marshal(v)
+			out.Write(b)
+			out.WriteByte('\n')
+			out.Flush()
+		}
+		emit(map[string]any{"type": "system", "subtype": "init", "session_id": "fake-session"})
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" {
+				continue
+			}
+			var in map[string]any
+			if json.Unmarshal([]byte(line), &in) != nil {
+				continue
+			}
+			if in["type"] == "control_request" {
+				// Acknowledge, then end the in-flight turn as an interrupted error.
+				emit(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": "int"}})
+				emit(map[string]any{"type": "result", "subtype": "error_during_execution", "is_error": true, "session_id": "fake-session"})
+				continue
+			}
+			text := firstUserText(in)
+			if text == "WAIT" {
+				// Start a turn but DON'T finish it — stays in-flight until interrupted.
+				emit(map[string]any{"type": "assistant", "message": map[string]any{
+					"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "working..."}},
+				}})
+				continue
+			}
+			emit(map[string]any{"type": "assistant", "message": map[string]any{
+				"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "echo: " + text}},
+			}})
+			emit(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": "echo: " + text, "session_id": "fake-session"})
+		}
+		os.Exit(0)
 	}
 	os.Exit(0)
 }

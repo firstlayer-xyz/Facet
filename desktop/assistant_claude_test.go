@@ -181,3 +181,57 @@ func TestClaudeAssistantRespawnsOnConfigChange(t *testing.T) {
 	}
 	ca.Close()
 }
+
+func TestClaudeInterruptIsBenignAndKeepsProcess(t *testing.T) {
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, nil, fakeBinPath())
+	ca.newCmd = fakeCmdFactory(t, "interruptible", "")
+
+	// Start a turn that hangs in-flight (fake emits "working..." and waits).
+	if err := ca.Send(Turn{UserMessage: "WAIT"}, SessionConfig{MaxTurns: 2}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	waitForEvent(t, rec, "assistant:token") // "working..." -> turn is in-flight
+	pid1 := ca.pidForTest()
+
+	ca.Interrupt()
+	waitForEvent(t, rec, "assistant:done") // benign stop, NOT an error
+
+	for _, n := range rec.names() {
+		if n == "assistant:error" {
+			t.Fatalf("interrupt must be benign (done, not error); got %v", rec.names())
+		}
+	}
+	if pid2 := ca.pidForTest(); pid2 != pid1 || pid1 == 0 {
+		t.Fatalf("interrupt must keep the same process alive; pid1=%d pid2=%d", pid1, pid2)
+	}
+	// The process is still usable for a normal follow-up turn.
+	mustTurn(t, ca, rec, "hello", SessionConfig{MaxTurns: 2})
+	ca.Close()
+}
+
+func TestClaudeInterruptWhileIdleIsNoop(t *testing.T) {
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, nil, fakeBinPath())
+	ca.newCmd = fakeCmdFactory(t, "claude", "")
+	ca.Interrupt() // no process yet — must not panic
+	mustTurn(t, ca, rec, "one", SessionConfig{MaxTurns: 2})
+	ca.Interrupt() // idle (turn done) — must be a no-op, not emit anything
+	ca.Close()
+}
+
+func TestClaudeAssistantRecoversFromCrash(t *testing.T) {
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, nil, fakeBinPath())
+	ca.newCmd = fakeCmdFactory(t, "claude", "")
+
+	mustTurn(t, ca, rec, "one", SessionConfig{MaxTurns: 2})
+	rec.reset()
+	if err := ca.Send(Turn{UserMessage: "CRASH"}, SessionConfig{MaxTurns: 2}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	waitForEvent(t, rec, "assistant:error") // crash surfaced
+	// Next turn lazily respawns (with --resume) and works.
+	mustTurn(t, ca, rec, "again", SessionConfig{MaxTurns: 2})
+	ca.Close()
+}
