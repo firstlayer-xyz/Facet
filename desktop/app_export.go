@@ -10,9 +10,9 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// ExportMesh exports the last evaluated model in the given format.
-// Uses Manifold's Assimp-backed I/O for export.
-// Shows a native save dialog to choose the output path.
+// ExportMesh exports the last evaluated model in the given format (3MF, STL, or
+// OBJ) via Manifold's pure-Go writers. Shows a native save dialog to choose the
+// output path.
 func (a *App) ExportMesh(format string, sources map[string]string, key string, entry string, overrides map[string]interface{}) error {
 	solids, err := evalSolids(a.ctx, evalRequest{Sources: sources, Key: key, Entry: entry, Overrides: overrides})
 	if err != nil {
@@ -34,9 +34,6 @@ func (a *App) ExportMesh(format string, sources map[string]string, key string, e
 	case "obj":
 		filter = wailsRuntime.FileFilter{DisplayName: "OBJ Files (*.obj)", Pattern: "*.obj"}
 		defaultName = "export.obj"
-	case "glb":
-		filter = wailsRuntime.FileFilter{DisplayName: "GLB Files (*.glb)", Pattern: "*.glb"}
-		defaultName = "export.glb"
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
 	}
@@ -52,7 +49,6 @@ func (a *App) ExportMesh(format string, sources map[string]string, key string, e
 		return nil // user cancelled
 	}
 
-	// Use Go-native writers for 3MF/STL/OBJ; assimp for other formats.
 	switch format {
 	case "3mf":
 		return manifold.Export3MFMulti(solids, path)
@@ -61,7 +57,7 @@ func (a *App) ExportMesh(format string, sources map[string]string, key string, e
 	case "obj":
 		return manifold.ExportOBJMulti(solids, path)
 	default:
-		return manifold.ExportMeshes(solids, path)
+		return fmt.Errorf("unsupported format: %s", format)
 	}
 }
 

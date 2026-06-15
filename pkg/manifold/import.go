@@ -10,31 +10,22 @@ import "C"
 import (
 	"fmt"
 	"unsafe"
+
+	"github.com/firstlayer-xyz/meshio"
 )
 
 // ImportMesh reads a mesh file and returns a Solid. The format is auto-detected
-// from the file extension by Assimp (STL, OBJ, and 100+ other formats).
+// from the file extension (STL, OBJ, or 3MF). Decoding is pure Go (via meshio) —
+// the resulting triangle mesh is handed to the kernel through CreateSolidFromMesh,
+// which orients the winding and validates manifoldness.
 func ImportMesh(path string) (*Solid, error) {
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
-
-	var ret C.FacetSolidRet
-	var cErr *C.char
-	C.facet_import_mesh(cPath, &ret, &cErr)
-	if ret.ptr == nil {
-		msg := "unknown error"
-		if cErr != nil {
-			msg = C.GoString(cErr)
-			C.facet_free_string(cErr)
-		}
-		return nil, fmt.Errorf("ImportMesh %s: %s", path, msg)
+	mesh, err := meshio.Read(path)
+	if err != nil {
+		return nil, fmt.Errorf("ImportMesh %s: %w", path, err)
 	}
-	s := newSolidWithOrigin(ret)
-	if s.NumComponents() == 0 {
-		// The file parsed but the kernel produced an empty manifold: the mesh
-		// is not a valid closed 2-manifold (open shell, self-intersecting, or
-		// non-orientable). Error rather than silently render nothing.
-		return nil, fmt.Errorf("ImportMesh %s: mesh is not a valid closed manifold (open, self-intersecting, or non-orientable)", path)
+	s, err := CreateSolidFromMesh(mesh.Vertices, mesh.Indices)
+	if err != nil {
+		return nil, fmt.Errorf("ImportMesh %s: %w", path, err)
 	}
 	return s, nil
 }

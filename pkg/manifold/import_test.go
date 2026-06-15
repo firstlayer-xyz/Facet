@@ -120,11 +120,13 @@ endsolid test
 	}
 }
 
+// OBJ is imported via meshio's pure-Go decoder (format auto-detected from the
+// .obj extension); CreateSolidFromMesh orients the winding to a valid solid.
 func TestImportMeshOBJ(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.obj")
 
-	// Tetrahedron with consistent outward-facing winding
+	// Tetrahedron with consistent outward-facing winding.
 	content := `# test tetrahedron
 v 0 0 0
 v 10 0 0
@@ -138,17 +140,45 @@ f 1 4 3
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-
 	solid, err := ImportMesh(path)
 	if err != nil {
 		t.Fatalf("ImportMesh OBJ: %v", err)
 	}
-	if solid == nil {
-		t.Fatal("expected non-nil Solid")
+	if v := solid.Volume(); v < 1.0 {
+		t.Errorf("expected positive volume, got %f", v)
 	}
-	vol := solid.Volume()
-	if vol < 1.0 {
-		t.Errorf("expected positive volume, got %f", vol)
+}
+
+// 3MF round-trips through the manifold-level export/import: a cube written by
+// Export3MF reads back via ImportMesh with its volume intact.
+func TestImportMesh3MF(t *testing.T) {
+	cube, err := CreateCube(1, 1, 1)
+	if err != nil {
+		t.Fatalf("CreateCube: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "cube.3mf")
+	if err := Export3MF(cube, path); err != nil {
+		t.Fatalf("Export3MF: %v", err)
+	}
+	solid, err := ImportMesh(path)
+	if err != nil {
+		t.Fatalf("ImportMesh 3MF: %v", err)
+	}
+	if v := solid.Volume(); math.Abs(v-1.0) > 0.01 {
+		t.Errorf("expected volume ~1.0, got %f", v)
+	}
+}
+
+// A format meshio does not decode (e.g. .ply) is rejected with an error naming
+// the unsupported extension, rather than silently producing nothing.
+func TestImportMeshUnsupportedExtension(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "model.ply")
+	if err := os.WriteFile(path, []byte("ply\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ImportMesh(path)
+	if err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("expected an unsupported-extension error for .ply, got: %v", err)
 	}
 }
 
@@ -213,8 +243,8 @@ func TestImportMeshSTLRoundTrip(t *testing.T) {
 }
 
 // TestImportMeshMissingFile verifies that a missing file surfaces as an
-// error that names the offending path. The error comes from Assimp's
-// "Unable to open file" message — the Go side does not pre-stat.
+// error that names the offending path. The error comes from the meshio reader's
+// os.Open failure — the Go side does not pre-stat.
 func TestImportMeshMissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.stl")
 	_, err := ImportMesh(path)

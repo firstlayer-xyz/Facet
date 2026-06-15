@@ -16,7 +16,7 @@ The toolchain is built automatically on first `make` and installed to `.go-toolc
 
 ## Third-Party Sources
 
-`scripts/build-manifold.sh` clones pinned versions of manifold, assimp, and freetype into `third_party/` on demand. There are no git submodules — nothing to init beyond `git clone`.
+`scripts/build-manifold.sh` clones pinned versions of manifold and freetype into `third_party/` on demand. There are no git submodules — nothing to init beyond `git clone`.
 
 ## Development
 

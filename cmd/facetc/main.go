@@ -184,7 +184,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Use Go-native writers for 3MF/STL/OBJ; assimp for other formats.
 	switch strings.ToLower(ext) {
 	case ".3mf":
 		err = manifold.Export3MFMulti(solids, output)
@@ -193,7 +192,7 @@ func main() {
 	case ".obj":
 		err = manifold.ExportOBJMulti(solids, output)
 	default:
-		err = manifold.ExportMeshes(solids, output)
+		err = fmt.Errorf("unsupported export format %q (supported: .3mf, .stl, .obj)", ext)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "export error: %v\n", err)
