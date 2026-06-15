@@ -44,6 +44,8 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 	switch n.Name {
 	case "cuboid":
 		return e.bosl2Cuboid(n), true
+	case "path_sweep":
+		return e.bosl2PathSweep(n), true
 	case "cyl":
 		return e.bosl2Cyl(n), true
 	case "tube":
@@ -981,6 +983,48 @@ func bosl2EdgeSetExpr(x ast.Expr) (string, bool) {
 		case "Z":
 			return "EdgesAlongZ()", true
 		}
+	}
+	return "", false
+}
+
+// bosl2PathSweep emits BOSL2's path_sweep(shape, path): a 2D profile swept along a
+// 3D path. It maps to Facet's Sketch.Sweep (a rotation-minimizing frame, as in
+// BOSL2). The profile must be a circle/square/polygon call; the path is a list of
+// 3D points, converted to []Vec3 by the scad_v3 helper. Only the basic two-
+// argument form is supported — closed/twist/scale/caps have no Sweep equivalent
+// and are rejected rather than silently dropped.
+func (e *Emitter) bosl2PathSweep(n *ast.ModuleCall) string {
+	e.rejectExtraArgs(n, 2, "shape", "path")
+	shape, ok0 := arg(n, "shape", 0)
+	path, ok1 := arg(n, "path", 1)
+	if !ok0 || !ok1 {
+		return e.errf(n.Pos(), "path_sweep needs a profile and a path")
+	}
+	prof, ok := e.sweepProfile(shape)
+	if !ok {
+		return e.errf(n.Pos(), "path_sweep: the profile must be circle(), square(), or polygon()")
+	}
+	e.usesV3 = true
+	return prof + ".Sweep(path: scad_v3(ps: " + e.expr(path, kNumber) + "))"
+}
+
+// sweepProfile renders a path_sweep profile — a circle/square/polygon used as a
+// value — as a Facet Sketch, by routing it through the same 2D primitive emitters
+// (the call is an expression, so it is rewrapped as a module call). ok is false
+// for any other expression.
+func (e *Emitter) sweepProfile(shape ast.Expr) (string, bool) {
+	c, isCall := shape.(*ast.Call)
+	if !isCall {
+		return "", false
+	}
+	mc := &ast.ModuleCall{Name: c.Name, Args: c.Args, P: c.P}
+	switch c.Name {
+	case "circle":
+		return e.circle(mc), true
+	case "square":
+		return e.square(mc), true
+	case "polygon":
+		return e.polygon(mc), true
 	}
 	return "", false
 }

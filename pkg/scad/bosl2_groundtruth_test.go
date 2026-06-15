@@ -213,6 +213,21 @@ func TestBOSL2GroundTruth(t *testing.T) {
 		{"list_utils", "cube([reverse([1,2,9])[1], 1, last([1,2,9])]);", 0.01},
 		// reverse([]) == [] (not an error): len 0 → the cube's x is 1.
 		{"reverse_empty", "e=[]; cube([len(reverse(e))+1, 1, 1]);", 0.01},
+		// path_sweep: a circle profile swept along a 3D path → Sketch.Sweep. A
+		// vertical straight path gives a clean tube whose bbox must match (profile
+		// centered on the path, capped ends).
+		{"path_sweep_tube", "path_sweep(circle(d=8, $fn=48), [[0,0,0],[0,0,20]]);", 0.3},
+		// path_sweep over a 90° corner: the bbox is set by BOSL2's tilted end caps
+		// (3-point one-sided endpoint tangents) and the double-reflection frame
+		// through the bend. A circle isolates the frame; a centered square also pins
+		// the in-plane axis convention (frame_map x=cross(normal,tangent)). Both
+		// must track BOSL2, not just a straight sweep.
+		{"path_sweep_corner", "path_sweep(circle(d=10, $fn=48), [[0,0,0],[0,0,30],[30,0,30]]);", 0.3},
+		{"path_sweep_sq_corner", "path_sweep(square(8, center=true), [[0,0,0],[0,0,30],[30,0,30]]);", 0.05},
+		// An ASYMMETRIC profile (10×4 rect) over the corner: a wrong in-plane axis
+		// (frame_map x/y swapped or sign-flipped) would rotate the rect and change
+		// the bbox, so this pins the axis direction, not just the frame plane.
+		{"path_sweep_rect_corner", "path_sweep(square([10,4], center=true), [[0,0,0],[0,0,30],[30,0,30]]);", 0.05},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

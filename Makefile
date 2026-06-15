@@ -41,6 +41,7 @@ run: build
 
 build: go-toolchain manifold wails-cli
 	cd desktop && $(WAILS) build
+	bash scripts/build-quicklook.sh
 
 cli: go-toolchain manifold
 	$(GO) build -o build/bin/facetc ./cmd/facetc
