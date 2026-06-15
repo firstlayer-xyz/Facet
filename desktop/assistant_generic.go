@@ -108,8 +108,8 @@ func (g *genericCLIAssistant) Interrupt() {
 func (g *genericCLIAssistant) Reset() {}
 func (g *genericCLIAssistant) Close() { g.Interrupt() }
 
-// genericCLIArgs builds the argv for a generic CLI. Extracted from the original
-// runGenericCLIStream switch; keep behavior identical.
+// genericCLIArgs builds the argv for a one-shot generic CLI from the model and
+// system prompt.
 func genericCLIArgs(cliID, model, sysPrompt string) ([]string, error) {
 	var args []string
 	switch cliID {
