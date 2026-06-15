@@ -81,6 +81,27 @@ var exampleOverrides = map[string]map[string]interface{}{
 	"Moon.fct": {"date": "1/14/2000"},
 }
 
+// guiEdgeThresholdDeg mirrors the edge threshold the desktop /eval handler
+// passes to MergeExtractExpandedMeshes (desktop/eval_handler.go). Keeping the
+// same value here means the test renders each example exactly as the GUI does.
+const guiEdgeThresholdDeg = 40
+
+// assertRendersInGUI builds the display mesh the desktop /eval handler hands to
+// the 3D viewer (manifold.MergeExtractExpandedMeshes) and fails if it is empty.
+// Evaluating to a non-empty solid is not enough: a solid can extract to a
+// degenerate mesh with no triangles, which evaluates fine but draws nothing on
+// screen. This is the assertion that an example actually renders in the GUI.
+func assertRendersInGUI(t *testing.T, name string, solids []*manifold.Solid) {
+	t.Helper()
+	dm := manifold.MergeExtractExpandedMeshes(solids, guiEdgeThresholdDeg)
+	if dm.VertexCount == 0 || dm.IndexCount == 0 || dm.ExpandedCount == 0 {
+		t.Errorf("%s: empty display mesh (verts=%d indices=%d expanded=%d) — renders blank in the GUI",
+			name, dm.VertexCount, dm.IndexCount, dm.ExpandedCount)
+		return
+	}
+	t.Logf("%s: display mesh verts=%d tris=%d", name, dm.VertexCount, dm.IndexCount/3)
+}
+
 func TestAllExamples(t *testing.T) {
 	// Use a temp dir — the loader falls back to embedded stdlib automatically
 	libDir := t.TempDir()
@@ -127,18 +148,15 @@ func TestAllExamples(t *testing.T) {
 			switch {
 			case result.Animation != nil:
 				// Animation examples produce no static solids; render one frame
-				// to verify the closure returns non-empty geometry.
+				// and verify it yields a display mesh the GUI could draw — the
+				// desktop /eval handler renders the initial frame the same way.
 				solid, err := result.Animation.Frame(1700000000000)
 				if err != nil {
 					t.Fatalf("%s: Animation.Frame: %v", name, err)
 				}
-				if solid.Volume() <= 0 {
-					t.Errorf("%s: animation frame produced empty geometry", name)
-				} else {
-					t.Logf("%s: animation (frame volume=%.2f mm³)", name, solid.Volume())
-				}
+				assertRendersInGUI(t, name, []*manifold.Solid{solid})
 			case len(result.Solids) > 0:
-				t.Logf("%s: %d solids", name, len(result.Solids))
+				assertRendersInGUI(t, name, result.Solids)
 			default:
 				t.Errorf("%s: expected non-empty solids or an Animation", name)
 			}
