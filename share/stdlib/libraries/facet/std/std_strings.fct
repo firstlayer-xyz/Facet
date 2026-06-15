@@ -94,7 +94,7 @@ fn String.Length() Number {
 # ---------------------------------------------------------------------------
 # Mesh Import
 # ---------------------------------------------------------------------------
-# Imports an STL or OBJ file as a Solid. Path is relative to the current file.
+# Imports an STL, OBJ, or 3MF file as a Solid. Path is relative to the current file.
 fn LoadMesh(path String) Solid {
     return _load_mesh(path)
 }

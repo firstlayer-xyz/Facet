@@ -1086,8 +1086,8 @@ func TestEvalLoadMeshFileNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
-	// Assimp surfaces the failure as "Unable to open file". We only require
-	// that the offending path appears in the error so the user can act on it.
+	// The meshio reader's os.Open failure names the missing path; we only
+	// require that the offending path appears so the user can act on it.
 	if !strings.Contains(err.Error(), "nonexistent_model.stl") {
 		t.Errorf("error should name the missing file: %v", err)
 	}

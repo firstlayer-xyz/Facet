@@ -48,7 +48,7 @@ Errors should be specific, actionable, and caught as early as possible (prefer c
 ## Commit Practices
 
 - Never auto-commit. Only commit when explicitly asked.
-- Never use `git add -A` without excluding `third_party/assimp` and `.claude/`.
+- Never use `git add -A` without excluding `.claude/`.
 
 ## Project Structure
 
@@ -60,7 +60,7 @@ Errors should be specific, actionable, and caught as early as possible (prefer c
 - `share/examples/` — Bundled example `.fct` files
 - `web/` — Browser preview (wasm bundle + Playwright tests under `web/test/`)
 - `cmd/` — Standalone Go entry points (e.g., `cmd/facetc`)
-- `third_party/` — Pinned upstream sources for assimp, freetype, manifold (cloned on demand by `scripts/build-manifold.sh`; gitignored)
+- `third_party/` — Pinned upstream sources for freetype and manifold (cloned on demand by `scripts/build-manifold.sh`; gitignored)
 - `facetlibs/` — External Facet libraries (gitignored; tests fetch via the loader's git cache, no manual clone needed)
 - `docs/` — Project documentation
 - `scripts/` — Build, release, and dev-server scripts

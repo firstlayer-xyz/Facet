@@ -33,9 +33,6 @@ import (
 // bridge, with the reason. Adding a new one is a deliberate, reviewed choice.
 var exceptions = map[string]string{
 	"facet_text_to_cross_section":      "text rendering is a wasm stub (FreeType excluded from the web build)",
-	"facet_import_mesh":                "mesh import needs file I/O, unavailable in the browser",
-	"facet_export_mesh":                "mesh export needs file I/O, unavailable in the browser",
-	"facet_free_string":                "frees C strings returned by text/export paths; not used in the browser",
 	"facet_extract_display_mesh":       "web uses the expanded-mesh extraction path instead",
 	"facet_merge_extract_display_mesh": "web uses the expanded-mesh extraction path instead",
 	"facet_extract_mesh_with_runs":     "web uses the expanded-mesh extraction path instead",

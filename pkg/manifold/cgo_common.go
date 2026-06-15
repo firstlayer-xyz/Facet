@@ -11,6 +11,6 @@ package manifold
 // the author happened not to be building.
 
 /*
-#cgo LDFLAGS: -lfacet_cxx -lmanifold -lClipper2 -ltbb -lassimp -lzlibstatic -lfreetype -lm
+#cgo LDFLAGS: -lfacet_cxx -lmanifold -lClipper2 -ltbb -lfreetype -lm
 */
 import "C"

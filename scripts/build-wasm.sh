@@ -8,10 +8,11 @@
 # Requires:
 #   emsdk active in PATH (emcc, emcmake)
 #
-# Builds against Manifold's first-class Emscripten support. Assimp is excluded
-# via -DFACET_WASM (mesh I/O moves JS-side); FreeType is linked through
-# Emscripten's port (-sUSE_FREETYPE) so text.cpp renders glyphs identically to
-# the native build, from in-memory font bytes.
+# Builds against Manifold's first-class Emscripten support. -DFACET_WASM swaps
+# the warp/level-set callbacks for JS-host bridges; mesh I/O is handled JS-side
+# (no native file I/O in the browser). FreeType is linked through Emscripten's
+# port (-sUSE_FREETYPE) so text.cpp renders glyphs identically to the native
+# build, from in-memory font bytes.
 
 set -euo pipefail
 

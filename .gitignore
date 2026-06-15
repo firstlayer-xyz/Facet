@@ -7,7 +7,6 @@ desktop/frontend/package.json.md5
 frontend/dist
 frontend/node_modules
 frontend/package.json.md5
-third_party/assimp
 third_party/manifold
 third_party/freetype
 third_party/.zig-wrappers*

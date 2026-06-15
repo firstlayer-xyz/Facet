@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 THIRD_PARTY="$PROJECT_ROOT/third_party"
 MANIFOLD_DIR="$THIRD_PARTY/manifold"
-ASSIMP_DIR="$THIRD_PARTY/assimp"
 . "$SCRIPT_DIR/_third-party-versions.sh"
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
 
@@ -266,37 +265,7 @@ CMAKEEOF
 fi
 
 # Per-target build/install directories
-ASSIMP_BUILD_DIR="$ASSIMP_DIR/build-${TARGET}"
-ASSIMP_INSTALL_DIR="$ASSIMP_DIR/install-${TARGET}"
 MANIFOLD_BUILD_DIR="$MANIFOLD_DIR/build-${TARGET}"
-
-# --- Build assimp from source if needed ---
-if [ ! -f "$ASSIMP_INSTALL_DIR/lib/libassimp.a" ]; then
-  echo "Building assimp ${ASSIMP_VERSION} for ${TARGET}..."
-  if [ ! -f "$ASSIMP_DIR/CMakeLists.txt" ]; then
-    rm -rf "$ASSIMP_DIR"
-    git clone --depth 1 --branch "$ASSIMP_VERSION" \
-      https://github.com/assimp/assimp.git "$ASSIMP_DIR"
-  fi
-  mkdir -p "$ASSIMP_BUILD_DIR" && cd "$ASSIMP_BUILD_DIR"
-  cmake "$ASSIMP_DIR" \
-    "${CMAKE_GENERATOR_FLAG[@]}" \
-    "${DARWIN_OSX_ARCH[@]}" \
-    -DCMAKE_BUILD_TYPE=Release \
-    ${TOOLCHAIN_FLAG[@]+"${TOOLCHAIN_FLAG[@]}"} \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DASSIMP_BUILD_TESTS=OFF \
-    -DASSIMP_BUILD_SAMPLES=OFF \
-    -DASSIMP_BUILD_ZLIB=ON \
-    -DASSIMP_NO_EXPORT=OFF \
-    -DASSIMP_WARNINGS_AS_ERRORS=OFF \
-    -DCMAKE_C_FLAGS="-Dfdopen=fdopen -Wno-deprecated-non-prototype $ISA_BASELINE_FLAGS" \
-    -DCMAKE_CXX_FLAGS="-Wno-nontrivial-memaccess -Wno-unknown-pragmas $ISA_BASELINE_FLAGS" \
-    -DCMAKE_INSTALL_PREFIX="$ASSIMP_INSTALL_DIR"
-  cmake --build . --config Release -j "$JOBS"
-  cmake --install . --config Release
-  echo "assimp build complete."
-fi
 
 # --- Build freetype from source if needed ---
 FREETYPE_DIR="$THIRD_PARTY/freetype"
@@ -347,7 +316,7 @@ fi
 
 # --- Build manifold ---
 # Skip if libmanifold.a already exists (e.g. CI cache restore). Matches the
-# assimp/freetype early-exit pattern above. Without this, re-entering the
+# freetype early-exit pattern above. Without this, re-entering the
 # script after a cache restore (e.g. `make test` running `make manifold`
 # as a dep) re-invokes cmake against a stale CMakeCache.txt whose
 # absolute CMAKE_CXX_COMPILER path points at a previous run's zig install

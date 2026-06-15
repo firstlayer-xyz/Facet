@@ -25,31 +25,6 @@ func unionAll(solids []*Solid) *Solid {
 	return result
 }
 
-// ExportMesh exports a single Solid to a file via Assimp. The format is
-// auto-detected from the file extension (OBJ, GLB, etc.). For 3MF and STL,
-// prefer Export3MF or ExportSTL which support per-face color.
-func ExportMesh(s *Solid, path string) error {
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
-
-	cErr := C.facet_export_mesh(s.ptr, cPath)
-	runtime.KeepAlive(s)
-	if cErr != nil {
-		msg := C.GoString(cErr)
-		C.facet_free_string(cErr)
-		return fmt.Errorf("ExportMesh %s: %s", path, msg)
-	}
-	return nil
-}
-
-// ExportMeshes unions multiple Solids and exports to a file.
-func ExportMeshes(solids []*Solid, path string) error {
-	if len(solids) == 0 {
-		return fmt.Errorf("no solids to export")
-	}
-	return ExportMesh(unionAll(solids), path)
-}
-
 // RunMesh holds extracted triangle mesh data with run information
 // for mapping originalIDs back to face colors.
 type RunMesh struct {

@@ -99,7 +99,7 @@ jobs:
         run: bash scripts/setup-go.sh
 
       - name: Cache manifold + third-party builds
-        # Caches the manifold/assimp/freetype/tbb source clones and built
+        # Caches the manifold/freetype/tbb source clones and built
         # libs, plus the facet_cxx glue layer build. Key invalidates when
         # the pinned versions or the build script change, or when our
         # cxx glue sources change. Skip 'Build manifold' on hit;
