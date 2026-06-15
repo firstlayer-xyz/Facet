@@ -73,3 +73,32 @@ func TestServiceCancelAndClearDelegate(t *testing.T) {
 		t.Fatalf("Cancel/ClearHistory not delegated: interrupts=%d resets=%d", fake.interrupts, fake.resets)
 	}
 }
+
+func TestServiceShutdownClosesAndRebuilds(t *testing.T) {
+	s := NewAssistantService()
+	s.SetEventContext(context.Background())
+	builds := 0
+	s.newAssistant = func(cliID, binPath string, emit EventEmitter, mcp AssistantMCPBridge) Assistant {
+		builds++
+		return &fakeAssistant{}
+	}
+	s.resolveBinary = func(string) string { return "/fake/bin" }
+	s.SetConfig(AssistantConfig{CLI: "claude"})
+
+	_ = s.Send("hi", "", "", "/a.fct", false, nil, nil)
+	first := s.current.(*fakeAssistant)
+
+	s.Shutdown()
+	if first.closes != 1 {
+		t.Fatalf("Shutdown should Close the live backend; closes=%d", first.closes)
+	}
+	if s.current != nil {
+		t.Fatalf("Shutdown should drop the current backend")
+	}
+
+	// A send after shutdown rebuilds a fresh backend.
+	_ = s.Send("again", "", "", "/a.fct", false, nil, nil)
+	if builds != 2 {
+		t.Fatalf("Send after Shutdown should reconstruct the backend; builds=%d", builds)
+	}
+}
