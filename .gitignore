@@ -1,5 +1,8 @@
 build/bin
 build/windows
+packaging/windows/*.dll
+packaging/windows/*.lib
+packaging/windows/*.pdb
 node_modules
 desktop/frontend/dist
 desktop/frontend/wailsjs
