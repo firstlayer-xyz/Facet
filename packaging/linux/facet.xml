@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- shared-mime-info definition for Facet model files (*.fct). Installed into
+     $DATADIR/mime/packages/ and registered with update-mime-database, this
+     gives file managers a MIME type to hang the thumbnailer and icon off. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-facet">
+    <comment>Facet model</comment>
+    <glob pattern="*.fct"/>
+  </mime-type>
+</mime-info>
