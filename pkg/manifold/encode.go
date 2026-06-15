@@ -16,13 +16,18 @@ const default3MFColor = "#C0C0C0"
 // returns the file bytes. vertices is flat xyz; indices are triangle corners
 // (len % 3 == 0). faceHex holds one hex color per triangle ("" = uncolored);
 // pass nil for no colors. STL is colorless by format and ignores faceHex.
+// attachments are extra OPC parts embedded in the 3MF package; pass nil for
+// none. Attachments are rejected for non-3mf formats.
 //
 // This is the single serialization path shared by the desktop file export and
 // the browser download: the caller supplies an extracted mesh, this builds the
 // meshio.Mesh and emits the format bytes.
-func EncodeSolidMesh(vertices []float32, indices []uint32, faceHex []string, format string) ([]byte, error) {
+func EncodeSolidMesh(vertices []float32, indices []uint32, faceHex []string, format string, attachments []meshio.Attachment) ([]byte, error) {
 	if len(vertices) == 0 || len(indices) == 0 {
 		return nil, fmt.Errorf("export failed: empty mesh")
+	}
+	if len(attachments) > 0 && format != "3mf" {
+		return nil, fmt.Errorf("EncodeSolidMesh: attachments are only supported for 3mf, not %q", format)
 	}
 	m := &meshio.Mesh{Vertices: vertices, Indices: indices}
 	var buf bytes.Buffer
@@ -33,6 +38,7 @@ func EncodeSolidMesh(vertices []float32, indices []uint32, faceHex []string, for
 		}
 	case "3mf":
 		m.FaceColors = faceColorsFromHex(faceHex, len(indices)/3, default3MFColor)
+		m.Attachments = attachments
 		if err := m.Encode3MF(&buf); err != nil {
 			return nil, err
 		}

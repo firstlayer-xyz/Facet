@@ -9,6 +9,7 @@ import { buildCameraPage } from './settings_camera';
 import { buildMemoryPage } from './settings_memory';
 import { buildDebugPage } from './settings_debug';
 import { buildSlicerPage } from './settings_slicer';
+import { buildExportSettingsPage } from './settings_export';
 import { buildAboutPage } from './settings_about';
 
 export interface AppSettings {
@@ -51,6 +52,9 @@ export interface AppSettings {
   };
   slicer: {
     defaultSlicer: string; // slicer ID or '' for auto-detect
+  };
+  export: {
+    embedSourceIn3mf: boolean;
   };
 
   // Go-owned persisted keys (preserved through mergeWithDefaults via ...parsed
@@ -110,6 +114,9 @@ const defaults: AppSettings = {
   slicer: {
     defaultSlicer: '',
   },
+  export: {
+    embedSourceIn3mf: true,
+  },
 };
 
 function mergeWithDefaults(parsed: any): AppSettings {
@@ -156,6 +163,7 @@ function mergeWithDefaults(parsed: any): AppSettings {
     camera: pick(defaults.camera, parsed.camera),
     librarySettings: pick(defaults.librarySettings, parsed.librarySettings),
     slicer: pick(defaults.slicer, parsed.slicer),
+    export: pick(defaults.export, parsed.export),
   };
 }
 
@@ -212,6 +220,7 @@ export function saveSettings(s: AppSettings): void {
     camera: s.camera,
     librarySettings: s.librarySettings,
     slicer: s.slicer,
+    export: s.export,
   });
 }
 
@@ -223,6 +232,7 @@ const assistantIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="non
 const cameraIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
 const memoryIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>`;
 const slicerIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><polyline points="12 2 2 7 12 12 22 7 12 2"/><line x1="2" y1="12" x2="12" y2="17"/><line x1="22" y1="12" x2="12" y2="17"/></svg>`;
+const exportIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
 const debugIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`;
 const aboutIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
 
@@ -260,6 +270,7 @@ export function createSettingsPanel(
   const librariesBtn = sidebarButton(packageIcon, 'Libraries');
   const assistantSettingsBtn = sidebarButton(assistantIcon, 'Assistant');
   const slicerSettingsBtn = sidebarButton(slicerIcon, 'Slicer');
+  const exportSettingsBtn = sidebarButton(exportIcon, 'Export');
   const cameraBtn = sidebarButton(cameraIcon, 'Camera');
   const memoryBtn = sidebarButton(memoryIcon, 'Memory');
   const debugSettingsBtn = sidebarButton(debugIcon, 'Log');
@@ -377,6 +388,7 @@ export function createSettingsPanel(
     libraries: { title: 'Libraries', btn: librariesBtn, build: buildLibrariesPage },
     assistant: { title: 'Assistant', btn: assistantSettingsBtn, build: buildAssistantPage },
     slicer: { title: 'Slicer', btn: slicerSettingsBtn, build: buildSlicerPage },
+    export: { title: 'Export', btn: exportSettingsBtn, build: buildExportSettingsPage },
     camera: { title: 'Camera', btn: cameraBtn, build: buildCameraPage },
     memory: { title: 'Memory', btn: memoryBtn, build: buildMemoryPage },
     debug: { title: 'Log', btn: debugSettingsBtn, build: buildDebugPage },

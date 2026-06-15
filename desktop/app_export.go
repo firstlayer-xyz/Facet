@@ -5,15 +5,17 @@ import (
 	"os"
 	"path/filepath"
 
+	"facet/pkg/facet3mf"
 	"facet/pkg/manifold"
 
+	"github.com/firstlayer-xyz/meshio"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ExportMesh exports the last evaluated model in the given format (3MF, STL, or
 // OBJ) via Manifold's pure-Go writers. Shows a native save dialog to choose the
 // output path.
-func (a *App) ExportMesh(format string, sources map[string]string, key string, entry string, overrides map[string]interface{}) error {
+func (a *App) ExportMesh(format string, sources map[string]string, key string, entry string, overrides map[string]interface{}, embedSource bool) error {
 	solids, err := evalSolids(a.ctx, evalRequest{Sources: sources, Key: key, Entry: entry, Overrides: overrides})
 	if err != nil {
 		return fmt.Errorf("eval failed: %w", err)
@@ -51,7 +53,15 @@ func (a *App) ExportMesh(format string, sources map[string]string, key string, e
 
 	switch format {
 	case "3mf":
-		return manifold.Export3MFMulti(solids, path)
+		var atts []meshio.Attachment
+		if embedSource {
+			att, err := facetProjectAttachment(sources, key, entry, overrides)
+			if err != nil {
+				return err
+			}
+			atts = []meshio.Attachment{att}
+		}
+		return manifold.Export3MFMulti(solids, path, atts)
 	case "stl":
 		return manifold.ExportSTLMulti(solids, path)
 	case "obj":
@@ -59,6 +69,21 @@ func (a *App) ExportMesh(format string, sources map[string]string, key string, e
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
 	}
+}
+
+// facetProjectAttachment builds the embedded Facet payload from the entry-point
+// file. The entry-point file is sources[key]; its absence is a hard error.
+func facetProjectAttachment(sources map[string]string, key, entry string, overrides map[string]interface{}) (meshio.Attachment, error) {
+	src, ok := sources[key]
+	if !ok {
+		return meshio.Attachment{}, fmt.Errorf("export: entry-point source %q not present in sources", key)
+	}
+	return facet3mf.Marshal(facet3mf.Project{
+		Version:   facet3mf.Version,
+		Entry:     entry,
+		Overrides: overrides,
+		Source:    src,
+	})
 }
 
 // DetectSlicers returns the list of slicer applications found on the system.
@@ -78,7 +103,7 @@ func (a *App) SendToSlicer(slicerID string, sources map[string]string, key strin
 	}
 
 	path := filepath.Join(os.TempDir(), fmt.Sprintf("facet-slicer-%s-%d.3mf", slicerID, os.Getpid()))
-	if err := manifold.Export3MFMulti(solids, path); err != nil {
+	if err := manifold.Export3MFMulti(solids, path, nil); err != nil {
 		return err
 	}
 	return launchSlicer(slicerID, path)

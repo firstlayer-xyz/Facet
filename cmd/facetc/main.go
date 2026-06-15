@@ -205,7 +205,7 @@ func main() {
 
 	switch strings.ToLower(ext) {
 	case ".3mf":
-		err = manifold.Export3MFMulti(solids, output)
+		err = manifold.Export3MFMulti(solids, output, nil)
 	case ".stl":
 		err = manifold.ExportSTLMulti(solids, output)
 	case ".obj":

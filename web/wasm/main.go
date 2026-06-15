@@ -362,7 +362,7 @@ func jsExport(this js.Value, args []js.Value) interface{} {
 			return
 		}
 		verts, indices, faceHex := displayMeshForExport(dm)
-		data, err := manifold.EncodeSolidMesh(verts, indices, faceHex, format)
+		data, err := manifold.EncodeSolidMesh(verts, indices, faceHex, format, nil)
 		if err != nil {
 			resolve.Invoke(jsErrorObj(err.Error()))
 			return
