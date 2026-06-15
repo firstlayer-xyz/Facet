@@ -104,8 +104,9 @@ func (g *genericCLIAssistant) Interrupt() {
 	}
 }
 
-// Reset and Close are no-ops: a one-shot CLI holds no persistent state.
-func (g *genericCLIAssistant) Reset() {}
+// Reset and Close cancel any in-flight one-shot turn; a generic CLI holds no
+// persistent session beyond that.
+func (g *genericCLIAssistant) Reset() { g.Interrupt() }
 func (g *genericCLIAssistant) Close() { g.Interrupt() }
 
 // genericCLIArgs builds the argv for a one-shot generic CLI from the model and

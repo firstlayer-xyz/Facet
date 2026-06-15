@@ -161,9 +161,7 @@ func TestClaudeAssistantRespawnsOnConfigChange(t *testing.T) {
 	ca.newCmd = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		lastArgs = args
 		full := append([]string{"-test.run=TestHelperProcess", "--", "claude", ""}, args...)
-		cmd := exec.CommandContext(ctx, os.Args[0], full...)
-		cmd.Env = append(os.Environ(), "GO_WANT_FAKE_CLAUDE=1")
-		return cmd
+		return exec.CommandContext(ctx, os.Args[0], full...)
 	}
 
 	mustTurn(t, ca, rec, "one", SessionConfig{Model: "opus", MaxTurns: 2})
@@ -233,5 +231,18 @@ func TestClaudeAssistantRecoversFromCrash(t *testing.T) {
 	waitForEvent(t, rec, "assistant:error") // crash surfaced
 	// Next turn lazily respawns (with --resume) and works.
 	mustTurn(t, ca, rec, "again", SessionConfig{MaxTurns: 2})
+	ca.Close()
+}
+
+func TestClaudeAssistantSurfacesOversizeLine(t *testing.T) {
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, nil, fakeBinPath())
+	ca.maxLineBytes = 512 // fake emits a 4096-byte line -> scanner overflow
+	ca.newCmd = fakeCmdFactory(t, "hugeline", "")
+	if err := ca.Send(Turn{UserMessage: "go"}, SessionConfig{MaxTurns: 1}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	// Must terminate with an error rather than hang forever on cmd.Wait.
+	waitForEvent(t, rec, "assistant:error")
 	ca.Close()
 }

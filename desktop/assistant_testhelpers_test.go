@@ -67,9 +67,7 @@ func fakeCmdFactory(t *testing.T, behavior, payload string) cmdFactory {
 	t.Helper()
 	return func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		full := append([]string{"-test.run=TestHelperProcess", "--", behavior, payload}, args...)
-		cmd := exec.CommandContext(ctx, os.Args[0], full...)
-		cmd.Env = append(os.Environ(), "GO_WANT_FAKE_CLAUDE=1")
-		return cmd
+		return exec.CommandContext(ctx, os.Args[0], full...)
 	}
 }
 
@@ -236,6 +234,29 @@ func TestHelperProcess(t *testing.T) {
 				"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "echo: " + text}},
 			}})
 			emit(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": "echo: " + text, "session_id": "fake-session"})
+		}
+		os.Exit(0)
+	case "hugeline":
+		// Emit one assistant line far larger than a test's lowered maxLineBytes,
+		// to exercise the reader's scan-overflow path.
+		out := bufio.NewWriter(os.Stdout)
+		emit := func(v any) {
+			b, _ := json.Marshal(v)
+			out.Write(b)
+			out.WriteByte('\n')
+			out.Flush()
+		}
+		emit(map[string]any{"type": "system", "subtype": "init", "session_id": "fake-session"})
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
+		for sc.Scan() {
+			if strings.TrimSpace(sc.Text()) == "" {
+				continue
+			}
+			emit(map[string]any{"type": "assistant", "message": map[string]any{
+				"role": "assistant", "content": []any{map[string]any{"type": "text", "text": strings.Repeat("x", 4096)}},
+			}})
+			emit(map[string]any{"type": "result", "subtype": "success", "is_error": false, "result": "ok", "session_id": "fake-session"})
 		}
 		os.Exit(0)
 	}

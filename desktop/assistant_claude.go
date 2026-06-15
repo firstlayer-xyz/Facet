@@ -113,6 +113,11 @@ type claudeAssistant struct {
 	binPath string
 	newCmd  cmdFactory
 
+	// maxLineBytes caps one NDJSON stdout line. A single line can carry a whole
+	// tool_result (e.g. a base64 screenshot ~15-20 MiB for a 4K canvas), so the
+	// default is generous; tests lower it to exercise the overflow path.
+	maxLineBytes int
+
 	mu        sync.Mutex
 	proc      *claudeProc
 	sessionID string    // assigned UUID, stable across respawns of one conversation
@@ -125,7 +130,7 @@ type claudeAssistant struct {
 }
 
 func newClaudeAssistant(emit EventEmitter, mcp AssistantMCPBridge, binPath string) *claudeAssistant {
-	return &claudeAssistant{emit: emit, mcp: mcp, binPath: binPath, newCmd: newExecCmd}
+	return &claudeAssistant{emit: emit, mcp: mcp, binPath: binPath, newCmd: newExecCmd, maxLineBytes: 64 * 1024 * 1024}
 }
 
 func (c *claudeAssistant) Send(turn Turn, cfg SessionConfig) error {
@@ -216,9 +221,22 @@ func (c *claudeAssistant) closeProcLocked() {
 func (c *claudeAssistant) read(p *claudeProc, stdout io.Reader) {
 	defer close(p.doneCh)
 	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 0, 256*1024), 64*1024*1024)
+	init := 256 * 1024
+	if c.maxLineBytes < init {
+		init = c.maxLineBytes
+	}
+	sc.Buffer(make([]byte, 0, init), c.maxLineBytes)
 	for sc.Scan() {
 		c.handleLine(sc.Bytes())
+	}
+	// A scan error (e.g. a line exceeding maxLineBytes) leaves the child running,
+	// so cancel it — otherwise cmd.Wait below blocks forever and the turn never
+	// terminates. The error is surfaced explicitly even though the cancel makes
+	// ctx.Err() non-nil.
+	scanErr := sc.Err()
+	if scanErr != nil {
+		log.Printf("[assistant] stdout read error: %v", scanErr)
+		p.cancel()
 	}
 	err := p.cmd.Wait()
 	c.mu.Lock()
@@ -230,7 +248,14 @@ func (c *claudeAssistant) read(p *claudeProc, stdout io.Reader) {
 	c.proc = nil
 	c.streaming = false
 	c.mu.Unlock()
-	if wasStreaming && p.ctx.Err() == nil {
+	if !wasStreaming {
+		return
+	}
+	if scanErr != nil {
+		c.emit.Emit("assistant:error", fmt.Sprintf("claude: output read error: %v", scanErr))
+		return
+	}
+	if p.ctx.Err() == nil {
 		msg := c.takeStreamErr()
 		if msg == "" {
 			msg = claudeExitError(err)
