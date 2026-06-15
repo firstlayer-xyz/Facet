@@ -466,6 +466,15 @@ func claudeArgs(sig launchSig, sessionID string, resume bool) []string {
 	return args
 }
 
+// mcpToolTimeoutMS is the per-tool-call timeout the Claude CLI (acting as our
+// MCP client) applies while waiting for one of our MCP tools to return. The
+// interactive tools — ask_user_question, request_permission,
+// screenshot_viewport — block until the human responds, which has no natural
+// upper bound, so this is set far beyond any real session. The CLI has no
+// "infinite" setting, so an effectively-forever ceiling stands in for "never
+// time out on user input".
+const mcpToolTimeoutMS int64 = 365 * 24 * 60 * 60 * 1000 // 1 year
+
 // mcpArgs builds the --mcp-config block pointing at our in-process MCP server.
 func mcpArgs(port int, token string) []string {
 	mcpCfg := map[string]any{
@@ -528,6 +537,40 @@ func claudeExitError(err error) string {
 		return "claude exited unexpectedly"
 	}
 	return fmt.Sprintf("claude exited: %v", err)
+}
+
+// friendlyResultSubtypeError maps a result-event subtype string to a
+// user-facing sentence.  The CLI surfaces these as terse codes
+// ("error_max_turns") that mean nothing to a user; translate the ones
+// we know about and fall back to the raw code so unknown subtypes
+// still reach the UI.
+func friendlyResultSubtypeError(subtype string, maxTurns int) string {
+	switch subtype {
+	case "error_max_turns":
+		return fmt.Sprintf("Assistant reached the max-turns limit (%d) without finishing. Send another message to continue the conversation, or raise the limit in Settings → AI Assistant → Max Turns.", maxTurns)
+	default:
+		return "result subtype: " + subtype
+	}
+}
+
+// extractErrorMessage pulls a human-readable message out of a claude
+// stream-json error/system event.  The CLI's error shape has drifted
+// across versions — check the common fields, then fall back to the raw
+// JSON so no information is lost.
+func extractErrorMessage(event map[string]interface{}) string {
+	if m, ok := event["message"].(string); ok && m != "" {
+		return m
+	}
+	if m, ok := event["error"].(string); ok && m != "" {
+		return m
+	}
+	if sub, ok := event["subtype"].(string); ok && sub != "" {
+		return "error subtype: " + sub
+	}
+	if raw, err := json.Marshal(event); err == nil {
+		return string(raw)
+	}
+	return "unknown error"
 }
 
 // newUUID returns a random RFC-4122 v4 UUID without external deps.
