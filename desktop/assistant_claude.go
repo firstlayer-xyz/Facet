@@ -1,12 +1,20 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // contentBlock is one block in a stream-json user message.
@@ -75,4 +83,330 @@ func imageMediaType(path string) string {
 	default:
 		return "application/octet-stream"
 	}
+}
+
+// launchSig is the set of parameters the CLI fixes at launch; a change requires
+// respawning the process. Comparable by ==.
+type launchSig struct {
+	model        string
+	effort       string
+	maxTurns     int
+	systemPrompt string
+	mcpPort      int
+	mcpToken     string
+}
+
+// claudeProc is one live claude process.
+type claudeProc struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	ctx    context.Context
+	cancel context.CancelFunc
+	doneCh chan struct{} // closed when the reader goroutine returns
+}
+
+// claudeAssistant owns one persistent claude stream-json process per
+// conversation, keeping the prompt cache warm across turns.
+type claudeAssistant struct {
+	emit    EventEmitter
+	mcp     AssistantMCPBridge
+	binPath string
+	newCmd  cmdFactory
+
+	mu        sync.Mutex
+	proc      *claudeProc
+	sessionID string    // assigned UUID, stable across respawns of one conversation
+	sig       launchSig // signature the live proc was launched with
+	streaming bool
+	emitted   bool // any assistant text emitted during the current turn
+}
+
+func newClaudeAssistant(emit EventEmitter, mcp AssistantMCPBridge, binPath string) *claudeAssistant {
+	return &claudeAssistant{emit: emit, mcp: mcp, binPath: binPath, newCmd: newExecCmd}
+}
+
+func (c *claudeAssistant) Send(turn Turn, cfg SessionConfig) error {
+	frame, err := buildUserFrame(buildUserText(turn.UserMessage, turn.EditorCode, turn.ErrorsText), turn.ImagePaths)
+	if err != nil {
+		return err
+	}
+	mcpPort, mcpToken := 0, ""
+	if c.mcp != nil {
+		mcpPort, mcpToken = c.mcp.Endpoint()
+		c.mcp.SetContext(turn.EditorCode, turn.ActiveTabPath, turn.ActiveTabReadOnly)
+	}
+	want := launchSig{cfg.Model, cfg.Effort, cfg.MaxTurns, cfg.SystemPrompt, mcpPort, mcpToken}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.streaming {
+		return fmt.Errorf("assistant is busy")
+	}
+	if c.proc == nil || c.sig != want {
+		if err := c.startLocked(want); err != nil {
+			return err
+		}
+	}
+	c.streaming = true
+	c.emitted = false
+	if _, err := c.proc.stdin.Write(append(frame, '\n')); err != nil {
+		c.streaming = false
+		return fmt.Errorf("write frame: %w", err)
+	}
+	return nil
+}
+
+// startLocked spawns a fresh process for sig. Caller holds c.mu. An existing
+// process is cancelled fire-and-forget first; if we already have a sessionID we
+// resume it, otherwise we assign a new UUID.
+func (c *claudeAssistant) startLocked(sig launchSig) error {
+	c.closeProcLocked()
+	resume := c.sessionID != ""
+	if c.sessionID == "" {
+		c.sessionID = newUUID()
+	}
+	args := claudeArgs(sig, c.sessionID, resume)
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := c.newCmd(ctx, c.binPath, args...)
+	cmd.Dir = os.TempDir()
+	cmd.Env = claudeEnv()
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		cancel()
+		return fmt.Errorf("stdin pipe: %w", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		cancel()
+		return fmt.Errorf("stdout pipe: %w", err)
+	}
+	cmd.Stderr = newStderrLogger()
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return fmt.Errorf("start claude: %w", err)
+	}
+	p := &claudeProc{cmd: cmd, stdin: stdin, ctx: ctx, cancel: cancel, doneCh: make(chan struct{})}
+	c.proc = p
+	c.sig = sig
+	log.Printf("[assistant] claude session %s started (resume=%v)", c.sessionID, resume)
+	go c.read(p, stdout)
+	return nil
+}
+
+// closeProcLocked cancels the current process WITHOUT waiting. The reader
+// detects the closed pipe and cleans up; because callers replace or clear
+// c.proc, the old reader's cleanup becomes a no-op (guarded by c.proc == p).
+// Caller holds c.mu.
+func (c *claudeAssistant) closeProcLocked() {
+	if c.proc == nil {
+		return
+	}
+	c.proc.cancel()
+	_ = c.proc.stdin.Close()
+	c.proc = nil
+}
+
+// read consumes the process's stdout for its whole lifetime, emitting events.
+func (c *claudeAssistant) read(p *claudeProc, stdout io.Reader) {
+	defer close(p.doneCh)
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 0, 256*1024), 64*1024*1024)
+	for sc.Scan() {
+		c.handleLine(sc.Bytes())
+	}
+	err := p.cmd.Wait()
+	c.mu.Lock()
+	if c.proc != p {
+		c.mu.Unlock()
+		return // superseded by a respawn/close — touch no shared state
+	}
+	wasStreaming := c.streaming
+	c.proc = nil
+	c.streaming = false
+	c.mu.Unlock()
+	if wasStreaming && p.ctx.Err() == nil {
+		c.emit.Emit("assistant:error", claudeExitError(err))
+	}
+}
+
+// handleLine parses one NDJSON event. Task 5 handles text + result only; Task 6
+// adds tool_use, thinking, user, error, and system events.
+func (c *claudeAssistant) handleLine(line []byte) {
+	if len(line) == 0 {
+		return
+	}
+	var event map[string]any
+	if json.Unmarshal(line, &event) != nil {
+		log.Printf("[assistant] non-json line: %.100s", line)
+		return
+	}
+	switch event["type"] {
+	case "assistant":
+		if msg, ok := event["message"].(map[string]any); ok {
+			if content, ok := msg["content"].([]any); ok {
+				for _, block := range content {
+					cb, ok := block.(map[string]any)
+					if !ok {
+						continue
+					}
+					if cb["type"] == "text" {
+						if text, ok := cb["text"].(string); ok && text != "" {
+							c.mu.Lock()
+							c.emitted = true
+							c.mu.Unlock()
+							c.emit.Emit("assistant:token", text)
+						}
+					}
+				}
+			}
+		}
+	case "result":
+		c.handleResult(event)
+	}
+}
+
+func (c *claudeAssistant) handleResult(event map[string]any) {
+	if sid, ok := event["session_id"].(string); ok && sid != "" {
+		c.mu.Lock()
+		c.sessionID = sid
+		c.mu.Unlock()
+	}
+	c.mu.Lock()
+	emitted := c.emitted
+	c.streaming = false
+	c.mu.Unlock()
+	if !emitted {
+		if text, ok := event["result"].(string); ok && text != "" {
+			c.emit.Emit("assistant:token", text)
+		}
+	}
+	c.emit.Emit("assistant:done", "")
+}
+
+// Interrupt is implemented in Task 8 (sends the stream-json interrupt control
+// frame). Stub here so claudeAssistant satisfies the Assistant interface.
+func (c *claudeAssistant) Interrupt() {}
+
+// Reset discards the session so the next Send starts a brand-new conversation.
+func (c *claudeAssistant) Reset() {
+	c.mu.Lock()
+	p := c.proc
+	c.proc = nil
+	c.sessionID = ""
+	c.streaming = false
+	c.mu.Unlock()
+	waitProc(p)
+}
+
+// Close terminates the process (the session UUID is retained for a possible
+// resume, but the conversation effectively ends when the app closes).
+func (c *claudeAssistant) Close() {
+	c.mu.Lock()
+	p := c.proc
+	c.proc = nil
+	c.streaming = false
+	c.mu.Unlock()
+	waitProc(p)
+}
+
+// waitProc cancels a process and waits for its reader to exit, OUTSIDE c.mu so
+// the reader can take the lock during cleanup.
+func waitProc(p *claudeProc) {
+	if p == nil {
+		return
+	}
+	p.cancel()
+	_ = p.stdin.Close()
+	<-p.doneCh
+}
+
+func claudeArgs(sig launchSig, sessionID string, resume bool) []string {
+	args := []string{
+		"-p",
+		"--input-format", "stream-json",
+		"--output-format", "stream-json",
+		"--verbose",
+		"--system-prompt", sig.systemPrompt,
+		"--max-turns", fmt.Sprintf("%d", sig.maxTurns),
+	}
+	if sig.mcpPort > 0 && sig.mcpToken != "" {
+		args = append(args, mcpArgs(sig.mcpPort, sig.mcpToken)...)
+	} else {
+		args = append(args, "--tools", "")
+	}
+	if sig.model != "" {
+		args = append(args, "--model", sig.model)
+	}
+	if sig.effort != "" {
+		args = append(args, "--effort", sig.effort)
+	}
+	if resume {
+		args = append(args, "--resume", sessionID)
+	} else {
+		args = append(args, "--session-id", sessionID)
+	}
+	return args
+}
+
+// mcpArgs builds the --mcp-config block pointing at our in-process MCP server.
+func mcpArgs(port int, token string) []string {
+	mcpCfg := map[string]any{
+		"mcpServers": map[string]any{
+			"facet": map[string]any{
+				"type":    "http",
+				"url":     fmt.Sprintf("http://127.0.0.1:%d/mcp", port),
+				"headers": map[string]string{"Authorization": "Bearer " + token},
+				"timeout": mcpToolTimeoutMS,
+			},
+		},
+	}
+	b, _ := json.Marshal(mcpCfg)
+	return []string{
+		"--mcp-config", string(b), "--strict-mcp-config",
+		"--allowedTools", "mcp__facet__*",
+		"--permission-prompt-tool", "mcp__facet__request_permission",
+	}
+}
+
+// claudeEnv builds the child env: inherit ours, drop CLAUDECODE/CLAUDE_CODE so a
+// nested Claude Code session doesn't crash, and set the long MCP tool timeout so
+// interactive tools can block on the human. Reuses the package-level filterEnv
+// and mcpToolTimeoutMS from assistant_service.go.
+func claudeEnv() []string {
+	env := filterEnv(os.Environ(), "CLAUDECODE", "CLAUDE_CODE", "MCP_TOOL_TIMEOUT")
+	return append(env, fmt.Sprintf("MCP_TOOL_TIMEOUT=%d", mcpToolTimeoutMS))
+}
+
+// stderrLogger forwards a child's stderr to the app log, one line at a time.
+type stderrLogger struct{ buf []byte }
+
+func newStderrLogger() io.Writer { return &stderrLogger{} }
+
+func (s *stderrLogger) Write(p []byte) (int, error) {
+	s.buf = append(s.buf, p...)
+	for {
+		i := bytes.IndexByte(s.buf, '\n')
+		if i < 0 {
+			break
+		}
+		log.Printf("[assistant] stderr: %s", s.buf[:i])
+		s.buf = s.buf[i+1:]
+	}
+	return len(p), nil
+}
+
+func claudeExitError(err error) string {
+	if err == nil {
+		return "claude exited unexpectedly"
+	}
+	return fmt.Sprintf("claude exited: %v", err)
+}
+
+// newUUID returns a random RFC-4122 v4 UUID without external deps.
+func newUUID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }

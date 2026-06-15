@@ -55,3 +55,25 @@ func TestBuildUserFrameWithImage(t *testing.T) {
 		t.Fatalf("image block missing/wrong: %s", frame)
 	}
 }
+
+func TestClaudeAssistantSingleTurn(t *testing.T) {
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, nil, fakeBinPath())
+	ca.newCmd = fakeCmdFactory(t, "claude", "")
+	if err := ca.Send(Turn{UserMessage: "hi"}, SessionConfig{MaxTurns: 2}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	waitForEvent(t, rec, "assistant:done")
+	var gotToken string
+	rec.mu.Lock()
+	for _, e := range rec.events {
+		if e[0] == "assistant:token" {
+			gotToken = e[1].(string)
+		}
+	}
+	rec.mu.Unlock()
+	if gotToken != "echo: hi" {
+		t.Fatalf("token = %q, want %q (events: %v)", gotToken, "echo: hi", rec.names())
+	}
+	ca.Close()
+}

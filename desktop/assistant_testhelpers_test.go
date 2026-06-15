@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -72,23 +74,18 @@ func fakeCmdFactory(t *testing.T, behavior, payload string) cmdFactory {
 }
 
 // TestHelperProcess is not a real test; it is the fake CLI process body, invoked
-// only when the test binary is re-exec'd with GO_WANT_FAKE_CLAUDE=1. Args after
-// "--" are: behavior, payload, then the real CLI argv (binary name excluded).
-// Later tasks add "claude"/"tools" branches; Task 3 implements only "echo".
+// only when the test binary is re-exec'd with a "--" sentinel in its argv. Args
+// after "--" are: behavior, payload, then the real CLI argv (binary name
+// excluded). The "echo" branch fakes a generic one-shot CLI; the "claude" branch
+// fakes a persistent stream-json claude process.
 func TestHelperProcess(t *testing.T) {
-	if os.Getenv("GO_WANT_FAKE_CLAUDE") != "1" {
-		return
-	}
-	rest := os.Args
-	for i, a := range os.Args {
-		if a == "--" {
-			rest = os.Args[i+1:]
-			break
-		}
+	rest := fakeProcessArgs()
+	if rest == nil {
+		return // not a re-exec'd fake invocation
 	}
 	behavior := rest[0]
 	payload := rest[1]
-	// realArgs := rest[2:] // the CLI argv; used by later tasks' branches.
+	realArgs := rest[2:]
 
 	switch behavior {
 	case "echo":
@@ -97,6 +94,83 @@ func TestHelperProcess(t *testing.T) {
 			fmt.Fprintln(os.Stdout, line)
 		}
 		os.Exit(0)
+	case "claude":
+		sessionID := argValue(realArgs, "--session-id")
+		if sessionID == "" {
+			sessionID = argValue(realArgs, "--resume")
+		}
+		if sessionID == "" {
+			sessionID = "fake-session"
+		}
+		out := bufio.NewWriter(os.Stdout)
+		emit := func(v any) {
+			b, _ := json.Marshal(v)
+			out.Write(b)
+			out.WriteByte('\n')
+			out.Flush()
+		}
+		emit(map[string]any{"type": "system", "subtype": "init", "session_id": sessionID})
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" {
+				continue
+			}
+			var in map[string]any
+			if json.Unmarshal([]byte(line), &in) != nil {
+				continue
+			}
+			if in["type"] == "control_request" {
+				emit(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success"}})
+				continue
+			}
+			text := firstUserText(in)
+			if text == "CRASH" {
+				os.Exit(1)
+			}
+			emit(map[string]any{"type": "assistant", "message": map[string]any{
+				"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "echo: " + text}},
+			}})
+			emit(map[string]any{"type": "result", "subtype": "success", "is_error": false,
+				"result": "echo: " + text, "session_id": sessionID})
+		}
+		os.Exit(0)
 	}
 	os.Exit(0)
+}
+
+// fakeProcessArgs returns the args after the "--" sentinel when the test binary
+// was re-exec'd as a fake CLI, or nil for a normal test run. A normal `go test`
+// invocation never contains a bare "--".
+func fakeProcessArgs() []string {
+	for i, a := range os.Args {
+		if a == "--" {
+			return os.Args[i+1:]
+		}
+	}
+	return nil
+}
+
+func argValue(args []string, flag string) string {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+func firstUserText(in map[string]any) string {
+	msg, _ := in["message"].(map[string]any)
+	content, _ := msg["content"].([]any)
+	for _, b := range content {
+		cb, _ := b.(map[string]any)
+		if cb["type"] == "text" {
+			if s, ok := cb["text"].(string); ok {
+				return s
+			}
+		}
+	}
+	return ""
 }
