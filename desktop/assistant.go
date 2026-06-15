@@ -725,10 +725,6 @@ func buildPrompt(userMessage, editorCode, errors string, imagePaths []string) st
 	return sb.String()
 }
 
-type streamResult struct {
-	sessionID string
-}
-
 // filterEnv returns a copy of env with any entries whose key matches one of
 // the given keys removed. Keys are matched case-sensitively against the
 // portion before the first '='.

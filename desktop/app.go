@@ -240,6 +240,7 @@ func (a *App) shutdown(ctx context.Context) {
 	if err != nil {
 		log.Printf("[settings] shutdown: %v", err)
 	}
+	a.assistant.Shutdown()
 	cleanupScratchFiles()
 	a.logs.Close()
 }
