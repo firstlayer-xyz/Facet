@@ -156,11 +156,3 @@ func genericCLIArgs(cliID, model, sysPrompt string) ([]string, error) {
 	}
 	return args, nil
 }
-
-// TEMP(Task 4 replaces this): minimal user-text builder so this package builds
-// before Task 4 lands the real buildUserText/buildUserFrame. Task 4 will move
-// the real implementation (delegating to the existing buildPrompt) into
-// assistant_claude.go and DELETE this stub.
-func buildUserText(userMessage, editorCode, errorsText string) string {
-	return buildPrompt(userMessage, editorCode, errorsText, nil)
-}
