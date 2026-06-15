@@ -51,7 +51,7 @@
             <string>Facet Model</string>
             <key>UTTypeConformsTo</key>
             <array>
-              <string>public.source-code</string>
+              <string>public.data</string>
             </array>
             <key>UTTypeIconFile</key>
             <string>iconfile</string>
