@@ -465,14 +465,31 @@ void facet_sweep(ManifoldCrossSection* cs,
     path[i] = {path_xyz[i*3], path_xyz[i*3+1], path_xyz[i*3+2]};
   }
 
-  // Compute tangent vectors at each path point.
+  // Compute tangent vectors at each path point, matching BOSL2 path_sweep's
+  // deriv-based tangents (uniform spacing): interior points use a central
+  // difference; the endpoints use a 3-point one-sided difference, so the end
+  // caps tilt toward the path the way BOSL2's do rather than sitting perpendicular
+  // to only the first/last segment. A 2-point path falls back to the segment dir.
   std::vector<vec3> tangents(nPath);
   for (size_t i = 0; i < nPath; i++) {
     vec3 t;
     if (i == 0) {
-      t = path[1] - path[0];
+      if (nPath >= 3) {
+        t = {-3*path[0].x + 4*path[1].x - path[2].x,
+             -3*path[0].y + 4*path[1].y - path[2].y,
+             -3*path[0].z + 4*path[1].z - path[2].z};
+      } else {
+        t = path[1] - path[0];
+      }
     } else if (i == nPath - 1) {
-      t = path[nPath-1] - path[nPath-2];
+      size_t e = nPath - 1;
+      if (nPath >= 3) {
+        t = {3*path[e].x - 4*path[e-1].x + path[e-2].x,
+             3*path[e].y - 4*path[e-1].y + path[e-2].y,
+             3*path[e].z - 4*path[e-1].z + path[e-2].z};
+      } else {
+        t = path[e] - path[e-1];
+      }
     } else {
       t = path[i+1] - path[i-1];
     }
@@ -481,67 +498,78 @@ void facet_sweep(ManifoldCrossSection* cs,
     tangents[i] = t;
   }
 
-  // Compute rotation-minimizing frames (tangent, normal, binormal).
+  // Rotation-minimizing frame: one in-plane normal per path point, kept as stable
+  // as possible around bends. The frame's in-plane X axis is derived at placement
+  // time as cross(normal, tangent), matching BOSL2 frame_map(y=normal, z=tangent).
   std::vector<vec3> normals(nPath);
-  std::vector<vec3> binormals(nPath);
 
-  // Initial normal: find a vector not parallel to the first tangent.
+  // Initial normal, matching BOSL2: start from BACK when the first tangent is
+  // steep (|z| > 1/sqrt2) else UP, then project perpendicular to the tangent.
   {
     vec3 t0 = tangents[0];
     vec3 up = {0, 0, 1};
-    if (std::abs(t0.x*up.x + t0.y*up.y + t0.z*up.z) > 0.9) {
+    if (std::abs(t0.z) > 0.70710678118) {
       up = {0, 1, 0};
     }
-    // binormal = normalize(cross(t0, up))
-    vec3 b = {t0.y*up.z - t0.z*up.y,
-              t0.z*up.x - t0.x*up.z,
-              t0.x*up.y - t0.y*up.x};
-    double blen = std::sqrt(b.x*b.x + b.y*b.y + b.z*b.z);
-    if (blen > 0) b = b / blen;
-    // normal = cross(b, t0)
-    vec3 n = {b.y*t0.z - b.z*t0.y,
-              b.z*t0.x - b.x*t0.z,
-              b.x*t0.y - b.y*t0.x};
+    double d = up.x*t0.x + up.y*t0.y + up.z*t0.z;
+    vec3 n = {up.x - d*t0.x, up.y - d*t0.y, up.z - d*t0.z};
+    double nlen = std::sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
+    if (nlen > 1e-12) n = n / nlen;
     normals[0] = n;
-    binormals[0] = b;
   }
 
-  // Propagate frames using rotation-minimizing approach:
-  // project previous normal onto plane perpendicular to current tangent.
+  // Propagate with the double-reflection method (Wang, Jüttler, Zheng & Liu 2008),
+  // as BOSL2's "incremental" path_sweep does. Two reflections carry the normal
+  // across each segment with far less drift than a plain projection — which is
+  // what makes sharp corners match BOSL2 rather than skewing the frame.
   for (size_t i = 1; i < nPath; i++) {
+    vec3 v1 = path[i] - path[i-1];
+    double c1 = v1.x*v1.x + v1.y*v1.y + v1.z*v1.z;
+    vec3 r = normals[i-1];
+    vec3 tp = tangents[i-1];
+    // First reflection across the plane bisecting the segment.
+    double kr = (c1 > 1e-12) ? 2.0*(v1.x*r.x + v1.y*r.y + v1.z*r.z)/c1 : 0.0;
+    vec3 rL = {r.x - kr*v1.x, r.y - kr*v1.y, r.z - kr*v1.z};
+    double kt = (c1 > 1e-12) ? 2.0*(v1.x*tp.x + v1.y*tp.y + v1.z*tp.z)/c1 : 0.0;
+    vec3 tL = {tp.x - kt*v1.x, tp.y - kt*v1.y, tp.z - kt*v1.z};
+    // Second reflection, aligning the reflected tangent with the next tangent.
+    vec3 v2 = {tangents[i].x - tL.x, tangents[i].y - tL.y, tangents[i].z - tL.z};
+    double c2 = v2.x*v2.x + v2.y*v2.y + v2.z*v2.z;
+    vec3 n;
+    if (c2 > 1e-12) {
+      double kr2 = 2.0*(v2.x*rL.x + v2.y*rL.y + v2.z*rL.z)/c2;
+      n = {rL.x - kr2*v2.x, rL.y - kr2*v2.y, rL.z - kr2*v2.z};
+    } else {
+      n = rL;  // straight segment: tangent unchanged, no extra rotation
+    }
+    // Re-orthonormalize against the current tangent to suppress numeric drift.
     vec3 t = tangents[i];
-    vec3 prevN = normals[i-1];
-    // Remove component along tangent: n = prevN - dot(prevN, t) * t
-    double d = prevN.x*t.x + prevN.y*t.y + prevN.z*t.z;
-    vec3 n = {prevN.x - d*t.x, prevN.y - d*t.y, prevN.z - d*t.z};
+    double d = n.x*t.x + n.y*t.y + n.z*t.z;
+    n = {n.x - d*t.x, n.y - d*t.y, n.z - d*t.z};
     double nlen = std::sqrt(n.x*n.x + n.y*n.y + n.z*n.z);
     if (nlen > 1e-12) {
-      n = n / nlen;
+      n = {n.x/nlen, n.y/nlen, n.z/nlen};
     } else {
-      // Degenerate: use previous normal (path doubles back)
       n = normals[i-1];
     }
-    // binormal = cross(t, n)
-    vec3 b = {t.y*n.z - t.z*n.y,
-              t.z*n.x - t.x*n.z,
-              t.x*n.y - t.y*n.x};
     normals[i] = n;
-    binormals[i] = b;
   }
 
-  // Build vertex positions: for each path point, place cross-section in 3D.
+  // Build vertex positions: place the cross-section in 3D at each path point.
+  // The frame X axis = cross(normal, tangent), so a 2D profile point (x, y) maps
+  // to x*Xaxis + y*normal — matching BOSL2 frame_map(y=normal, z=tangent).
   // Vertex layout: path_index * nCS + cs_index
   std::vector<float> vertProps(nPath * nCS * 3);
   for (size_t pi = 0; pi < nPath; pi++) {
     vec3 p = path[pi];
     vec3 n = normals[pi];
-    vec3 b = binormals[pi];
+    vec3 t = tangents[pi];
+    vec3 xax = {n.y*t.z - n.z*t.y, n.z*t.x - n.x*t.z, n.x*t.y - n.y*t.x};
     for (size_t ci = 0; ci < nCS; ci++) {
       vec2 cv = csVerts[ci];
-      // 3D position = path_point + cv.x * normal + cv.y * binormal
-      float x = (float)(p.x + cv.x * n.x + cv.y * b.x);
-      float y = (float)(p.y + cv.x * n.y + cv.y * b.y);
-      float z = (float)(p.z + cv.x * n.z + cv.y * b.z);
+      float x = (float)(p.x + cv.x * xax.x + cv.y * n.x);
+      float y = (float)(p.y + cv.x * xax.y + cv.y * n.y);
+      float z = (float)(p.z + cv.x * xax.z + cv.y * n.z);
       size_t vi = (pi * nCS + ci) * 3;
       vertProps[vi]   = x;
       vertProps[vi+1] = y;
