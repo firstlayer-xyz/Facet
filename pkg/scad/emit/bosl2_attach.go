@@ -616,7 +616,7 @@ func (e *Emitter) bosl2PrimitiveB2(mc *ast.ModuleCall) (string, bool) {
 		if !good {
 			return "", true
 		}
-		x, y, z := e.boxSizeComponents(size)
+		x, y, z := e.cubeSizeComponents(size)
 		args := fmt.Sprintf("size: Vec3{x: %s, y: %s, z: %s}", x, y, z)
 		if fillet != "" {
 			args += ", fillet: " + fillet
