@@ -243,17 +243,21 @@ func (e *evaluator) coerceAnonymousStruct(sv *structVal, targetType string, loca
 			}
 		}
 		if decl == nil {
-			// Search loaded libraries for the defining declaration.
+			// Search loaded libraries for the defining declaration. Map iteration
+			// is randomized, so when the same struct name is defined in two
+			// libraries, pick the lexicographically-smallest path for a stable
+			// result rather than one that flips between runs.
+			best := ""
 			for libPath := range e.libEvalCache {
 				for _, sd := range e.prog.Sources[e.prog.Resolve(libPath)].StructDecls() {
 					if sd.Name == targetType {
-						decl = sd
-						lib = &libRef{path: libPath}
+						if best == "" || libPath < best {
+							best = libPath
+							decl = sd
+							lib = &libRef{path: libPath}
+						}
 						break
 					}
-				}
-				if decl != nil {
-					break
 				}
 			}
 		}
