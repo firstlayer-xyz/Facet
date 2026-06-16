@@ -33,6 +33,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  -set key=value   Override a parameter (repeatable)\n")
 	fmt.Fprintf(os.Stderr, "  -libdir <dir>    Library search directory\n")
 	fmt.Fprintf(os.Stderr, "  -size <px>       Image size for .png/.jpg output (default: 1024)\n")
+	fmt.Fprintf(os.Stderr, "  -format <ext>    Output format, overriding the output file's extension\n")
 	fmt.Fprintf(os.Stderr, "  -ast             Dump parsed AST as JSON\n")
 	fmt.Fprintf(os.Stderr, "  -fmt             Format source code\n")
 	fmt.Fprintf(os.Stderr, "  -w               Write formatted output back to file (with -fmt)\n")
@@ -57,6 +58,7 @@ func main() {
 	var input, output, libDir, entry string
 	var dumpAST, doFmt, fmtWrite bool
 	var size int
+	var format string
 	overrides := map[string]interface{}{}
 
 	args := os.Args[1:]
@@ -102,6 +104,12 @@ func main() {
 				os.Exit(1)
 			}
 			size = n
+		case "-format":
+			if i+1 >= len(args) {
+				usage()
+			}
+			i++
+			format = args[i]
 		case "-ast":
 			dumpAST = true
 		case "-fmt":
@@ -171,9 +179,14 @@ func main() {
 		return
 	}
 
+	// The output format comes from -format when given (so callers like the Linux
+	// thumbnailer can write to a path without a .png extension), else the output
+	// file's extension.
 	ext := filepath.Ext(output)
-	if ext == "" {
-		fmt.Fprintf(os.Stderr, "error: output file must have an extension (e.g. .stl, .obj, .3mf, .glb)\n")
+	if format != "" {
+		ext = "." + strings.TrimPrefix(strings.ToLower(format), ".")
+	} else if ext == "" {
+		fmt.Fprintf(os.Stderr, "error: output needs an extension or -format (e.g. .stl, .obj, .3mf, .png)\n")
 		os.Exit(1)
 	}
 
