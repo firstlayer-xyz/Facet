@@ -243,7 +243,7 @@ func renderImage(solids []*manifold.Solid, output, ext string, size int) error {
 		size = 1024
 	}
 	dm := manifold.MergeExtractExpandedMeshes(solids, 40)
-	img := render.Mesh(expandedFloats(dm.ExpandedRaw), size, size)
+	img := render.Mesh(expandedFloats(dm.ExpandedRaw), dm.ExpandedColors(), size, size)
 
 	f, err := os.Create(output)
 	if err != nil {

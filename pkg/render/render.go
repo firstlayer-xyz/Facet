@@ -28,14 +28,18 @@ func (a vec3) normalized() vec3 {
 
 // Mesh renders expanded (non-indexed) triangle positions — 9 floats per triangle
 // (three xyz verts) — to a width×height RGBA image with a transparent
-// background, viewed from a fixed 3/4 angle with Z up. Returns a blank
-// transparent image when there are no triangles.
-func Mesh(positions []float32, width, height int) *image.RGBA {
+// background, viewed from a fixed 3/4 angle with Z up. colors, when its length
+// equals len(positions), is a per-expanded-vertex RGB buffer (3 bytes per
+// vertex); each triangle is shaded with its first vertex's color. A nil or
+// mismatched colors uses the default neutral gray. Returns a blank transparent
+// image when there are no triangles.
+func Mesh(positions []float32, colors []byte, width, height int) *image.RGBA {
 	const ss = 3 // supersampling factor for anti-aliasing
 	w, h := width*ss, height*ss
 	hi := image.NewRGBA(image.Rect(0, 0, w, h))
 
 	nTri := len(positions) / 9
+	useColors := len(colors) == len(positions)
 	if nTri == 0 || width <= 0 || height <= 0 {
 		return downsample(hi, ss)
 	}
@@ -94,7 +98,8 @@ func Mesh(positions []float32, width, height int) *image.RGBA {
 		return sv{cx + d.dot(right)*scale, cy - d.dot(camUp)*scale, d.dot(fwd)}
 	}
 
-	for _, t := range tris {
+	for ti := range tris {
+		t := tris[ti]
 		n := t.b.sub(t.a).cross(t.c.sub(t.a)).normalized()
 		// Back-face cull: skip triangles facing away from the camera.
 		if n.dot(fwd) >= 0 {
@@ -104,10 +109,19 @@ func Mesh(positions []float32, width, height int) *image.RGBA {
 		if shade > 1 {
 			shade = 1
 		}
+		triBase := base
+		if useColors {
+			o := ti * 9
+			triBase = vec3{
+				float64(colors[o]) / 255,
+				float64(colors[o+1]) / 255,
+				float64(colors[o+2]) / 255,
+			}
+		}
 		col := color.RGBA{
-			R: uint8(math.Min(255, base.x*shade*255+0.5)),
-			G: uint8(math.Min(255, base.y*shade*255+0.5)),
-			B: uint8(math.Min(255, base.z*shade*255+0.5)),
+			R: uint8(math.Min(255, triBase.x*shade*255+0.5)),
+			G: uint8(math.Min(255, triBase.y*shade*255+0.5)),
+			B: uint8(math.Min(255, triBase.z*shade*255+0.5)),
 			A: 255,
 		}
 		a, b, c := toScreen(t.a), toScreen(t.b), toScreen(t.c)
