@@ -13,13 +13,18 @@ import (
 
 // convertOverrides converts raw JSON override values into typed evaluator values
 // by inspecting global variable and entry point function parameter constraints.
-func convertOverrides(prog loader.Program, currentKey string, raw map[string]interface{}, entryPoint string) map[string]value {
+// An override for a current variable/parameter whose value can't be converted to
+// the expected type is a hard error rather than being silently dropped — a bad
+// override would otherwise vanish and the default render, masking the mismatch.
+// (Overrides for variables/parameters that no longer exist are simply ignored:
+// this only iterates the current globals/entry params, never the raw keyset.)
+func convertOverrides(prog loader.Program, currentKey string, raw map[string]interface{}, entryPoint string) (map[string]value, error) {
 	result := make(map[string]value, len(raw))
 
 	// Convert global overrides
 	src := prog.Sources[currentKey]
 	if src == nil {
-		return result
+		return result, nil
 	}
 	for _, g := range src.Globals() {
 		if g.Constraint == nil {
@@ -29,9 +34,11 @@ func convertOverrides(prog loader.Program, currentKey string, raw map[string]int
 		if !ok {
 			continue
 		}
-		if v, ok := convertOneOverride(g.Constraint, g.Value, rv); ok {
-			result[g.Name] = v
+		v, ok := convertOneOverride(g.Constraint, g.Value, rv)
+		if !ok {
+			return nil, fmt.Errorf("override for %q (%v) does not match its constraint", g.Name, rv)
 		}
+		result[g.Name] = v
 	}
 
 	// Convert entry point function parameter overrides
@@ -44,20 +51,21 @@ func convertOverrides(prog loader.Program, currentKey string, raw map[string]int
 			if !ok {
 				continue
 			}
+			var v value
 			if p.Constraint != nil {
-				if v, ok := convertOneOverride(p.Constraint, p.Default, rv); ok {
-					result[p.Name] = v
-				}
+				v, ok = convertOneOverride(p.Constraint, p.Default, rv)
 			} else {
-				if v, ok := convertByType(p.Type, rv); ok {
-					result[p.Name] = v
-				}
+				v, ok = convertByType(p.Type, rv)
 			}
+			if !ok {
+				return nil, fmt.Errorf("override for parameter %q (%v) is not a valid %s", p.Name, rv, p.Type)
+			}
+			result[p.Name] = v
 		}
 		break
 	}
 
-	return result
+	return result, nil
 }
 
 // convertByType converts a raw JSON value to a typed value based on the parameter's declared type.
@@ -152,7 +160,7 @@ func (e *evaluator) validateConstraint(name string, constraint parser.Expr, val 
 		startN, ok1 := asNumber(sv)
 		endN, ok2 := asNumber(ev)
 		if !ok1 || !ok2 {
-			return nil // can't validate non-numeric bounds
+			return fmt.Errorf("%s: constraint range bounds must evaluate to numbers", name)
 		}
 
 		// Extract the numeric value from val in the same unit space
@@ -179,7 +187,7 @@ func (e *evaluator) validateConstraint(name string, constraint parser.Expr, val 
 				return fmt.Errorf("%s: expected Length, got %s", name, typeName(val))
 			}
 		} else {
-			return nil // unknown unit, skip validation
+			return fmt.Errorf("%s: constraint uses an unrecognized unit %q", name, c.Unit)
 		}
 
 		if c.Range.Exclusive {
@@ -206,7 +214,7 @@ func (e *evaluator) validateConstraint(name string, constraint parser.Expr, val 
 		if ss, ok := sv.(length); ok {
 			es, eok := ev.(length)
 			if !eok {
-				return nil
+				return fmt.Errorf("%s: constraint range bounds must both be Length", name)
 			}
 			var valMM float64
 			if s, ok := val.(length); ok {
@@ -232,7 +240,7 @@ func (e *evaluator) validateConstraint(name string, constraint parser.Expr, val 
 		startF, ok1 := asNumber(sv)
 		endF, ok2 := asNumber(ev)
 		if !ok1 || !ok2 {
-			return nil
+			return fmt.Errorf("%s: constraint range bounds must evaluate to numbers", name)
 		}
 		valF, ok := asNumber(val)
 		if !ok {
@@ -246,8 +254,11 @@ func (e *evaluator) validateConstraint(name string, constraint parser.Expr, val 
 				return err
 			}
 			stepF, ok := asNumber(stepV)
-			if !ok || stepF == 0 {
-				return nil // can't validate
+			if !ok {
+				return fmt.Errorf("%s: constraint step must evaluate to a number", name)
+			}
+			if stepF == 0 {
+				return fmt.Errorf("%s: constraint step must be non-zero", name)
 			}
 			// Check value is on a step boundary (with tolerance)
 			offset := valF - startF

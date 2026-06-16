@@ -208,8 +208,9 @@ type EvalResult struct {
 	PosMap    []PosEntry
 }
 
-// newEvaluator creates an evaluator with all shared fields initialized.
-func newEvaluator(ctx context.Context, prog loader.Program, currentKey string, overrides map[string]interface{}, entryPoint string) *evaluator {
+// newEvaluator creates an evaluator with all shared fields initialized. It
+// errors if an override value can't be converted to its target type.
+func newEvaluator(ctx context.Context, prog loader.Program, currentKey string, overrides map[string]interface{}, entryPoint string) (*evaluator, error) {
 	tracks := make([]SolidTrack, 0)
 	e := &evaluator{
 		ctx:          ctx,
@@ -225,9 +226,13 @@ func newEvaluator(ctx context.Context, prog loader.Program, currentKey string, o
 		e.file = currentKey
 	}
 	if overrides != nil {
-		e.overrides = convertOverrides(prog, currentKey, overrides, entryPoint)
+		conv, err := convertOverrides(prog, currentKey, overrides, entryPoint)
+		if err != nil {
+			return nil, err
+		}
+		e.overrides = conv
 	}
-	return e
+	return e, nil
 }
 
 // Eval evaluates a parsed facet program. entryPoint must name a function that returns a Solid.
@@ -238,7 +243,10 @@ func Eval(ctx context.Context, prog loader.Program, currentKey string, overrides
 	if entryPoint == "" {
 		return nil, fmt.Errorf("entry point not set")
 	}
-	e := newEvaluator(ctx, prog, currentKey, overrides, entryPoint)
+	e, err := newEvaluator(ctx, prog, currentKey, overrides, entryPoint)
+	if err != nil {
+		return nil, err
+	}
 	return e.run()
 }
 
@@ -250,7 +258,10 @@ func EvalDebug(ctx context.Context, prog loader.Program, currentKey string, over
 	if entryPoint == "" {
 		return nil, fmt.Errorf("entry point not set")
 	}
-	e := newEvaluator(ctx, prog, currentKey, overrides, entryPoint)
+	e, err := newEvaluator(ctx, prog, currentKey, overrides, entryPoint)
+	if err != nil {
+		return nil, err
+	}
 	e.debug = true
 	result, err := e.run()
 	if err != nil {
