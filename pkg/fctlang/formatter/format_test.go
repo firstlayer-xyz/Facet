@@ -733,6 +733,28 @@ func TestFormatSliceExpr(t *testing.T) {
 	}
 }
 
+func TestFormatIfVarBinding(t *testing.T) {
+	// The `if var NAME = Cond` optional-narrowing binding must survive
+	// formatting — dropping it silently rewrites valid code to broken (NAME
+	// undefined). Parse explicitly so a parse failure can't mask the bug.
+	src := "fn Main() {\n    if var x = Maybe() {\n        return x\n    }\n    return 0\n}\n"
+	prog, err := parser.Parse(src, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	got := Format(prog)
+	if !strings.Contains(got, "if var x = ") {
+		t.Errorf("if-var binding dropped on format; got:\n%s", got)
+	}
+	prog2, err := parser.Parse(got, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("reparse of formatted output failed: %v", err)
+	}
+	if Format(prog2) != got {
+		t.Errorf("format not idempotent for if-var:\n%s", got)
+	}
+}
+
 func TestFormatStringEscapes(t *testing.T) {
 	input := "fn Main() {\n    var x = \"hello\\nworld\"\n    return Cube(s: 10 mm)\n}\n"
 	got := formatString(input)
