@@ -40,9 +40,24 @@ type userFrame struct {
 
 // buildUserText assembles the user-visible prompt text: the message plus the
 // inlined editor code and any errors. Images are not inlined here; they ride
-// the frame as separate content blocks.
+// the frame as separate content blocks (see buildUserFrame).
 func buildUserText(userMessage, editorCode, errorsText string) string {
-	return buildPrompt(userMessage, editorCode, errorsText, nil)
+	var sb strings.Builder
+	sb.WriteString(userMessage)
+
+	if editorCode != "" {
+		sb.WriteString("\n\n---\nCurrent editor code:\n```facet\n")
+		sb.WriteString(editorCode)
+		sb.WriteString("\n```")
+	}
+
+	if errorsText != "" {
+		sb.WriteString("\n\nCurrent errors:\n```\n")
+		sb.WriteString(errorsText)
+		sb.WriteString("\n```")
+	}
+
+	return sb.String()
 }
 
 // buildUserFrame marshals one stream-json user turn: a text block plus one

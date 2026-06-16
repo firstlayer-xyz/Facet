@@ -465,7 +465,7 @@ func resolveRepoHead(repo *git.Repository) (plumbing.Hash, error) {
 	return plumbing.ZeroHash, err
 }
 
-func ensureLib(ctx context.Context, c *Cache, gitCacheDir string, lp *LibPath, forceFetch bool) (*LibTree, error) {
+func ensureLib(ctx context.Context, c *Cache, gitCacheDir string, lp *LibPath) (*LibTree, error) {
 	if lp.IsLocal || lp.Host == "" {
 		return nil, fmt.Errorf("ensureLib: not a remote lib: %q", lp.Raw)
 	}
@@ -491,7 +491,7 @@ func ensureLib(ctx context.Context, c *Cache, gitCacheDir string, lp *LibPath, f
 		return nil, fmt.Errorf("shared clone %s: %w", lp.CloneURL(), err)
 	}
 
-	sha, err := resolveToSHA(ctx, repo, lp.Ref, forceFetch)
+	sha, err := resolveToSHA(ctx, repo, lp.Ref)
 	if err != nil {
 		return nil, fmt.Errorf("resolve %s@%s: %w", lp.CloneURL(), lp.Ref, err)
 	}
@@ -613,8 +613,8 @@ func ensureSharedRepo(ctx context.Context, c *Cache, sharedDir, cloneURL string)
 // and no fetch is needed. Mutable refs (branches, tags) require a successful
 // fetch — a failed fetch is a failed resolve, not an excuse to serve a stale
 // commit.
-func resolveToSHA(ctx context.Context, repo *git.Repository, ref string, forceFetch bool) (plumbing.Hash, error) {
-	if isImmutableRef(ref) && !forceFetch {
+func resolveToSHA(ctx context.Context, repo *git.Repository, ref string) (plumbing.Hash, error) {
+	if isImmutableRef(ref) {
 		if h, err := resolveRef(repo, ref); err == nil {
 			return *h, nil
 		}
