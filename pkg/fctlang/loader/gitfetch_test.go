@@ -192,6 +192,11 @@ func TestValidateLibPathTraversal(t *testing.T) {
 	if err := validateLibPath("vendor/name"); err != nil {
 		t.Fatalf("unexpected error for vendor/name: %v", err)
 	}
+	// A trailing `..@ref` must not evade the traversal check (the final segment
+	// would otherwise read as "..@main", not "..").
+	if err := validateLibPath("github.com/u/r/sub/..@main"); err == nil {
+		t.Fatal("expected error for '..' traversal hidden behind an @ref")
+	}
 }
 
 // TestParseLibPathRefVariants pins parsing across the three @ref shapes
