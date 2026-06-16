@@ -1,7 +1,7 @@
-# Windows Explorer thumbnails for `.fct`
+# Windows Explorer thumbnails for `.fct/.3mf/.obj/.stl`
 
-A COM **`IThumbnailProvider`** shell handler that gives Facet model files a
-rendered 3D thumbnail in Explorer's icon/tile/content views.
+A COM **`IThumbnailProvider`** shell handler that gives Facet model files and
+common mesh formats a rendered 3D thumbnail in Explorer's icon/tile/content views.
 
 - **`thumbnail_provider.cpp`** — the handler. On `GetThumbnail` it shells out to
   `facetc <file> -o <tmp> -format png -size <px>` (see `facetc -o preview.png`,
@@ -24,7 +24,12 @@ sh build.sh                       # → facet_thumbnail.dll (needs zig)
 # elevated PowerShell, with facetc.exe alongside the DLL:
 .\install.ps1
 ```
-`.fct` files then show a 3D thumbnail (restart Explorer to refresh).
+`.fct`, `.3mf`, `.obj`, and `.stl` files then show a 3D thumbnail (restart
+Explorer to refresh).
+
+> **Note:** Windows ships its own `.3mf` (and sometimes `.stl`) thumbnail
+> handlers; registering ours under those extensions overrides them per-machine.
+> This is intended.
 
 ## Status
 
