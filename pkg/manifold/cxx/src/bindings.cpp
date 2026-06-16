@@ -628,7 +628,7 @@ void facet_sweep(ManifoldCrossSection* cs,
   mesh.numProp = 3;
   mesh.vertProperties = std::move(vertProps);
   mesh.triVerts.assign(triVerts.begin(), triVerts.end());
-  wrap(new Manifold(Manifold(mesh).AsOriginal()), out);
+  wrap_solid_from_mesh(mesh, out);
 }
 
 void facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
@@ -807,7 +807,7 @@ void facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
   mesh.numProp = 3;
   mesh.vertProperties = std::move(vertProps);
   mesh.triVerts.assign(triVerts.begin(), triVerts.end());
-  wrap(new Manifold(Manifold(mesh).AsOriginal()), out);
+  wrap_solid_from_mesh(mesh, out);
 }
 
 // ---------------------------------------------------------------------------

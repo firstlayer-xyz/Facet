@@ -105,9 +105,9 @@ func Mesh(positions []float32, width, height int) *image.RGBA {
 			shade = 1
 		}
 		col := color.RGBA{
-			R: uint8(math.Min(255, base.x*shade*255)),
-			G: uint8(math.Min(255, base.y*shade*255)),
-			B: uint8(math.Min(255, base.z*shade*255)),
+			R: uint8(math.Min(255, base.x*shade*255+0.5)),
+			G: uint8(math.Min(255, base.y*shade*255+0.5)),
+			B: uint8(math.Min(255, base.z*shade*255+0.5)),
 			A: 255,
 		}
 		a, b, c := toScreen(t.a), toScreen(t.b), toScreen(t.c)
@@ -165,7 +165,7 @@ func downsample(src *image.RGBA, ss int) *image.RGBA {
 				}
 			}
 			out.SetRGBA(x, y, color.RGBA{
-				R: uint8(rr / n), G: uint8(gg / n), B: uint8(bb / n), A: uint8(aa / n),
+				R: uint8(rr/n + 0.5), G: uint8(gg/n + 0.5), B: uint8(bb/n + 0.5), A: uint8(aa/n + 0.5),
 			})
 		}
 	}
