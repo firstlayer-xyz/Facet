@@ -12,6 +12,7 @@ import "C"
 
 import (
 	"context"
+	"os"
 	"unsafe"
 
 	"facet/pkg/fctlang/checker"
@@ -19,6 +20,9 @@ import (
 	"facet/pkg/fctlang/loader"
 	"facet/pkg/fctlang/parser"
 	"facet/pkg/manifold"
+	"facet/pkg/meshpreview"
+
+	"github.com/firstlayer-xyz/meshio"
 )
 
 // facetMesh evaluates the source's Main entry to a merged display mesh, or nil
@@ -43,33 +47,80 @@ func facetMesh(source string) *manifold.DisplayMesh {
 	return manifold.MergeExtractExpandedMeshes(solids, 40)
 }
 
-// FacetRenderMesh evaluates source's Main and returns the expanded (non-indexed)
-// triangle positions as a malloc'd float32 buffer: 9 floats per triangle (three
-// xyz verts), suitable for flat-shaded rendering. *outFloats receives the float
-// count. Returns NULL on any failure (parse/check/eval error or empty mesh). The
-// caller owns the buffer and must release it with FacetFree.
-//
-//export FacetRenderMesh
-func FacetRenderMesh(csrc *C.char, outFloats *C.int) *C.float {
-	*outFloats = 0
-	dm := facetMesh(C.GoString(csrc))
+// previewBuffers loads a file into renderer inputs: expanded positions (9 floats
+// per triangle) and a parallel per-expanded-vertex RGB color buffer (nil when
+// the geometry carries no color). Mesh files (.stl/.obj/.3mf) are read as raw
+// triangles; everything else is treated as Facet source and evaluated. Returns
+// nil positions on any failure.
+func previewBuffers(path string) (positions []float32, colors []byte) {
+	if meshio.CanRead(path) {
+		p, c, err := meshpreview.LoadColored(path)
+		if err != nil {
+			return nil, nil
+		}
+		return p, c
+	}
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil
+	}
+	dm := facetMesh(string(src))
 	if dm == nil || len(dm.ExpandedRaw) == 0 {
-		return nil
+		return nil, nil
 	}
-	n := len(dm.ExpandedRaw) // bytes (float32 LE)
-	buf := C.malloc(C.size_t(n))
-	if buf == nil {
-		return nil
-	}
-	C.memcpy(buf, unsafe.Pointer(&dm.ExpandedRaw[0]), C.size_t(n))
-	*outFloats = C.int(n / 4)
-	return (*C.float)(buf)
+	return dm.ExpandedPositions(), dm.ExpandedColors()
 }
 
-// FacetFree releases a buffer returned by FacetRenderMesh.
+// FacetRenderFile loads the file at cpath (Facet source or a .stl/.obj/.3mf
+// mesh) and returns expanded triangle positions as a malloc'd float32 buffer:
+// 9 floats per triangle. *outFloats receives the float count. When the geometry
+// has color, *outColors receives a malloc'd per-expanded-vertex RGB buffer (3
+// bytes per vertex, so *outColorBytes == *outFloats); otherwise *outColors is
+// NULL. Returns NULL on any failure (load/eval error or empty mesh). The caller
+// owns both buffers: release positions with FacetFree and colors with
+// FacetFreeBytes.
+//
+//export FacetRenderFile
+func FacetRenderFile(cpath *C.char, outFloats *C.int, outColors **C.uchar, outColorBytes *C.int) *C.float {
+	*outFloats = 0
+	*outColors = nil
+	*outColorBytes = 0
+
+	positions, colors := previewBuffers(C.GoString(cpath))
+	if len(positions) == 0 {
+		return nil
+	}
+
+	pn := len(positions) * 4
+	pbuf := C.malloc(C.size_t(pn))
+	if pbuf == nil {
+		return nil
+	}
+	C.memcpy(pbuf, unsafe.Pointer(&positions[0]), C.size_t(pn))
+	*outFloats = C.int(len(positions))
+
+	if len(colors) > 0 {
+		cbuf := C.malloc(C.size_t(len(colors)))
+		if cbuf != nil {
+			C.memcpy(cbuf, unsafe.Pointer(&colors[0]), C.size_t(len(colors)))
+			*outColors = (*C.uchar)(cbuf)
+			*outColorBytes = C.int(len(colors))
+		}
+	}
+	return (*C.float)(pbuf)
+}
+
+// FacetFree releases a positions buffer returned by FacetRenderFile.
 //
 //export FacetFree
 func FacetFree(p *C.float) {
+	C.free(unsafe.Pointer(p))
+}
+
+// FacetFreeBytes releases a color buffer returned by FacetRenderFile.
+//
+//export FacetFreeBytes
+func FacetFreeBytes(p *C.uchar) {
 	C.free(unsafe.Pointer(p))
 }
 
