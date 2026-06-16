@@ -3,12 +3,15 @@
 package manifold
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/firstlayer-xyz/meshio"
 )
 
 // writeBinarySTL writes a binary STL of the given triangles (each 3 vertices
@@ -157,7 +160,7 @@ func TestImportMesh3MF(t *testing.T) {
 		t.Fatalf("CreateCube: %v", err)
 	}
 	path := filepath.Join(t.TempDir(), "cube.3mf")
-	if err := Export3MF(cube, path); err != nil {
+	if err := Export3MF(cube, path, nil); err != nil {
 		t.Fatalf("Export3MF: %v", err)
 	}
 	solid, err := ImportMesh(path)
@@ -268,5 +271,32 @@ func TestImportMeshCorruptFile(t *testing.T) {
 	_, err := ImportMesh(path)
 	if err == nil {
 		t.Fatal("expected error for corrupt STL")
+	}
+}
+
+func TestExport3MFMulti_EmbedsAttachment(t *testing.T) {
+	cube, err := CreateCube(1, 1, 1)
+	if err != nil {
+		t.Fatalf("CreateCube: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "out.3mf")
+	atts := []meshio.Attachment{{
+		Path:        "Metadata/Facet/project.json",
+		ContentType: "application/vnd.facet.project+json",
+		Data:        []byte(`{"version":1}`),
+	}}
+	if err := Export3MFMulti([]*Solid{cube}, path, atts); err != nil {
+		t.Fatalf("Export3MFMulti: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := meshio.Decode3MF(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Attachments) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(m.Attachments))
 	}
 }

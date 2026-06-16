@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
+
+	"github.com/firstlayer-xyz/meshio"
 )
 
 // a single triangle (3 verts, 1 face) is the minimal valid mesh.
@@ -11,7 +13,7 @@ var triVerts = []float32{0, 0, 0, 1, 0, 0, 0, 1, 0}
 var triIndices = []uint32{0, 1, 2}
 
 func TestEncodeSolidMeshSTLIsBinary(t *testing.T) {
-	got, err := EncodeSolidMesh(triVerts, triIndices, nil, "stl")
+	got, err := EncodeSolidMesh(triVerts, triIndices, nil, "stl", nil)
 	if err != nil {
 		t.Fatalf("EncodeSolidMesh stl: %v", err)
 	}
@@ -27,7 +29,7 @@ func TestEncodeSolidMeshSTLIsBinary(t *testing.T) {
 }
 
 func TestEncodeSolidMesh3MFIsZip(t *testing.T) {
-	got, err := EncodeSolidMesh(triVerts, triIndices, []string{"#FF0000"}, "3mf")
+	got, err := EncodeSolidMesh(triVerts, triIndices, []string{"#FF0000"}, "3mf", nil)
 	if err != nil {
 		t.Fatalf("EncodeSolidMesh 3mf: %v", err)
 	}
@@ -38,13 +40,41 @@ func TestEncodeSolidMesh3MFIsZip(t *testing.T) {
 }
 
 func TestEncodeSolidMeshEmptyErrors(t *testing.T) {
-	if _, err := EncodeSolidMesh(nil, nil, nil, "stl"); err == nil {
+	if _, err := EncodeSolidMesh(nil, nil, nil, "stl", nil); err == nil {
 		t.Fatal("expected error for empty mesh, got nil")
 	}
 }
 
 func TestEncodeSolidMeshUnknownFormatErrors(t *testing.T) {
-	if _, err := EncodeSolidMesh(triVerts, triIndices, nil, "gcode"); err == nil {
+	if _, err := EncodeSolidMesh(triVerts, triIndices, nil, "gcode", nil); err == nil {
 		t.Fatal("expected error for unknown format, got nil")
+	}
+}
+
+func TestEncodeSolidMesh_3MFCarriesAttachment(t *testing.T) {
+	verts := []float32{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0}
+	indices := []uint32{0, 1, 2, 0, 2, 3}
+	atts := []meshio.Attachment{{
+		Path: "Metadata/Facet/project.json", ContentType: "application/vnd.facet.project+json", Data: []byte(`{"version":1}`),
+	}}
+	data, err := EncodeSolidMesh(verts, indices, nil, "3mf", atts)
+	if err != nil {
+		t.Fatalf("EncodeSolidMesh: %v", err)
+	}
+	m, err := meshio.Decode3MF(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("Decode3MF: %v", err)
+	}
+	if len(m.Attachments) != 1 || m.Attachments[0].Path != "Metadata/Facet/project.json" {
+		t.Fatalf("attachment not carried: %+v", m.Attachments)
+	}
+}
+
+func TestEncodeSolidMesh_AttachmentsRejectedForSTL(t *testing.T) {
+	verts := []float32{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0}
+	indices := []uint32{0, 1, 2, 0, 2, 3}
+	atts := []meshio.Attachment{{Path: "x", ContentType: "y", Data: []byte("z")}}
+	if _, err := EncodeSolidMesh(verts, indices, nil, "stl", atts); err == nil {
+		t.Fatal("expected error embedding attachments in STL")
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"facet/pkg/facet3mf"
 	"facet/pkg/fctlang/doc"
 	"facet/pkg/fctlang/formatter"
 	"facet/pkg/fctlang/loader"
@@ -21,6 +22,7 @@ import (
 	"facet/share/docs"
 	"facet/share/examples"
 
+	"github.com/firstlayer-xyz/meshio"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -376,12 +378,56 @@ func (a *App) IsScratchFile(path string) bool {
 	return strings.HasPrefix(path, dir)
 }
 
-func (a *App) OpenRecentFile(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
+// OpenedFile is the result of opening a file into the editor.
+//   - .fct: Source is the raw file; Imported is false (saved file, tied to Path).
+//   - .3mf with a Facet project part: Source/Entry/Overrides recover the project;
+//     Imported is true (open as a new unsaved scratch project).
+//   - .3mf without a Facet part, or .stl/.obj: Source is a generated LoadMesh
+//     wrapper; Imported is true.
+type OpenedFile struct {
+	Path      string                 `json:"path"`
+	Source    string                 `json:"source"`
+	Entry     string                 `json:"entry,omitempty"`
+	Overrides map[string]interface{} `json:"overrides,omitempty"`
+	Imported  bool                   `json:"imported"`
+}
+
+// loadMeshWrapper is a minimal project that imports an external mesh by absolute
+// path via the stdlib LoadMesh() function. The argument is named (path:) because
+// all user-facing Facet calls require named arguments.
+func loadMeshWrapper(path string) string {
+	return fmt.Sprintf("fn Main() Solid {\n\treturn LoadMesh(path: %q)\n}\n", path)
+}
+
+// readOpenedFile reads path into an OpenedFile, routing by extension/content.
+func readOpenedFile(path string) (*OpenedFile, error) {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".3mf":
+		mesh, err := meshio.Read(path)
+		if err != nil {
+			return nil, fmt.Errorf("open %s: %w", filepath.Base(path), err)
+		}
+		proj, err := facet3mf.ExtractStrict(mesh)
+		if err != nil {
+			return nil, fmt.Errorf("open %s: %w", filepath.Base(path), err)
+		}
+		if proj != nil {
+			return &OpenedFile{Path: path, Source: proj.Source, Entry: proj.Entry, Overrides: proj.Overrides, Imported: true}, nil
+		}
+		return &OpenedFile{Path: path, Source: loadMeshWrapper(path), Imported: true}, nil
+	case ".stl", ".obj":
+		return &OpenedFile{Path: path, Source: loadMeshWrapper(path), Imported: true}, nil
+	default: // .fct and anything else: raw source
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		return &OpenedFile{Path: path, Source: string(data)}, nil
 	}
-	return map[string]string{"path": path, "source": string(data)}, nil
+}
+
+func (a *App) OpenRecentFile(path string) (*OpenedFile, error) {
+	return readOpenedFile(path)
 }
 
 // SetWindowTitle updates the native window title.
@@ -389,7 +435,17 @@ func (a *App) SetWindowTitle(title string) {
 	wailsRuntime.WindowSetTitle(a.ctx, title)
 }
 
-var facetFilter = wailsRuntime.FileFilter{
+// openFilter is the Open dialog filter: Facet source plus importable mesh
+// formats. Mesh files are routed through readOpenedFile, which generates a
+// LoadMesh wrapper or recovers an embedded project.
+var openFilter = wailsRuntime.FileFilter{
+	DisplayName: "Facet & Mesh Files (*.fct, *.3mf, *.stl, *.obj)",
+	Pattern:     "*.fct;*.3mf;*.stl;*.obj",
+}
+
+// saveFilter is the Save dialog filter: a document is always saved as Facet
+// source, never as a mesh, so Save never overwrites an imported mesh file.
+var saveFilter = wailsRuntime.FileFilter{
 	DisplayName: "Facet Files (*.fct)",
 	Pattern:     "*.fct",
 }
@@ -410,10 +466,10 @@ func (a *App) ConfirmDiscard() (bool, error) {
 	return result == "Don't Save", nil
 }
 
-// OpenFile shows a native file dialog and returns the file contents and path.
-func (a *App) OpenFile() (map[string]string, error) {
+// OpenFile shows a native file dialog and returns the opened file.
+func (a *App) OpenFile() (*OpenedFile, error) {
 	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
-		Filters: []wailsRuntime.FileFilter{facetFilter},
+		Filters: []wailsRuntime.FileFilter{openFilter},
 	})
 	if err != nil {
 		return nil, err
@@ -421,11 +477,7 @@ func (a *App) OpenFile() (map[string]string, error) {
 	if path == "" {
 		return nil, nil // user cancelled
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]string{"path": path, "source": string(data)}, nil
+	return readOpenedFile(path)
 }
 
 // SaveFile saves source to the given path. If path is empty, shows a save dialog.
@@ -434,7 +486,7 @@ func (a *App) SaveFile(source string, path string) (string, error) {
 		var err error
 		path, err = wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
 			DefaultFilename: "untitled.fct",
-			Filters:         []wailsRuntime.FileFilter{facetFilter},
+			Filters:         []wailsRuntime.FileFilter{saveFilter},
 		})
 		if err != nil {
 			return "", err

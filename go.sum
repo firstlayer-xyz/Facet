@@ -24,8 +24,8 @@ github.com/elazarl/goproxy v1.7.2 h1:Y2o6urb7Eule09PjlhQRGNsqRfPmYI3KKQLFpCAV3+o
 github.com/elazarl/goproxy v1.7.2/go.mod h1:82vkLNir0ALaW14Rc399OTTjyNREgmdL2cVoIbS6XaE=
 github.com/emirpasic/gods v1.18.1 h1:FXtiHYKDGKCW2KzwZKx0iC0PQmdlorYgdFG9jPXJ1Bc=
 github.com/emirpasic/gods v1.18.1/go.mod h1:8tpGGwCnJ5H4r6BWwaV6OrWmMoPhUl5jm/FMNAnJvWQ=
-github.com/firstlayer-xyz/meshio v0.0.0-19700101000000-e90958d8091f h1:IDUH00961TYprFK388GoKibaz4cKSQcNhh6M46hbsDI=
-github.com/firstlayer-xyz/meshio v0.0.0-19700101000000-e90958d8091f/go.mod h1:ec3ratUzFGD0HjfSe7Vj9zi8T4sRBi0N0wUYnD0YXIk=
+github.com/firstlayer-xyz/meshio v0.0.0-20260615234347-3e1efb3d317d h1:vbWxvTSwngR3WJisKgYXB5Ai3e3pjasM8G3sMIl/FcA=
+github.com/firstlayer-xyz/meshio v0.0.0-20260615234347-3e1efb3d317d/go.mod h1:ec3ratUzFGD0HjfSe7Vj9zi8T4sRBi0N0wUYnD0YXIk=
 github.com/gliderlabs/ssh v0.3.8 h1:a4YXD1V7xMF9g5nTkdfnja3Sxy1PVDCj1Zg4Wb8vY6c=
 github.com/gliderlabs/ssh v0.3.8/go.mod h1:xYoytBv1sV0aL3CavoDuJIQNURXkkfPA/wxQ1pL1fAU=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 h1:+zs/tPmkDkHx3U66DAb0lQFJrpS6731Oaa12ikc+DiI=

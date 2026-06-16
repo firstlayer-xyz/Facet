@@ -666,7 +666,7 @@ on('menu:new-library', async () => {
 on('menu:close-tab', () => closeActiveTab());
 on('menu:save', () => saveFile());
 on('menu:save-as', () => saveFileAs());
-on('menu:export', (format: string) => exportMesh(format));
+on('menu:export', (format: string) => exportMesh(format, settings.export.embedSourceIn3mf));
 
 // Run menu
 on('menu:run', () => toggleRun());
@@ -802,7 +802,7 @@ clearDimsBtn.addEventListener('click', () => {
 });
 
 
-exportBtn.addEventListener('click', () => exportMesh());
+exportBtn.addEventListener('click', () => exportMesh('3mf', settings.export.embedSourceIn3mf));
 shareBtn.addEventListener('click', () => shareToWeb(shareBtn));
 
 async function pickAndSendToSlicer() {

@@ -1,6 +1,7 @@
 // app.ts — Run/debug orchestration logic.
 
 import { ConfirmDiscard, OpenFile, OpenRecentFile, AddRecentFile, SaveFile, ExportMesh, SendToSlicer, BuildShareLink, GetDocCatalog, GetDocGuides, SetWindowTitle, FormatCode, CreateScratchFile, IsScratchFile, SetDirtyState } from '../wailsjs/go/main/App';
+import type { main } from '../wailsjs/go/models';
 import { showSharePopover } from './dialogs';
 import type { EntryPoint } from './function-preview';
 import { on } from './events';
@@ -963,7 +964,8 @@ function handleDebugHTTPResult(data: EvalResult, binary: ArrayBuffer) {
 }
 
 /** Open a tab with the given key and source, switching to it if already open. */
-function openTab(key: string, source: string, label?: string, readOnly?: boolean) {
+function openTab(key: string, source: string, label?: string, readOnly?: boolean,
+                 entry?: string, overrides?: Record<string, unknown>) {
   if (tabStore.has(key)) {
     switchToTab(key);
     return;
@@ -973,6 +975,8 @@ function openTab(key: string, source: string, label?: string, readOnly?: boolean
   editor.setCurrentSource(key);
   editor.switchModel(key, source);
   editor.setReadOnly(readOnly ?? isReadOnly(key));
+  if (entry) tabStore.setPickedEntry(key, { name: entry, libPath: '' });
+  if (overrides) tabStore.setEntryOverrides(key, overrides);
   markClean();
   updateWindowTitle();
   renderTabs();
@@ -983,23 +987,46 @@ export function openExample(source: string, name: string) {
   openTab('example:' + name, source, name.replace(/\.fct$/, ''), true);
 }
 
+/** Strips the directory and a known mesh/source extension to derive a tab label. */
+function importBaseName(path: string): string {
+  const base = path.split(/[\\/]/).pop() || 'Imported';
+  return base.replace(/\.(fct|3mf|stl|obj)$/i, '') || 'Imported';
+}
+
+/**
+ * Routes an opened file into the editor. Imported files (recovered 3MF projects
+ * and generated mesh wrappers) become a new unsaved scratch project so Save
+ * prompts for a .fct and never overwrites the mesh. A .fct opens in place.
+ */
+async function openOpenedFile(result: main.OpenedFile) {
+  const overrides = result.overrides as Record<string, unknown> | undefined;
+  if (result.imported) {
+    const label = importBaseName(result.path);
+    const key = await CreateScratchFile(label + '-' + Date.now());
+    openTab(key, result.source, label, false, result.entry, overrides);
+  } else {
+    openTab(result.path, result.source, undefined, undefined, result.entry, overrides);
+  }
+  AddRecentFile(result.path).catch(err => reportError('AddRecentFile', err));
+}
+
 export async function openFile() {
   const result = await OpenFile();
   if (!result) return;
-  openTab(result.path, result.source);
-  AddRecentFile(result.path).catch(err => reportError('AddRecentFile', err));
+  await openOpenedFile(result);
 }
 
 export async function openRecentFile(path: string) {
   if (tabStore.has(path)) { switchToTab(path); return; }
-  let result: Record<string, string>;
+  let result: main.OpenedFile | null;
   try {
     result = await OpenRecentFile(path);
-  } catch {
-    return; // file may no longer exist
+  } catch (err) {
+    reportError('OpenRecentFile', err); // e.g. a 3MF with a corrupt Facet part
+    return;
   }
-  openTab(result.path, result.source);
-  AddRecentFile(result.path).catch(err => reportError('AddRecentFile', err));
+  if (!result) return;
+  await openOpenedFile(result);
 }
 
 async function formatSource(source: string): Promise<string> {
@@ -1083,10 +1110,10 @@ function currentEvalParams() {
   };
 }
 
-export async function exportMesh(format: string = '3mf') {
+export async function exportMesh(format: string = '3mf', embedSource: boolean = true) {
   try {
     const p = currentEvalParams();
-    await ExportMesh(format, p.sources, p.key, p.entry, p.overrides);
+    await ExportMesh(format, p.sources, p.key, p.entry, p.overrides, embedSource);
   } catch (err) {
     showError(err);
   }

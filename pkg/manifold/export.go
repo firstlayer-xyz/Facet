@@ -116,27 +116,30 @@ func runTriangleHex(rm *RunMesh, faceMap map[uint32]FaceInfo) []string {
 // Export3MF exports a single Solid to a 3MF file using faceID-based colors.
 // The mesh geometry is written untouched — no vertex splitting or merging.
 // Colors are derived from the Solid's FaceMap via Manifold's originalID run tracking.
-func Export3MF(s *Solid, path string) error {
+// attachments are extra OPC parts embedded in the package (e.g. the Facet
+// project payload); pass nil for none.
+func Export3MF(s *Solid, path string, attachments []meshio.Attachment) error {
 	rm := extractRunMesh(s)
-	data, err := EncodeSolidMesh(rm.Vertices, rm.Indices, runTriangleHex(rm, s.FaceMap), "3mf")
+	data, err := EncodeSolidMesh(rm.Vertices, rm.Indices, runTriangleHex(rm, s.FaceMap), "3mf", attachments)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
 }
 
-// Export3MFMulti unions multiple Solids and exports to 3MF with faceID-based colors.
-func Export3MFMulti(solids []*Solid, path string) error {
+// Export3MFMulti unions multiple Solids and exports to 3MF with faceID-based
+// colors and the given OPC attachments (nil for none).
+func Export3MFMulti(solids []*Solid, path string, attachments []meshio.Attachment) error {
 	if len(solids) == 0 {
 		return fmt.Errorf("no solids to export")
 	}
-	return Export3MF(unionAll(solids), path)
+	return Export3MF(unionAll(solids), path, attachments)
 }
 
 // ExportSTL exports a single Solid to a binary STL file.
 func ExportSTL(s *Solid, path string) error {
 	rm := extractRunMesh(s)
-	data, err := EncodeSolidMesh(rm.Vertices, rm.Indices, nil, "stl")
+	data, err := EncodeSolidMesh(rm.Vertices, rm.Indices, nil, "stl", nil)
 	if err != nil {
 		return err
 	}
