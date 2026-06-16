@@ -18,7 +18,7 @@ void facet_solid_from_mesh_with_face_ids(
     float* vert_props, size_t n_verts,
     uint32_t* tri_verts, size_t n_tris,
     uint32_t* face_ids, size_t n_face_ids,
-    FacetSolidRet* out) {
+    FacetSolidRet* out) try {
   MeshGL mesh;
   mesh.numProp = 3;
   mesh.vertProperties.assign(vert_props, vert_props + n_verts * 3);
@@ -27,13 +27,17 @@ void facet_solid_from_mesh_with_face_ids(
     mesh.faceID.assign(face_ids, face_ids + n_face_ids);
   }
   wrap_solid_from_mesh(mesh, out);
+} catch (...) {
+  // Exception barrier: a C++ throw must not unwind across the extern "C"
+  // boundary into Go (UB). Surface failure as a null result.
+  facetClear(out);
 }
 
 void facet_extract_polymesh(
     ManifoldPtr* manifold,
     double** out_vertices, int* out_num_verts,
     int** out_face_indices, int* out_face_indices_len,
-    int** out_face_sizes, int* out_num_faces) {
+    int** out_face_sizes, int* out_num_faces) try {
   auto* m = as_cpp(manifold);
   MeshGL mesh = m->GetMeshGL();
 
@@ -202,6 +206,15 @@ void facet_extract_polymesh(
       (*out_face_indices)[idx++] = vi;
     }
   }
+} catch (...) {
+  // Exception barrier: null every output so a C++ throw becomes a clean
+  // failure Go reads, never UB unwinding across the extern "C" boundary.
+  if (out_vertices) *out_vertices = nullptr;
+  if (out_num_verts) *out_num_verts = 0;
+  if (out_face_indices) *out_face_indices = nullptr;
+  if (out_face_indices_len) *out_face_indices_len = 0;
+  if (out_face_sizes) *out_face_sizes = nullptr;
+  if (out_num_faces) *out_num_faces = 0;
 }
 
 }  // extern "C"
