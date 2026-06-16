@@ -33,16 +33,20 @@ extensions) — there is no `regsvr32`/`install.sh` step.
 
 ## Refreshing during development
 
-After `make build`, point LaunchServices at the freshly built app and flush the
-Quick Look cache:
+After `make build`, the app extensions must be **activated**, which happens when
+the app is **launched** — `lsregister` alone registers the app for document/UTI
+purposes but does *not* activate the embedded `.appex` extensions:
 
 ```sh
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-  -f desktop/build/bin/Facet.app
-qlmanage -r && qlmanage -r cache
+open desktop/build/bin/Facet.app   # launch once so PlugInKit registers the extensions, then quit
+qlmanage -r && qlmanage -r cache   # flush Quick Look's generator + thumbnail caches
 ```
 
-Then thumbnails/previews update in Finder (you may need to relaunch Finder).
+Then thumbnails/previews update in Finder (you may need to relaunch Finder, or
+re-run the two `qlmanage -r` commands). When iterating on the extension code, a
+rebuilt `.appex` is picked up by re-running `pluginkit -a <path>.appex` (bumps
+the registration) followed by `qlmanage -r`; a fresh `open` of the app is the
+definitive way to re-bless a changed extension binary.
 
 ## Why there's no build/install artifact here
 
