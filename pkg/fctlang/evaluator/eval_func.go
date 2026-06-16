@@ -292,8 +292,11 @@ func (e *evaluator) evalFieldAssign(s *parser.FieldAssignStmt, locals map[string
 			// globals map is the scope fallback). Mutating it from a function
 			// would be spooky action at a distance — reassign at top level or
 			// work on a local copy instead.
-			if gv, isGlobal := e.globals[root.Name]; isGlobal && unwrap(gv) == unwrap(v) {
-				if _, isStruct := unwrap(v).(*structVal); isStruct {
+			// Gate on struct-ness before the `==`: comparing two interface values
+			// whose dynamic type is uncomparable (e.g. an array) panics, so the
+			// struct pointer must be the comparison operand.
+			if sv, isStruct := unwrap(v).(*structVal); isStruct {
+				if gv, isGlobal := e.globals[root.Name]; isGlobal && unwrap(gv) == sv {
 					return e.errAt(s.Pos, "cannot mutate module-level %q from inside a function (assign it to a local first, or reassign it at top level)", root.Name)
 				}
 			}

@@ -36,7 +36,7 @@ func convertOverrides(prog loader.Program, currentKey string, raw map[string]int
 		}
 		v, ok := convertOneOverride(g.Constraint, g.Value, rv)
 		if !ok {
-			return nil, fmt.Errorf("override for %q (%v) does not match its constraint", g.Name, rv)
+			return nil, fmt.Errorf("override for %q (%v) could not be converted to its expected type", g.Name, rv)
 		}
 		result[g.Name] = v
 	}
