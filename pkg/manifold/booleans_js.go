@@ -10,6 +10,9 @@ import (
 func (a *Solid) Union(b *Solid) *Solid {
 	requireSolids("Union", a, b)
 	id := js.Global().Call("_mf_union", a.id, b.id).Int()
+	if id == 0 {
+		return nil // kernel failed — nil, not a silently-empty solid (matches native)
+	}
 	s := newSolid(id)
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
 	return s
@@ -18,6 +21,9 @@ func (a *Solid) Union(b *Solid) *Solid {
 func (a *Solid) Difference(b *Solid) *Solid {
 	requireSolids("Difference", a, b)
 	id := js.Global().Call("_mf_difference", a.id, b.id).Int()
+	if id == 0 {
+		return nil // kernel failed — nil, not a silently-empty solid (matches native)
+	}
 	s := newSolid(id)
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
 	return s
@@ -26,6 +32,9 @@ func (a *Solid) Difference(b *Solid) *Solid {
 func (a *Solid) Intersection(b *Solid) *Solid {
 	requireSolids("Intersection", a, b)
 	id := js.Global().Call("_mf_intersection", a.id, b.id).Int()
+	if id == 0 {
+		return nil // kernel failed — nil, not a silently-empty solid (matches native)
+	}
 	s := newSolid(id)
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
 	return s
