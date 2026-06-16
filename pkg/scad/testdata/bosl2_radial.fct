@@ -1,6 +1,11 @@
+fn scad_union(arr []Solid) Solid {
+    if Size(of: arr) == 1 { return arr[0] }
+    return Union(arr: arr)
+}
+
 fn Main() Solid {
     return Cube(x: 20 mm, y: 4 mm, z: 4 mm).AlignCenter(pos: Vec3{})
-        .Rotate(z: 30 deg) + Union(
+        .Rotate(z: 30 deg) + scad_union(
         arr: for scad_i0 [0:5 - 1] {
             yield Cylinder(r: 1.5 mm, h: 8 mm).AlignCenter(pos: Vec3{})
                 .Move(x: 15 mm).Rotate(z: scad_i0 * 360 / 5 * 1 deg)

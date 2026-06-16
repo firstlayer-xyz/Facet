@@ -358,7 +358,8 @@ func (e *Emitter) bosl2GridCopies(n *ast.ModuleCall) string {
 	vj := e.freshLoopVar()
 	ox := "(" + vi + " - (" + nx + " - 1) / 2) * " + sx
 	oy := "(" + vj + " - (" + ny + " - 1) / 2) * " + sy
-	return "Union(arr: for " + vi + " [0:" + nx + " - 1], " + vj + " [0:" + ny +
+	e.usesUnion = true // scad_union: a single-instance distributor is a one-element list
+	return "scad_union(arr: for " + vi + " [0:" + nx + " - 1], " + vj + " [0:" + ny +
 		" - 1] { yield " + child + ".Move(x: " + ox + ", y: " + oy + ") })"
 }
 
@@ -433,7 +434,8 @@ func (e *Emitter) bosl2ArcCopies(n *ast.ModuleCall) string {
 	} else {
 		ang = "(" + v + " * 360 / " + cnt + ") * 1 deg"
 	}
-	return "Union(arr: for " + v + " [0:" + cnt + " - 1] { yield " + child +
+	e.usesUnion = true
+	return "scad_union(arr: for " + v + " [0:" + cnt + " - 1] { yield " + child +
 		".Move(x: " + r + ").Rotate(z: " + ang + ") })"
 }
 
@@ -458,7 +460,8 @@ func (e *Emitter) bosl2RotCopies(n *ast.ModuleCall) string {
 	}
 	v := e.freshLoopVar()
 	angle := "(" + v + " * 360 / " + cnt + ") * 1 deg"
-	return "Union(arr: for " + v + " [0:" + cnt + " - 1] { yield " + inner + ".Rotate(z: " + angle + ") })"
+	e.usesUnion = true
+	return "scad_union(arr: for " + v + " [0:" + cnt + " - 1] { yield " + inner + ".Rotate(z: " + angle + ") })"
 }
 
 // bosl2RectTube emits BOSL2's rect_tube — a hollow rectangular tube, centered —
@@ -780,7 +783,8 @@ func (e *Emitter) bosl2LineCopies(n *ast.ModuleCall) string {
 	if len(parts) == 0 {
 		return e.errf(n.Pos(), "line_copies spacing is zero")
 	}
-	return "Union(arr: for " + v + " [0:" + count + " - 1] { yield " + child +
+	e.usesUnion = true
+	return "scad_union(arr: for " + v + " [0:" + count + " - 1] { yield " + child +
 		".Move(" + strings.Join(parts, ", ") + ") })"
 }
 
@@ -824,7 +828,8 @@ func (e *Emitter) bosl2LinearCopies(n *ast.ModuleCall, axis string) string {
 	}
 	v := e.freshLoopVar()
 	offset := "(" + v + " - (" + count + " - 1) / 2) * " + spacing
-	return "Union(arr: for " + v + " [0:" + count + " - 1] { yield " + child + ".Move(" + axis + ": " + offset + ") })"
+	e.usesUnion = true
+	return "scad_union(arr: for " + v + " [0:" + count + " - 1] { yield " + child + ".Move(" + axis + ": " + offset + ") })"
 }
 
 // bosl2AxisMove emits a BOSL2 single-axis translation (up/down/left/right/
