@@ -25,7 +25,7 @@ static const CLSID CLSID_FacetThumb =
 static const wchar_t *kThumbShellEx =
     L".fct\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}";
 
-static long g_refs = 0;
+static volatile long g_refs = 0;
 static HINSTANCE g_inst = nullptr;
 
 // --- helpers ---------------------------------------------------------------
@@ -70,6 +70,11 @@ static std::wstring runFacetc(const std::wstring &src, UINT px) {
         return L"";
     }
     DWORD wait = WaitForSingleObject(pi.hProcess, 20000); // 20s cap
+    if (wait != WAIT_OBJECT_0) {
+        // Timed out or wait failed: kill the orphan so it releases the temp file.
+        TerminateProcess(pi.hProcess, 1);
+        WaitForSingleObject(pi.hProcess, 5000);
+    }
     DWORD code = 1;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hThread);
