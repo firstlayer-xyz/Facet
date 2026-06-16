@@ -2694,3 +2694,44 @@ fn Main() {
 }
 `)
 }
+
+// TestCheckParamConstraintUnit pins the parameter range-constraint unit check
+// (shared with the variable path): a constraint unit must match the parameter's
+// type, so an angle unit on a Length parameter — or a length unit on an Angle
+// parameter — is caught at check time instead of slipping through.
+func TestCheckParamConstraintUnit(t *testing.T) {
+	expectError(t, `
+fn F(a Length = 5 mm where [0:10] deg) Number { return 1 }
+fn Main() Number { return F(a: 5 mm) }
+`, "angle unit")
+	expectError(t, `
+fn G(a Angle = 5 deg where [0:10] mm) Number { return 1 }
+fn Main() Number { return G(a: 5 deg) }
+`, "length unit")
+	expectNoErrors(t, `
+fn H(a Length = 5 mm where [0:10] mm) Number { return 1 }
+fn Main() Number { return H(a: 5 mm) }
+`)
+}
+
+// TestResolveTypeLibStructDeterministic pins the deterministic library-struct
+// resolution: when several imported libraries declare the same struct name and
+// the user writes the bare name, resolveType must always pick the
+// lexicographically-smallest qualified match — never a random map-iteration
+// order that flips between runs.
+func TestResolveTypeLibStructDeterministic(t *testing.T) {
+	sd := &parser.StructDecl{}
+	c := &checker{
+		libVarToPath: map[string]string{"zlib": "z", "mlib": "m", "alib": "a"},
+		structDecls: map[string]*parser.StructDecl{
+			"zlib.Widget": sd,
+			"mlib.Widget": sd,
+			"alib.Widget": sd,
+		},
+	}
+	for i := 0; i < 64; i++ {
+		if got := c.resolveType("", "Widget"); got.structName != "alib.Widget" {
+			t.Fatalf("resolveType(\"Widget\") = %q, want alib.Widget (smallest of alib/mlib/zlib)", got.structName)
+		}
+	}
+}

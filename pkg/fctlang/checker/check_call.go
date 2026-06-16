@@ -729,34 +729,41 @@ func tryConstString(expr parser.Expr) (string, bool) {
 }
 
 // checkConstraint validates that a variable's constraint is compatible with its type.
+// checkConstrainedRangeTypes validates that a ConstrainedRange's bounds (start,
+// end, and optional step) are Numbers and that its unit matches targetType.
+// msgPrefix is prepended to each error — empty for a variable, `"F() parameter
+// \"x\": "` for a parameter — and subject names the constrained thing in the
+// unit message ("variable" / "parameter"). Shared by the variable and parameter
+// constraint checkers.
+func (c *checker) checkConstrainedRangeTypes(pos parser.Pos, con *parser.ConstrainedRange, targetType typeInfo, env *typeEnv, msgPrefix, subject string) {
+	checkNum := func(e parser.Expr, which string) {
+		if e == nil {
+			return
+		}
+		if t := c.inferExpr(e, env); t.ft != typeUnknown && t.ft != typeNumber {
+			c.addError(pos, fmt.Sprintf("%sconstraint range %s must be a Number, got %s", msgPrefix, which, t.displayName()))
+		}
+	}
+	checkNum(con.Range.Start, "start")
+	checkNum(con.Range.End, "end")
+	checkNum(con.Range.Step, "step")
+
+	if _, isAngle := parser.AngleFactors[con.Unit]; isAngle {
+		if targetType.ft != typeUnknown && targetType.ft != typeAngle {
+			c.addError(pos, fmt.Sprintf("%sconstraint unit %q is an angle unit, but %s is %s", msgPrefix, con.Unit, subject, targetType.displayName()))
+		}
+	} else if _, isUnit := parser.UnitFactors[con.Unit]; isUnit {
+		if targetType.ft != typeUnknown && targetType.ft != typeLength {
+			c.addError(pos, fmt.Sprintf("%sconstraint unit %q is a length unit, but %s is %s", msgPrefix, con.Unit, subject, targetType.displayName()))
+		}
+	}
+}
+
 func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *typeEnv) {
 	switch con := g.Constraint.(type) {
 	case *parser.ConstrainedRange:
 		// Unit range constraint — validate bounds are numeric and unit matches var type
-		st := c.inferExpr(con.Range.Start, env)
-		et := c.inferExpr(con.Range.End, env)
-		if st.ft != typeUnknown && st.ft != typeNumber {
-			c.addError(g.Pos, fmt.Sprintf("constraint range start must be a Number, got %s", st.displayName()))
-		}
-		if et.ft != typeUnknown && et.ft != typeNumber {
-			c.addError(g.Pos, fmt.Sprintf("constraint range end must be a Number, got %s", et.displayName()))
-		}
-		if con.Range.Step != nil {
-			stept := c.inferExpr(con.Range.Step, env)
-			if stept.ft != typeUnknown && stept.ft != typeNumber {
-				c.addError(g.Pos, fmt.Sprintf("constraint range step must be a Number, got %s", stept.displayName()))
-			}
-		}
-		// Check unit matches var type
-		if _, isAngle := parser.AngleFactors[con.Unit]; isAngle {
-			if varType.ft != typeUnknown && varType.ft != typeAngle {
-				c.addError(g.Pos, fmt.Sprintf("constraint unit %q is an angle unit, but variable is %s", con.Unit, varType.displayName()))
-			}
-		} else if _, isUnit := parser.UnitFactors[con.Unit]; isUnit {
-			if varType.ft != typeUnknown && varType.ft != typeLength {
-				c.addError(g.Pos, fmt.Sprintf("constraint unit %q is a length unit, but variable is %s", con.Unit, varType.displayName()))
-			}
-		}
+		c.checkConstrainedRangeTypes(g.Pos, con, varType, env, "", "variable")
 		// Value range check for constant expressions
 		if startN, ok1 := tryConstFloat(con.Range.Start); ok1 {
 			if endN, ok2 := tryConstFloat(con.Range.End); ok2 {
@@ -899,32 +906,10 @@ func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *type
 func (c *checker) checkParamConstraint(fn *parser.Function, p *parser.Param, paramType typeInfo, env *typeEnv) {
 	switch con := p.Constraint.(type) {
 	case *parser.ConstrainedRange:
-		st := c.inferExpr(con.Range.Start, env)
-		et := c.inferExpr(con.Range.End, env)
-		if st.ft != typeUnknown && st.ft != typeNumber {
-			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint range start must be a Number, got %s", fn.Name, p.Name, st.displayName()))
-		}
-		if et.ft != typeUnknown && et.ft != typeNumber {
-			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint range end must be a Number, got %s", fn.Name, p.Name, et.displayName()))
-		}
-		if con.Range.Step != nil {
-			stept := c.inferExpr(con.Range.Step, env)
-			if stept.ft != typeUnknown && stept.ft != typeNumber {
-				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint range step must be a Number, got %s", fn.Name, p.Name, stept.displayName()))
-			}
-		}
-		// Validate the constraint unit against the parameter type (as the
-		// variable path does), so e.g. an angle unit on a Length parameter is
-		// caught at check time rather than slipping through.
-		if _, isAngle := parser.AngleFactors[con.Unit]; isAngle {
-			if paramType.ft != typeUnknown && paramType.ft != typeAngle {
-				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint unit %q is an angle unit, but parameter is %s", fn.Name, p.Name, con.Unit, paramType.displayName()))
-			}
-		} else if _, isUnit := parser.UnitFactors[con.Unit]; isUnit {
-			if paramType.ft != typeUnknown && paramType.ft != typeLength {
-				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint unit %q is a length unit, but parameter is %s", fn.Name, p.Name, con.Unit, paramType.displayName()))
-			}
-		}
+		// Validate bounds are numeric and the unit matches the parameter type
+		// (shared with the variable path), so e.g. an angle unit on a Length
+		// parameter is caught at check time rather than slipping through.
+		c.checkConstrainedRangeTypes(fn.Pos, con, paramType, env, fmt.Sprintf("%s() parameter %q: ", fn.Name, p.Name), "parameter")
 	case *parser.RangeExpr:
 		st := c.inferExpr(con.Start, env)
 		et := c.inferExpr(con.End, env)
