@@ -459,7 +459,7 @@ func (c *checker) resolveParamType(fn *parser.Function, typeName string) typeInf
 	// Everything else shares the return-type resolver, which also peels the
 	// postfix `?` for optional params (e.g. `gap Length?`) and resolves array
 	// element / struct names.
-	return c.resolveTypeString(typeName)
+	return c.resolveType("", typeName)
 }
 
 // resolveReturnType resolves a function's return type to typeInfo.
@@ -471,42 +471,7 @@ func (c *checker) resolveReturnType(fn *parser.Function) typeInfo {
 		}
 		return unknown()
 	}
-	return c.resolveTypeString(fn.ReturnType)
-}
-
-// resolveTypeString turns a type string into a typeInfo, applying struct
-// lookup so user-defined types like Vec3 resolve correctly. Also handles
-// the postfix `?` by recursively resolving the inner type and wrapping.
-func (c *checker) resolveTypeString(name string) typeInfo {
-	// `Any` is the dynamic type — resolves to typeUnknown so body checks
-	// (indexing, arithmetic) stay permissive. `[]Any` is array-of-unknown.
-	if name == "Any" {
-		return unknown()
-	}
-	if name == "[]Any" {
-		return arrayOf(unknown())
-	}
-	if parser.IsOptionalType(name) {
-		inner := c.resolveTypeString(parser.OptionalInner(name))
-		return optionalOf(inner)
-	}
-	ti := typeFromNameStr(name)
-	if ti.ft != typeUnknown {
-		// typeFromNameStr returned a known shape; if it's an array whose
-		// element type is unknown, attempt struct lookup on the element.
-		if ti.ft == typeArray && ti.elem != nil && ti.elem.ft == typeUnknown {
-			elemStr := name[2:]
-			if _, ok := c.structDecls[elemStr]; ok {
-				return arrayOf(structTI(elemStr))
-			}
-		}
-		return ti
-	}
-	// Check for struct type
-	if _, ok := c.structDecls[name]; ok {
-		return structTI(name)
-	}
-	return unknown()
+	return c.resolveType("", fn.ReturnType)
 }
 
 // checkMethodCall checks a method call and returns its inferred return type.

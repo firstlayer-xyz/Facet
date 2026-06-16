@@ -303,7 +303,7 @@ func (c *checker) checkStmts(stmts []parser.Stmt, env *typeEnv) typeInfo {
 			found := false
 			for _, f := range decl.Fields {
 				if f.Name == s.Field {
-					fieldType = c.resolveFieldType(structName, f.Type)
+					fieldType = c.resolveType(structName, f.Type)
 					found = true
 					break
 				}
@@ -377,15 +377,3 @@ func (c *checker) checkIfStmt(s *parser.IfStmt, env *typeEnv) {
 	}
 }
 
-// resolveFieldType resolves a struct field type string to a typeInfo.
-func (c *checker) resolveFieldType(parentStruct, fieldType string) typeInfo {
-	ti := typeFromNameStr(fieldType)
-	if ti.ft != typeUnknown {
-		return ti
-	}
-	// Try as struct type
-	if qualified := c.qualifyStructType(parentStruct, fieldType); qualified != "" {
-		return structTI(qualified)
-	}
-	return unknown()
-}
