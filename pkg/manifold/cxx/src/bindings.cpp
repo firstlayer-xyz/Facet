@@ -39,7 +39,7 @@ using namespace manifold;
 using namespace facet_cxx_internal;  // as_cpp, as_cpp_cs, wrap, wrap_cs, solid_size, sketch_size
 
 namespace {
-constexpr double kFourPi = 4.0 * 3.14159265358979323846;
+constexpr double kFourPi = 4.0 * M_PI;
 
 // Squared distance from p to triangle (a,b,c). Ericson, Real-Time Collision
 // Detection — closest point on triangle, returns the squared distance.
@@ -608,7 +608,17 @@ void facet_sweep(ManifoldCrossSection* cs,
       }
       polysIdx.push_back(simpleIdx);
     }
-    std::vector<ivec3> capTris = TriangulateIdx(polysIdx);
+    // TriangulateIdx throws geometryErr on a self-intersecting profile; a C++
+    // exception crossing this extern "C" boundary into Go is undefined behavior.
+    // Catch it and return an empty manifold, matching the degenerate-input
+    // guards above (Go reads a null/empty result as a failed sweep).
+    std::vector<ivec3> capTris;
+    try {
+      capTris = TriangulateIdx(polysIdx);
+    } catch (...) {
+      wrap(new Manifold(), out);
+      return;
+    }
     // Start cap (ring 0): reverse winding so normals face outward (backward)
     for (auto& tri : capTris) {
       triVerts.push_back((uint32_t)tri[0]);
@@ -791,7 +801,17 @@ void facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
       }
       polysIdx.push_back(simpleIdx);
     }
-    std::vector<ivec3> capTris = TriangulateIdx(polysIdx);
+    // TriangulateIdx throws geometryErr on a self-intersecting profile; a C++
+    // exception crossing this extern "C" boundary into Go is undefined behavior.
+    // Catch it and return an empty manifold, matching the degenerate-input
+    // guards above (Go reads a null/empty result as a failed loft).
+    std::vector<ivec3> capTris;
+    try {
+      capTris = TriangulateIdx(polysIdx);
+    } catch (...) {
+      wrap(new Manifold(), out);
+      return;
+    }
     // Start cap (ring 0): reverse winding
     for (auto& tri : capTris) {
       triVerts.push_back((uint32_t)tri[0]);

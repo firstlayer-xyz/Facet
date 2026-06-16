@@ -3,6 +3,7 @@
 package manifold
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"syscall/js"
@@ -47,7 +48,10 @@ func init() {
 		fn := levelSetRegistry[id]
 		levelSetMu.Unlock()
 		if fn == nil {
-			return 0.0
+			// The cxx side referenced an id past unregisterLevelSet — an
+			// impossible state. Returning 0 (a surface-crossing value) would
+			// fabricate geometry; fail loud so the lifecycle bug surfaces.
+			panic(fmt.Sprintf("level-set callback %d not registered", id))
 		}
 		return fn(x, y, z)
 	}))
@@ -60,8 +64,5 @@ func LevelSet(fn func(x, y, z float64) float64, minX, minY, minZ, maxX, maxY, ma
 	id := registerLevelSet(fn)
 	defer unregisterLevelSet(id)
 	newID := js.Global().Call("_mf_level_set", id, minX, minY, minZ, maxX, maxY, maxZ, edgeLen).Int()
-	s := newSolid(newID)
-	origID := uint32(js.Global().Call("_mf_original_id", newID).Int())
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
+	return newSolidWithOrigin(newID)
 }

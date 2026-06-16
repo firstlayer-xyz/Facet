@@ -12,8 +12,8 @@ import (
 // createSolidFromMeshWithFaceIDs creates a Manifold Solid from raw vertex, index,
 // and per-triangle faceID data. Called by PolyMesh.ToSolid().
 func createSolidFromMeshWithFaceIDs(verts []float32, indices, faceIDs []uint32) (*Solid, error) {
-	if len(verts) == 0 || len(indices) == 0 {
-		return nil, fmt.Errorf("createSolidFromMeshWithFaceIDs: empty vertex or index data")
+	if len(verts) == 0 || len(indices) == 0 || len(faceIDs) == 0 {
+		return nil, fmt.Errorf("createSolidFromMeshWithFaceIDs: empty vertex, index, or faceID data")
 	}
 	nVerts := len(verts) / 3
 	nTris := len(indices) / 3
@@ -38,7 +38,14 @@ func createSolidFromMeshWithFaceIDs(verts []float32, indices, faceIDs []uint32) 
 	if id == 0 {
 		return nil, fmt.Errorf("createSolidFromMeshWithFaceIDs: manifold creation failed")
 	}
-	return newSolidWithOrigin(id), nil
+	s := newSolidWithOrigin(id)
+	if s.NumComponents() == 0 {
+		// Same check as the native build: the kernel accepted the data but
+		// produced an empty manifold — the input is not a valid closed
+		// 2-manifold. Error rather than hand back vanished geometry.
+		return nil, fmt.Errorf("createSolidFromMeshWithFaceIDs: mesh is not a valid closed manifold (open, self-intersecting, or non-orientable)")
+	}
+	return s, nil
 }
 
 // buildDisplayMesh creates a DisplayMesh from Go-typed arrays with optional face group IDs.

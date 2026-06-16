@@ -27,6 +27,7 @@ func (s *Solid) Genus() int {
 }
 
 func (s *Solid) MinGap(other *Solid, searchLength float64) float64 {
+	requireSolids("MinGap", s, other)
 	return js.Global().Call("_mf_min_gap", s.id, other.id, searchLength).Float()
 }
 

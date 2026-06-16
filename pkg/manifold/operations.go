@@ -24,18 +24,7 @@ func (s *Solid) Hull() *Solid {
 	runtime.KeepAlive(s)
 	r := newSolid(ret)
 	// Hull creates new geometry; carry over any color from the input.
-	fi := FaceInfo{Color: NoColor}
-	for _, v := range s.FaceMap {
-		if v.Color != NoColor {
-			fi.Color = v.Color
-			break
-		}
-	}
-	// Skip FaceMap seeding when the kernel didn't assign an originalID —
-	// uint32(negative) would otherwise wrap into a garbage key.
-	if ret.original_id >= 0 {
-		r.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): fi}
-	}
+	seedHullFaceMap(r, int(ret.original_id), firstFaceColor(s))
 	return r
 }
 
@@ -55,21 +44,7 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 	runtime.KeepAlive(solids)
 	r := newSolid(ret)
 	// Hull creates new geometry; carry over any color from inputs.
-	fi := FaceInfo{Color: NoColor}
-	for _, s := range solids {
-		for _, v := range s.FaceMap {
-			if v.Color != NoColor {
-				fi.Color = v.Color
-				break
-			}
-		}
-		if fi.Color != NoColor {
-			break
-		}
-	}
-	if ret.original_id >= 0 {
-		r.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): fi}
-	}
+	seedHullFaceMap(r, int(ret.original_id), firstFaceColor(solids...))
 	return r, nil
 }
 
@@ -142,18 +117,7 @@ func (s *Solid) Offset(delta, edgeLen float64) *Solid {
 	runtime.KeepAlive(s)
 	r := newSolid(ret)
 	// Offset creates new geometry; carry over any color from the input.
-	fi := FaceInfo{Color: NoColor}
-	for _, v := range s.FaceMap {
-		if v.Color != NoColor {
-			fi.Color = v.Color
-			break
-		}
-	}
-	// Skip FaceMap seeding when the kernel didn't assign an originalID —
-	// uint32(negative) would otherwise wrap into a garbage key.
-	if ret.original_id >= 0 {
-		r.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): fi}
-	}
+	seedHullFaceMap(r, int(ret.original_id), firstFaceColor(s))
 	return r
 }
 

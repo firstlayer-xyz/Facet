@@ -8,8 +8,8 @@ import (
 )
 
 func (p *Sketch) Extrude(height float64, slices int, twist, scaleX, scaleY float64) (*Solid, error) {
-	if height == 0 {
-		return nil, fmt.Errorf("Extrude: height must be non-zero")
+	if err := validateExtrudeHeight(height); err != nil {
+		return nil, err
 	}
 	id := js.Global().Call("_mf_extrude", p.id, height, slices, twist, scaleX, scaleY).Int()
 	if id == 0 {
@@ -28,8 +28,8 @@ func (p *Sketch) Revolve(segments int, degrees float64) (*Solid, error) {
 
 func (p *Sketch) Sweep(path []Point3D) (*Solid, error) {
 	n := len(path)
-	if n < 2 {
-		return nil, fmt.Errorf("Sweep: path must have at least 2 points, got %d", n)
+	if err := validateSweepPath(n); err != nil {
+		return nil, err
 	}
 	pathArr := js.Global().Get("Float64Array").New(n * 3)
 	for i, pt := range path {
@@ -45,11 +45,8 @@ func (p *Sketch) Sweep(path []Point3D) (*Solid, error) {
 }
 
 func Loft(sketches []*Sketch, heights []float64) (*Solid, error) {
-	if len(sketches) < 2 {
-		return nil, fmt.Errorf("Loft: need at least 2 sketches, got %d", len(sketches))
-	}
-	if len(sketches) != len(heights) {
-		return nil, fmt.Errorf("Loft: sketches (%d) and heights (%d) must be same length", len(sketches), len(heights))
+	if err := validateLoft(len(sketches), len(heights)); err != nil {
+		return nil, err
 	}
 	skArr := js.Global().Get("Array").New()
 	for _, s := range sketches {

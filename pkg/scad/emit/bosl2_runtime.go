@@ -70,13 +70,10 @@ fn B2.positionPlaced(a B2Anchor, child B2) Solid {
     return child.solid.Move(v: self.anchorPoint(a: a))
 }
 
-# Places child at this shape's anchor a; the Remove form subtracts it instead
-# (BOSL2 diff() with a "remove" tag).
+# Places child (unioned) at this shape's anchor a. Subtractive placement under
+# diff() is built at the CSG level from positionPlaced, not via a method here.
 fn B2.position(a B2Anchor, child B2) B2 {
     return B2{solid: self.solid + self.positionPlaced(a: a, child: child), size: self.size}
-}
-fn B2.positionRemove(a B2Anchor, child B2) B2 {
-    return B2{solid: self.solid - self.positionPlaced(a: a, child: child), size: self.size}
 }
 
 # The child solid placed so its ca anchor lands on this shape's pa anchor, rotated
@@ -98,9 +95,6 @@ fn B2.attachPlaced(pa B2Anchor, ca B2Anchor, child B2, overlap Length) Solid {
 }
 fn B2.attach(pa B2Anchor, ca B2Anchor, child B2, overlap Length) B2 {
     return B2{solid: self.solid + self.attachPlaced(pa: pa, ca: ca, child: child, overlap: overlap), size: self.size}
-}
-fn B2.attachRemove(pa B2Anchor, ca B2Anchor, child B2, overlap Length) B2 {
-    return B2{solid: self.solid - self.attachPlaced(pa: pa, ca: ca, child: child, overlap: overlap), size: self.size}
 }
 
 # Rotates a solid so its +Z (UP) axis points along the anchor direction dir —
@@ -134,9 +128,6 @@ fn B2.attachReorientPlaced(pa B2Anchor, child B2, overlap Length) Solid {
 fn B2.attachReorient(pa B2Anchor, child B2, overlap Length) B2 {
     return B2{solid: self.solid + self.attachReorientPlaced(pa: pa, child: child, overlap: overlap), size: self.size}
 }
-fn B2.attachReorientRemove(pa B2Anchor, child B2, overlap Length) B2 {
-    return B2{solid: self.solid - self.attachReorientPlaced(pa: pa, child: child, overlap: overlap), size: self.size}
-}
 
 # The child placed flush against this shape's anchor face a: at the anchor point,
 # pushed by half the child's size on each anchored axis so its near face sits on
@@ -155,8 +146,5 @@ fn B2.alignPlaced(a B2Anchor, child B2, dir Number) Solid {
 }
 fn B2.align(a B2Anchor, child B2, dir Number) B2 {
     return B2{solid: self.solid + self.alignPlaced(a: a, child: child, dir: dir), size: self.size}
-}
-fn B2.alignRemove(a B2Anchor, child B2, dir Number) B2 {
-    return B2{solid: self.solid - self.alignPlaced(a: a, child: child, dir: dir), size: self.size}
 }
 `

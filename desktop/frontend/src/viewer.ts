@@ -185,7 +185,7 @@ export class Viewer {
   };
   private onMeasureModeChangeCb: ((mode: 'off' | 'placing', hoverOn: boolean) => void) | null = null;
 
-  // Bound event handlers for cleanup in dispose()
+  // Bound event handlers, stored so addEventListener uses a stable reference.
   private onMouseDown: (e: MouseEvent) => void;
   private onMouseUp: (e: MouseEvent) => void;
   private onMouseMove: (e: MouseEvent) => void;
@@ -1299,18 +1299,6 @@ export class Viewer {
   setVisible(visible: boolean): void {
     this._visible = visible;
     this.renderer.domElement.style.display = visible ? 'block' : 'none';
-  }
-
-  dispose(): void {
-    this.container.removeEventListener('mousedown', this.onMouseDown);
-    this.container.removeEventListener('mouseup', this.onMouseUp);
-    this.container.removeEventListener('mousemove', this.onMouseMove);
-    this.container.removeEventListener('focus', this.onFocus);
-    this.container.removeEventListener('blur', this.onBlur);
-    this.container.removeEventListener('keydown', this.onKeyDown);
-    this.container.removeEventListener('keyup', this.onKeyUp);
-    this.resizeObserver.disconnect();
-    this.renderer.dispose();
   }
 
   /** Force-resize the renderer to the current container dimensions. Call after moving the container in the DOM. */

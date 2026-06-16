@@ -364,7 +364,11 @@ export class AssistantPanel {
     this.offScreenshot = on('assistant:screenshot-request', async (payload: AssistantScreenshotRequest) => {
       if (!payload?.id) return;
       if (!this.captureScreenshot) {
-        try { await DeliverViewportScreenshot(payload.id, '', 'no viewport available'); } catch {}
+        try {
+          await DeliverViewportScreenshot(payload.id, '', 'no viewport available');
+        } catch (e) {
+          console.warn('DeliverViewportScreenshot failed:', e);
+        }
         return;
       }
       let dataURL: string | null = null;

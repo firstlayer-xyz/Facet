@@ -8,7 +8,6 @@ package manifold
 */
 import "C"
 import (
-	"fmt"
 	"runtime"
 	"unsafe"
 )
@@ -123,42 +122,6 @@ func extractMesh(m *C.ManifoldPtr) *Mesh {
 }
 
 // ---------------------------------------------------------------------------
-// Face-color helpers
-// ---------------------------------------------------------------------------
-
-// colorFromFaceInfo converts a FaceInfo color+alpha into a hex string.
-// Emits "#RRGGBB" when alpha is 0 (default) or 255 (explicitly opaque),
-// and "#RRGGBBAA" when alpha is anything else. Downstream consumers
-// (renderer + meshio) both accept either form.
-func colorFromFaceInfo(fi FaceInfo) string {
-	c := fi.Color
-	if fi.Alpha == 0 || fi.Alpha == 0xFF {
-		return fmt.Sprintf("#%02X%02X%02X", (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF)
-	}
-	return fmt.Sprintf("#%02X%02X%02X%02X", (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF, fi.Alpha)
-}
-
-// buildFaceColorMap constructs a faceID→hex color map from a slice of face IDs
-// and a FaceInfo map. Only face IDs with a non-NoColor entry are included.
-func buildFaceColorMap(faceIDs []uint32, faceMap map[uint32]FaceInfo) map[string]string {
-	var fcMap map[string]string
-	seen := make(map[uint32]bool)
-	for _, fid := range faceIDs {
-		if seen[fid] {
-			continue
-		}
-		seen[fid] = true
-		if fi, ok := faceMap[fid]; ok && fi.Color != NoColor {
-			if fcMap == nil {
-				fcMap = make(map[string]string)
-			}
-			fcMap[fmt.Sprintf("%d", fid)] = colorFromFaceInfo(fi)
-		}
-	}
-	return fcMap
-}
-
-// ---------------------------------------------------------------------------
 // DisplayMesh extraction — indexed format
 // ---------------------------------------------------------------------------
 
@@ -257,89 +220,6 @@ func extractDisplayMesh(m *C.ManifoldPtr, faceMap map[uint32]FaceInfo) *DisplayM
 	C.facet_extract_display_mesh(m, &b.verts, &b.numVerts, &b.numProp,
 		&b.indices, &b.numTris, &b.faceIDs, &b.numFaceIDs)
 	return buildDisplayMeshFromC(b, faceMap)
-}
-
-// mergeDisplayMeshes combines multiple display meshes into one.
-// Deprecated: prefer MergeExtractDisplayMeshes when source Solids are available.
-func mergeDisplayMeshes(meshes []*DisplayMesh) *DisplayMesh {
-	if len(meshes) == 1 {
-		return meshes[0]
-	}
-	totalVerts := 0
-	totalIdx := 0
-	for _, m := range meshes {
-		totalVerts += m.VertexCount
-		totalIdx += m.IndexCount
-	}
-
-	// Merge raw byte buffers
-	vertBuf := make([]byte, 0, totalVerts*12)
-	idxBuf := make([]uint32, 0, totalIdx)
-	var fgBuf []uint32
-	hasFaceGroups := false
-	var vertOffset uint32
-
-	// Check if any mesh has face groups
-	for _, m := range meshes {
-		if len(m.FaceGroupRaw) > 0 {
-			hasFaceGroups = true
-			break
-		}
-	}
-	if hasFaceGroups {
-		fgBuf = make([]uint32, 0, totalIdx/3)
-	}
-
-	for _, m := range meshes {
-		vertBuf = append(vertBuf, m.VertRaw...)
-		n := len(m.IdxRaw) / 4
-		if n > 0 {
-			src := unsafe.Slice((*uint32)(unsafe.Pointer(&m.IdxRaw[0])), n)
-			for _, idx := range src {
-				idxBuf = append(idxBuf, idx+vertOffset)
-			}
-		}
-
-		// Merge face groups (IDs are globally unique via AsOriginal, no offset needed)
-		if hasFaceGroups {
-			if len(m.FaceGroupRaw) > 0 {
-				fn := len(m.FaceGroupRaw) / 4
-				src := unsafe.Slice((*uint32)(unsafe.Pointer(&m.FaceGroupRaw[0])), fn)
-				fgBuf = append(fgBuf, src...)
-			} else {
-				// No face groups in this mesh — assign zero (unknown)
-				numTris := n / 3
-				for i := 0; i < numTris; i++ {
-					fgBuf = append(fgBuf, 0)
-				}
-			}
-		}
-
-		vertOffset += uint32(m.VertexCount)
-	}
-
-	var idxRaw []byte
-	if len(idxBuf) > 0 {
-		idxRaw = make([]byte, len(idxBuf)*4)
-		copy(idxRaw, unsafe.Slice((*byte)(unsafe.Pointer(&idxBuf[0])), len(idxBuf)*4))
-	}
-
-	var fgRaw []byte
-	var fgCount int
-	if len(fgBuf) > 0 {
-		fgRaw = make([]byte, len(fgBuf)*4)
-		copy(fgRaw, unsafe.Slice((*byte)(unsafe.Pointer(&fgBuf[0])), len(fgBuf)*4))
-		fgCount = len(fgBuf)
-	}
-
-	return &DisplayMesh{
-		VertRaw:        vertBuf,
-		IdxRaw:         idxRaw,
-		FaceGroupRaw:   fgRaw,
-		VertexCount:    len(vertBuf) / 12,
-		IndexCount:     len(idxBuf),
-		FaceGroupCount: fgCount,
-	}
 }
 
 // MergeExtractDisplayMeshes extracts and merges display meshes from multiple Solids

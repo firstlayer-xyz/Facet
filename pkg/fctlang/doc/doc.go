@@ -21,7 +21,10 @@ import (
 func stdlibDocSource() *parser.Source {
 	src, err := parser.Parse(stdlib.StdlibSource, "", parser.SourceUser)
 	if err != nil {
-		return &parser.Source{}
+		// The embedded stdlib is a compile-time constant; a parse failure is a
+		// broken build, not a runtime condition. Returning an empty source would
+		// silently hand every doc/completion consumer an empty catalog.
+		panic(fmt.Sprintf("doc: embedded stdlib failed to parse: %v", err))
 	}
 	return src
 }

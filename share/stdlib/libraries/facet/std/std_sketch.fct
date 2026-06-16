@@ -177,34 +177,32 @@ fn Sketch.Bounds() Box {
 
 # X extent of the sketch's bounding box.
 fn Sketch.Width() Length {
-    var b = _bounding_box(self)
-    return b.max.x - b.min.x
+    return self.Bounds().Width()
 }
 
 # Y extent of the sketch's bounding box.
 fn Sketch.Depth() Length {
-    var b = _bounding_box(self)
-    return b.max.y - b.min.y
+    return self.Bounds().Depth()
 }
 
 # Minimum X of the bounding box.
 fn Sketch.Left() Length {
-    return _bounding_box(self).min.x
+    return self.Bounds().Left()
 }
 
 # Maximum X of the bounding box.
 fn Sketch.Right() Length {
-    return _bounding_box(self).max.x
+    return self.Bounds().Right()
 }
 
 # Minimum Y of the bounding box.
 fn Sketch.Front() Length {
-    return _bounding_box(self).min.y
+    return self.Bounds().Front()
 }
 
 # Maximum Y of the bounding box.
 fn Sketch.Back() Length {
-    return _bounding_box(self).max.y
+    return self.Bounds().Back()
 }
 
 # Centroid of the bounding box.

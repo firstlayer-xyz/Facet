@@ -702,28 +702,6 @@ func gitCacheNSToImportPath(ns string) string {
 	return fmt.Sprintf("%s/%s/%s@%s", host, user, repo, branch)
 }
 
-func buildPrompt(userMessage, editorCode, errors string, imagePaths []string) string {
-	var sb strings.Builder
-	sb.WriteString(userMessage)
-
-	if editorCode != "" {
-		sb.WriteString("\n\n---\nCurrent editor code:\n```facet\n")
-		sb.WriteString(editorCode)
-		sb.WriteString("\n```")
-	}
-
-	if errors != "" {
-		sb.WriteString("\n\nCurrent errors:\n```\n")
-		sb.WriteString(errors)
-		sb.WriteString("\n```")
-	}
-
-	if len(imagePaths) > 0 {
-		sb.WriteString("\n\nAttached: viewport screenshot of the current rendered result.")
-	}
-
-	return sb.String()
-}
 
 // filterEnv returns a copy of env with any entries whose key matches one of
 // the given keys removed. Keys are matched case-sensitively against the

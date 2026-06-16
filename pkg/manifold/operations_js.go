@@ -8,17 +8,10 @@ import (
 )
 
 func (s *Solid) Hull() *Solid {
+	requireSolids("Hull", s)
 	id := js.Global().Call("_mf_hull", s.id).Int()
 	r := newSolid(id)
-	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
-	fi := FaceInfo{Color: NoColor}
-	for _, v := range s.FaceMap {
-		if v.Color != NoColor {
-			fi.Color = v.Color
-			break
-		}
-	}
-	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
 	return r
 }
 
@@ -26,26 +19,14 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 	if len(solids) == 0 {
 		return nil, fmt.Errorf("BatchHull: solids is empty")
 	}
+	requireSolids("BatchHull", solids...)
 	arr := js.Global().Get("Array").New()
 	for _, s := range solids {
 		arr.Call("push", s.id)
 	}
 	id := js.Global().Call("_mf_batch_hull", arr).Int()
 	r := newSolid(id)
-	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
-	fi := FaceInfo{Color: NoColor}
-	for _, s := range solids {
-		for _, v := range s.FaceMap {
-			if v.Color != NoColor {
-				fi.Color = v.Color
-				break
-			}
-		}
-		if fi.Color != NoColor {
-			break
-		}
-	}
-	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(solids...))
 	return r, nil
 }
 
@@ -90,23 +71,20 @@ func (s *Solid) RefineToLength(length float64) *Solid {
 }
 
 func (s *Solid) Offset(delta, edgeLen float64) *Solid {
+	requireSolids("Offset", s)
 	id := js.Global().Call("_mf_offset", s.id, delta, edgeLen).Int()
 	r := newSolid(id)
-	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
-	fi := FaceInfo{Color: NoColor}
-	for _, v := range s.FaceMap {
-		if v.Color != NoColor {
-			fi.Color = v.Color
-			break
-		}
-	}
-	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
 	return r
 }
 
 func SplitSolid(m, cutter *Solid) [2]*Solid {
+	requireSolids("SplitSolid", m, cutter)
 	arr := js.Global().Call("_mf_split", m.id, cutter.id)
-	fm := mergeFaceMaps(m.FaceMap, cutter.FaceMap)
+	// Both halves originate from m's geometry; the cutter's FaceMap is
+	// intentionally not propagated (its faces appear in neither result), matching
+	// the native build and SplitSolidByPlane.
+	fm := m.withFaceMap()
 	first := newSolid(arr.Index(0).Int())
 	first.FaceMap = fm
 	second := newSolid(arr.Index(1).Int())
@@ -115,6 +93,7 @@ func SplitSolid(m, cutter *Solid) [2]*Solid {
 }
 
 func SplitSolidByPlane(s *Solid, nx, ny, nz, offset float64) [2]*Solid {
+	requireSolids("SplitSolidByPlane", s)
 	arr := js.Global().Call("_mf_split_by_plane", s.id, nx, ny, nz, offset)
 	fm := s.withFaceMap()
 	first := newSolid(arr.Index(0).Int())

@@ -1039,23 +1039,12 @@ func (e *Emitter) bosl2Wedge(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "wedge without size")
 	}
-	x, y, z := e.boxSizeComponents(size)
+	x, y, z := e.cubeSizeComponents(size)
 	wedge := "Wedge(x: " + x + ", y: " + y + ", z: " + z + ")"
 	if boolArg(n, "center", 1) {
 		return wedge + ".AlignCenter(pos: Vec3{})"
 	}
 	return wedge
-}
-
-// boxSizeComponents renders the three side-length Length expressions of an
-// OpenSCAD size: a 3-vector gives per-axis lengths; a scalar repeats across all
-// three axes. These feed the attachment geometry (see boxGeom).
-func (e *Emitter) boxSizeComponents(size ast.Expr) (x, y, z string) {
-	if v, isVec := size.(*ast.Vector); isVec && len(v.Elems) == 3 {
-		return e.expr(v.Elems[0], kLength), e.expr(v.Elems[1], kLength), e.expr(v.Elems[2], kLength)
-	}
-	s := e.expr(size, kLength)
-	return s, s, s
 }
 
 // bosl2Cyl emits BOSL2's cyl, a cylinder centered on the origin in every axis
