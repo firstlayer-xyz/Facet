@@ -12,6 +12,7 @@ import "C"
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"unsafe"
 
@@ -25,50 +26,53 @@ import (
 	"github.com/firstlayer-xyz/meshio"
 )
 
-// facetMesh evaluates the source's Main entry to a merged display mesh, or nil
-// if it fails to load, type-check, evaluate, or produces no solids.
-func facetMesh(source string) *manifold.DisplayMesh {
+// facetMesh evaluates the source's Main entry to a merged display mesh, or an
+// error describing the first load/type-check/evaluation failure (or that it
+// produced no solids).
+func facetMesh(source string) (*manifold.DisplayMesh, error) {
 	ctx := context.Background()
 	prog, err := loader.Load(ctx, source, "model.fct", parser.SourceUser, "", nil)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	if errs := checker.Check(prog).Errors; len(errs) > 0 {
-		return nil
+		return nil, &errs[0]
 	}
 	result, err := evaluator.Eval(ctx, prog, "model.fct", nil, "Main")
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	solids, err := result.StaticSolids(0)
-	if err != nil || len(solids) == 0 {
-		return nil
+	if err != nil {
+		return nil, err
 	}
-	return manifold.MergeExtractExpandedMeshes(solids, 40)
+	if len(solids) == 0 {
+		return nil, fmt.Errorf("model produced no solids")
+	}
+	return manifold.MergeExtractExpandedMeshes(solids, 40), nil
 }
 
 // previewBuffers loads a file into renderer inputs: expanded positions (9 floats
 // per triangle) and a parallel per-expanded-vertex RGB color buffer (nil when
 // the geometry carries no color). Mesh files (.stl/.obj/.3mf) are read as raw
 // triangles; everything else is treated as Facet source and evaluated. Returns
-// nil positions on any failure.
-func previewBuffers(path string) (positions []float32, colors []byte) {
+// the load/compile error so callers can report why a file produced no geometry.
+func previewBuffers(path string) (positions []float32, colors []byte, err error) {
 	if meshio.CanRead(path) {
-		p, c, err := meshpreview.LoadColored(path)
-		if err != nil {
-			return nil, nil
-		}
-		return p, c
+		return meshpreview.LoadColored(path)
 	}
 	src, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil
+		return nil, nil, err
 	}
-	dm := facetMesh(string(src))
-	if dm == nil || len(dm.ExpandedRaw) == 0 {
-		return nil, nil
+	dm, err := facetMesh(string(src))
+	if err != nil {
+		return nil, nil, err
 	}
-	return dm.ExpandedPositions(), dm.ExpandedColors()
+	if len(dm.ExpandedRaw) == 0 {
+		return nil, nil, fmt.Errorf("model produced no geometry")
+	}
+	return dm.ExpandedPositions(), dm.ExpandedColors(), nil
 }
 
 // FacetRenderFile loads the file at cpath (Facet source or a .stl/.obj/.3mf
@@ -86,8 +90,8 @@ func FacetRenderFile(cpath *C.char, outFloats *C.int, outColors **C.uchar, outCo
 	*outColors = nil
 	*outColorBytes = 0
 
-	positions, colors := previewBuffers(C.GoString(cpath))
-	if len(positions) == 0 {
+	positions, colors, err := previewBuffers(C.GoString(cpath))
+	if err != nil || len(positions) == 0 {
 		return nil
 	}
 
@@ -110,10 +114,32 @@ func FacetRenderFile(cpath *C.char, outFloats *C.int, outColors **C.uchar, outCo
 	return (*C.float)(pbuf)
 }
 
+// FacetRenderError loads the file at cpath exactly as FacetRenderFile does and
+// returns a malloc'd C string describing why it produced no geometry, or NULL on
+// success. The Quick Look preview calls this when FacetRenderFile returns NULL so
+// it can show the compile/load error instead of a blank pane. The caller owns the
+// string and must release it with FacetFreeString.
+//
+//export FacetRenderError
+func FacetRenderError(cpath *C.char) *C.char {
+	_, _, err := previewBuffers(C.GoString(cpath))
+	if err == nil {
+		return nil
+	}
+	return C.CString(err.Error())
+}
+
 // FacetFree releases a positions buffer returned by FacetRenderFile.
 //
 //export FacetFree
 func FacetFree(p *C.float) {
+	C.free(unsafe.Pointer(p))
+}
+
+// FacetFreeString releases a string returned by FacetRenderError.
+//
+//export FacetFreeString
+func FacetFreeString(p *C.char) {
 	C.free(unsafe.Pointer(p))
 }
 
