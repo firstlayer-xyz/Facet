@@ -613,6 +613,29 @@ function setupBridge() {
     return { expanded, faceIDs, edges };
   };
 
+  // Merge multiple solids and extract one expanded mesh in a single C call —
+  // parity with the native MergeExtractExpandedMeshes (a true compose, not a
+  // boolean union). solidIds is a JS array of ManifoldPtr handles (ints),
+  // copied into a C ManifoldPtr* array the same way _mf_loft handles sketches.
+  globalThis._mf_merge_extract_expanded_mesh = (solidIds, count, edgeThresholdDeg) => {
+    const arrPtr = copyU32ArrayToHeap(Array.from(solidIds));
+    const out = M._malloc(24); // 6 i32 outputs (3 ptrs + 3 counts)
+    const pPos   = out,    pNPos   = out+4;
+    const pFids  = out+8,  pNFids  = out+12;
+    const pEdges = out+16, pNEdges = out+20;
+    M._facet_merge_extract_expanded_mesh(arrPtr, count,
+      pPos, pNPos, pFids, pNFids, pEdges, pNEdges, edgeThresholdDeg);
+    const nVerts = i32at(pNPos);
+    const nFids  = i32at(pNFids);
+    const nEdges = i32at(pNEdges);
+    const expanded = takeF32(u32at(pPos),   nVerts * 3);
+    const faceIDs  = takeU32(u32at(pFids),  nFids);
+    const edges    = takeF32(u32at(pEdges), nEdges * 6);
+    M._free(out);
+    M._free(arrPtr);
+    return { expanded, faceIDs, edges };
+  };
+
   // ── Warp callback ────────────────────────────────────────────────────────
   // bindings.cpp under FACET_WASM declares facetWarpBridge as an EM_JS import
   // that calls Module["facetWarpBridge"]. The cxx Manifold::Warp invokes our

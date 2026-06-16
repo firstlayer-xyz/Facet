@@ -36,7 +36,6 @@ var exceptions = map[string]string{
 	"facet_extract_display_mesh":       "web uses the expanded-mesh extraction path instead",
 	"facet_merge_extract_display_mesh": "web uses the expanded-mesh extraction path instead",
 	"facet_extract_mesh_with_runs":     "web uses the expanded-mesh extraction path instead",
-	"facet_merge_extract_expanded_mesh": "web merges expanded meshes via the single-solid path",
 }
 
 var (
