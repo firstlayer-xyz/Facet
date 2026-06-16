@@ -64,8 +64,5 @@ func LevelSet(fn func(x, y, z float64) float64, minX, minY, minZ, maxX, maxY, ma
 	id := registerLevelSet(fn)
 	defer unregisterLevelSet(id)
 	newID := js.Global().Call("_mf_level_set", id, minX, minY, minZ, maxX, maxY, maxZ, edgeLen).Int()
-	s := newSolid(newID)
-	origID := uint32(js.Global().Call("_mf_original_id", newID).Int())
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
-	return s
+	return newSolidWithOrigin(newID)
 }

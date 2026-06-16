@@ -211,11 +211,7 @@ func (s *Solid) withFaceMap() map[uint32]FaceInfo {
 // other Solid op.
 func (s *Solid) SetColor(r, g, b, a float64) *Solid {
 	out := s.Translate(0, 0, 0)
-	ri := uint32(clamp01(r)*255 + 0.5)
-	gi := uint32(clamp01(g)*255 + 0.5)
-	bi := uint32(clamp01(b)*255 + 0.5)
-	color := ri<<16 | gi<<8 | bi
-	alpha := uint8(clamp01(a)*255 + 0.5)
+	color, alpha := encodeColor(r, g, b, a)
 	for id, fi := range out.FaceMap {
 		fi.Color = color
 		fi.Alpha = alpha
@@ -232,9 +228,7 @@ func newSolidWithOrigin(ret C.FacetSolidRet) *Solid {
 	if s == nil {
 		return nil
 	}
-	if ret.original_id >= 0 {
-		s.FaceMap = map[uint32]FaceInfo{uint32(ret.original_id): {Color: NoColor}}
-	}
+	seedOriginFaceMap(s, int(ret.original_id))
 	return s
 }
 

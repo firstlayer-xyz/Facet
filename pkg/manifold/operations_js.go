@@ -77,7 +77,10 @@ func (s *Solid) Offset(delta, edgeLen float64) *Solid {
 
 func SplitSolid(m, cutter *Solid) [2]*Solid {
 	arr := js.Global().Call("_mf_split", m.id, cutter.id)
-	fm := mergeFaceMaps(m.FaceMap, cutter.FaceMap)
+	// Both halves originate from m's geometry; the cutter's FaceMap is
+	// intentionally not propagated (its faces appear in neither result), matching
+	// the native build and SplitSolidByPlane.
+	fm := m.withFaceMap()
 	first := newSolid(arr.Index(0).Int())
 	first.FaceMap = fm
 	second := newSolid(arr.Index(1).Int())
