@@ -14,29 +14,29 @@ enum FacetMesh {
     static func geometry(positions: UnsafeMutablePointer<Float>, count: Int,
                          colors: UnsafeMutablePointer<UInt8>?, colorBytes: Int) -> SCNGeometry? {
         guard count >= 9, count % 9 == 0 else { return nil }
-        let hasColor = colors != nil && colorBytes == count
+        // Use the per-vertex color buffer only when present and correctly sized.
+        let colors = (colors != nil && colorBytes == count) ? colors : nil
 
         var verts = [SCNVector3](); verts.reserveCapacity(count / 3)
         var norms = [SCNVector3](); norms.reserveCapacity(count / 3)
-        let cp: UnsafeMutablePointer<UInt8>? = hasColor ? colors : nil
-        var cols = [SCNVector3](); if cp != nil { cols.reserveCapacity(count / 3) }
+        var cols = [SCNVector3](); if colors != nil { cols.reserveCapacity(count / 3) }
         var i = 0
         while i < count {
             let a = simd_float3(positions[i + 0], positions[i + 1], positions[i + 2])
             let b = simd_float3(positions[i + 3], positions[i + 4], positions[i + 5])
             let c = simd_float3(positions[i + 6], positions[i + 7], positions[i + 8])
-            let n = simd_normalize(simd_cross(b - a, c - a))
+            let n = simd_normalize(simd_cross(b - a, c - a)) // CCW-from-outside → outward
             verts.append(SCNVector3(a.x, a.y, a.z))
             verts.append(SCNVector3(b.x, b.y, b.z))
             verts.append(SCNVector3(c.x, c.y, c.z))
             for _ in 0..<3 { norms.append(SCNVector3(n.x, n.y, n.z)) }
-            if let cp = cp {
+            if let colors = colors {
                 let v = i / 3
                 for k in 0..<3 {
                     let o = (v + k) * 3
-                    cols.append(SCNVector3(CGFloat(cp[o]) / 255.0,
-                                           CGFloat(cp[o + 1]) / 255.0,
-                                           CGFloat(cp[o + 2]) / 255.0))
+                    cols.append(SCNVector3(CGFloat(colors[o]) / 255.0,
+                                           CGFloat(colors[o + 1]) / 255.0,
+                                           CGFloat(colors[o + 2]) / 255.0))
                 }
             }
             i += 9
@@ -45,14 +45,15 @@ enum FacetMesh {
         let vSource = SCNGeometrySource(vertices: verts)
         let nSource = SCNGeometrySource(normals: norms)
         var sources = [vSource, nSource]
-        if hasColor { sources.append(colorSource(cols)) }
+        if colors != nil { sources.append(colorSource(cols)) }
         let indices = (0..<verts.count).map { UInt32($0) }
         let element = SCNGeometryElement(indices: indices, primitiveType: .triangles)
         let geom = SCNGeometry(sources: sources, elements: [element])
 
         let mat = SCNMaterial()
         mat.lightingModel = .physicallyBased
-        mat.diffuse.contents = hasColor
+        // White diffuse so per-vertex colors show through; neutral gray when uncolored.
+        mat.diffuse.contents = colors != nil
             ? NSColor.white
             : NSColor(calibratedRed: 0.80, green: 0.82, blue: 0.86, alpha: 1)
         mat.metalness.contents = 0.15
