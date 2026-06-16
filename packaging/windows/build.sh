@@ -1,5 +1,5 @@
 #!/bin/sh
-# Cross-compiles the Windows Explorer thumbnail handler for .fct files to a DLL
+# Cross-compiles the Windows Explorer thumbnail handler for .fct/.stl/.obj/.3mf files to a DLL
 # using zig (the same toolchain CI already uses for the Windows app build).
 # Produces facet_thumbnail.dll; register it with regsvr32 / install.ps1.
 set -eu

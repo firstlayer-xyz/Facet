@@ -1,4 +1,4 @@
-# Installs (or removes) the Facet .fct thumbnail handler for Windows Explorer.
+# Installs (or removes) the Facet thumbnail handler (.fct/.stl/.obj/.3mf) for Windows Explorer.
 # Run from an ELEVATED PowerShell. Expects facet_thumbnail.dll (and ideally
 # facetc.exe) next to this script — build the DLL with build.sh first.
 #
@@ -29,4 +29,4 @@ if (Test-Path $facetc) {
 }
 
 & regsvr32 /s $dll
-Write-Host 'Installed. .fct files will show 3D thumbnails (restart Explorer if needed: Stop-Process -Name explorer).'
+Write-Host 'Installed. .fct/.stl/.obj/.3mf files will show 3D thumbnails (restart Explorer if needed: Stop-Process -Name explorer).'
