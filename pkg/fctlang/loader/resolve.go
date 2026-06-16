@@ -727,6 +727,12 @@ func (r *resolver) loadFromOverride(rawPath string, lp *LibPath, overrideDir str
 	subDir := strings.Trim(lp.SubPath, "/")
 	if subDir != "" {
 		dir = filepath.Join(overrideDir, filepath.FromSlash(subDir))
+		// Defense in depth (validateLibPath already rejects ".."): ensure the
+		// joined path stays inside the override root, like the relative-import
+		// loaders do, so it can't read files outside the override directory.
+		if rel, err := filepath.Rel(overrideDir, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("installed override %q: subpath escapes the override directory", rawPath)
+		}
 	}
 	base := filepath.Base(dir)
 	fctFile := filepath.Join(dir, base+".fct")
@@ -758,6 +764,12 @@ func (r *resolver) loadFromOverride(rawPath string, lp *LibPath, overrideDir str
 // validateLibPath checks that a library path has at least 2 segments (vendor/name),
 // does not contain ".." components, and is not an absolute path.
 func validateLibPath(p string) error {
+	// Strip a trailing @ref before the checks below: a final segment like
+	// `..@main` would otherwise read as "..@main" (not "..") and evade the
+	// traversal guard.
+	if at := strings.LastIndex(p, "@"); at >= 0 {
+		p = p[:at]
+	}
 	// Lib paths are URL-style (slash-separated) regardless of the host
 	// OS, so use the slash-aware check from `path` rather than
 	// filepath.IsAbs, which on Windows returns false for "/etc/foo" and
