@@ -68,6 +68,18 @@ func wildOptional() typeInfo {
 	return typeInfo{ft: typeOptional, inner: &u}
 }
 
+// optionalInnerOr returns the inner type of a T? — or the type itself when it is
+// not optional, or unknown when the optional's inner is unrecorded.
+func optionalInnerOr(t typeInfo) typeInfo {
+	if t.ft == typeOptional {
+		if t.inner != nil {
+			return *t.inner
+		}
+		return unknown()
+	}
+	return t
+}
+
 // unknown returns a typeInfo for typeUnknown.
 func unknown() typeInfo { return typeInfo{ft: typeUnknown} }
 
@@ -280,10 +292,20 @@ func (c *checker) resolveType(parentStruct, typeName string) typeInfo {
 	if qn := c.qualifyStructType(parentStruct, typeName); qn != "" {
 		return structTI(qn)
 	}
+	// Resolve against an imported library's struct namespace. Map iteration is
+	// randomized, so when two libraries happen to declare the same struct name,
+	// pick the lexicographically-smallest matching prefix — a stable result
+	// rather than one that flips between runs. (Qualify the type to disambiguate.)
+	best := ""
 	for prefix := range c.libVarToPath {
 		if _, ok := c.structDecls[prefix+"."+typeName]; ok {
-			return structTI(prefix + "." + typeName)
+			if best == "" || prefix < best {
+				best = prefix
+			}
 		}
+	}
+	if best != "" {
+		return structTI(best + "." + typeName)
 	}
 	return unknown()
 }

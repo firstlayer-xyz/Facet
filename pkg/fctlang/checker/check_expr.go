@@ -67,6 +67,22 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 		if elseType.ft == typeUnknown {
 			return thenType
 		}
+		// If either arm is optional, the result is optional: the other arm may
+		// still be None at runtime, so the value is only safe after a nil check.
+		// (Without this, `cond ? T : T?` would type as T and defeat the optional
+		// guarantee — the same soundness class fixed for struct fields.)
+		if thenType.ft == typeOptional || elseType.ft == typeOptional {
+			thenInner := optionalInnerOr(thenType)
+			elseInner := optionalInnerOr(elseType)
+			if !c.typeCompatible(thenInner, elseInner) && !c.typeCompatible(elseInner, thenInner) {
+				c.addError(ex.Pos, fmt.Sprintf("ternary arms must agree on type: then-arm is %s, else-arm is %s",
+					thenType.displayName(), elseType.displayName()))
+			}
+			if thenInner.ft == typeUnknown {
+				return optionalOf(elseInner)
+			}
+			return optionalOf(thenInner)
+		}
 		if !c.typeCompatible(thenType, elseType) && !c.typeCompatible(elseType, thenType) {
 			c.addError(ex.Pos, fmt.Sprintf("ternary arms must agree on type: then-arm is %s, else-arm is %s",
 				thenType.displayName(), elseType.displayName()))

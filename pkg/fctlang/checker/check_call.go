@@ -907,6 +907,24 @@ func (c *checker) checkParamConstraint(fn *parser.Function, p *parser.Param, par
 		if et.ft != typeUnknown && et.ft != typeNumber {
 			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint range end must be a Number, got %s", fn.Name, p.Name, et.displayName()))
 		}
+		if con.Range.Step != nil {
+			stept := c.inferExpr(con.Range.Step, env)
+			if stept.ft != typeUnknown && stept.ft != typeNumber {
+				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint range step must be a Number, got %s", fn.Name, p.Name, stept.displayName()))
+			}
+		}
+		// Validate the constraint unit against the parameter type (as the
+		// variable path does), so e.g. an angle unit on a Length parameter is
+		// caught at check time rather than slipping through.
+		if _, isAngle := parser.AngleFactors[con.Unit]; isAngle {
+			if paramType.ft != typeUnknown && paramType.ft != typeAngle {
+				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint unit %q is an angle unit, but parameter is %s", fn.Name, p.Name, con.Unit, paramType.displayName()))
+			}
+		} else if _, isUnit := parser.UnitFactors[con.Unit]; isUnit {
+			if paramType.ft != typeUnknown && paramType.ft != typeLength {
+				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint unit %q is a length unit, but parameter is %s", fn.Name, p.Name, con.Unit, paramType.displayName()))
+			}
+		}
 	case *parser.RangeExpr:
 		st := c.inferExpr(con.Start, env)
 		et := c.inferExpr(con.End, env)
