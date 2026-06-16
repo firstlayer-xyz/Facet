@@ -88,7 +88,7 @@ check-shims: go-toolchain
 	$(GO) run scripts/check-shims.go
 
 test: go-toolchain manifold
-	CGO_ENABLED=1 $(GO) test ./pkg/fctlang/... ./pkg/manifold/... ./pkg/scad/... ./pkg/render/...
+	CGO_ENABLED=1 $(GO) test ./pkg/fctlang/... ./pkg/manifold/... ./pkg/scad/... ./pkg/render/... ./cmd/facetrender/...
 
 # Tests for the desktop (Wails app) Go package — the Go-side counterpart to
 # `test-desktop` (which runs the frontend Playwright suite). Separate from

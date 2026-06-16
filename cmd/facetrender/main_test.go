@@ -25,7 +25,10 @@ func TestPreviewBuffers_MeshPath(t *testing.T) {
 	}
 	f.Close()
 
-	positions, colors := previewBuffers(p)
+	positions, colors, err := previewBuffers(p)
+	if err != nil {
+		t.Fatalf("previewBuffers: %v", err)
+	}
 	if len(positions) != 9 {
 		t.Fatalf("positions len = %d, want 9", len(positions))
 	}
@@ -53,7 +56,10 @@ func TestPreviewBuffers_MeshPathNoColor(t *testing.T) {
 	}
 	f.Close()
 
-	positions, colors := previewBuffers(p)
+	positions, colors, err := previewBuffers(p)
+	if err != nil {
+		t.Fatalf("previewBuffers: %v", err)
+	}
 	if len(positions) != 9 {
 		t.Fatalf("positions len = %d, want 9", len(positions))
 	}
