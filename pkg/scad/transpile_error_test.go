@@ -750,8 +750,10 @@ func TestTranspileForLoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("for loop should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, "Union(arr: for i [0:3]") {
-		t.Fatalf("expected Union(for-yield):\n%s", res.Facet)
+	// Lowered through scad_union so a single-iteration loop (a one-element list)
+	// renders instead of tripping the stdlib Union's >=2-element requirement.
+	if !strings.Contains(res.Facet, "scad_union(arr: for i [0:3]") {
+		t.Fatalf("expected scad_union(for-yield):\n%s", res.Facet)
 	}
 	assertTypeChecks(t, res.Facet)
 }
@@ -1081,8 +1083,8 @@ func TestTranspileChildrenAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("children() should transpile, got: %v", err)
 	}
-	if !strings.Contains(res.Facet, "Union(arr: children)") {
-		t.Fatalf("children() not lowered to Union(arr:):\n%s", res.Facet)
+	if !strings.Contains(res.Facet, "scad_union(arr: children)") {
+		t.Fatalf("children() not lowered to scad_union(arr:):\n%s", res.Facet)
 	}
 	if !strings.Contains(res.Facet, "Cube(") || !strings.Contains(res.Facet, "Sphere(") {
 		t.Fatalf("both children not bound:\n%s", res.Facet)

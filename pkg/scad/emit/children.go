@@ -99,7 +99,10 @@ func eachStmt(stmts []ast.Stmt, visit func(ast.Stmt)) {
 func (e *Emitter) childrenRef(n *ast.ModuleCall) string {
 	switch len(n.Args) {
 	case 0:
-		return "Union(arr: children)"
+		// scad_union (not Union) so a module instantiated over a single child —
+		// the common case — doesn't hit the stdlib's >=2-element requirement.
+		e.usesUnion = true
+		return "scad_union(arr: children)"
 	case 1:
 		if n.Args[0].Name != "" {
 			return e.errf(n.Pos(), "children() index must be positional")

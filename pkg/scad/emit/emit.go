@@ -50,6 +50,9 @@ type Emitter struct {
 	// usesUnion is set when a conditional-geometry body is emitted as
 	// scad_union(arr:) (a runtime-length list union), so File injects scad_union.
 	usesUnion bool
+	// usesIntersection is set when intersection_for is emitted as
+	// scad_intersection(arr:), so File injects scad_intersection.
+	usesIntersection bool
 	// usesCross is set when cross() is emitted, so File injects scad_cross.
 	usesCross bool
 	// childUse records, per module, whether it consumes children() and whether
