@@ -4,7 +4,6 @@ package manifold
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math"
 	"syscall/js"
 )
@@ -89,23 +88,16 @@ func extractDisplayMeshJS(s *Solid) *DisplayMesh {
 	nTri := nExpanded / 3
 	nEdges := len(edgeRaw) / 24 // 6 floats * 4 bytes
 
-	// Build face color map from FaceMap
+	// Build face color map from FaceMap. Decode the face IDs to []uint32 and
+	// hand them to the shared buildFaceColorMap so native and wasm produce
+	// identical maps (incl. #RRGGBBAA for translucent faces).
 	var fcMap map[string]string
 	if len(s.FaceMap) > 0 && len(faceIDRaw) > 0 {
-		seen := make(map[uint32]bool)
-		for i := 0; i < len(faceIDRaw)/4; i++ {
-			fid := binary.LittleEndian.Uint32(faceIDRaw[i*4:])
-			if seen[fid] {
-				continue
-			}
-			seen[fid] = true
-			if fi, ok := s.FaceMap[fid]; ok && fi.Color != NoColor {
-				if fcMap == nil {
-					fcMap = make(map[string]string)
-				}
-				fcMap[fmt.Sprintf("%d", fid)] = colorFromFaceInfo(fi)
-			}
+		faceIDs := make([]uint32, len(faceIDRaw)/4)
+		for i := range faceIDs {
+			faceIDs[i] = binary.LittleEndian.Uint32(faceIDRaw[i*4:])
 		}
+		fcMap = buildFaceColorMap(faceIDs, s.FaceMap)
 	}
 
 	return &DisplayMesh{

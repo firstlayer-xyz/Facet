@@ -8,7 +8,6 @@ package manifold
 */
 import "C"
 import (
-	"fmt"
 	"runtime"
 	"unsafe"
 )
@@ -120,42 +119,6 @@ func extractMesh(m *C.ManifoldPtr) *Mesh {
 		Vertices: vertices,
 		Indices:  indices,
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Face-color helpers
-// ---------------------------------------------------------------------------
-
-// colorFromFaceInfo converts a FaceInfo color+alpha into a hex string.
-// Emits "#RRGGBB" when alpha is 0 (default) or 255 (explicitly opaque),
-// and "#RRGGBBAA" when alpha is anything else. Downstream consumers
-// (renderer + meshio) both accept either form.
-func colorFromFaceInfo(fi FaceInfo) string {
-	c := fi.Color
-	if fi.Alpha == 0 || fi.Alpha == 0xFF {
-		return fmt.Sprintf("#%02X%02X%02X", (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF)
-	}
-	return fmt.Sprintf("#%02X%02X%02X%02X", (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF, fi.Alpha)
-}
-
-// buildFaceColorMap constructs a faceID→hex color map from a slice of face IDs
-// and a FaceInfo map. Only face IDs with a non-NoColor entry are included.
-func buildFaceColorMap(faceIDs []uint32, faceMap map[uint32]FaceInfo) map[string]string {
-	var fcMap map[string]string
-	seen := make(map[uint32]bool)
-	for _, fid := range faceIDs {
-		if seen[fid] {
-			continue
-		}
-		seen[fid] = true
-		if fi, ok := faceMap[fid]; ok && fi.Color != NoColor {
-			if fcMap == nil {
-				fcMap = make(map[string]string)
-			}
-			fcMap[fmt.Sprintf("%d", fid)] = colorFromFaceInfo(fi)
-		}
-	}
-	return fcMap
 }
 
 // ---------------------------------------------------------------------------

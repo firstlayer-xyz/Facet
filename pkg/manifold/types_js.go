@@ -3,7 +3,6 @@
 package manifold
 
 import (
-	"fmt"
 	"runtime"
 	"syscall/js"
 )
@@ -100,8 +99,7 @@ func newSketch(id int) *Sketch {
 
 func newSolidWithOrigin(id int) *Solid {
 	s := newSolid(id)
-	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
-	s.FaceMap = map[uint32]FaceInfo{origID: {Color: NoColor}}
+	seedOriginFaceMap(s, js.Global().Call("_mf_original_id", id).Int())
 	return s
 }
 
@@ -136,8 +134,7 @@ func (s *Solid) withFaceMap() map[uint32]FaceInfo {
 // An identity transform clones the geometry with a copied FaceMap, then colors it.
 func (s *Solid) SetColor(r, g, b, a float64) *Solid {
 	out := s.Translate(0, 0, 0)
-	color := uint32(int(r*255+0.5)<<16 | int(g*255+0.5)<<8 | int(b*255+0.5))
-	alpha := uint8(clamp01(a)*255 + 0.5)
+	color, alpha := encodeColor(r, g, b, a)
 	for id, fi := range out.FaceMap {
 		fi.Color = color
 		fi.Alpha = alpha
@@ -165,10 +162,4 @@ func typedArrayToBytes(val js.Value) []byte {
 	result := make([]byte, byteLength)
 	js.CopyBytesToGo(result, u8)
 	return result
-}
-
-// colorFromFaceInfo converts a FaceInfo int32 color to a hex string.
-func colorFromFaceInfo(fi FaceInfo) string {
-	c := fi.Color
-	return fmt.Sprintf("#%02X%02X%02X", (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF)
 }
