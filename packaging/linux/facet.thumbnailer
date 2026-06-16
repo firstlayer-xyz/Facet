@@ -1,4 +1,4 @@
 [Thumbnailer Entry]
 TryExec=facetc
 Exec=facetc %i -o %o -format png -size %s
-MimeType=application/x-facet;model/stl;model/obj;application/vnd.ms-package.3dmanufacturing-3dmodel+xml;
+MimeType=application/x-facet;model/stl;model/obj;model/3mf;application/vnd.ms-package.3dmanufacturing-3dmodel+xml;

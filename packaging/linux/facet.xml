@@ -3,7 +3,8 @@
      thumbnail (*.stl, *.obj, *.3mf). Installed into $DATADIR/mime/packages/ and
      registered with update-mime-database, this gives file managers MIME types to
      hang the thumbnailer (and icon) off. Re-declaring a glob the system already
-     knows is harmless — it just reinforces the association. -->
+     defines is safe (update-mime-database merges packages); the weight ensures our
+     type wins resolution. -->
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-facet">
     <comment>Facet model</comment>
@@ -11,14 +12,15 @@
   </mime-type>
   <mime-type type="model/stl">
     <comment>STL mesh</comment>
-    <glob pattern="*.stl"/>
+    <glob pattern="*.stl" weight="60"/>
   </mime-type>
   <mime-type type="model/obj">
     <comment>Wavefront OBJ mesh</comment>
-    <glob pattern="*.obj"/>
+    <glob pattern="*.obj" weight="60"/>
   </mime-type>
-  <mime-type type="application/vnd.ms-package.3dmanufacturing-3dmodel+xml">
+  <mime-type type="model/3mf">
     <comment>3MF mesh</comment>
-    <glob pattern="*.3mf"/>
+    <glob pattern="*.3mf" weight="60"/>
+    <alias type="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
   </mime-type>
 </mime-info>
