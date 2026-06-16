@@ -45,29 +45,24 @@ func evalMain(source string) (*evaluator.EvalResult, error) {
 	return result, nil
 }
 
-// facetMesh evaluates source's Main to a merged display mesh (single frame at
-// t=0 for animations), or an error describing the load/type-check/evaluation
-// failure (or that it produced no solids).
-func facetMesh(source string) (*manifold.DisplayMesh, error) {
-	result, err := evalMain(source)
-	if err != nil {
-		return nil, err
+// solidsToBuffers merges solids into one display mesh and returns its expanded
+// positions (9 floats per triangle) plus a parallel per-expanded-vertex RGB
+// color buffer (nil when uncolored), erroring on empty geometry. The 40° edge
+// threshold matches the in-app viewport's normal smoothing.
+func solidsToBuffers(solids []*manifold.Solid) (positions []float32, colors []byte, err error) {
+	dm := manifold.MergeExtractExpandedMeshes(solids, 40)
+	if len(dm.ExpandedRaw) == 0 {
+		return nil, nil, fmt.Errorf("model produced no geometry")
 	}
-	solids, err := result.StaticSolids(0)
-	if err != nil {
-		return nil, err
-	}
-	if len(solids) == 0 {
-		return nil, fmt.Errorf("model produced no solids")
-	}
-	return manifold.MergeExtractExpandedMeshes(solids, 40), nil
+	return dm.ExpandedPositions(), dm.ExpandedColors(), nil
 }
 
 // previewBuffers loads a file into renderer inputs: expanded positions (9 floats
 // per triangle) and a parallel per-expanded-vertex RGB color buffer (nil when
 // the geometry carries no color). Mesh files (.stl/.obj/.3mf) are read as raw
-// triangles; everything else is treated as Facet source and evaluated. Returns
-// the load/compile error so callers can report why a file produced no geometry.
+// triangles; everything else is treated as Facet source and evaluated (a single
+// frame at t=0 for an Animation). Returns the load/compile error so callers can
+// report why a file produced no geometry.
 func previewBuffers(path string) (positions []float32, colors []byte, err error) {
 	if meshio.CanRead(path) {
 		return meshpreview.LoadColored(path)
@@ -76,14 +71,15 @@ func previewBuffers(path string) (positions []float32, colors []byte, err error)
 	if err != nil {
 		return nil, nil, err
 	}
-	dm, err := facetMesh(string(src))
+	result, err := evalMain(string(src))
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(dm.ExpandedRaw) == 0 {
-		return nil, nil, fmt.Errorf("model produced no geometry")
+	solids, err := result.StaticSolids(0)
+	if err != nil {
+		return nil, nil, err
 	}
-	return dm.ExpandedPositions(), dm.ExpandedColors(), nil
+	return solidsToBuffers(solids)
 }
 
 // emitBuffers copies positions (+ optional per-vertex RGB colors) into malloc'd
@@ -177,6 +173,12 @@ var (
 	animSessions = map[int32]*evaluator.EvalResult{}
 )
 
+// maxAnimSessions bounds the registry so a preview dismissed without calling
+// FacetCloseAnimation (the QL host process is long-lived and reused across
+// previews) leaks at most this many retained sessions; opening past it evicts
+// the oldest (lowest handle).
+const maxAnimSessions = 8
+
 // openAnimation evaluates source and, if Main returned an Animation, retains the
 // session and returns a non-zero handle. Returns (0, false) for a static model
 // or any failure.
@@ -189,6 +191,15 @@ func openAnimation(source string) (int32, bool) {
 	defer animMu.Unlock()
 	animNext++
 	animSessions[animNext] = result
+	for len(animSessions) > maxAnimSessions {
+		oldest := animNext
+		for h := range animSessions {
+			if h < oldest {
+				oldest = h
+			}
+		}
+		delete(animSessions, oldest)
+	}
 	return animNext, true
 }
 
@@ -206,11 +217,11 @@ func animationFrame(handle int32, timeMs float64) (positions []float32, colors [
 	if err != nil {
 		return nil, nil
 	}
-	dm := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
-	if dm == nil || len(dm.ExpandedRaw) == 0 {
+	positions, colors, err = solidsToBuffers([]*manifold.Solid{solid})
+	if err != nil {
 		return nil, nil
 	}
-	return dm.ExpandedPositions(), dm.ExpandedColors()
+	return positions, colors
 }
 
 // closeAnimation releases the session registered under handle.

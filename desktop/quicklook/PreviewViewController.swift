@@ -81,10 +81,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
     // the current wall-clock frame (heavy cgo), hands the geometry to the main
     // thread to swap onto the model node, then sleeps to cap the rate (~30 fps,
     // slower when a frame takes longer — self-throttling). It exits when running
-    // clears.
+    // clears, or after maxFrameFailures consecutive frame failures (a persistent
+    // mid-animation eval error) rather than busy-retrying a doomed frame for the
+    // life of the preview — the last good frame stays on screen.
     private func startProducing() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let targetMs = 1000.0 / 30.0
+            let maxFrameFailures = 10 // ~1/3 s of failed frames → give up
+            var failures = 0
             while true {
                 guard let self = self else { return }
                 self.lock.lock()
@@ -95,9 +99,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
 
                 let frameStart = self.nowMs()
                 guard let geom = self.frameGeometry(handle: handle, timeMs: frameStart) else {
+                    failures += 1
+                    if failures >= maxFrameFailures { return }
                     Thread.sleep(forTimeInterval: targetMs / 1000.0)
                     continue
                 }
+                failures = 0
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.lock.lock()
