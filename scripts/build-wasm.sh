@@ -88,6 +88,13 @@ echo "Exporting $(echo "$EXPORTS_RAW" | tr ',' '\n' | wc -l | tr -d ' ') C funct
 
 emcc \
   "$CXX_DIR/src/bindings.cpp" \
+  "$CXX_DIR/src/bindings_booleans.cpp" \
+  "$CXX_DIR/src/bindings_transforms.cpp" \
+  "$CXX_DIR/src/bindings_extrude.cpp" \
+  "$CXX_DIR/src/bindings_ops.cpp" \
+  "$CXX_DIR/src/bindings_queries.cpp" \
+  "$CXX_DIR/src/bindings_extract.cpp" \
+  "$CXX_DIR/src/bindings_callbacks.cpp" \
   "$CXX_DIR/src/polymesh.cpp" \
   "$CXX_DIR/src/text.cpp" \
   "${LIBS[@]}" \

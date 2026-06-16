@@ -30,7 +30,17 @@ else()
 endif()
 set(FREETYPE_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/freetype/install-${_OS}-${_ARCH}")
 
-add_library(facet_cxx STATIC src/bindings.cpp src/polymesh.cpp src/text.cpp)
+add_library(facet_cxx STATIC
+  src/bindings.cpp
+  src/bindings_booleans.cpp
+  src/bindings_transforms.cpp
+  src/bindings_extrude.cpp
+  src/bindings_ops.cpp
+  src/bindings_queries.cpp
+  src/bindings_extract.cpp
+  src/bindings_callbacks.cpp
+  src/polymesh.cpp
+  src/text.cpp)
 target_include_directories(facet_cxx
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/manifold/include
