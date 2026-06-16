@@ -436,65 +436,62 @@ fn Solid.Bounds() Box {
 
 # X extent of the bounding box. Shorthand for `Bounds().Width()`.
 fn Solid.Width() Length {
-    var b = _bounding_box(self)
-    return b.max.x - b.min.x
+    return self.Bounds().Width()
 }
 
 # Y extent (front-to-back depth) of the bounding box. Shorthand for `Bounds().Depth()`.
 fn Solid.Depth() Length {
-    var b = _bounding_box(self)
-    return b.max.y - b.min.y
+    return self.Bounds().Depth()
 }
 
 # Z extent (vertical height) of the bounding box. Shorthand for `Bounds().Height()`.
 fn Solid.Height() Length {
-    var b = _bounding_box(self)
-    return b.max.z - b.min.z
+    return self.Bounds().Height()
 }
 
 # X coordinate of the left face (bounding box min.x).
 fn Solid.Left() Length {
-    return _bounding_box(self).min.x
+    return self.Bounds().Left()
 }
 
 # X coordinate of the right face (bounding box max.x).
 fn Solid.Right() Length {
-    return _bounding_box(self).max.x
+    return self.Bounds().Right()
 }
 
 # Y coordinate of the front face (bounding box min.y).
 fn Solid.Front() Length {
-    return _bounding_box(self).min.y
+    return self.Bounds().Front()
 }
 
 # Y coordinate of the back face (bounding box max.y).
 fn Solid.Back() Length {
-    return _bounding_box(self).max.y
+    return self.Bounds().Back()
 }
 
 # Z coordinate of the bottom face (bounding box min.z).
 fn Solid.Bottom() Length {
-    return _bounding_box(self).min.z
+    return self.Bounds().Bottom()
 }
 
 # Z coordinate of the top face (bounding box max.z).
 fn Solid.Top() Length {
-    return _bounding_box(self).max.z
+    return self.Bounds().Top()
 }
 
 # Center point of the bounding box (midpoint of min and max corners).
 fn Solid.Center() Vec3 {
-    return _bounding_box(self).Center()
+    return self.Bounds().Center()
 }
 
 # World-space position of the left-front-bottom corner (bounding box min).
 fn Solid.LeftFrontBottom() Vec3 {
-    return _bounding_box(self).min
+    return self.Bounds().min
 }
 
 # World-space position of the right-back-top corner (bounding box max).
 fn Solid.RightBackTop() Vec3 {
-    return _bounding_box(self).max
+    return self.Bounds().max
 }
 
 # World-space position of the right-front-bottom corner.

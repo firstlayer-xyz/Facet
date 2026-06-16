@@ -47,7 +47,7 @@ fn Solid.Exclude(with Solid) Solid {
 
 # N-ary even-odd fill: material inside an odd number of input solids.
 fn EvenOdd(solids []Solid) Solid {
-    return fold acc, s solids { yield acc + s - (acc & s) }
+    return fold acc, s solids { yield acc.Exclude(with: s) }
 }
 
 # Cuts a hole for `part`, removes floating bore plugs, then seats `part`. Used with the `|` operator. Designed for inserting hollow tools (pipes, tubes) into a body.

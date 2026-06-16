@@ -10,15 +10,7 @@ import (
 func (s *Solid) Hull() *Solid {
 	id := js.Global().Call("_mf_hull", s.id).Int()
 	r := newSolid(id)
-	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
-	fi := FaceInfo{Color: NoColor}
-	for _, v := range s.FaceMap {
-		if v.Color != NoColor {
-			fi.Color = v.Color
-			break
-		}
-	}
-	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
 	return r
 }
 
@@ -32,20 +24,7 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 	}
 	id := js.Global().Call("_mf_batch_hull", arr).Int()
 	r := newSolid(id)
-	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
-	fi := FaceInfo{Color: NoColor}
-	for _, s := range solids {
-		for _, v := range s.FaceMap {
-			if v.Color != NoColor {
-				fi.Color = v.Color
-				break
-			}
-		}
-		if fi.Color != NoColor {
-			break
-		}
-	}
-	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(solids...))
 	return r, nil
 }
 
@@ -92,15 +71,7 @@ func (s *Solid) RefineToLength(length float64) *Solid {
 func (s *Solid) Offset(delta, edgeLen float64) *Solid {
 	id := js.Global().Call("_mf_offset", s.id, delta, edgeLen).Int()
 	r := newSolid(id)
-	origID := uint32(js.Global().Call("_mf_original_id", id).Int())
-	fi := FaceInfo{Color: NoColor}
-	for _, v := range s.FaceMap {
-		if v.Color != NoColor {
-			fi.Color = v.Color
-			break
-		}
-	}
-	r.FaceMap = map[uint32]FaceInfo{origID: fi}
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
 	return r
 }
 
