@@ -75,7 +75,13 @@ func MergeMeshes(meshes []*Mesh) *Mesh {
 }
 
 func extractDisplayMeshJS(s *Solid) *DisplayMesh {
-	r := js.Global().Call("_mf_extract_display_mesh", s.id)
+	return displayMeshFromExpanded(js.Global().Call("_mf_extract_display_mesh", s.id), s.FaceMap)
+}
+
+// displayMeshFromExpanded builds a DisplayMesh from a JS {expanded, faceIDs,
+// edges} result and the source FaceMap. Shared by the single-solid and
+// merge-extract paths so both produce identical meshes and face-color maps.
+func displayMeshFromExpanded(r js.Value, faceMap map[uint32]FaceInfo) *DisplayMesh {
 	if r.IsNull() || r.IsUndefined() {
 		return &DisplayMesh{}
 	}
@@ -88,16 +94,16 @@ func extractDisplayMeshJS(s *Solid) *DisplayMesh {
 	nTri := nExpanded / 3
 	nEdges := len(edgeRaw) / 24 // 6 floats * 4 bytes
 
-	// Build face color map from FaceMap. Decode the face IDs to []uint32 and
-	// hand them to the shared buildFaceColorMap so native and wasm produce
-	// identical maps (incl. #RRGGBBAA for translucent faces).
+	// Decode the face IDs to []uint32 and hand them to the shared
+	// buildFaceColorMap so native and wasm produce identical maps (incl.
+	// #RRGGBBAA for translucent faces).
 	var fcMap map[string]string
-	if len(s.FaceMap) > 0 && len(faceIDRaw) > 0 {
+	if len(faceMap) > 0 && len(faceIDRaw) > 0 {
 		faceIDs := make([]uint32, len(faceIDRaw)/4)
 		for i := range faceIDs {
 			faceIDs[i] = binary.LittleEndian.Uint32(faceIDRaw[i*4:])
 		}
-		fcMap = buildFaceColorMap(faceIDs, s.FaceMap)
+		fcMap = buildFaceColorMap(faceIDs, faceMap)
 	}
 
 	return &DisplayMesh{
@@ -112,25 +118,27 @@ func extractDisplayMeshJS(s *Solid) *DisplayMesh {
 }
 
 func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
+	return MergeExtractExpandedMeshes(solids, 40)
+}
+
+// MergeExtractExpandedMeshes composes the solids and extracts one expanded mesh
+// in a single C call (via _mf_merge_extract_expanded_mesh), matching native. The
+// previous implementation faked the merge with a boolean Union — which welds
+// coincident faces and drops interior geometry — and built a *Solid bypassing
+// newSolid, leaking the ExternalAlloc/finalizer accounting.
+func MergeExtractExpandedMeshes(solids []*Solid, edgeThresholdDeg float32) *DisplayMesh {
 	if len(solids) == 0 {
 		return &DisplayMesh{}
 	}
 	if len(solids) == 1 {
 		return extractDisplayMeshJS(solids[0])
 	}
-	// Merge all solids first, carrying combined FaceMap
-	result := solids[0]
-	for i := 1; i < len(solids); i++ {
-		result = result.Union(solids[i])
-	}
-	merged := &Solid{id: result.id}
+	idArr := js.Global().Get("Array").New()
+	var faceMap map[uint32]FaceInfo
 	for _, s := range solids {
-		merged.FaceMap = mergeFaceMaps(merged.FaceMap, s.FaceMap)
+		idArr.Call("push", s.id)
+		faceMap = mergeFaceMaps(faceMap, s.FaceMap)
 	}
-	merged.FaceMap = mergeFaceMaps(merged.FaceMap, result.FaceMap)
-	return extractDisplayMeshJS(merged)
-}
-
-func MergeExtractExpandedMeshes(solids []*Solid, edgeThresholdDeg float32) *DisplayMesh {
-	return MergeExtractDisplayMeshes(solids)
+	r := js.Global().Call("_mf_merge_extract_expanded_mesh", idArr, len(solids), edgeThresholdDeg)
+	return displayMeshFromExpanded(r, faceMap)
 }
