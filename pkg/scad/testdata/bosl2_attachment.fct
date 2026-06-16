@@ -41,13 +41,26 @@ fn b2_cuboid(
     return B2{solid: box.AlignCenter(pos: Vec3{}), size: size}
 }
 
-fn b2_cyl(h, r Length) B2 {
-    return B2{solid: Cylinder(r: r, h: h).AlignCenter(pos: Vec3{}),
+fn b2_cyl(
+    h, r Length,
+    segments Number = 0,
+) B2 {
+    # segments == 0 means no $fn/$fa/$fs was set, so fall back to Facet's default
+    # faceting (matching the non-attach path, which omits the segments argument).
+    var cyl = segments > 0 ? Cylinder(r: r, h: h, segments: segments) : Cylinder(
+        r: r,
+        h: h
+    )
+    return B2{solid: cyl.AlignCenter(pos: Vec3{}),
         size: Vec3{x: r * 2, y: r * 2, z: h}}
 }
 
-fn b2_sphere(r Length) B2 {
-    return B2{solid: Sphere(r: r).AlignCenter(pos: Vec3{}),
+fn b2_sphere(
+    r Length,
+    segments Number = 0,
+) B2 {
+    var sph = segments > 0 ? Sphere(r: r, segments: segments) : Sphere(r: r)
+    return B2{solid: sph.AlignCenter(pos: Vec3{}),
         size: Vec3{x: r * 2, y: r * 2, z: r * 2}}
 }
 

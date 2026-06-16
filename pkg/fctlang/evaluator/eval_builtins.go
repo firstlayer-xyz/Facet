@@ -193,6 +193,9 @@ func init() {
 			if !ok {
 				return nil, fmt.Errorf("_level_set() argument 1 must be Function, got %s", typeName(args[0]))
 			}
+			if len(fv.params) != 1 {
+				return nil, fmt.Errorf("_level_set() callback must take exactly 1 argument, got %d", len(fv.params))
+			}
 			boxSV, ok := args[1].(*structVal)
 			if !ok || boxSV.typeName != "Box" {
 				return nil, fmt.Errorf("_level_set() argument 2 must be Box, got %s", typeName(args[1]))

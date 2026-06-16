@@ -271,13 +271,15 @@ func expandedFloats(raw []byte) []float32 {
 	return out
 }
 
-// compositeOver alpha-composites src over dst (premultiplied by src alpha).
+// compositeOver alpha-composites src over an opaque dst. src.Pix is
+// alpha-premultiplied (render.Mesh's box-filter downsample averages opaque
+// covered subpixels with transparent black), so the over operator is
+// out = src + dst*(1-a), not src*a + dst*(1-a).
 func compositeOver(dst, src *image.RGBA) *image.RGBA {
 	for i := 0; i < len(src.Pix); i += 4 {
-		a := uint32(src.Pix[i+3])
-		ia := 255 - a
+		ia := 255 - uint32(src.Pix[i+3])
 		for c := 0; c < 3; c++ {
-			dst.Pix[i+c] = uint8((uint32(src.Pix[i+c])*a + uint32(dst.Pix[i+c])*ia) / 255)
+			dst.Pix[i+c] = uint8(uint32(src.Pix[i+c]) + uint32(dst.Pix[i+c])*ia/255)
 		}
 		dst.Pix[i+3] = 0xff
 	}

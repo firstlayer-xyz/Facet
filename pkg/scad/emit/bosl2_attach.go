@@ -638,14 +638,16 @@ func (e *Emitter) bosl2PrimitiveB2(mc *ast.ModuleCall) (string, bool) {
 		if !ok {
 			return e.errf(mc.Pos(), "cyl without radius"), true
 		}
-		return fmt.Sprintf("b2_cyl(h: %s, r: %s)", e.expr(h, kLength), r), true
+		rMM, rOK := cylinderRadiusMM(mc)
+		return fmt.Sprintf("b2_cyl(h: %s, r: %s%s)", e.expr(h, kLength), r, e.segmentsSuffix(mc, rMM, rOK)), true
 	case "sphere":
 		e.rejectExtraArgs(mc, 1, "r", "d", "$fn", "$fa", "$fs")
 		r, ok := e.radiusHalf(mc, 0)
 		if !ok {
 			return e.errf(mc.Pos(), "sphere without radius"), true
 		}
-		return fmt.Sprintf("b2_sphere(r: %s)", r), true
+		rMM, rOK := radiusMM(mc, 0)
+		return fmt.Sprintf("b2_sphere(r: %s%s)", r, e.segmentsSuffix(mc, rMM, rOK)), true
 	}
 	return "", false
 }

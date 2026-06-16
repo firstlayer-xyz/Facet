@@ -685,9 +685,13 @@ void facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
     double edgeWalked = 0;
     for (size_t i = 0; i < targetN; i++) {
       double target = i * step;
-      while (walked + edgeLens[edgeIdx] - edgeWalked < target - 1e-12 && edgeIdx < n) {
+      // Bound the index before reading edgeLens[edgeIdx]; floating-point
+      // arc-length accumulation can overshoot on the final point, so clamp to
+      // the last edge rather than wrapping (which would teleport the point to
+      // the contour start).
+      while (edgeIdx + 1 < n && walked + edgeLens[edgeIdx] - edgeWalked < target - 1e-12) {
         walked += edgeLens[edgeIdx] - edgeWalked;
-        edgeIdx = (edgeIdx + 1) % n;
+        edgeIdx++;
         edgeWalked = 0;
       }
       double rem = target - walked;
