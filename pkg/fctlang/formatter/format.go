@@ -141,6 +141,25 @@ func (f *formatter) measureForYieldHead(e *parser.ForYieldExpr) int {
 	return m.buf.Len()
 }
 
+// formatIfCond writes the `if ` head — including the `var NAME = ` binding for
+// the `if var NAME = Cond` optional-narrowing form — followed by the condition.
+func (f *formatter) formatIfCond(s *parser.IfStmt) {
+	f.write("if ")
+	if s.BindVar != "" {
+		f.write("var " + s.BindVar + " = ")
+	}
+	f.formatExpr(s.Cond)
+}
+
+// ifBindWidth is the rendered width of the `var NAME = ` binding prefix (0 when
+// there is no binding), for the inline-collapse width estimate.
+func (f *formatter) ifBindWidth(s *parser.IfStmt) int {
+	if s.BindVar == "" {
+		return 0
+	}
+	return len("var " + s.BindVar + " = ")
+}
+
 // tryFormatStmtInline renders s as a single-line string (no leading indent,
 // no trailing newline). Returns (rendered, true) only if the statement has
 // no comments and produces no inner newlines. This is used to collapse
@@ -698,10 +717,9 @@ func (f *formatter) formatStmt(s parser.Stmt) {
 		if len(s.ElseIfs) == 0 && len(s.Else) == 0 && len(s.Then) == 1 &&
 			ifLine > 0 && stmtStartLine(s.Then[0]) == ifLine {
 			if inner, ok := f.tryFormatStmtInline(s.Then[0]); ok {
-				extra := 3 + f.measureExpr(s.Cond) + 3 + len(inner) + 2
+				extra := 3 + f.ifBindWidth(s) + f.measureExpr(s.Cond) + 3 + len(inner) + 2
 				if !f.wouldExceed(extra) {
-					f.write("if ")
-					f.formatExpr(s.Cond)
+					f.formatIfCond(s)
 					f.write(" { ")
 					f.write(inner)
 					f.writeln(" }")
@@ -709,8 +727,7 @@ func (f *formatter) formatStmt(s parser.Stmt) {
 				}
 			}
 		}
-		f.write("if ")
-		f.formatExpr(s.Cond)
+		f.formatIfCond(s)
 		f.writeln(" {")
 		f.depth++
 		f.formatStmts(s.Then)
