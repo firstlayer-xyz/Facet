@@ -7,6 +7,14 @@ func (p *parser) parsePrimary() (Expr, error) {
 	// Unary minus: -expr (binds looser than postfix so -self.field == -(self.field))
 	// Boolean NOT: !expr
 	if p.cur.Type == TokenMinus || p.cur.Type == TokenBang {
+		// Guard the unary recursion: parsePrimary → parsePostfix → parsePrimary
+		// bypasses parseExpr's depth check, so a long `---!--…` chain would
+		// otherwise overflow the (unrecoverable) goroutine stack.
+		p.depth++
+		if p.depth > maxParseDepth {
+			return nil, p.errorf("expression too deeply nested (limit %d)", maxParseDepth)
+		}
+		defer func() { p.depth-- }()
 		op := p.cur.Text
 		line, col := p.cur.Line, p.cur.Col
 		if err := p.next(); err != nil {

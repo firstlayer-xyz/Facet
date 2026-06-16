@@ -62,8 +62,10 @@ func (p *parser) parseOrExpr() (Expr, error) {
 }
 
 // parseNullCoalesceExpr → andExpr { "??" andExpr }
-// `??` binds tighter than `||` so `cond || opt ?? default` parses as
-// `cond || (opt ?? default)` — the natural reading.
+// Precedence sits between `||` (looser) and `&&` (tighter): `cond || opt ?? def`
+// parses as `cond || (opt ?? def)`, while `a && b ?? c` parses as `(a && b) ?? c`.
+// Mixing `??` with `&&` on an optional therefore needs explicit parens —
+// `a && (b ?? c)`.
 func (p *parser) parseNullCoalesceExpr() (Expr, error) {
 	left, err := p.parseAndExpr()
 	if err != nil {

@@ -461,6 +461,11 @@ func (l *lexer) nextRaw() (Token, error) {
 							return Token{}, &SourceError{Line: l.line, Col: l.col, Message: fmt.Sprintf("invalid hex digit %q in unicode escape", h)}
 						}
 					}
+					// Reject UTF-16 surrogate halves: not valid Unicode scalar
+					// values; rune() would silently mangle them to U+FFFD.
+					if codepoint >= 0xD800 && codepoint <= 0xDFFF {
+						return Token{}, &SourceError{Line: l.line, Col: l.col, Message: fmt.Sprintf("invalid unicode escape \\u%s (U+%04X is a surrogate half, not a scalar value)", hex, codepoint)}
+					}
 					buf = append(buf, rune(codepoint))
 					l.pos += 4
 					l.col += 4
