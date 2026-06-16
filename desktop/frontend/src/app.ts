@@ -174,9 +174,18 @@ function updateWindowTitle() {
 function syncTitlebarFilename(name: string, dirty: boolean) {
   const el = document.getElementById('titlebar-filename');
   if (!el) return;
-  el.innerHTML = dirty
-    ? `${name} <span class="titlebar-dirty-dot">\u25cf</span> <span class="titlebar-dirty-label">modified</span>`
-    : name;
+  // textContent (not innerHTML) \u2014 a filename like `<img src=x onerror=\u2026>.fct`
+  // must not inject script into the webview, which can call bound Go methods.
+  el.textContent = name;
+  if (dirty) {
+    const dot = document.createElement('span');
+    dot.className = 'titlebar-dirty-dot';
+    dot.textContent = '\u25cf';
+    const label = document.createElement('span');
+    label.className = 'titlebar-dirty-label';
+    label.textContent = 'modified';
+    el.append(' ', dot, ' ', label);
+  }
 }
 
 // Run state — driven by Go-side events ("run:start" / "run:idle")
