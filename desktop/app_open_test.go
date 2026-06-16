@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -70,5 +71,23 @@ func TestReadOpenedFile_CorruptFacetPartErrors(t *testing.T) {
 	bad := meshio.Attachment{Path: facet3mf.PartPath, ContentType: facet3mf.ContentType, Data: []byte("{bad")}
 	if _, err := readOpenedFile(write3MF(t, []meshio.Attachment{bad})); err == nil {
 		t.Fatal("expected error on corrupt Facet part")
+	}
+}
+
+func TestReadOpenedFile_FctIsRawSource(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "x.fct")
+	if err := os.WriteFile(p, []byte("fn Main() Solid { return Cube(size: 1) }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	of, err := readOpenedFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if of.Imported {
+		t.Error(".fct should not be marked Imported")
+	}
+	if of.Source == "" {
+		t.Error(".fct source should be the raw file contents")
 	}
 }

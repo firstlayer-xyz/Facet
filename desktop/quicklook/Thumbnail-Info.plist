@@ -17,7 +17,15 @@
         <key>NSExtensionAttributes</key>
         <dict>
             <key>QLSupportedContentTypes</key>
-            <array><string>xyz.firstlayer.facet.fct</string></array>
+            <array>
+                <string>xyz.firstlayer.facet.fct</string>
+                <string>xyz.firstlayer.facet.stl</string>
+                <string>xyz.firstlayer.facet.obj</string>
+                <string>xyz.firstlayer.facet.3mf</string>
+                <!-- macOS resolves .stl to this system UTI, which does not conform
+                     to our imported type, so list it too or the extension won't bind. -->
+                <string>public.standard-tesselated-geometry-format</string>
+            </array>
             <key>QLThumbnailMinimumDimension</key><integer>16</integer>
         </dict>
     </dict>

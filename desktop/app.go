@@ -401,8 +401,17 @@ func loadMeshWrapper(path string) string {
 
 // readOpenedFile reads path into an OpenedFile, routing by extension/content.
 func readOpenedFile(path string) (*OpenedFile, error) {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".3mf":
+	if !meshio.CanRead(path) {
+		// .fct and anything else: raw source.
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		return &OpenedFile{Path: path, Source: string(data)}, nil
+	}
+	// A Facet-authored 3MF may embed the original project; recover it so the
+	// file opens as an editable project rather than a baked mesh.
+	if strings.ToLower(filepath.Ext(path)) == ".3mf" {
 		mesh, err := meshio.Read(path)
 		if err != nil {
 			return nil, fmt.Errorf("open %s: %w", filepath.Base(path), err)
@@ -414,16 +423,8 @@ func readOpenedFile(path string) (*OpenedFile, error) {
 		if proj != nil {
 			return &OpenedFile{Path: path, Source: proj.Source, Entry: proj.Entry, Overrides: proj.Overrides, Imported: true}, nil
 		}
-		return &OpenedFile{Path: path, Source: loadMeshWrapper(path), Imported: true}, nil
-	case ".stl", ".obj":
-		return &OpenedFile{Path: path, Source: loadMeshWrapper(path), Imported: true}, nil
-	default: // .fct and anything else: raw source
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		return &OpenedFile{Path: path, Source: string(data)}, nil
 	}
+	return &OpenedFile{Path: path, Source: loadMeshWrapper(path), Imported: true}, nil
 }
 
 func (a *App) OpenRecentFile(path string) (*OpenedFile, error) {
@@ -435,12 +436,22 @@ func (a *App) SetWindowTitle(title string) {
 	wailsRuntime.WindowSetTitle(a.ctx, title)
 }
 
-// openFilter is the Open dialog filter: Facet source plus importable mesh
-// formats. Mesh files are routed through readOpenedFile, which generates a
-// LoadMesh wrapper or recovers an embedded project.
-var openFilter = wailsRuntime.FileFilter{
-	DisplayName: "Facet & Mesh Files (*.fct, *.3mf, *.stl, *.obj)",
-	Pattern:     "*.fct;*.3mf;*.stl;*.obj",
+// openFilter is the Open dialog filter: Facet source plus the importable mesh
+// formats. Both the label and the glob derive from meshio.ReadExtensions() so
+// the dialog can't drift from what readOpenedFile actually accepts.
+var openFilter = facetOpenFilter()
+
+func facetOpenFilter() wailsRuntime.FileFilter {
+	exts := append([]string{".fct"}, meshio.ReadExtensions()...)
+	sort.Strings(exts)
+	globs := make([]string, len(exts))
+	for i, e := range exts {
+		globs[i] = "*" + e
+	}
+	return wailsRuntime.FileFilter{
+		DisplayName: "Facet & Mesh Files (" + strings.Join(globs, ", ") + ")",
+		Pattern:     strings.Join(globs, ";"),
+	}
 }
 
 // saveFilter is the Save dialog filter: a document is always saved as Facet

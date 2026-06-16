@@ -1,8 +1,8 @@
 #!/bin/sh
-# Installs (or removes) the Facet (.fct) thumbnailer + MIME type for freedesktop
-# file managers — GNOME Files/Nautilus, Caja, Nemo, Thunar (tumbler). After this,
-# .fct files get a rendered 3D thumbnail in icon/list views. The thumbnailer
-# shells out to `facetc`, which must be on PATH.
+# Installs (or removes) the Facet thumbnailer + MIME types for freedesktop file
+# managers — GNOME Files/Nautilus, Caja, Nemo, Thunar (tumbler). After this,
+# .fct/.stl/.obj/.3mf files get a rendered 3D thumbnail in icon/list views. The
+# thumbnailer shells out to `facetc`, which must be on PATH.
 #
 #   sudo ./install-thumbnailer.sh           # system-wide  (/usr/share)
 #   ./install-thumbnailer.sh                # current user (~/.local/share)

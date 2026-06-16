@@ -3,7 +3,7 @@ module facet
 go 1.25.0
 
 require (
-	github.com/firstlayer-xyz/meshio v0.0.0-20260615234347-3e1efb3d317d
+	github.com/firstlayer-xyz/meshio v0.0.0-20260616020356-a11e15a322e4
 	github.com/go-git/go-billy/v5 v5.8.0
 	github.com/go-git/go-git/v5 v5.17.0
 	github.com/modelcontextprotocol/go-sdk v1.4.1

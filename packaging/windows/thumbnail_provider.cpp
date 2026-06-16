@@ -1,4 +1,4 @@
-// Windows Explorer thumbnail handler for Facet model files (.fct).
+// Windows Explorer thumbnail handler for Facet model files (.fct/.3mf/.obj/.stl).
 //
 // Implements the COM IThumbnailProvider interface. Explorer (via the thumbnail
 // host process) calls GetThumbnail; this handler shells out to `facetc` to
@@ -22,8 +22,12 @@ static const CLSID CLSID_FacetThumb =
     {0xb7a9c3e2, 0x1f4d, 0x4a8b, {0x9c, 0x6e, 0x2d, 0x5f, 0x8a, 0x1b, 0x3c, 0x4d}};
 
 // {e357fccd-a995-4576-b01f-234630154e96} — the IThumbnailProvider shellex slot.
-static const wchar_t *kThumbShellEx =
-    L".fct\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}";
+static const wchar_t *kThumbIID =
+    L"\\ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}";
+
+// Extensions that get Facet 3D thumbnails. facetc renders meshes directly, so
+// all four share one handler.
+static const wchar_t *kExtensions[] = {L".fct", L".3mf", L".obj", L".stl"};
 
 static volatile long g_refs = 0;
 static HINSTANCE g_inst = nullptr;
@@ -252,7 +256,10 @@ STDAPI DllRegisterServer() {
                L"Facet Thumbnail Provider") != ERROR_SUCCESS) return E_FAIL;
     if (setKey(HKEY_CLASSES_ROOT, inproc.c_str(), nullptr, dll) != ERROR_SUCCESS) return E_FAIL;
     if (setKey(HKEY_CLASSES_ROOT, inproc.c_str(), L"ThreadingModel", L"Apartment") != ERROR_SUCCESS) return E_FAIL;
-    if (setKey(HKEY_CLASSES_ROOT, kThumbShellEx, nullptr, clsid) != ERROR_SUCCESS) return E_FAIL;
+    for (const wchar_t *ext : kExtensions) {
+        std::wstring key = std::wstring(ext) + kThumbIID;
+        if (setKey(HKEY_CLASSES_ROOT, key.c_str(), nullptr, clsid) != ERROR_SUCCESS) return E_FAIL;
+    }
 
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
     return S_OK;
@@ -261,7 +268,10 @@ STDAPI DllRegisterServer() {
 STDAPI DllUnregisterServer() {
     const wchar_t *clsid = L"{B7A9C3E2-1F4D-4A8B-9C6E-2D5F8A1B3C4D}";
     SHDeleteKeyW(HKEY_CLASSES_ROOT, (std::wstring(L"CLSID\\") + clsid).c_str());
-    SHDeleteKeyW(HKEY_CLASSES_ROOT, kThumbShellEx);
+    for (const wchar_t *ext : kExtensions) {
+        std::wstring key = std::wstring(ext) + kThumbIID;
+        SHDeleteKeyW(HKEY_CLASSES_ROOT, key.c_str());
+    }
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
     return S_OK;
 }

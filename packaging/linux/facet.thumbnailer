@@ -1,4 +1,4 @@
 [Thumbnailer Entry]
 TryExec=facetc
 Exec=facetc %i -o %o -format png -size %s
-MimeType=application/x-facet;
+MimeType=application/x-facet;model/stl;model/obj;model/3mf;
