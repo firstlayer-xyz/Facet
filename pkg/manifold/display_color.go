@@ -35,6 +35,26 @@ func (dm *DisplayMesh) ExpandedPositions() []float32 {
 	return out
 }
 
+// FaceIDForVertex returns the manifold face id for expanded vertex v, reading
+// FaceGroupRaw which carries one uint32 id per triangle (the common case) or one
+// per expanded vertex. The layout is detected by comparing its length to
+// ExpandedCount. Returns false when there are no face ids or v has no entry.
+func (dm *DisplayMesh) FaceIDForVertex(v int) (uint32, bool) {
+	fgN := len(dm.FaceGroupRaw) / 4
+	if fgN == 0 {
+		return 0, false
+	}
+	idx := v
+	if fgN != dm.ExpandedCount { // not per-vertex → one id per triangle
+		idx = v / 3
+	}
+	off := idx * 4
+	if off+4 > len(dm.FaceGroupRaw) {
+		return 0, false
+	}
+	return binary.LittleEndian.Uint32(dm.FaceGroupRaw[off : off+4]), true
+}
+
 // ExpandedColors returns a per-expanded-vertex RGB buffer (3 bytes per vertex)
 // parallel to the expanded positions, or nil when no face carries a color.
 // Each vertex takes its triangle's face color; faces with no assigned color
@@ -58,30 +78,12 @@ func (dm *DisplayMesh) ExpandedColors() []byte {
 		}
 	}
 
-	// FaceGroupRaw carries one uint32 face id per triangle (the common case)
-	// or per expanded vertex; detect which so we index it correctly.
-	fgN := len(dm.FaceGroupRaw) / 4
-	perVertex := fgN == expVerts
-	faceID := func(vert int) (uint32, bool) {
-		idx := vert
-		if !perVertex {
-			idx = vert / 3
-		}
-		off := idx * 4
-		if off+4 > len(dm.FaceGroupRaw) {
-			return 0, false
-		}
-		return binary.LittleEndian.Uint32(dm.FaceGroupRaw[off : off+4]), true
-	}
-
 	out := make([]byte, expVerts*3)
 	for v := 0; v < expVerts; v++ {
 		c := DefaultFaceColor
-		if fgN > 0 {
-			if id, ok := faceID(v); ok {
-				if cc, ok := rgb[id]; ok {
-					c = cc
-				}
+		if id, ok := dm.FaceIDForVertex(v); ok {
+			if cc, ok := rgb[id]; ok {
+				c = cc
 			}
 		}
 		out[v*3], out[v*3+1], out[v*3+2] = c[0], c[1], c[2]
