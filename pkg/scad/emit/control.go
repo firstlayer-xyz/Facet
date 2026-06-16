@@ -50,5 +50,22 @@ func (e *Emitter) geomComprehension(p ast.Pos, combiner string, iters []ast.ForI
 			binds.WriteString("const " + a.Name + " = " + e.expr(a.Value, kNumber) + "\n")
 		}
 	}
-	return combiner + "(arr: for " + strings.Join(clauses, ", ") + " {\n" + binds.String() + "yield " + child + "\n})"
+	inner := "for " + strings.Join(clauses, ", ") + " {\n" + binds.String() + "yield " + child + "\n}"
+	return e.combineGeom(combiner, inner)
+}
+
+// combineGeom wraps a runtime-length arr expression in the combiner. For Union
+// it routes through the scad_union helper (and likewise scad_intersection) so a
+// single-iteration loop / single child — a one-element list — doesn't trip the
+// stdlib's >=2-element requirement. Other combiners pass through unchanged.
+func (e *Emitter) combineGeom(combiner, inner string) string {
+	switch combiner {
+	case "Union":
+		e.usesUnion = true
+		return "scad_union(arr: " + inner + ")"
+	case "Intersection":
+		e.usesIntersection = true
+		return "scad_intersection(arr: " + inner + ")"
+	}
+	return combiner + "(arr: " + inner + ")"
 }

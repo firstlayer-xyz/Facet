@@ -75,6 +75,13 @@ const scadUnionHelper = `fn scad_union(arr []Solid) Solid {
 	return Union(arr: arr)
 }`
 
+// scadIntersectionHelper is the Intersection counterpart of scadUnionHelper, for
+// intersection_for over a single iteration (a one-element list).
+const scadIntersectionHelper = `fn scad_intersection(arr []Solid) Solid {
+	if Size(of: arr) == 1 { return arr[0] }
+	return Intersection(arr: arr)
+}`
+
 // scadCrossHelper is OpenSCAD's cross(a, b): the 3D vector cross product, kept in
 // the []Number vector model (Facet's Cross takes Vec3, which would need a
 // round-trip through Vec3 components and back).
@@ -100,6 +107,7 @@ func (e *Emitter) helperPreamble() string {
 		{e.usesV2Path, scadV2PathHelper},
 		{e.usesLookup, scadLookupHelper},
 		{e.usesUnion, scadUnionHelper},
+		{e.usesIntersection, scadIntersectionHelper},
 		{e.usesCross, scadCrossHelper},
 	} {
 		if h.used {
