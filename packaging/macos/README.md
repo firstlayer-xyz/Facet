@@ -48,6 +48,40 @@ rebuilt `.appex` is picked up by re-running `pluginkit -a <path>.appex` (bumps
 the registration) followed by `qlmanage -r`; a fresh `open` of the app is the
 definitive way to re-bless a changed extension binary.
 
+**Gotcha:** the *running* Quick Look host caches the loaded extension binary in
+memory, so after rebuilding the preview extension `pluginkit -a` + `qlmanage -r`
+is not enough — the live preview keeps serving the old code. Force a fresh load
+with `killall QuickLookUIService` (and `killall FacetQuickLook` if it's still
+running); the next preview spawns the new binary.
+
+## Animated models
+
+The interactive preview (spacebar) *plays* a Facet `Animation` — geometry that
+changes over time (e.g. the clock, a strandbeest). It drives a retained
+evaluator session (`FacetOpenAnimation`/`FacetAnimationFrame`/`FacetCloseAnimation`
+in `cmd/facetrender`) and swaps the SceneKit geometry per frame at real epoch ms,
+matching the in-app viewport. The static thumbnail icon is a single frame; a
+non-animated `.fct` keeps the slow turntable.
+
+## Limitations
+
+**External library imports don't render in Quick Look.** The extension is
+sandboxed (`com.apple.security.app-sandbox`, read-only access to *only* the
+previewed file) with **no network**, and inside the sandbox `~`/`os.UserConfigDir`
+redirects to the extension's own container rather than your home — so it can
+neither fetch a remote (git) Facet library nor read the main app's existing
+`~/Library/Application Support/Facet/libcache`. A `.fct` that `import`s an
+external library therefore fails to evaluate: the **preview falls back to showing
+the source text**, and the **thumbnail falls back to the document icon**.
+Self-contained / stdlib-only `.fct` files (the stdlib is embedded in the binary,
+not fetched) and mesh files render fully.
+
+A future option is an **App Group shared cache** — the main app (which has
+network) fetches libraries into a shared container the extension can read, no
+network needed. It only covers libraries already fetched by the app, and it
+requires a real Developer Team ID (App Groups don't work with ad-hoc signing), so
+it's deferred.
+
 ## Why there's no build/install artifact here
 
 `packaging/windows/` and `packaging/linux/` hold standalone thumbnail handlers
