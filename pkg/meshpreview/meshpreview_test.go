@@ -20,7 +20,10 @@ func TestMeshToPreview_Colors(t *testing.T) {
 		Indices:    triIdx,
 		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}, {Hex: "#00FF00"}},
 	}
-	pos, cols := meshToPreview(m)
+	pos, cols, err := meshToPreview(m)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(pos) != 18 { // 2 tris * 9
 		t.Fatalf("positions len = %d, want 18", len(pos))
 	}
@@ -41,12 +44,40 @@ func TestMeshToPreview_Colors(t *testing.T) {
 
 func TestMeshToPreview_NoColors(t *testing.T) {
 	m := &meshio.Mesh{Vertices: triVerts, Indices: triIdx}
-	pos, cols := meshToPreview(m)
+	pos, cols, err := meshToPreview(m)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(pos) != 18 {
 		t.Fatalf("positions len = %d, want 18", len(pos))
 	}
 	if cols != nil {
 		t.Errorf("colors = %v, want nil", cols)
+	}
+}
+
+// A triangle index past the vertex array must error, not panic — the OBJ/3MF
+// decoders don't bounds-check indices and this runs over arbitrary files.
+func TestMeshToPreview_IndexOutOfRange(t *testing.T) {
+	m := &meshio.Mesh{
+		Vertices: triVerts,             // 6 vertices
+		Indices:  []uint32{0, 1, 99},   // 99 is out of range
+	}
+	if _, _, err := meshToPreview(m); err == nil {
+		t.Fatal("expected an out-of-range error, got nil")
+	}
+}
+
+// A face-color count that doesn't match the triangle count must error rather
+// than silently dropping color.
+func TestMeshToPreview_ColorCountMismatch(t *testing.T) {
+	m := &meshio.Mesh{
+		Vertices:   triVerts,
+		Indices:    triIdx, // 2 triangles
+		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}}, // only 1 color
+	}
+	if _, _, err := meshToPreview(m); err == nil {
+		t.Fatal("expected a color-count mismatch error, got nil")
 	}
 }
 
@@ -80,7 +111,10 @@ func TestMeshToPreview_DefaultFallback(t *testing.T) {
 		Indices:    triIdx,
 		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}, {Hex: ""}},
 	}
-	_, cols := meshToPreview(m)
+	_, cols, err := meshToPreview(m)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cols == nil || len(cols) != 18 {
 		t.Fatalf("colors len = %d, want 18", len(cols))
 	}
