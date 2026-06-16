@@ -2,9 +2,10 @@ import Cocoa
 import Quartz
 import SceneKit
 
-// Quick Look interactive preview for .fct files: renders the evaluated model in
-// a drag-to-orbit SceneKit view. If the source fails to evaluate to geometry
-// (parse/type error, or it isn't a Solid), it falls back to showing the source.
+// Quick Look interactive preview for .fct/.stl/.obj/.3mf files: renders the loaded
+// model in a drag-to-orbit SceneKit view. If the file fails to produce geometry,
+// it falls back to showing the file's text (useful for .fct parse/type errors;
+// binary mesh files read as "" which leaves a blank preview).
 @objc(PreviewViewController)
 final class PreviewViewController: NSViewController, QLPreviewingController {
 
@@ -13,9 +14,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
     }
 
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
-        let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let content: NSView
-        if let scene = FacetMesh.scene(source: source, animate: true) {
+        if let scene = FacetMesh.scene(path: url.path, animate: true) {
             let scn = SCNView(frame: view.bounds)
             scn.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 1)
             scn.allowsCameraControl = true
@@ -23,6 +23,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
             scn.scene = scene
             content = scn
         } else {
+            // Rendering failed — for a Facet/text file show its source. A binary
+            // mesh reads as "" here, leaving a blank preview (acceptable: meshes
+            // rarely fail to render).
+            let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
             content = Self.sourceView(source, frame: view.bounds)
         }
         content.autoresizingMask = [.width, .height]

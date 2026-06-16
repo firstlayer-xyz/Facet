@@ -70,6 +70,43 @@
             </dict>
           </dict>
         </array>
+        <key>UTImportedTypeDeclarations</key>
+        <array>
+          <dict>
+            <key>UTTypeIdentifier</key><string>xyz.firstlayer.facet.stl</string>
+            <key>UTTypeDescription</key><string>STL Mesh</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.data</string><string>public.3d-content</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+              <key>public.filename-extension</key><array><string>stl</string></array>
+              <key>public.mime-type</key><array><string>model/stl</string></array>
+            </dict>
+          </dict>
+          <dict>
+            <key>UTTypeIdentifier</key><string>xyz.firstlayer.facet.obj</string>
+            <key>UTTypeDescription</key><string>Wavefront OBJ Mesh</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.data</string><string>public.3d-content</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+              <key>public.filename-extension</key><array><string>obj</string></array>
+              <key>public.mime-type</key><array><string>model/obj</string></array>
+            </dict>
+          </dict>
+          <dict>
+            <key>UTTypeIdentifier</key><string>xyz.firstlayer.facet.3mf</string>
+            <key>UTTypeDescription</key><string>3MF Mesh</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.data</string><string>public.3d-content</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+              <key>public.filename-extension</key><array><string>3mf</string></array>
+              <key>public.mime-type</key>
+              <array><string>application/vnd.ms-package.3dmanufacturing-3dmodel+xml</string></array>
+            </dict>
+          </dict>
+        </array>
         {{if .Info.Protocols}}
         <key>CFBundleURLTypes</key>
         <array>

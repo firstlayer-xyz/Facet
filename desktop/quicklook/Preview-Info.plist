@@ -17,7 +17,12 @@
         <key>NSExtensionAttributes</key>
         <dict>
             <key>QLSupportedContentTypes</key>
-            <array><string>xyz.firstlayer.facet.fct</string></array>
+            <array>
+                <string>xyz.firstlayer.facet.fct</string>
+                <string>xyz.firstlayer.facet.stl</string>
+                <string>xyz.firstlayer.facet.obj</string>
+                <string>xyz.firstlayer.facet.3mf</string>
+            </array>
             <key>QLSupportsSearchableItems</key><false/>
         </dict>
     </dict>

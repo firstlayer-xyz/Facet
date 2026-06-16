@@ -3,25 +3,36 @@ import SceneKit
 import simd
 
 // Shared geometry/scene helpers used by both the preview and thumbnail
-// extensions. Evaluates Facet source to a mesh via the embedded evaluator+kernel
-// (FacetRenderMesh, from the c-archive built by cmd/facetrender) and assembles a
+// extensions. Loads a Facet source or a mesh file via the embedded evaluator+kernel
+// (FacetRenderFile, from the c-archive built by cmd/facetrender) and assembles a
 // framed SceneKit scene.
 enum FacetMesh {
 
-    // Evaluate source → mesh → an SCNNode with per-face (flat) normals, or nil
-    // when the source fails to load/check/evaluate or produces no geometry.
-    static func buildModel(source: String) -> SCNNode? {
+    // Load a file (Facet source or .stl/.obj/.3mf mesh) → mesh → an SCNNode with
+    // per-face (flat) normals and per-vertex color when present, or nil when the
+    // file fails to load/evaluate or produces no geometry.
+    static func buildModel(path: String) -> SCNNode? {
         var nFloats: Int32 = 0
-        let buf: UnsafeMutablePointer<Float>? = source.withCString {
-            FacetRenderMesh(UnsafeMutablePointer(mutating: $0), &nFloats)
+        var colorPtr: UnsafeMutablePointer<UInt8>? = nil
+        var nColorBytes: Int32 = 0
+        let buf: UnsafeMutablePointer<Float>? = path.withCString {
+            FacetRenderFile(UnsafeMutablePointer(mutating: $0), &nFloats, &colorPtr, &nColorBytes)
         }
         guard let positions = buf else { return nil }
-        defer { FacetFree(positions) }
+        defer {
+            FacetFree(positions)
+            if let c = colorPtr { FacetFreeBytes(c) }
+        }
         let count = Int(nFloats)
         guard count >= 9, count % 9 == 0 else { return nil }
+        let hasColor = colorPtr != nil && Int(nColorBytes) == count
 
         var verts = [SCNVector3](); verts.reserveCapacity(count / 3)
         var norms = [SCNVector3](); norms.reserveCapacity(count / 3)
+        // Resolve the per-vertex color buffer once: non-nil only when present and
+        // correctly sized (hasColor). It does not change across the loop.
+        let colors: UnsafeMutablePointer<UInt8>? = hasColor ? colorPtr : nil
+        var cols = [SCNVector3](); if colors != nil { cols.reserveCapacity(count / 3) }
         var i = 0
         while i < count {
             let a = simd_float3(positions[i + 0], positions[i + 1], positions[i + 2])
@@ -32,18 +43,34 @@ enum FacetMesh {
             verts.append(SCNVector3(b.x, b.y, b.z))
             verts.append(SCNVector3(c.x, c.y, c.z))
             for _ in 0..<3 { norms.append(SCNVector3(n.x, n.y, n.z)) }
+            if let cp = colors {
+                let v = i / 3 // expanded-vertex index of vert a
+                for k in 0..<3 {
+                    let o = (v + k) * 3
+                    cols.append(SCNVector3(CGFloat(cp[o]) / 255.0,
+                                           CGFloat(cp[o + 1]) / 255.0,
+                                           CGFloat(cp[o + 2]) / 255.0))
+                }
+            }
             i += 9
         }
 
         let vSource = SCNGeometrySource(vertices: verts)
         let nSource = SCNGeometrySource(normals: norms)
+        var sources = [vSource, nSource]
+        if hasColor {
+            sources.append(colorSource(cols))
+        }
         let indices = (0..<verts.count).map { UInt32($0) }
         let element = SCNGeometryElement(indices: indices, primitiveType: .triangles)
-        let geom = SCNGeometry(sources: [vSource, nSource], elements: [element])
+        let geom = SCNGeometry(sources: sources, elements: [element])
 
         let mat = SCNMaterial()
         mat.lightingModel = .physicallyBased
-        mat.diffuse.contents = NSColor(calibratedRed: 0.80, green: 0.82, blue: 0.86, alpha: 1)
+        // White diffuse so per-vertex colors show through; gray when uncolored.
+        mat.diffuse.contents = hasColor
+            ? NSColor.white
+            : NSColor(calibratedRed: 0.80, green: 0.82, blue: 0.86, alpha: 1)
         mat.metalness.contents = 0.15
         mat.roughness.contents = 0.55
         mat.isDoubleSided = true
@@ -51,11 +78,26 @@ enum FacetMesh {
         return SCNNode(geometry: geom)
     }
 
-    // Build a framed scene from source: centered model, 3/4 camera, lights. When
+    // colorSource builds a per-vertex .color geometry source from float RGB.
+    private static func colorSource(_ cols: [SCNVector3]) -> SCNGeometrySource {
+        let stride = MemoryLayout<SCNVector3>.stride
+        let data = cols.withUnsafeBytes { Data($0) }
+        return SCNGeometrySource(
+            data: data,
+            semantic: .color,
+            vectorCount: cols.count,
+            usesFloatComponents: true,
+            componentsPerVector: 3,
+            bytesPerComponent: MemoryLayout<CGFloat>.size,
+            dataOffset: 0,
+            dataStride: stride)
+    }
+
+    // Build a framed scene from a file path: centered model, 3/4 camera, lights. When
     // animate is true a slow turntable is added (for the interactive preview);
-    // thumbnails pass false for a fixed pose. Returns nil if the source fails.
-    static func scene(source: String, animate: Bool) -> SCNScene? {
-        guard let model = buildModel(source: source) else { return nil }
+    // thumbnails pass false for a fixed pose. Returns nil if the file fails to load.
+    static func scene(path: String, animate: Bool) -> SCNScene? {
+        guard let model = buildModel(path: path) else { return nil }
         let scene = SCNScene()
         let (minB, maxB) = model.boundingBox
         model.position = SCNVector3(-(minB.x + maxB.x) / 2,
