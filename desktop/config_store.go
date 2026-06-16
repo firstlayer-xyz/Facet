@@ -77,9 +77,17 @@ func saveConfig(cfg appConfig) error {
 	if err != nil {
 		return fmt.Errorf("saveConfig: marshal: %w", err)
 	}
+	// Write to a temp file then rename: rename is atomic on the same filesystem,
+	// so an unlocked reader (loadConfig runs on every /eval) never sees a
+	// half-written file. A torn read would otherwise fail to parse and silently
+	// drop every installed library for that run.
 	path := configPath()
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("saveConfig: write %s: %w", path, err)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return fmt.Errorf("saveConfig: write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("saveConfig: rename %s: %w", path, err)
 	}
 	return nil
 }

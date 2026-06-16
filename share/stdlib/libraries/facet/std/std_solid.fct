@@ -323,7 +323,7 @@ fn Solid.Resize(
     var w = Number(from: b.Width())
     var d = Number(from: b.Depth())
     var h = Number(from: b.Height())
-    if w == 0 || d == 0 || h == 0 { return self }
+    assert w != 0 && d != 0 && h != 0, "Resize: solid has zero extent on an axis"
     # A 0 target component means "keep this axis at its original size" (factor
     # 1) — matching OpenSCAD resize(), where 0 leaves that axis unchanged.
     var sx = Number(from: size.x)
