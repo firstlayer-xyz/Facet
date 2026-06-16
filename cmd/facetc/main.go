@@ -2,18 +2,18 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
-	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/firstlayer-xyz/meshio"
 
 	"facet/pkg/fctlang/checker"
 	"facet/pkg/fctlang/evaluator"
@@ -21,6 +21,7 @@ import (
 	"facet/pkg/fctlang/loader"
 	"facet/pkg/fctlang/parser"
 	"facet/pkg/manifold"
+	"facet/pkg/meshpreview"
 	"facet/pkg/render"
 )
 
@@ -28,6 +29,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: facetc <input.fct> -o <output> [-entry <name>] [-set key=value ...] [-libdir <dir>]\n")
 	fmt.Fprintf(os.Stderr, "       facetc <input.fct> -ast [-libdir <dir>]\n")
 	fmt.Fprintf(os.Stderr, "       facetc <input.fct> -fmt [-w]\n")
+	fmt.Fprintf(os.Stderr, "       facetc <input.stl|.obj|.3mf> -o <output.png>\n")
 	fmt.Fprintf(os.Stderr, "\nFlags:\n")
 	fmt.Fprintf(os.Stderr, "  -entry <name>    Entry point function (default: Main)\n")
 	fmt.Fprintf(os.Stderr, "  -set key=value   Override a parameter (repeatable)\n")
@@ -40,6 +42,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "\nExamples:\n")
 	fmt.Fprintf(os.Stderr, "  facetc model.fct -o model.3mf\n")
 	fmt.Fprintf(os.Stderr, "  facetc model.fct -o model.stl -entry Bracket -set radius=12 -set height=30\n")
+	fmt.Fprintf(os.Stderr, "  facetc model.3mf -o preview.png\n")
 	os.Exit(1)
 }
 
@@ -131,6 +134,32 @@ func main() {
 		usage()
 	}
 
+	// Mesh inputs (.stl/.obj/.3mf) are loaded as raw triangles and rendered to
+	// an image — no Facet evaluation, image output only.
+	if meshio.CanRead(input) {
+		if doFmt || dumpAST {
+			fmt.Fprintf(os.Stderr, "error: -fmt/-ast cannot be used with a mesh file\n")
+			os.Exit(1)
+		}
+		ext := resolveExt(output, format)
+		if ext == "" {
+			fmt.Fprintf(os.Stderr, "error: output needs an extension or -format (e.g. .png, .jpg)\n")
+			os.Exit(1)
+		}
+		switch ext {
+		case ".png", ".jpg", ".jpeg":
+			if err := renderMeshFile(input, output, ext, size); err != nil {
+				fmt.Fprintf(os.Stderr, "render error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println(output)
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "error: mesh inputs render to images only (.png/.jpg); got %q\n", ext)
+			os.Exit(1)
+		}
+	}
+
 	source, err := os.ReadFile(input)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -182,10 +211,8 @@ func main() {
 	// The output format comes from -format when given (so callers like the Linux
 	// thumbnailer can write to a path without a .png extension), else the output
 	// file's extension.
-	ext := filepath.Ext(output)
-	if format != "" {
-		ext = "." + strings.TrimPrefix(strings.ToLower(format), ".")
-	} else if ext == "" {
+	ext := resolveExt(output, format)
+	if ext == "" {
 		fmt.Fprintf(os.Stderr, "error: output needs an extension or -format (e.g. .stl, .obj, .3mf, .png)\n")
 		os.Exit(1)
 	}
@@ -216,7 +243,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	switch strings.ToLower(ext) {
+	switch ext {
 	case ".3mf":
 		err = manifold.Export3MFMulti(solids, output, nil)
 	case ".stl":
@@ -224,7 +251,8 @@ func main() {
 	case ".obj":
 		err = manifold.ExportOBJMulti(solids, output)
 	case ".png", ".jpg", ".jpeg":
-		err = renderImage(solids, output, strings.ToLower(ext), size)
+		dm := manifold.MergeExtractExpandedMeshes(solids, 40)
+		err = renderImage(dm.ExpandedPositions(), dm.ExpandedColors(), output, ext, size)
 	default:
 		err = fmt.Errorf("unsupported export format %q (supported: .3mf, .stl, .obj, .png)", ext)
 	}
@@ -236,14 +264,34 @@ func main() {
 	fmt.Println(output)
 }
 
-// renderImage rasterizes the solids to a square PNG or JPEG preview. PNG keeps
-// the transparent background; JPEG (no alpha) is composited onto white.
-func renderImage(solids []*manifold.Solid, output, ext string, size int) error {
+// resolveExt returns the lowercased output extension (with leading dot) from
+// -format when given, else from the output file's extension. Returns "" when
+// neither yields an extension.
+func resolveExt(output, format string) string {
+	if format != "" {
+		return "." + strings.TrimPrefix(strings.ToLower(format), ".")
+	}
+	return strings.ToLower(filepath.Ext(output))
+}
+
+// renderMeshFile loads a mesh file (.stl/.obj/.3mf) and rasterizes it to a
+// square PNG/JPEG preview. Mesh inputs only support image output.
+func renderMeshFile(input, output, ext string, size int) error {
+	positions, colors, err := meshpreview.LoadColored(input)
+	if err != nil {
+		return err
+	}
+	return renderImage(positions, colors, output, ext, size)
+}
+
+// renderImage rasterizes expanded positions (+ optional per-vertex colors) to a
+// square PNG or JPEG. PNG keeps the transparent background; JPEG (no alpha) is
+// composited onto white.
+func renderImage(positions []float32, colors []byte, output, ext string, size int) error {
 	if size <= 0 {
 		size = 1024
 	}
-	dm := manifold.MergeExtractExpandedMeshes(solids, 40)
-	img := render.Mesh(expandedFloats(dm.ExpandedRaw), dm.ExpandedColors(), size, size)
+	img := render.Mesh(positions, colors, size, size)
 
 	f, err := os.Create(output)
 	if err != nil {
@@ -260,15 +308,6 @@ func renderImage(solids []*manifold.Solid, output, ext string, size int) error {
 	}
 	bg = compositeOver(bg, img)
 	return jpeg.Encode(f, bg, &jpeg.Options{Quality: 90})
-}
-
-// expandedFloats decodes the kernel's little-endian float32 position buffer.
-func expandedFloats(raw []byte) []float32 {
-	out := make([]float32, len(raw)/4)
-	for i := range out {
-		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[i*4:]))
-	}
-	return out
 }
 
 // compositeOver alpha-composites src over an opaque dst. src.Pix is
