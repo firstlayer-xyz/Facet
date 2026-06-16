@@ -100,7 +100,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 	case *parser.ArrayLitExpr:
 		// Typed array constructor: TypeName[elem, elem, ...]
 		if ex.TypeName != "" {
-			elemType := c.resolveTypeStr("", ex.TypeName)
+			elemType := c.resolveType("", ex.TypeName)
 			if elemType.ft == typeUnknown {
 				// Try as struct type
 				if _, ok := c.structDecls[ex.TypeName]; ok {
@@ -388,7 +388,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 				Kind:       "field",
 				ReturnType: declField.Type,
 			})
-			expectedType := c.resolveTypeStr(ex.TypeName, declField.Type)
+			expectedType := c.resolveType(ex.TypeName, declField.Type)
 			if valType.ft != typeUnknown && expectedType.ft != typeUnknown && !c.typeCompatible(expectedType, valType) {
 				c.addError(ex.Pos, fmt.Sprintf("field %q of %s must be %s, got %s",
 					fi.Name, ex.TypeName, declField.Type, valType.displayName()))
@@ -494,7 +494,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 					Kind:       "field",
 					ReturnType: f.Type,
 				})
-				return c.resolveTypeStr(structName, f.Type)
+				return c.resolveType(structName, f.Type)
 			}
 		}
 		c.addError(ex.Pos, fmt.Sprintf("struct %s has no field %q", bareStructName(structName), ex.Field))
@@ -507,7 +507,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 		childEnv := env.child()
 		var paramTypes []typeInfo
 		for _, p := range ex.Params {
-			pt := c.resolveTypeStr("", p.Type)
+			pt := c.resolveType("", p.Type)
 			if pt.ft == typeUnknown && p.Type != "" {
 				if _, ok := c.structDecls[p.Type]; ok {
 					pt = structTI(p.Type)
@@ -519,7 +519,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 		retType := c.checkStmts(ex.Body, childEnv)
 		var ret *typeInfo
 		if ex.ReturnType != "" {
-			r := c.resolveTypeStr("", ex.ReturnType)
+			r := c.resolveType("", ex.ReturnType)
 			ret = &r
 		} else if retType.ft != typeUnknown {
 			ret = &retType
@@ -552,47 +552,13 @@ func (c *checker) lookupFieldType(recvType typeInfo, fieldName string, pos parse
 	}
 	for _, f := range decl.Fields {
 		if f.Name == fieldName {
-			return c.resolveTypeStr(structName, f.Type)
+			return c.resolveType(structName, f.Type)
 		}
 	}
 	c.addError(pos, fmt.Sprintf("struct %s has no field %q", bareStructName(structName), fieldName))
 	return unknown()
 }
 
-// resolveTypeStr resolves a type string in the context of a struct type.
-// Handles built-in types, array types ([]Type), and struct types.
-func (c *checker) resolveTypeStr(parentStruct, typeName string) typeInfo {
-	// Handle array prefix
-	if strings.HasPrefix(typeName, "[]") {
-		elemStr := typeName[2:]
-		elemTI := c.resolveTypeStr(parentStruct, elemStr)
-		return arrayOf(elemTI)
-	}
-	// Handle function types
-	if strings.HasPrefix(typeName, "fn(") {
-		return c.resolveFuncTypeStr(parentStruct, typeName)
-	}
-	ft := typeFromName(typeName)
-	if ft != typeUnknown {
-		return simple(ft)
-	}
-	// Try as struct type (exact match first)
-	if _, ok := c.structDecls[typeName]; ok {
-		return structTI(typeName)
-	}
-	// Try qualifying with parent struct's library prefix
-	if qn := c.qualifyStructType(parentStruct, typeName); qn != "" {
-		return structTI(qn)
-	}
-	// Try all known library prefixes as a fallback for transitive library types
-	for prefix := range c.libVarToPath {
-		qualified := prefix + "." + typeName
-		if _, ok := c.structDecls[qualified]; ok {
-			return structTI(qualified)
-		}
-	}
-	return unknown()
-}
 
 // resolveStructName tries to determine the struct type name of an expression.
 func (c *checker) resolveStructName(expr parser.Expr, env *typeEnv) string {

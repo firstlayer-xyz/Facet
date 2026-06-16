@@ -229,7 +229,7 @@ func parseFuncTypeInfo(s string) typeInfo {
 }
 
 // resolveFuncTypeStr is the checker-aware variant of parseFuncTypeInfo: it
-// uses resolveTypeStr for params and return so user-defined struct names
+// uses resolveType for params and return so user-defined struct names
 // (Vec3, Mesh, etc.) resolve to typeStruct instead of typeUnknown. Without
 // this, comparing a stdlib-declared `fn(Vec3) Vec3` parameter type against a
 // concrete lambda's inferred type would fail because both sides represent
@@ -238,14 +238,54 @@ func (c *checker) resolveFuncTypeStr(parentStruct, typeName string) typeInfo {
 	params, ret := splitFuncTypeStr(typeName)
 	var paramTIs []typeInfo
 	for _, p := range params {
-		paramTIs = append(paramTIs, c.resolveTypeStr(parentStruct, p))
+		paramTIs = append(paramTIs, c.resolveType(parentStruct, p))
 	}
 	var retTI *typeInfo
 	if ret != "" {
-		r := c.resolveTypeStr(parentStruct, ret)
+		r := c.resolveType(parentStruct, ret)
 		retTI = &r
 	}
 	return funcTI(paramTIs, retTI)
+}
+
+// resolveType turns a type string into a typeInfo, handling every form the
+// language allows: the dynamic `Any`, optional `T?`, array `[]T`, function
+// `fn(...)`, builtin scalars, and struct names (resolved exactly, then via the
+// parent struct's library prefix, then via any known library prefix).
+// parentStruct is the qualified name of the struct whose field/method type is
+// being resolved, or "" at top level.
+//
+// This is the single type resolver. It replaced three that disagreed on which
+// forms they handled — notably the field-access path dropped `?`, so an optional
+// struct field (`x Length?`) mistyped as Any and lost its ??/?./nil guarantees.
+func (c *checker) resolveType(parentStruct, typeName string) typeInfo {
+	if typeName == "Any" {
+		return unknown()
+	}
+	if typeName == "[]Any" {
+		return arrayOf(unknown())
+	}
+	if parser.IsOptionalType(typeName) {
+		return optionalOf(c.resolveType(parentStruct, parser.OptionalInner(typeName)))
+	}
+	if strings.HasPrefix(typeName, "[]") {
+		return arrayOf(c.resolveType(parentStruct, typeName[2:]))
+	}
+	if strings.HasPrefix(typeName, "fn(") {
+		return c.resolveFuncTypeStr(parentStruct, typeName)
+	}
+	if ft := typeFromName(typeName); ft != typeUnknown {
+		return simple(ft)
+	}
+	if qn := c.qualifyStructType(parentStruct, typeName); qn != "" {
+		return structTI(qn)
+	}
+	for prefix := range c.libVarToPath {
+		if _, ok := c.structDecls[prefix+"."+typeName]; ok {
+			return structTI(prefix + "." + typeName)
+		}
+	}
+	return unknown()
 }
 
 // splitFuncTypeStr splits "fn(A, B) R" into (["A", "B"], "R"). Both halves

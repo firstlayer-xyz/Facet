@@ -144,7 +144,7 @@ func (c *checker) checkStructDefaults(prog loader.Program) {
 					continue
 				}
 				defType := c.inferExpr(f.Default, env)
-				expectedType := c.resolveTypeStr(sd.Name, f.Type)
+				expectedType := c.resolveType(sd.Name, f.Type)
 				if defType.ft != typeUnknown && expectedType.ft != typeUnknown && !c.typeCompatible(expectedType, defType) {
 					c.addError(sd.Pos, fmt.Sprintf("field %q of %s: default value is %s, expected %s",
 						f.Name, sd.Name, defType.displayName(), f.Type))

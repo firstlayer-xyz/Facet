@@ -87,3 +87,20 @@ fn Foo(x Number) Number { return x }
 fn Main() Number { return Foo() }
 `, "expects 1 arguments, got 0")
 }
+
+// TestCheckOptionalStructFieldTypesAsOptional pins the fix from unifying the
+// checker's type resolvers: a struct field declared `T?` is typed as Optional on
+// access, so the narrowing safety applies. The former field-access resolver
+// dropped the `?` and mistyped the field as Any — `return b.gap` below would
+// have type-checked, silently discarding the optional guarantee.
+func TestCheckOptionalStructFieldTypesAsOptional(t *testing.T) {
+	expectError(t, `
+type Box {
+    gap Length?
+}
+fn Main() Length {
+    var b = Box{gap: 5 mm}
+    return b.gap
+}
+`, "Length?")
+}
