@@ -41,7 +41,6 @@ type ModuleCall struct {
 	Name     string
 	Args     []Arg
 	Children []Stmt
-	Modifier byte // 0, '%', '#', '!', '*'
 	P        Pos
 }
 

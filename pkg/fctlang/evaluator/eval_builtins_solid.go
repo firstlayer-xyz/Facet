@@ -577,6 +577,9 @@ func init() {
 		if !ok {
 			return nil, fmt.Errorf("%s() expects Function, got %s", name, typeName(args[1]))
 		}
+		if len(fv.params) != 1 {
+			return nil, fmt.Errorf("%s() callback must take exactly 1 argument, got %d", name, len(fv.params))
+		}
 		var warpErr error
 		result := r.Warp(func(x, y, z float64) (float64, float64, float64) {
 			if warpErr != nil {
