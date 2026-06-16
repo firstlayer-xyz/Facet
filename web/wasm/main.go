@@ -400,22 +400,11 @@ func displayMeshForExport(dm *manifold.DisplayMesh) ([]float32, []uint32, []stri
 
 	numTris := len(indices) / 3
 	faceHex := make([]string, numTris)
-	// FaceGroupRaw carries one uint32 face id per triangle (the common case) or
-	// per expanded vertex; mirror DisplayMesh.ExpandedColors' detection.
-	fgN := len(dm.FaceGroupRaw) / 4
-	perVertex := fgN == len(indices)
 	for t := 0; t < numTris; t++ {
-		idx := t
-		if perVertex {
-			idx = t * 3 // the triangle's first vertex
-		}
-		off := idx * 4
-		if off+4 > len(dm.FaceGroupRaw) {
-			continue
-		}
-		id := binary.LittleEndian.Uint32(dm.FaceGroupRaw[off : off+4])
-		if hex, ok := dm.FaceColorMap[strconv.FormatUint(uint64(id), 10)]; ok {
-			faceHex[t] = hex
+		if id, ok := dm.FaceIDForVertex(t * 3); ok {
+			if hex, ok := dm.FaceColorMap[strconv.FormatUint(uint64(id), 10)]; ok {
+				faceHex[t] = hex
+			}
 		}
 	}
 	return verts, indices, faceHex
