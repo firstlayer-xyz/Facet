@@ -22,6 +22,20 @@ fn Main() Number { return Maybe() }
 `, "returns Number?")
 }
 
+// TestCheckTernaryPreservesOptional pins the soundness fix: when either arm of
+// a ternary is optional the result is optional, so `cond ? T : T?` types as T?
+// (not T) and can't be used where T is required.
+func TestCheckTernaryPreservesOptional(t *testing.T) {
+	expectError(t, `
+fn Maybe() Number? { return 5 }
+fn Main() Number { return true ? 5 : Maybe() }
+`, "Number?")
+	expectNoErrors(t, `
+fn Maybe() Number? { return 5 }
+fn Pick() Number? { return true ? 5 : Maybe() }
+`)
+}
+
 // TestCheckOptionalFallbackReturnsInner confirms `opt ?? default` yields
 // the inner type, so the result can be used where the inner type is required.
 func TestCheckOptionalFallbackReturnsInner(t *testing.T) {
