@@ -8,24 +8,15 @@ import simd
 // framed SceneKit scene.
 enum FacetMesh {
 
-    // Load a file (Facet source or .stl/.obj/.3mf mesh) → mesh → an SCNNode with
-    // per-face (flat) normals and per-vertex color when present, or nil when the
-    // file fails to load/evaluate or produces no geometry.
-    static func buildModel(path: String) -> SCNNode? {
-        var nFloats: Int32 = 0
-        var colorPtr: UnsafeMutablePointer<UInt8>? = nil
-        var nColorBytes: Int32 = 0
-        let buf: UnsafeMutablePointer<Float>? = path.withCString {
-            FacetRenderFile(UnsafeMutablePointer(mutating: $0), &nFloats, &colorPtr, &nColorBytes)
-        }
-        guard let positions = buf else { return nil }
-        defer {
-            FacetFree(positions)
-            if let c = colorPtr { FacetFreeBytes(c) }
-        }
-        let count = Int(nFloats)
+    // geometry builds an SCNGeometry from an expanded-triangle position buffer (9
+    // floats per triangle) with per-face flat normals and, when colorPtr is non-nil
+    // and sized to match (colorBytes == count), a per-vertex color source. Returns
+    // nil when the buffer is empty or malformed. Shared by the static buildModel
+    // path and the animation preview's per-frame geometry swap.
+    static func geometry(positions: UnsafeMutablePointer<Float>, count: Int,
+                         colors colorPtr: UnsafeMutablePointer<UInt8>?, colorBytes: Int) -> SCNGeometry? {
         guard count >= 9, count % 9 == 0 else { return nil }
-        let hasColor = colorPtr != nil && Int(nColorBytes) == count
+        let hasColor = colorPtr != nil && colorBytes == count
 
         var verts = [SCNVector3](); verts.reserveCapacity(count / 3)
         var norms = [SCNVector3](); norms.reserveCapacity(count / 3)
@@ -75,6 +66,26 @@ enum FacetMesh {
         mat.roughness.contents = 0.55
         mat.isDoubleSided = true
         geom.materials = [mat]
+        return geom
+    }
+
+    // Load a file (Facet source or .stl/.obj/.3mf mesh) → mesh → an SCNNode with
+    // per-face (flat) normals and per-vertex color when present, or nil when the
+    // file fails to load/evaluate or produces no geometry.
+    static func buildModel(path: String) -> SCNNode? {
+        var nFloats: Int32 = 0
+        var colorPtr: UnsafeMutablePointer<UInt8>? = nil
+        var nColorBytes: Int32 = 0
+        let buf: UnsafeMutablePointer<Float>? = path.withCString {
+            FacetRenderFile(UnsafeMutablePointer(mutating: $0), &nFloats, &colorPtr, &nColorBytes)
+        }
+        guard let positions = buf else { return nil }
+        defer {
+            FacetFree(positions)
+            if let c = colorPtr { FacetFreeBytes(c) }
+        }
+        guard let geom = geometry(positions: positions, count: Int(nFloats),
+                                  colors: colorPtr, colorBytes: Int(nColorBytes)) else { return nil }
         return SCNNode(geometry: geom)
     }
 
@@ -104,11 +115,13 @@ enum FacetMesh {
             dataStride: stride)
     }
 
-    // Build a framed scene from a file path: centered model, 3/4 camera, lights. When
-    // animate is true a slow turntable is added (for the interactive preview);
-    // thumbnails pass false for a fixed pose. Returns nil if the file fails to load.
-    static func scene(path: String, animate: Bool) -> SCNScene? {
-        guard let model = buildModel(path: path) else { return nil }
+    // framedScene wraps an already-built model node in a centered, 3/4-camera,
+    // lit scene (Z-up corrected). When turntable is true a slow Y rotation is
+    // added (interactive preview); thumbnails pass false for a fixed pose. The
+    // animation preview keeps the modelNode and swaps its geometry per frame, so
+    // framing is computed once from the initial frame's bounds. Shared by scene()
+    // and the animation preview.
+    static func framedScene(modelNode model: SCNNode, turntable animate: Bool) -> SCNScene {
         let scene = SCNScene()
 
         // Center the model at the origin.
@@ -164,5 +177,13 @@ enum FacetMesh {
             turntable.runAction(.repeatForever(.rotateBy(x: 0, y: .pi * 2, z: 0, duration: 16)))
         }
         return scene
+    }
+
+    // Build a framed scene from a file path: centered model, 3/4 camera, lights. When
+    // animate is true a slow turntable is added (for the interactive preview);
+    // thumbnails pass false for a fixed pose. Returns nil if the file fails to load.
+    static func scene(path: String, animate: Bool) -> SCNScene? {
+        guard let model = buildModel(path: path) else { return nil }
+        return framedScene(modelNode: model, turntable: animate)
     }
 }
