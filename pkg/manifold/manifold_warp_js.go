@@ -3,6 +3,7 @@
 package manifold
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"syscall/js"
@@ -48,8 +49,10 @@ func init() {
 		fn := warpRegistry[id]
 		warpMu.Unlock()
 		if fn == nil {
-			// Defensive — this would mean the cxx side held an id past unregister.
-			return []interface{}{x, y, z}
+			// The cxx side referenced an id past unregisterWarp — an impossible
+			// state. Returning the vertex unchanged would silently warp the model
+			// with a hole; fail loud so the lifecycle bug surfaces.
+			panic(fmt.Sprintf("warp callback %d not registered", id))
 		}
 		nx, ny, nz := fn(x, y, z)
 		return []interface{}{nx, ny, nz}

@@ -853,7 +853,9 @@ async function runViaHTTP() {
     handleHTTPResult(resp);
   } catch (e: any) {
     if (e instanceof DOMException && e.name === 'AbortError') return;
-    console.error('eval request failed:', e);
+    // Surface the failure (server down, auth, network) instead of leaving the
+    // UI silently idle with nothing rendered.
+    showError(e);
   } finally {
     setRunState('idle');
   }
@@ -1034,7 +1036,9 @@ async function formatSource(source: string): Promise<string> {
   try {
     return await FormatCode(source);
   } catch (e) {
-    console.warn('FormatCode failed:', e);
+    // Save proceeds with the unformatted source, but surface the failure so the
+    // user knows formatting was skipped instead of it happening silently.
+    reportError('FormatCode', e);
     return source;
   }
 }
