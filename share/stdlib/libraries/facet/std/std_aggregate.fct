@@ -47,6 +47,7 @@ fn Solid.Exclude(with Solid) Solid {
 
 # N-ary even-odd fill: material inside an odd number of input solids.
 fn EvenOdd(solids []Solid) Solid {
+    assert Size(of: solids) >= 1, "EvenOdd requires at least one solid"
     return fold acc, s solids { yield acc.Exclude(with: s) }
 }
 
@@ -136,6 +137,7 @@ fn Solid.LinearPattern(
     count Number,
     spacing Vec3 = Vec3{},
 ) Solid {
+    assert count >= 1, "LinearPattern requires count >= 1"
     var copies = for i [0:<count] {
         yield self.Move(x: i * spacing.x, y: i * spacing.y, z: i * spacing.z)
     }
@@ -166,6 +168,7 @@ fn Sketch.LinearPattern(
     count Number,
     spacing Vec2 = Vec2{},
 ) Sketch {
+    assert count >= 1, "LinearPattern requires count >= 1"
     var copies = for i [0:<count] {
         yield self.Move(x: i * spacing.x, y: i * spacing.y)
     }
