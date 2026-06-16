@@ -330,7 +330,8 @@ func IsNumericLiteral(expr Expr) bool {
 	case *NumberLit:
 		return true
 	case *UnaryExpr:
-		if e.Op == "-" || e.Op == "+" {
+		// The grammar has no unary '+', so '-' is the only numeric-literal prefix.
+		if e.Op == "-" {
 			_, ok := e.Operand.(*NumberLit)
 			return ok
 		}

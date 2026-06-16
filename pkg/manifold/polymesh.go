@@ -2,7 +2,6 @@ package manifold
 
 import (
 	"math"
-	"sort"
 )
 
 // PolyMesh is a polygonal mesh with arbitrary N-gon faces.
@@ -854,25 +853,3 @@ func (pm *PolyMesh) ToDisplayMesh() *DisplayMesh {
 	return buildDisplayMesh(verts, indices, faceGroups)
 }
 
-// edges returns all unique edges in the mesh.
-func (pm *PolyMesh) edges() []edge {
-	seen := make(map[edge]bool)
-	var result []edge
-	for _, face := range pm.Faces {
-		n := len(face)
-		for i := 0; i < n; i++ {
-			e := makeEdge(face[i], face[(i+1)%n])
-			if !seen[e] {
-				seen[e] = true
-				result = append(result, e)
-			}
-		}
-	}
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].a != result[j].a {
-			return result[i].a < result[j].a
-		}
-		return result[i].b < result[j].b
-	})
-	return result
-}

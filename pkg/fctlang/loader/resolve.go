@@ -599,7 +599,7 @@ func (r *resolver) loadRemoteLib(rawPath string, lp *LibPath) (*resolvedLib, err
 			return r.remoteFetch(&lpCopy, subPath)
 		})
 	} else {
-		tree, err = ensureLib(r.ctx, r.cache, r.gitCacheDir, lp, false /*forceFetch*/)
+		tree, err = ensureLib(r.ctx, r.cache, r.gitCacheDir, lp)
 	}
 	if err != nil {
 		return nil, err

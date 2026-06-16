@@ -4,8 +4,33 @@ package manifold
 
 import (
 	"math"
+	"sort"
 	"testing"
 )
+
+// edges returns all unique edges in the mesh. Test-only helper: the Euler and
+// platonic-solid checks use it to count edges; no production code does.
+func (pm *PolyMesh) edges() []edge {
+	seen := make(map[edge]bool)
+	var result []edge
+	for _, face := range pm.Faces {
+		n := len(face)
+		for i := 0; i < n; i++ {
+			e := makeEdge(face[i], face[(i+1)%n])
+			if !seen[e] {
+				seen[e] = true
+				result = append(result, e)
+			}
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].a != result[j].a {
+			return result[i].a < result[j].a
+		}
+		return result[i].b < result[j].b
+	})
+	return result
+}
 
 // checkEuler verifies V-E+F=2 for a convex polyhedron.
 func checkEuler(t *testing.T, name string, pm *PolyMesh) {

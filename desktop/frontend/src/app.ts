@@ -76,9 +76,7 @@ function getTab(key: string): TabState {
   tabStore.add(t);
   return t;
 }
-const ensureTab = getTab;
-
-function addTab(_key: string, state: TabState) {
+function addTab(state: TabState) {
   tabStore.add(state);
 }
 
@@ -115,7 +113,7 @@ let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } |
 // tabStore.activeState() at eval time.
 /** Set the file path on startup (no discard prompt, no re-persist). */
 export function setInitialFile(path: string, label?: string, readOnly?: boolean) {
-  addTab(path, { path, dirty: false, cursor: null, label: label || tabLabel(path), pickedEntry: null, entryOverrides: {} });
+  addTab({ path, dirty: false, cursor: null, label: label || tabLabel(path), pickedEntry: null, entryOverrides: {} });
   tabStore.setActive(path);
   editor.setCurrentSource(path);
   editor.setReadOnly(readOnly ?? isReadOnly(path));
@@ -126,7 +124,7 @@ export function setInitialFile(path: string, label?: string, readOnly?: boolean)
 /** Register a tab restored from saved state without switching the editor or triggering a run.
  *  The Monaco model should already be pre-created via editor.switchModel(). */
 export function addRestoredTab(path: string, cursor: { lineNumber: number; column: number } | null) {
-  addTab(path, { path, dirty: false, cursor, label: tabLabel(path), pickedEntry: null, entryOverrides: {} });
+  addTab({ path, dirty: false, cursor, label: tabLabel(path), pickedEntry: null, entryOverrides: {} });
 }
 
 function anyDirty(): boolean {
@@ -427,7 +425,7 @@ function handleCheckOnly(errors: SourceError[], fns: EntryPoint[]) {
       errorDiv.style.cursor = 'pointer';
       errorDiv.onclick = () => {
         if (hasErrorSelection()) return;
-        ensureTab(e.file);
+        getTab(e.file);
         switchToTab(e.file);
         editor.highlightError(e.line);
         editor.revealLine(e.line, e.col || 1);
@@ -614,7 +612,7 @@ async function closeTab(file: string) {
       switchToTab(remaining[0]);
     } else {
       const scratch = await CreateScratchFile('Untitled');
-      addTab(scratch, { path: scratch, dirty: false, cursor: null, label: tabLabel(scratch), pickedEntry: null, entryOverrides: {} });
+      addTab({ path: scratch, dirty: false, cursor: null, label: tabLabel(scratch), pickedEntry: null, entryOverrides: {} });
       switchToTab(scratch);
     }
   }
@@ -972,7 +970,7 @@ function openTab(key: string, source: string, label?: string, readOnly?: boolean
     switchToTab(key);
     return;
   }
-  addTab(key, { path: key, dirty: false, cursor: null, label: label || tabLabel(key), pickedEntry: null, entryOverrides: {} });
+  addTab({ path: key, dirty: false, cursor: null, label: label || tabLabel(key), pickedEntry: null, entryOverrides: {} });
   tabStore.setActive(key);
   editor.setCurrentSource(key);
   editor.switchModel(key, source);
@@ -1059,7 +1057,7 @@ async function doSave(forceDialog: boolean) {
     editor.setCurrentSource(path);
     editor.disposeModel(oldKey);
     removeTab(oldKey);
-    addTab(path, { path, dirty: false, cursor: tab.cursor, label: tabLabel(path), pickedEntry: null, entryOverrides: {} });
+    addTab({ path, dirty: false, cursor: tab.cursor, label: tabLabel(path), pickedEntry: null, entryOverrides: {} });
     tabStore.setActive(path);
   }
   // Patch the cached source text so subsequent reads see the saved
@@ -1261,7 +1259,7 @@ export function openLibraryTab(file: string, source: string) {
   if (sources[file] && !source) {
     source = sources[file].text;
   }
-  ensureTab(file);
+  getTab(file);
   switchToTab(file);
 }
 
