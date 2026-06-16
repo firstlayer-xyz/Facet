@@ -3,7 +3,6 @@
 package manifold
 
 import (
-	"fmt"
 	"syscall/js"
 )
 
@@ -18,16 +17,22 @@ func (s *Solid) Rotate(x, y, z float64) *Solid {
 }
 
 func (s *Solid) Scale(x, y, z, ox, oy, oz float64) (*Solid, error) {
-	if x == 0 || y == 0 || z == 0 {
-		return nil, fmt.Errorf("Scale: factors must be non-zero (got x=%g, y=%g, z=%g)", x, y, z)
+	if err := validateScaleFactor("x", x); err != nil {
+		return nil, err
+	}
+	if err := validateScaleFactor("y", y); err != nil {
+		return nil, err
+	}
+	if err := validateScaleFactor("z", z); err != nil {
+		return nil, err
 	}
 	id := js.Global().Call("_mf_scale_at", s.id, x, y, z, ox, oy, oz).Int()
 	return transformSolid(s, id), nil
 }
 
 func (s *Solid) Mirror(nx, ny, nz, offset float64) (*Solid, error) {
-	if nx == 0 && ny == 0 && nz == 0 {
-		return nil, fmt.Errorf("Mirror: normal vector has zero length")
+	if err := validateMirrorNormal3(nx, ny, nz); err != nil {
+		return nil, err
 	}
 	id := js.Global().Call("_mf_mirror_at", s.id, nx, ny, nz, offset).Int()
 	return transformSolid(s, id), nil
@@ -54,16 +59,19 @@ func (p *Sketch) Rotate(degrees float64) *Sketch {
 }
 
 func (p *Sketch) Scale(x, y, px, py float64) (*Sketch, error) {
-	if x == 0 || y == 0 {
-		return nil, fmt.Errorf("Scale: factors must be non-zero (got x=%g, y=%g)", x, y)
+	if err := validateScaleFactor("x", x); err != nil {
+		return nil, err
+	}
+	if err := validateScaleFactor("y", y); err != nil {
+		return nil, err
 	}
 	id := js.Global().Call("_mf_cs_scale_at", p.id, x, y, px, py).Int()
 	return newSketch(id), nil
 }
 
 func (p *Sketch) Mirror(ax, ay, offset float64) (*Sketch, error) {
-	if ax == 0 && ay == 0 {
-		return nil, fmt.Errorf("Mirror: axis vector has zero length")
+	if err := validateMirrorNormal2(ax, ay); err != nil {
+		return nil, err
 	}
 	id := js.Global().Call("_mf_cs_mirror_at", p.id, ax, ay, offset).Int()
 	return newSketch(id), nil

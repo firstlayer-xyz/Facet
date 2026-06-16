@@ -17,10 +17,8 @@ import (
 
 // Extrude extrudes a sketch upward by height.
 func (p *Sketch) Extrude(height float64, slices int, twist, scaleX, scaleY float64) (*Solid, error) {
-	// The kernel returns an Invalid (empty) manifold for height <= 0 rather
-	// than erroring — a negative height silently produced an empty model.
-	if height <= 0 {
-		return nil, fmt.Errorf("Extrude: height must be positive, got %v", height)
+	if err := validateExtrudeHeight(height); err != nil {
+		return nil, err
 	}
 	var ret C.FacetSolidRet
 	C.facet_extrude(p.ptr, C.double(height), C.int(slices), C.double(twist), C.double(scaleX), C.double(scaleY), &ret)
@@ -47,8 +45,8 @@ func (p *Sketch) Revolve(segments int, degrees float64) (*Solid, error) {
 
 // Sweep extrudes a sketch along a 3D path.
 func (p *Sketch) Sweep(path []Point3D) (*Solid, error) {
-	if len(path) < 2 {
-		return nil, fmt.Errorf("Sweep requires at least 2 path points, got %d", len(path))
+	if err := validateSweepPath(len(path)); err != nil {
+		return nil, err
 	}
 	flat := make([]C.double, len(path)*3)
 	for i, pt := range path {
@@ -67,11 +65,8 @@ func (p *Sketch) Sweep(path []Point3D) (*Solid, error) {
 // Loft creates a solid by blending between cross-sections at different
 // heights. Requires at least 2 profiles and len(sketches) == len(heights).
 func Loft(sketches []*Sketch, heights []float64) (*Solid, error) {
-	if len(sketches) < 2 {
-		return nil, fmt.Errorf("Loft: need at least 2 profiles, got %d", len(sketches))
-	}
-	if len(sketches) != len(heights) {
-		return nil, fmt.Errorf("Loft: profiles and heights must have the same length, got %d and %d", len(sketches), len(heights))
+	if err := validateLoft(len(sketches), len(heights)); err != nil {
+		return nil, err
 	}
 	ptrs := make([]*C.ManifoldCrossSection, len(sketches))
 	for i, s := range sketches {

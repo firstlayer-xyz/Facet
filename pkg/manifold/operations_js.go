@@ -8,6 +8,7 @@ import (
 )
 
 func (s *Solid) Hull() *Solid {
+	requireSolids("Hull", s)
 	id := js.Global().Call("_mf_hull", s.id).Int()
 	r := newSolid(id)
 	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
@@ -18,6 +19,7 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 	if len(solids) == 0 {
 		return nil, fmt.Errorf("BatchHull: solids is empty")
 	}
+	requireSolids("BatchHull", solids...)
 	arr := js.Global().Get("Array").New()
 	for _, s := range solids {
 		arr.Call("push", s.id)
@@ -69,6 +71,7 @@ func (s *Solid) RefineToLength(length float64) *Solid {
 }
 
 func (s *Solid) Offset(delta, edgeLen float64) *Solid {
+	requireSolids("Offset", s)
 	id := js.Global().Call("_mf_offset", s.id, delta, edgeLen).Int()
 	r := newSolid(id)
 	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
@@ -76,6 +79,7 @@ func (s *Solid) Offset(delta, edgeLen float64) *Solid {
 }
 
 func SplitSolid(m, cutter *Solid) [2]*Solid {
+	requireSolids("SplitSolid", m, cutter)
 	arr := js.Global().Call("_mf_split", m.id, cutter.id)
 	// Both halves originate from m's geometry; the cutter's FaceMap is
 	// intentionally not propagated (its faces appear in neither result), matching
@@ -89,6 +93,7 @@ func SplitSolid(m, cutter *Solid) [2]*Solid {
 }
 
 func SplitSolidByPlane(s *Solid, nx, ny, nz, offset float64) [2]*Solid {
+	requireSolids("SplitSolidByPlane", s)
 	arr := js.Global().Call("_mf_split_by_plane", s.id, nx, ny, nz, offset)
 	fm := s.withFaceMap()
 	first := newSolid(arr.Index(0).Int())
