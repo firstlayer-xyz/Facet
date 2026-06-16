@@ -29,7 +29,6 @@ package manifold
 */
 import "C"
 import (
-	"fmt"
 	"runtime"
 )
 
@@ -161,29 +160,6 @@ func mergeFaceMaps(a, b map[uint32]FaceInfo) map[uint32]FaceInfo {
 		m[k] = v
 	}
 	return m
-}
-
-// requireSolids panics if any argument is nil. A nil Solid reaching a boolean
-// or hull op is a caller bug (forgot to check an earlier error return, passed
-// a slice with a nil entry); a clear panic at the entry point beats a
-// nil-deref deep inside the cgo wrapper or, worse, a SIGSEGV in C++.
-func requireSolids(op string, solids ...*Solid) {
-	for i, s := range solids {
-		if s == nil {
-			panic(fmt.Sprintf("manifold.%s: solid argument %d is nil", op, i))
-		}
-	}
-}
-
-// requireSketches is requireSolids for *Sketch operands — a nil Sketch reaching
-// a 2D boolean is a caller bug; panic with a clear message rather than letting
-// the nil `.ptr` SIGSEGV inside the cgo wrapper.
-func requireSketches(op string, sketches ...*Sketch) {
-	for i, sk := range sketches {
-		if sk == nil {
-			panic(fmt.Sprintf("manifold.%s: sketch argument %d is nil", op, i))
-		}
-	}
 }
 
 // withFaceMap returns a copy of the Solid's FaceMap (or nil).

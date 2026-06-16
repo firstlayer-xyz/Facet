@@ -8,6 +8,7 @@ import (
 )
 
 func (a *Solid) Union(b *Solid) *Solid {
+	requireSolids("Union", a, b)
 	id := js.Global().Call("_mf_union", a.id, b.id).Int()
 	s := newSolid(id)
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
@@ -15,6 +16,7 @@ func (a *Solid) Union(b *Solid) *Solid {
 }
 
 func (a *Solid) Difference(b *Solid) *Solid {
+	requireSolids("Difference", a, b)
 	id := js.Global().Call("_mf_difference", a.id, b.id).Int()
 	s := newSolid(id)
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
@@ -22,6 +24,7 @@ func (a *Solid) Difference(b *Solid) *Solid {
 }
 
 func (a *Solid) Intersection(b *Solid) *Solid {
+	requireSolids("Intersection", a, b)
 	id := js.Global().Call("_mf_intersection", a.id, b.id).Int()
 	s := newSolid(id)
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
@@ -33,6 +36,7 @@ func (a *Solid) Intersection(b *Solid) *Solid {
 // bridge) so web and desktop produce identical geometry. A null (id 0) result
 // signals the no-shell condition — see errInsertNoShell.
 func (a *Solid) Insert(b *Solid) (*Solid, error) {
+	requireSolids("Insert", a, b)
 	id := js.Global().Call("_mf_insert", a.id, b.id).Int()
 	if id == 0 {
 		return nil, errInsertNoShell
@@ -58,16 +62,19 @@ func DecomposeSolid(s *Solid) []*Solid {
 }
 
 func (a *Sketch) Union(b *Sketch) *Sketch {
+	requireSketches("Sketch.Union", a, b)
 	id := js.Global().Call("_mf_cs_union", a.id, b.id).Int()
 	return newSketch(id)
 }
 
 func (a *Sketch) Difference(b *Sketch) *Sketch {
+	requireSketches("Sketch.Difference", a, b)
 	id := js.Global().Call("_mf_cs_difference", a.id, b.id).Int()
 	return newSketch(id)
 }
 
 func (a *Sketch) Intersection(b *Sketch) *Sketch {
+	requireSketches("Sketch.Intersection", a, b)
 	id := js.Global().Call("_mf_cs_intersection", a.id, b.id).Int()
 	return newSketch(id)
 }
@@ -76,6 +83,7 @@ func ComposeSolids(solids []*Solid) (*Solid, error) {
 	if len(solids) == 0 {
 		return nil, fmt.Errorf("ComposeSolids: solids is empty")
 	}
+	requireSolids("ComposeSolids", solids...)
 	arr := js.Global().Get("Array").New()
 	for _, s := range solids {
 		arr.Call("push", s.id)
