@@ -1477,3 +1477,16 @@ func TestTranspileConcat(t *testing.T) {
 	}
 	assertTypeChecks(t, res.Facet)
 }
+
+// resize() with a non-literal newsize (a module parameter / runtime vector)
+// can't be translated faithfully — emitting identity geometry would silently
+// drop the resize — so the transpiler must error rather than mistranslate.
+func TestTranspileResizeNonLiteralErrors(t *testing.T) {
+	_, err := Transpile("module f(s) resize(s) cube([1, 1, 1]);\nf([2, 3, 4]);\n", "part.scad")
+	if err == nil {
+		t.Fatal("expected an error for resize() with a non-literal newsize, got nil")
+	}
+	if !strings.Contains(err.Error(), "resize") {
+		t.Fatalf("expected a resize-specific error, got: %v", err)
+	}
+}
