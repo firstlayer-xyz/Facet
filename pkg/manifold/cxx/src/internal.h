@@ -45,6 +45,13 @@ static inline void wrap_cs(manifold::CrossSection* cs, FacetSketchRet* out) {
   out->size = sketch_size(cs);
 }
 
+// Clears an out-struct to the "failed/empty" state Go already recognizes
+// (null ptr). Used by the per-function exception barriers so a C++ exception
+// never unwinds across the extern "C" boundary into Go (UB).
+static inline void facetClear(FacetSolidRet* out)  { if (out) { out->ptr = nullptr; out->size = 0; out->original_id = -1; } }
+static inline void facetClear(FacetSketchRet* out) { if (out) { out->ptr = nullptr; out->size = 0; } }
+static inline void facetClear(FacetSolidPair* out) { if (out) { facetClear(&out->first); facetClear(&out->second); } }
+
 // Construct a Solid from a triangle mesh, welding coincident vertices first.
 // MeshGL::Merge() fills the merge vectors for vertices that coincide within
 // tolerance along open edges, so a mesh assembled from independent per-face
