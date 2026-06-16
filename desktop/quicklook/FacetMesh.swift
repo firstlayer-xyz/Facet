@@ -78,6 +78,17 @@ enum FacetMesh {
         return SCNNode(geometry: geom)
     }
 
+    // loadError returns the compile/load error explaining why a file produced no
+    // geometry (the failure buildModel/scene return nil for), or nil if it loads.
+    // The preview uses it to show the reason instead of a blank pane.
+    static func loadError(path: String) -> String? {
+        guard let cstr = path.withCString({
+            FacetRenderError(UnsafeMutablePointer(mutating: $0))
+        }) else { return nil }
+        defer { FacetFreeString(cstr) }
+        return String(cString: cstr)
+    }
+
     // colorSource builds a per-vertex .color geometry source from float RGB.
     private static func colorSource(_ cols: [SCNVector3]) -> SCNGeometrySource {
         let stride = MemoryLayout<SCNVector3>.stride

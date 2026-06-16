@@ -4,8 +4,8 @@ import SceneKit
 
 // Quick Look interactive preview for .fct/.stl/.obj/.3mf files: renders the loaded
 // model in a drag-to-orbit SceneKit view. If the file fails to produce geometry,
-// it falls back to showing the file's text (useful for .fct parse/type errors;
-// binary mesh files read as "" which leaves a blank preview).
+// it shows why instead: a Facet/source file shows its text (so the user can see
+// the broken code), and a mesh file shows the compile/load error.
 @objc(PreviewViewController)
 final class PreviewViewController: NSViewController, QLPreviewingController {
 
@@ -28,11 +28,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
             scn.rendersContinuously = true
             content = scn
         } else {
-            // Rendering failed — for a Facet/text file show its source. A binary
-            // mesh reads as "" here, leaving a blank preview (acceptable: meshes
-            // rarely fail to render).
-            let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            content = Self.sourceView(source, frame: view.bounds)
+            // Rendering failed. Show why instead of a blank pane: a Facet/source
+            // file shows its text so the user can see the broken code; a mesh file
+            // has no useful source, so show the compile/load error explaining the
+            // failure.
+            let isMesh = ["stl", "obj", "3mf"].contains(url.pathExtension.lowercased())
+            if !isMesh, let source = try? String(contentsOf: url, encoding: .utf8) {
+                content = Self.sourceView(source, frame: view.bounds)
+            } else {
+                let message = FacetMesh.loadError(path: url.path)
+                    ?? "Could not load \(url.lastPathComponent)."
+                content = Self.sourceView(message, frame: view.bounds)
+            }
         }
         content.autoresizingMask = [.width, .height]
         view.subviews.forEach { $0.removeFromSuperview() }
@@ -40,7 +47,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         handler(nil)
     }
 
-    // A read-only monospaced text view, used when the model can't be rendered.
+    // A read-only monospaced text view shown when the model can't be rendered:
+    // either the file's source or an error message.
     private static func sourceView(_ text: String, frame: NSRect) -> NSView {
         let scroll = NSScrollView(frame: frame)
         scroll.hasVerticalScroller = true
