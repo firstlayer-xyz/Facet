@@ -99,22 +99,39 @@ enum FacetMesh {
     static func scene(path: String, animate: Bool) -> SCNScene? {
         guard let model = buildModel(path: path) else { return nil }
         let scene = SCNScene()
+
+        // Center the model at the origin.
         let (minB, maxB) = model.boundingBox
         model.position = SCNVector3(-(minB.x + maxB.x) / 2,
                                     -(minB.y + maxB.y) / 2,
                                     -(minB.z + maxB.z) / 2)
+
+        // Facet geometry is Z-up; SceneKit is Y-up. Tip the centered model -90°
+        // about X so Z points up (matching the in-app viewport and the software
+        // renderer). The turntable then spins this node about Y (= Facet Z).
+        let upright = SCNNode()
+        upright.eulerAngles = SCNVector3(CGFloat(-Double.pi / 2), 0, 0)
+        upright.addChildNode(model)
         let turntable = SCNNode()
-        turntable.addChildNode(model)
+        turntable.addChildNode(upright)
         scene.rootNode.addChildNode(turntable)
 
-        let size = max(maxB.x - minB.x, max(maxB.y - minB.y, maxB.z - minB.z))
-        let d = size * 2.0
+        // Frame from the bounding sphere (rotation-invariant, so the model never
+        // clips as it spins) with a narrow FOV for a consistent ~85% fill.
+        let dx = Double(maxB.x - minB.x)
+        let dy = Double(maxB.y - minB.y)
+        let dz = Double(maxB.z - minB.z)
+        let radius = max(0.5 * sqrt(dx * dx + dy * dy + dz * dz), 0.001)
+        let fov = 35.0
+        let dist = radius / tan(fov * Double.pi / 360.0) * 1.15
+        let inv = 1.0 / sqrt(1.0 + 0.7 * 0.7 + 1.0) // normalize the (1, 0.7, 1) 3/4 direction
 
         let cam = SCNNode()
         cam.camera = SCNCamera()
-        cam.camera?.zNear = 0.01
-        cam.camera?.zFar = Double(size) * 40 + 100
-        cam.position = SCNVector3(d, d * 0.7, d)
+        cam.camera?.fieldOfView = CGFloat(fov)
+        cam.camera?.zNear = max(0.01, dist - radius * 2)
+        cam.camera?.zFar = dist + radius * 4 + 10
+        cam.position = SCNVector3(CGFloat(dist * inv), CGFloat(dist * 0.7 * inv), CGFloat(dist * inv))
         cam.constraints = [SCNLookAtConstraint(target: turntable)]
         scene.rootNode.addChildNode(cam)
 
@@ -122,7 +139,7 @@ enum FacetMesh {
         key.light = SCNLight()
         key.light?.type = .directional
         key.light?.intensity = 850
-        key.position = SCNVector3(d, d * 2, d * 1.5)
+        key.position = SCNVector3(CGFloat(dist), CGFloat(dist * 2), CGFloat(dist * 1.5))
         key.constraints = [SCNLookAtConstraint(target: turntable)]
         scene.rootNode.addChildNode(key)
 

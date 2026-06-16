@@ -21,6 +21,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
             scn.allowsCameraControl = true
             scn.antialiasingMode = .multisampling4X
             scn.scene = scene
+            // Drive the turntable: isPlaying advances scene time, and
+            // rendersContinuously forces the redraw loop — a hosted Quick Look
+            // SCNView won't start it on its own, so without this the spin freezes.
+            scn.isPlaying = true
+            scn.rendersContinuously = true
             content = scn
         } else {
             // Rendering failed — for a Facet/text file show its source. A binary
