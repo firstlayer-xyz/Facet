@@ -155,6 +155,11 @@ void facet_text_to_cross_section(
     return;
   }
 
+  // Exception barrier: from here a throw (FreeType, Polygons/CrossSection
+  // allocation, geometry) must release the FreeType handles and surface a null
+  // result, never unwind across the extern "C" boundary into Go (UB).
+  try {
+
   double unitsPerEM = (double)face->units_per_EM;
   double scale = size_mm / unitsPerEM;
   double ascender = (double)face->ascender * scale;
@@ -214,8 +219,8 @@ void facet_text_to_cross_section(
     advanceX += (double)face->glyph->advance.x * scale;
   }
 
-  FT_Done_Face(face);
-  FT_Done_FreeType(library);
+  FT_Done_Face(face); face = nullptr;
+  FT_Done_FreeType(library); library = nullptr;
 
   if (allPolys.empty()) {
     wrap_cs(new CrossSection(), out);
@@ -237,6 +242,13 @@ void facet_text_to_cross_section(
     cs = cs.Translate({dx, dy});
   }
   wrap_cs(new CrossSection(std::move(cs)), out);
+
+  } catch (...) {
+    if (face) FT_Done_Face(face);
+    if (library) FT_Done_FreeType(library);
+    out->ptr = nullptr;
+    out->size = 0;
+  }
 }
 
 }  // extern "C"
