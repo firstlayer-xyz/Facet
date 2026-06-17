@@ -375,7 +375,9 @@ func (a *App) IsScratchFile(path string) bool {
 	if err != nil {
 		return false
 	}
-	return strings.HasPrefix(path, dir)
+	// Require a path separator after dir so a sibling like "<dir>-evil/x.fct"
+	// isn't misclassified as living inside the scratch directory.
+	return strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
 // OpenedFile is the result of opening a file into the editor.
@@ -506,7 +508,15 @@ func (a *App) SaveFile(source string, path string) (string, error) {
 			return "", nil // user cancelled
 		}
 	}
-	if err := os.WriteFile(path, []byte(source), 0644); err != nil {
+	// Atomic write: a crash or full disk mid-write must not truncate the user's
+	// existing source. Write a temp file in the same directory, then rename
+	// (mirrors saveConfig).
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(source), 0644); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
 		return "", err
 	}
 	return path, nil
