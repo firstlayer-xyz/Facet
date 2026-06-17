@@ -120,7 +120,13 @@ func runTriangleHex(rm *RunMesh, faceMap map[uint32]FaceInfo) []string {
 // project payload); pass nil for none.
 func Export3MF(s *Solid, path string, attachments []meshio.Attachment) error {
 	rm := extractRunMesh(s)
-	data, err := EncodeSolidMesh(rm.Vertices, rm.Indices, runTriangleHex(rm, s.FaceMap), "3mf", attachments)
+	return writeRunMesh(rm, path, "3mf", runTriangleHex(rm, s.FaceMap), attachments)
+}
+
+// writeRunMesh encodes a run-mesh in the given format — with optional
+// per-triangle hex colors and OPC attachments — and writes it to path.
+func writeRunMesh(rm *RunMesh, path, format string, hex []string, attachments []meshio.Attachment) error {
+	data, err := EncodeSolidMesh(rm.Vertices, rm.Indices, hex, format, attachments)
 	if err != nil {
 		return err
 	}
@@ -139,11 +145,7 @@ func Export3MFMulti(solids []*Solid, path string, attachments []meshio.Attachmen
 // ExportSTL exports a single Solid to a binary STL file.
 func ExportSTL(s *Solid, path string) error {
 	rm := extractRunMesh(s)
-	data, err := EncodeSolidMesh(rm.Vertices, rm.Indices, nil, "stl", nil)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
+	return writeRunMesh(rm, path, "stl", nil, nil)
 }
 
 // ExportSTLMulti unions multiple Solids and exports to STL.
