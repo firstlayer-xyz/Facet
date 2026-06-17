@@ -25,6 +25,9 @@ func (a *Solid) Union(b *Solid) *Solid {
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
 	s := newSolid(ret)
+	if s == nil {
+		return nil // kernel failed (the exception barrier nulled the result) — nil, not a panic
+	}
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
 	return s
 }
@@ -38,6 +41,9 @@ func (a *Solid) Difference(b *Solid) *Solid {
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
 	s := newSolid(ret)
+	if s == nil {
+		return nil // kernel failed (the exception barrier nulled the result) — nil, not a panic
+	}
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
 	return s
 }
@@ -51,6 +57,9 @@ func (a *Solid) Intersection(b *Solid) *Solid {
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
 	s := newSolid(ret)
+	if s == nil {
+		return nil // kernel failed (the exception barrier nulled the result) — nil, not a panic
+	}
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
 	return s
 }
