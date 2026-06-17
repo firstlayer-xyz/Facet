@@ -41,13 +41,13 @@ type VarTypeMap map[string]map[string]string
 // Returns a Result with all analysis outputs.
 func Check(prog loader.Program) *Result {
 	c := initChecker(prog)
-	c.registerLibraries(prog)
-	c.checkGlobals(prog)
-	c.checkStructDefaults(prog)
-	c.checkRecursiveStructTypes(prog)
-	c.checkDuplicateFunctions(prog)
-	c.inferReturnTypes(prog)
-	c.validateFunctions(prog)
+	c.registerLibraries()
+	c.checkGlobals()
+	c.checkStructDefaults()
+	c.checkRecursiveStructTypes()
+	c.checkDuplicateFunctions()
+	c.inferReturnTypes()
+	c.validateFunctions()
 
 	inferredRets := make(map[string]string, len(c.inferredReturns))
 	for name, ti := range c.inferredReturns {
@@ -64,11 +64,11 @@ func Check(prog loader.Program) *Result {
 }
 
 // registerLibraries registers library struct declarations and methods.
-func (c *checker) registerLibraries(prog loader.Program) {
-	for _, src := range prog.Sources {
+func (c *checker) registerLibraries() {
+	for _, src := range c.prog.Sources {
 		for _, g := range src.Globals() {
 			if le, ok := g.Value.(*parser.LibExpr); ok {
-				rl := prog.Sources[prog.Resolve(le.Key())]
+				rl := c.prog.Sources[c.prog.Resolve(le.Key())]
 				if rl != nil {
 					c.libVarToPath[g.Name] = le.Key()
 					for _, sd := range rl.StructDecls() {
@@ -90,9 +90,9 @@ func (c *checker) registerLibraries(prog loader.Program) {
 
 // checkGlobals validates global variables per source file and caches the
 // resulting env in c.srcEnvs so later passes don't re-infer.
-func (c *checker) checkGlobals(prog loader.Program) {
+func (c *checker) checkGlobals() {
 	c.srcEnvs = make(map[string]*typeEnv)
-	for srcKey, src := range prog.Sources {
+	for srcKey, src := range c.prog.Sources {
 		if srcKey == loader.StdlibPath {
 			continue
 		}
@@ -134,8 +134,8 @@ func (c *checker) srcGlobalEnv(srcKey string) *typeEnv {
 }
 
 // checkStructDefaults validates struct field default values against declared types.
-func (c *checker) checkStructDefaults(prog loader.Program) {
-	for srcKey, src := range prog.Sources {
+func (c *checker) checkStructDefaults() {
+	for srcKey, src := range c.prog.Sources {
 		c.currentSrcKey = srcKey
 		env := c.newStdEnv()
 		for _, sd := range src.StructDecls() {
@@ -159,7 +159,7 @@ func (c *checker) checkStructDefaults(prog loader.Program) {
 // can exist, and constructing its zero value would recurse without bound.
 // Array ([]T) and Optional (T?) fields break the cycle — their zero values
 // (empty / None) are finite.
-func (c *checker) checkRecursiveStructTypes(prog loader.Program) {
+func (c *checker) checkRecursiveStructTypes() {
 	// cycleFrom reports whether following by-value struct fields from `name`
 	// reaches a type already on the path.
 	var cycleFrom func(name string, path []string) []string
@@ -185,7 +185,7 @@ func (c *checker) checkRecursiveStructTypes(prog loader.Program) {
 		}
 		return nil
 	}
-	for srcKey, src := range prog.Sources {
+	for srcKey, src := range c.prog.Sources {
 		c.currentSrcKey = srcKey
 		for _, sd := range src.StructDecls() {
 			if cyc := cycleFrom(sd.Name, nil); cyc != nil && cyc[0] == sd.Name {
@@ -197,13 +197,13 @@ func (c *checker) checkRecursiveStructTypes(prog loader.Program) {
 }
 
 // checkDuplicateFunctions detects ambiguous function definitions in every source.
-func (c *checker) checkDuplicateFunctions(prog loader.Program) {
+func (c *checker) checkDuplicateFunctions() {
 	type funcSigKey struct {
 		name       string
 		receiver   string
 		paramTypes string
 	}
-	for srcKey, src := range prog.Sources {
+	for srcKey, src := range c.prog.Sources {
 		c.currentSrcKey = srcKey
 		funcSigSeen := map[funcSigKey]*parser.Function{}
 		for _, fn := range src.Functions() {
@@ -238,8 +238,8 @@ func (c *checker) checkDuplicateFunctions(prog loader.Program) {
 }
 
 // inferReturnTypes infers return types for unannotated functions (Pass 1).
-func (c *checker) inferReturnTypes(prog loader.Program) {
-	for srcKey, src := range prog.Sources {
+func (c *checker) inferReturnTypes() {
+	for srcKey, src := range c.prog.Sources {
 		c.currentSrcKey = srcKey
 		srcEnv := c.srcGlobalEnv(srcKey)
 		nameCounts := map[string]int{}
@@ -279,13 +279,13 @@ func (c *checker) inferReturnTypes(prog loader.Program) {
 }
 
 // validateFunctions performs full validation on all functions (Pass 2).
-func (c *checker) validateFunctions(prog loader.Program) {
-	for srcKey, src := range prog.Sources {
+func (c *checker) validateFunctions() {
+	for srcKey, src := range c.prog.Sources {
 		c.currentSrcKey = srcKey
 		srcEnv := c.srcGlobalEnv(srcKey)
 		savedStructDecls := c.structDecls
 		srcDecls := make(map[string]*parser.StructDecl)
-		if stdSrc := prog.Std(); stdSrc != nil {
+		if stdSrc := c.prog.Std(); stdSrc != nil {
 			for _, sd := range stdSrc.StructDecls() {
 				srcDecls[sd.Name] = sd
 			}
@@ -302,14 +302,14 @@ func (c *checker) validateFunctions(prog loader.Program) {
 		}
 		c.structDecls = srcDecls
 		for _, fn := range src.Functions() {
-			c.validateFunction(fn, src, prog, srcEnv, srcStructs)
+			c.validateFunction(fn, src, srcEnv, srcStructs)
 		}
 		c.structDecls = savedStructDecls
 	}
 }
 
 // validateFunction checks a single function definition.
-func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog loader.Program, srcEnv *typeEnv, srcStructs map[string]bool) {
+func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, srcEnv *typeEnv, srcStructs map[string]bool) {
 	env := srcEnv.child()
 	for i, p := range fn.Params {
 		if slices.ContainsFunc(fn.Params[i+1:], func(q *parser.Param) bool { return q.Name == p.Name }) {
@@ -349,7 +349,7 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, prog
 			}
 		}
 		isBuiltin := typeFromName(fn.ReceiverType) != typeUnknown
-		if !srcStructs[fn.ReceiverType] && !(isBuiltin && src == prog.Std()) {
+		if !srcStructs[fn.ReceiverType] && !(isBuiltin && src == c.prog.Std()) {
 			c.addError(fn.Pos, fmt.Sprintf("cannot define method on type %q: methods can only be defined on types declared in the same source", fn.ReceiverType))
 		}
 		env.set("self", selfType)
