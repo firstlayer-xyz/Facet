@@ -134,6 +134,23 @@ func (e *Emitter) operand(x ast.Expr, k kind) string {
 	return s
 }
 
+// half, negate, and negateHalf compose an already-emitted Length expression into
+// a larger one, parenthesizing it so the surrounding operator binds to the whole
+// value. They are the string-level counterparts of operand (which works from an
+// ast.Expr): a compound radius/size reaches these sites as a string, and without
+// the parens `a + b` would mis-bind — `a + b / 2`, `-a + b` — silently resizing
+// or shifting the geometry.
+
+// half renders `expr / 2`, used wherever a diameter expression is halved to a radius.
+func half(expr string) string { return "(" + expr + ") / 2" }
+
+// negate renders `-expr`.
+func negate(expr string) string { return "-(" + expr + ")" }
+
+// negateHalf renders `-expr / 2`, a negated half-extent (e.g. recentering a
+// corner-origin primitive by half its size).
+func negateHalf(expr string) string { return "-(" + expr + ") / 2" }
+
 // emitLet inlines an OpenSCAD `let(name = value, …) body`. Facet has no let
 // expression, so the bindings are substituted into the body (see withLetBinds).
 func (e *Emitter) emitLet(n *ast.Let, k kind) string {

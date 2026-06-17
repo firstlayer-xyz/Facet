@@ -513,7 +513,7 @@ func (e *Emitter) bosl2Rect(n *ast.ModuleCall) string {
 // centeredSquare renders a Square of the given side-length expressions recentered
 // on the origin (Facet's Square is corner-origin).
 func (e *Emitter) centeredSquare(x, y string) string {
-	return fmt.Sprintf("Square(x: %s, y: %s).Move(x: -%s / 2, y: -%s / 2)", x, y, x, y)
+	return fmt.Sprintf("Square(x: %s, y: %s).Move(x: %s, y: %s)", x, y, negateHalf(x), negateHalf(y))
 }
 
 // bosl2Prismoid emits BOSL2's prismoid — a box that tapers from a bottom
@@ -628,7 +628,7 @@ func (e *Emitter) bosl2Ellipse(n *ast.ModuleCall) string {
 		rx, ry = e.pair2(r, kLength)
 	} else if d, ok := arg(n, "d", -1); ok {
 		dx, dy := e.pair2(d, kLength)
-		rx, ry = "("+dx+") / 2", "("+dy+") / 2"
+		rx, ry = half(dx), half(dy)
 	} else {
 		return e.errf(n.Pos(), "ellipse without r or d")
 	}
@@ -725,7 +725,7 @@ func (e *Emitter) ngonRadius(n *ast.ModuleCall, rPos int) (string, bool) {
 	}
 	for _, name := range []string{"d", "od"} {
 		if v, ok := arg(n, name, -1); ok {
-			return e.expr(v, kLength) + " / 2", true
+			return half(e.expr(v, kLength)), true
 		}
 	}
 	if rPos >= 0 {
@@ -1225,7 +1225,7 @@ func (e *Emitter) tubeRadius(n *ast.ModuleCall, rName, dName string) (string, bo
 		return e.expr(v, kLength), true
 	}
 	if v, ok := arg(n, dName, -1); ok {
-		return e.expr(v, kLength) + " / 2", true
+		return half(e.expr(v, kLength)), true
 	}
 	return "", false
 }
