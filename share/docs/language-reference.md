@@ -4,7 +4,7 @@ Comprehensive reference for the Facet programming language.
 
 ## Grammar (EBNF)
 
-**Semicolons are optional.** The lexer inserts them automatically on newlines after line-terminating tokens (`IDENT`, `NUMBER`, `STRING`, `` ` ``, `)`, `]`, `}`, `true`, `false`, `yield`). Insertion is suppressed when the next line starts with a continuation character (`)`, `]`, `.`, `&`, `|`, `^`, `+`, `-`, `*`, `/`, `%`), allowing multi-line expressions and method chains.
+**Semicolons are optional.** The lexer inserts them automatically on newlines after line-terminating tokens (`IDENT`, `NUMBER`, `STRING`, `` ` ``, `)`, `]`, `true`, `false`, `yield`, `nil`). Note that `}` is intentionally *not* a terminator, so `} else {` and `} catch {` can span lines. Insertion is suppressed when the next line starts with a continuation character (`)`, `]`, `.`, `&`, `|`, `^`, `+`, `-`, `*`, `/`, `%`), allowing multi-line expressions and method chains.
 
 ```ebnf
 program     = { var_decl | const_decl | type_decl | function } ;
@@ -26,7 +26,7 @@ nameSpec    = IDENT [ "=" expr ] [ "where" constraint ] ;
 
 type        = "Solid" | "Length" | "Angle" | "Sketch" | "Number"
             | "Vec2" | "Vec3"
-            | "Bool" | "String" | "var" | IDENT
+            | "Bool" | "String" | "Any" | IDENT
             | "[]" type
             | "fn" "(" [ type { "," type } ] ")" [ type ] ;
 
@@ -43,9 +43,12 @@ assignOp    = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" ;
 expr        = orExpr ;
 orExpr      = andExpr { "||" andExpr } ;
 andExpr     = compareExpr { "&&" compareExpr } ;
-compareExpr = addExpr [ ("<" | ">" | "<=" | ">=" | "==" | "!=") addExpr ] ;
-addExpr     = mulExpr { ("+" | "-" | "|") mulExpr } ;
-mulExpr     = postfix { ("*" | "/" | "%" | "&" | "^") postfix } ;
+compareExpr = bitOrExpr [ ("<" | ">" | "<=" | ">=" | "==" | "!=") bitOrExpr ] ;
+bitOrExpr   = bitXorExpr { "|" bitXorExpr } ;
+bitXorExpr  = bitAndExpr { "^" bitAndExpr } ;
+bitAndExpr  = addExpr { "&" addExpr } ;
+addExpr     = mulExpr { ("+" | "-") mulExpr } ;
+mulExpr     = postfix { ("*" | "/" | "%") postfix } ;
 postfix     = primary { "." IDENT "(" [ args ] ")" | "." IDENT
                        | "[" expr "]" | UNIT | ANGLE_UNIT } ;
 primary     = ("-" | "!") postfix
@@ -56,8 +59,7 @@ lambda      = "fn" "(" [ params ] ")" [ type ] block ;
 libExpr     = "lib" STRING ;
 call        = IDENT "(" [ args ] ")" ;
 structLit   = [ IDENT ] "{" [ fieldInits ] "}" ;
-fieldInits  = IDENT ":" expr { "," IDENT ":" expr }
-            | expr { "," expr } ;
+fieldInits  = IDENT ":" expr { "," IDENT ":" expr } [ "," ] ;
 args        = namedArg { "," namedArg }
             | expr { "," expr } ;
 namedArg    = IDENT ":" expr ;
@@ -344,7 +346,7 @@ Vec2 and Vec3 arithmetic (`+`, `-`, `*`, `/`, unary `-`) is defined in the stdli
 | `Sketch - Sketch` | `Sketch` | Difference |
 | `Sketch & Sketch` | `Sketch` | Intersection |
 
-`&` and `^` bind at the same precedence as `*`, `/`, `%` (tighter than `+`, `-`, `|`).
+`|`, `^`, and `&` each have their own precedence level, all looser than `+`/`-`. From tightest to loosest: `* / %` > `+ -` > `&` > `^` > `|`. So `a & b + c` parses as `a & (b + c)`, and `a & b ^ c` parses as `(a & b) ^ c`.
 
 ### Comparison
 
@@ -376,13 +378,18 @@ return color != nil ? color : Color(hex: "#FFFFFF")
 
 1. Postfix (`.method()`, `?.field` / `?.method()`, `[index]`, unit application)
 2. Unary (`-`, `!`)
-3. Multiplicative (`*`, `/`, `%`, `&`, `^`)
-4. Additive (`+`, `-`, `|`)
-5. Comparison (`<`, `>`, `<=`, `>=`, `==`, `!=`)
-6. Logical AND (`&&`)
-7. Nullish coalescing (`??`) — binds tighter than `||`, so `a || opt ?? d` parses as `a || (opt ?? d)`
-8. Logical OR (`||`)
-9. Ternary (`? :`) — looser than `||`, so `a || b ? c : d` parses as `(a || b) ? c : d`
+3. Multiplicative (`*`, `/`, `%`)
+4. Additive (`+`, `-`)
+5. Bitwise AND (`&`)
+6. Bitwise XOR (`^`)
+7. Bitwise OR (`|`)
+8. Comparison (`<`, `>`, `<=`, `>=`, `==`, `!=`)
+9. Logical AND (`&&`)
+10. Nullish coalescing (`??`) — binds tighter than `||`, so `a || opt ?? d` parses as `a || (opt ?? d)`
+11. Logical OR (`||`)
+12. Ternary (`? :`) — looser than `||`, so `a || b ? c : d` parses as `(a || b) ? c : d`
+
+Note: `&`, `^`, `|` are three distinct levels, all looser than additive, so e.g. `a + b & c` parses as `((a + b) & c)` and `a | b & c` parses as `(a | (b & c))`.
 
 ## Expressions
 
@@ -505,7 +512,7 @@ arr[3:]             # from index 3 to end
 arr[-3:]            # last 3 elements
 ```
 
-Returns a new array. Out-of-range bounds are clamped (no error).
+Returns a new array. Out-of-range bounds (after negative indices are normalized from the end) are a runtime error — they are not clamped. A start greater than the end is also an error.
 
 ## Functions
 
@@ -577,18 +584,17 @@ type Name {
 ### Instantiation
 
 ```
-var x = Name { field1: value1, field2: value2 };  # named fields
-var y = Name { value1, value2 };                   # positional (by declaration order)
+var x = Name { field1: value1, field2: value2 };  # named fields (required)
 var z = Name {};                                    # all defaults
 ```
 
 ### Anonymous Struct Literals
 
-Omit the type name — the struct is coerced to the expected parameter type:
+Omit the type name when the expected struct type is known from context — the literal is coerced to that type. Fields must be named (positional anonymous literals are not supported):
 
 ```
-Cube(s: {20 mm, 10 mm, 5 mm})     # coerced to Vec3
-solid.Move(v: {5 mm, 0 mm, 0 mm})    # coerced to Vec3
+Cube(s: {x: 20 mm, y: 10 mm, z: 5 mm})     # coerced to Vec3
+solid.Move(v: {x: 5 mm, y: 0 mm, z: 0 mm}) # coerced to Vec3
 ```
 
 Zero values: `Number` → `0`, `Length` → `0 mm`, `Angle` → `0 deg`, `Bool` → `false`, `String` → `""`.
@@ -609,7 +615,7 @@ Lib.Function(args)
 
 **Library directories:**
 - **macOS**: `~/Library/Application Support/Facet/libraries/`
-- **Linux**: `$XDG_DATA_HOME/facet/libraries/` (fallback `~/.local/share/facet/libraries/`)
+- **Linux**: `$XDG_CONFIG_HOME/Facet/libraries/` (fallback `~/.config/Facet/libraries/`)
 - **Windows**: `%APPDATA%\Facet\libraries\`
 
 Each library is a directory containing a single `.fct` file named after the directory.
@@ -638,7 +644,7 @@ fn Variant(n Number = 3 where [1:10]) Solid { ... }          # also an entry poi
 fn helper(x Length) Solid { ... }                              # lowercase = private helper
 ```
 
-`Main` is a common convention but not required — any uppercase function is an entry point. Entry points must return `Solid`, `[]Solid`, or `PolyMesh`.
+`Main` is a common convention but not required — any uppercase function is an entry point. Entry points must return `Solid`, `[]Solid`, `PolyMesh`, or `Animation`.
 
 ## Reserved Identifiers
 

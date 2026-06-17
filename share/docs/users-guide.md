@@ -40,7 +40,7 @@ fn Main() {
 }
 ```
 
-This creates a 20mm cube. Any function whose name starts with a capital letter is an **entry point** — it appears in the run menu and can be previewed independently. `Main` is a common convention, but you can name it anything: `Bracket`, `Gear`, `Housing`.
+This creates a 20mm cube. A function becomes an **entry point** — appearing in the run menu and previewable independently — when its name starts with a capital letter and **all of its parameters have defaults**. `Main` always appears (and may return `Solid`, `[]Solid`, `PolyMesh`, or `Animation`); any other entry-point name must return `Solid` or `Animation` to be listed. A capitalized function with a required parameter is not offered in the run menu. `Main` is a common convention, but you can name it anything: `Bracket`, `Gear`, `Housing`.
 
 Functions require an explicit `return` statement to return a value.
 
@@ -123,7 +123,7 @@ var x = 10;       # Number (unitless)
 var y = 10 mm;    # Length (10 mm)
 ```
 
-Bare numbers are accepted where a `Length` is expected, so `Cube({10, 10, 10})` works and means 10mm x 10mm x 10mm.
+Bare numbers are accepted where a `Length` is expected, so `Cube(s: 10)` means a 10mm x 10mm x 10mm cube, and `Cube(s: Vec3{x: 10, y: 10, z: 10})` works the same way. (User-facing calls require named arguments, and struct literals require named fields.)
 
 ### Angle Units
 
@@ -819,13 +819,13 @@ Instead of computing exact coordinates, use Align methods to position one solid 
 
 ### StackOn
 
-Place a solid on top of another, centered in X/Y. The bottom face of `self` lands on the top face of `with`:
+Place a solid on top of another, centered in X/Y. The bottom face of `self` lands on the top face of `of`:
 
 ```
 fn Main() {
     var base   = Cube(s: Vec3{x: 40 mm, y: 40 mm, z: 10 mm})
-    var column = Cylinder(r: 8 mm, h: 30 mm).StackOnTop(with: base)
-    var cap    = Sphere(r: 10 mm).StackOnTop(with: column)
+    var column = Cylinder(r: 8 mm, h: 30 mm).StackOnTop(of: base)
+    var cap    = Sphere(r: 10 mm).StackOnTop(of: column)
     return base + column + cap
 }
 ```
@@ -833,7 +833,7 @@ fn Main() {
 An optional `nudge` creates a gap or overlap:
 
 ```
-var lid = Cube(x: 42 mm, y: 42 mm, z: 3 mm).StackOnTop(with: base, nudge: -1 mm)   # 1 mm press-fit overlap
+var lid = Cube(x: 42 mm, y: 42 mm, z: 3 mm).StackOnTop(of: base, nudge: -1 mm)   # 1 mm press-fit overlap
 ```
 
 ### AlignCenter
@@ -843,7 +843,7 @@ Center one solid relative to another on any combination of axes. By default all 
 ```
 fn Main() {
     var base  = Cube(x: 60 mm, y: 40 mm, z: 8 mm)
-    var boss  = Cylinder(r: 5 mm, h: 12 mm).AlignCenter(with: base, z: false).StackOnTop(with: base)
+    var boss  = Cylinder(r: 5 mm, h: 12 mm).AlignCenter(with: base, z: false).StackOnTop(of: base)
     var hole  = Cylinder(r: 3 mm, h: 25 mm).AlignCenter(with: base, z: false)
     return base + boss - hole
 }
@@ -855,7 +855,7 @@ fn Main() {
 # Place the boss 10 mm to the right of center
 var boss = Cylinder(r: 5 mm, h: 12 mm)
     .AlignCenter(with: base, z: false, nudgeX: 10 mm)
-    .StackOnTop(with: base)
+    .StackOnTop(of: base)
 ```
 
 You can also align to an absolute position instead of another solid:

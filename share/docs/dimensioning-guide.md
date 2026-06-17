@@ -61,7 +61,7 @@ The kind of dimension produced depends on what you picked:
 
 **Linear** — any pair of point-like snaps (vertex, edge endpoint, edge midpoint, or one face centroid paired with a point). The dimension is the straight 3D distance between the two snaps. Use this for feature-to-feature measurements: hole spacing, flange thickness, corner-to-corner.
 
-**Face-to-face** — two face-centroid picks on planar faces whose normals are parallel (within 1°). The dimension reports the perpendicular distance between the two planes — so you can measure wall thickness or slot width by clicking one face and then the opposite face.
+**Face-to-face** — two face-centroid picks on planar faces whose normals are parallel (within ~2.6°; the classifier requires |dot of unit normals| ≥ 0.999). The dimension reports the perpendicular distance between the two planes — so you can measure wall thickness or slot width by clicking one face and then the opposite face.
 
 **Angular** — two face-centroid picks on planar faces whose normals are **not** parallel. The viewer draws rays along each face's normal from the midpoint between the picks, plus an arc between them, and labels the angle in degrees (0.1° precision).
 
@@ -69,7 +69,7 @@ The kind of dimension produced depends on what you picked:
 
 **Extents** — the bounding-box shortcut. Not click-placed: just press the **Extents** button and the axis-aligned overall size appears as a dashed box with its dimensions in the label.
 
-Face-centroid picks against **curved** surfaces (cylinders, fillets, spheres) still return a centroid and average normal, but angular and face-to-face measurements refuse to use them — you'll fall back to a linear distance between the centroids.
+Face-centroid picks against **curved** surfaces (cylinders, fillets, spheres) still return an area-weighted centroid and average normal, and angular/face-to-face measurements will use them — the classifier looks only at the two normals' dot product (face-to-face when parallel within ~2.6°, angular otherwise) and does not check whether the underlying face is actually planar. Curved faces are therefore measured the same as flat ones; their reported separation or angle is an approximation based on the averaged normals.
 
 ## Managing Dimensions
 

@@ -96,7 +96,7 @@ Arc(center: Vec2, r: Length, startAngle: Angle, endAngle: Angle, segments: Numbe
 ```
 
 - `center` — `Vec2`, the center of the arc
-- `radius` — `Length`, the arc radius
+- `r` — `Length`, the arc radius
 - `startAngle`, `endAngle` — `Angle`, sweep range
 - `segments` — `Number`, how many line segments to use
 
