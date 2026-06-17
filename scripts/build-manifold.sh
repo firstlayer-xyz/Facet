@@ -306,14 +306,6 @@ if [ ! -f "$MANIFOLD_DIR/CMakeLists.txt" ]; then
     https://github.com/elalish/manifold.git "$MANIFOLD_DIR"
 fi
 
-# --- Apply patches ---
-if [ -d "$THIRD_PARTY/patches" ]; then
-  for p in "$THIRD_PARTY/patches/"*.patch; do
-    [ -f "$p" ] && git -C "$MANIFOLD_DIR" apply --check "$p" 2>/dev/null && \
-      git -C "$MANIFOLD_DIR" apply "$p" && echo "Applied patch: $(basename "$p")"
-  done
-fi
-
 # --- Build manifold ---
 # Skip if libmanifold.a already exists (e.g. CI cache restore). Matches the
 # freetype early-exit pattern above. Without this, re-entering the
