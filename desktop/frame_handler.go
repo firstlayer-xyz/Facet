@@ -185,7 +185,7 @@ func handleFrame(ctx context.Context, w http.ResponseWriter, req frameRequest, s
 		return
 	}
 
-	merged := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
+	merged := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, manifold.DefaultDisplayEdgeThresholdDeg)
 	var binaryData []byte
 	meta, binaryData := appendMeshBinary(binaryData, merged)
 	frameStats := evaluator.SolidFrameStats(solid, merged)

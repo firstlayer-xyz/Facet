@@ -254,7 +254,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 			respond(&header, nil, nil)
 			return
 		}
-		merged := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
+		merged := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, manifold.DefaultDisplayEdgeThresholdDeg)
 		var binaryData []byte
 		meta, binaryData := appendMeshBinary(binaryData, merged)
 		header.Mesh = meta
@@ -264,7 +264,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 		return
 	}
 
-	merged := manifold.MergeExtractExpandedMeshes(evalResult.Solids, 40)
+	merged := manifold.MergeExtractExpandedMeshes(evalResult.Solids, manifold.DefaultDisplayEdgeThresholdDeg)
 	stats := evalResult.Stats
 	stats.Triangles += merged.IndexCount / 3
 	stats.Vertices += merged.VertexCount

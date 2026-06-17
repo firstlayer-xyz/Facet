@@ -118,7 +118,7 @@ func displayMeshFromExpanded(r js.Value, faceMap map[uint32]FaceInfo) *DisplayMe
 }
 
 func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
-	return MergeExtractExpandedMeshes(solids, 40)
+	return MergeExtractExpandedMeshes(solids, DefaultDisplayEdgeThresholdDeg)
 }
 
 // MergeExtractExpandedMeshes composes the solids and extracts one expanded mesh
