@@ -79,7 +79,13 @@ func Loft(sketches []*Sketch, heights []float64) (*Solid, error) {
 	var ret C.FacetSolidRet
 	C.facet_loft(&ptrs[0], C.size_t(len(sketches)), &hs[0], C.size_t(len(heights)), &ret)
 	runtime.KeepAlive(sketches)
-	return newSolidWithOrigin(ret), nil
+	s := newSolidWithOrigin(ret)
+	if s == nil {
+		// Kernel failed (exception barrier nulled the result). Surface an error
+		// rather than (nil, nil), matching the wasm twin and the other extrusions.
+		return nil, fmt.Errorf("manifold: failed to loft")
+	}
+	return s, nil
 }
 
 // ---------------------------------------------------------------------------
