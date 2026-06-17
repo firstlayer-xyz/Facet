@@ -72,8 +72,22 @@ int facet_decompose(ManifoldPtr* m, FacetSolidRet** out_components) try {
     return 0;
   }
   FacetSolidRet* arr = (FacetSolidRet*)malloc(n * sizeof(FacetSolidRet));
-  for (int i = 0; i < n; i++)
-    wrap(new Manifold(std::move(components[i])), &arr[i]);
+  if (!arr) {
+    *out_components = nullptr;
+    return 0;
+  }
+  int built = 0;
+  try {
+    for (; built < n; built++)
+      wrap(new Manifold(std::move(components[built])), &arr[built]);
+  } catch (...) {
+    // The outer function-try-block's catch can't reach arr/built, so free the
+    // components built so far and the array here before signaling failure.
+    for (int j = 0; j < built; j++) delete reinterpret_cast<Manifold*>(arr[j].ptr);
+    free(arr);
+    *out_components = nullptr;
+    return 0;
+  }
   *out_components = arr;
   return n;
 } catch (...) { if (out_components) *out_components = nullptr; return 0; }
