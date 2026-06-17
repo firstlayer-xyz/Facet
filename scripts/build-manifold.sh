@@ -340,7 +340,7 @@ fi
 # --- Copy TBB libs to a known location ---
 TBB_INSTALL_DIR="$MANIFOLD_BUILD_DIR/tbb"
 mkdir -p "$TBB_INSTALL_DIR"
-TBB_SRC_DIR=$(find "$MANIFOLD_BUILD_DIR" -maxdepth 1 -type d -name '*_release' -o -name '*_debug' | head -1)
+TBB_SRC_DIR=$(find "$MANIFOLD_BUILD_DIR" -maxdepth 1 -type d \( -name '*_release' -o -name '*_debug' \) | head -1)
 if [ -n "$TBB_SRC_DIR" ]; then
   cp "$TBB_SRC_DIR"/libtbb*.a "$TBB_INSTALL_DIR/"
   # Normalize versioned TBB name (e.g. libtbb12.a on Windows) to libtbb.a
