@@ -501,7 +501,10 @@ func (e *Emitter) resizeMethod(n *ast.ModuleCall, is2D bool) string {
 	}
 	x, y, z, ok := e.vecArg(n, "newsize", 0, kLength)
 	if !ok {
-		return ""
+		// Returning "" would silently drop the resize and emit identity
+		// geometry. A non-literal newsize can't be translated faithfully, so
+		// error rather than mistranslate (no-fallback).
+		return e.errf(n.Pos(), "resize() requires a literal vector newsize; a runtime/variable newsize is not supported")
 	}
 	return fmt.Sprintf("Resize(size: Vec3{x: %s, y: %s, z: %s})", x, y, z)
 }
