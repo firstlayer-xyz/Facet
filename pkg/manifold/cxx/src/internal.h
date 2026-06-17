@@ -7,8 +7,33 @@
 #include "manifold/cross_section.h"
 
 #include <cstddef>
+#include <cstdlib>  // malloc/free
+#include <memory>   // unique_ptr
+#include <new>      // std::bad_alloc
 
 namespace facet_cxx_internal {
+
+// MallocPtr owns a malloc'd buffer and frees it (via free()) on scope exit. It
+// is what xmalloc returns, so an allocation can never exist un-owned: a throw
+// before the buffer is handed to Go frees it automatically. Call release() when
+// storing the pointer in an out-parameter — Go then owns and frees it.
+struct FreeDeleter {
+  void operator()(void* p) const { std::free(p); }
+};
+using MallocPtr = std::unique_ptr<void, FreeDeleter>;
+
+// xmalloc allocates n bytes and returns an owning MallocPtr, throwing
+// std::bad_alloc on failure instead of returning NULL. The extract/polymesh
+// entry points copy into the buffer immediately; an unchecked NULL would
+// segfault at the next memcpy (a signal the try/catch barriers can't catch).
+// Throwing routes a failed allocation through the same barrier as any other
+// bad_alloc (Go gets a clean null result, not a crash), and the owning return
+// means a throw before handoff frees whatever was already allocated.
+static inline MallocPtr xmalloc(std::size_t n) {
+  void* p = std::malloc(n);
+  if (!p && n != 0) throw std::bad_alloc();
+  return MallocPtr(p);
+}
 
 static inline manifold::Manifold* as_cpp(ManifoldPtr* m) {
   return reinterpret_cast<manifold::Manifold*>(m);

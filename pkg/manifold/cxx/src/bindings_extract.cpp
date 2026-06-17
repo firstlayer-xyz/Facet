@@ -41,7 +41,8 @@ void extract_expanded_from_meshgl(
 
   // Expand vertices: 3 verts per triangle, 3 floats per vert
   size_t numVerts = numTri * 3;
-  float* positions = (float*)malloc(numVerts * 3 * sizeof(float));
+  MallocPtr pPositions = xmalloc(numVerts * 3 * sizeof(float));
+  float* positions = static_cast<float*>(pPositions.get());
   for (size_t t = 0; t < numTri; t++) {
     for (int v = 0; v < 3; v++) {
       uint32_t vi = mesh.triVerts[t * 3 + v];
@@ -52,12 +53,12 @@ void extract_expanded_from_meshgl(
   }
 
   // Face IDs (per-triangle)
-  uint32_t* fids = nullptr;
+  MallocPtr pFids;
   int nfids = 0;
   if (!faceIDs.empty()) {
     nfids = (int)numTri;
-    fids = (uint32_t*)malloc(nfids * sizeof(uint32_t));
-    memcpy(fids, faceIDs.data(), nfids * sizeof(uint32_t));
+    pFids = xmalloc(nfids * sizeof(uint32_t));
+    memcpy(pFids.get(), faceIDs.data(), nfids * sizeof(uint32_t));
   }
 
   // Edge lines: find edges above threshold angle
@@ -139,20 +140,23 @@ void extract_expanded_from_meshgl(
     }
   }
 
-  *out_positions = positions;
-  *out_num_positions = (int)numVerts;
-  *out_face_ids = fids;
-  *out_num_face_ids = nfids;
-
+  // Allocate the edge-line buffer (if any) before handing anything off, so a
+  // failure here can't orphan the positions/face-id buffers already taken.
+  MallocPtr pEdges;
+  int numEdges = 0;
   if (!edgeLines.empty()) {
-    size_t numEdges = edgeLines.size() / 6;
-    *out_edge_lines = (float*)malloc(edgeLines.size() * sizeof(float));
-    memcpy(*out_edge_lines, edgeLines.data(), edgeLines.size() * sizeof(float));
-    *out_num_edges = (int)numEdges;
-  } else {
-    *out_edge_lines = nullptr;
-    *out_num_edges = 0;
+    numEdges = (int)(edgeLines.size() / 6);
+    pEdges = xmalloc(edgeLines.size() * sizeof(float));
+    memcpy(pEdges.get(), edgeLines.data(), edgeLines.size() * sizeof(float));
   }
+
+  // All allocations succeeded — hand ownership to Go.
+  *out_positions = static_cast<float*>(pPositions.release());
+  *out_num_positions = (int)numVerts;
+  *out_face_ids = static_cast<uint32_t*>(pFids.release());
+  *out_num_face_ids = nfids;
+  *out_edge_lines = static_cast<float*>(pEdges.release());
+  *out_num_edges = numEdges;
 }
 
 // Build face IDs from MeshGL run data
@@ -199,7 +203,8 @@ void facet_extract_mesh(ManifoldPtr* m,
   }
 
   // Stride-copy xyz from vertex properties
-  float* verts = (float*)malloc(numVert * 3 * sizeof(float));
+  MallocPtr pVerts = xmalloc(numVert * 3 * sizeof(float));
+  float* verts = static_cast<float*>(pVerts.get());
   for (size_t i = 0; i < numVert; i++) {
     verts[i * 3 + 0] = mesh.vertProperties[i * numProp + 0];
     verts[i * 3 + 1] = mesh.vertProperties[i * numProp + 1];
@@ -207,12 +212,14 @@ void facet_extract_mesh(ManifoldPtr* m,
   }
 
   // Copy triangle indices
-  uint32_t* idxs = (uint32_t*)malloc(numTri * 3 * sizeof(uint32_t));
+  MallocPtr pIdxs = xmalloc(numTri * 3 * sizeof(uint32_t));
+  uint32_t* idxs = static_cast<uint32_t*>(pIdxs.get());
   memcpy(idxs, mesh.triVerts.data(), numTri * 3 * sizeof(uint32_t));
 
-  *out_vertices = verts;
+  // Hand ownership to Go (release the guards) only once both succeeded.
+  *out_vertices = static_cast<float*>(pVerts.release());
   *out_num_verts = (int)numVert;
-  *out_indices = idxs;
+  *out_indices = static_cast<uint32_t*>(pIdxs.release());
   *out_num_tris = (int)numTri;
 } catch (...) {
   *out_vertices = nullptr;
@@ -243,29 +250,29 @@ void facet_extract_display_mesh(ManifoldPtr* m,
 
   // Copy full vertex properties (Go will stride-copy xyz)
   size_t propLen = numVert * numProp;
-  float* props = (float*)malloc(propLen * sizeof(float));
-  memcpy(props, mesh.vertProperties.data(), propLen * sizeof(float));
+  MallocPtr pProps = xmalloc(propLen * sizeof(float));
+  memcpy(pProps.get(), mesh.vertProperties.data(), propLen * sizeof(float));
 
   // Copy triangle indices
-  uint32_t* idxs = (uint32_t*)malloc(numTri * 3 * sizeof(uint32_t));
-  memcpy(idxs, mesh.triVerts.data(), numTri * 3 * sizeof(uint32_t));
+  MallocPtr pIdxs = xmalloc(numTri * 3 * sizeof(uint32_t));
+  memcpy(pIdxs.get(), mesh.triVerts.data(), numTri * 3 * sizeof(uint32_t));
 
   // Build per-triangle face IDs from runOriginalID (the source of truth for face provenance)
-  uint32_t* fids = nullptr;
+  MallocPtr pFids;
   int nfids = 0;
   auto faceIDs = buildFaceIDs(mesh);
   if (!faceIDs.empty()) {
     nfids = (int)numTri;
-    fids = (uint32_t*)malloc(nfids * sizeof(uint32_t));
-    memcpy(fids, faceIDs.data(), nfids * sizeof(uint32_t));
+    pFids = xmalloc(nfids * sizeof(uint32_t));
+    memcpy(pFids.get(), faceIDs.data(), nfids * sizeof(uint32_t));
   }
 
-  *out_vertices = props;
+  *out_vertices = static_cast<float*>(pProps.release());
   *out_num_verts = (int)numVert;
   *out_num_prop = (int)numProp;
-  *out_indices = idxs;
+  *out_indices = static_cast<uint32_t*>(pIdxs.release());
   *out_num_tris = (int)numTri;
-  *out_face_ids = fids;
+  *out_face_ids = static_cast<uint32_t*>(pFids.release());
   *out_num_face_ids = nfids;
 } catch (...) {
   *out_vertices = nullptr;
@@ -329,11 +336,15 @@ void facet_merge_extract_display_mesh(
   // Meshes with fewer props get zero-padded (matching Manifold boolean behavior).
   size_t outNumProp = commonNumProp < 3 ? 3 : commonNumProp;
 
-  float* verts = (float*)malloc(totalVerts * outNumProp * sizeof(float));
-  uint32_t* idxs = (uint32_t*)malloc(totalTris * 3 * sizeof(uint32_t));
+  MallocPtr pVerts = xmalloc(totalVerts * outNumProp * sizeof(float));
+  float* verts = static_cast<float*>(pVerts.get());
+  MallocPtr pIdxs = xmalloc(totalTris * 3 * sizeof(uint32_t));
+  uint32_t* idxs = static_cast<uint32_t*>(pIdxs.get());
+  MallocPtr pFids;
   uint32_t* fids = nullptr;
   if (hasFaceIDs) {
-    fids = (uint32_t*)malloc(totalTris * sizeof(uint32_t));
+    pFids = xmalloc(totalTris * sizeof(uint32_t));
+    fids = static_cast<uint32_t*>(pFids.get());
   }
 
   size_t vertOff = 0, triOff = 0;
@@ -373,12 +384,12 @@ void facet_merge_extract_display_mesh(
     triOff += nt;
   }
 
-  *out_vertices = verts;
+  *out_vertices = static_cast<float*>(pVerts.release());
   *out_num_verts = (int)totalVerts;
   *out_num_prop = (int)outNumProp;
-  *out_indices = idxs;
+  *out_indices = static_cast<uint32_t*>(pIdxs.release());
   *out_num_tris = (int)totalTris;
-  *out_face_ids = fids;
+  *out_face_ids = static_cast<uint32_t*>(pFids.release());
   *out_num_face_ids = hasFaceIDs ? (int)totalTris : 0;
 } catch (...) {
   *out_vertices = nullptr;
@@ -487,40 +498,41 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
     return;
   }
 
-  *out_num_verts = nv;
-  *out_num_tris = nt;
-
   // Extract positions (first 3 props per vertex)
-  *out_vertices = (float*)malloc(nv * 3 * sizeof(float));
+  MallocPtr pVerts = xmalloc(nv * 3 * sizeof(float));
+  float* verts = static_cast<float*>(pVerts.get());
   for (int i = 0; i < nv; i++) {
-    (*out_vertices)[i*3+0] = mesh.vertProperties[i*np+0];
-    (*out_vertices)[i*3+1] = mesh.vertProperties[i*np+1];
-    (*out_vertices)[i*3+2] = mesh.vertProperties[i*np+2];
+    verts[i*3+0] = mesh.vertProperties[i*np+0];
+    verts[i*3+1] = mesh.vertProperties[i*np+1];
+    verts[i*3+2] = mesh.vertProperties[i*np+2];
   }
 
   // Copy triangle indices
-  *out_indices = (uint32_t*)malloc(nt * 3 * sizeof(uint32_t));
-  memcpy(*out_indices, mesh.triVerts.data(), nt * 3 * sizeof(uint32_t));
+  MallocPtr pIdxs = xmalloc(nt * 3 * sizeof(uint32_t));
+  memcpy(pIdxs.get(), mesh.triVerts.data(), nt * 3 * sizeof(uint32_t));
 
-  // Copy run info
+  // Copy run info. runIndex normally has numRuns+1 entries (last entry = total
+  // triVerts size); report its actual size so the caller never assumes the length.
   int numRuns = (int)mesh.runOriginalID.size();
-  *out_num_runs = numRuns;
-
+  MallocPtr pRunOrig, pRunIdx;
+  int riLen = 0;
   if (numRuns > 0) {
-    *out_run_original_id = (uint32_t*)malloc(numRuns * sizeof(uint32_t));
-    memcpy(*out_run_original_id, mesh.runOriginalID.data(), numRuns * sizeof(uint32_t));
-
-    // runIndex normally has numRuns+1 entries (last entry = total triVerts size);
-    // report its actual size so the caller never assumes the length.
-    int riLen = (int)mesh.runIndex.size();
-    *out_num_run_index = riLen;
-    *out_run_index = (uint32_t*)malloc(riLen * sizeof(uint32_t));
-    memcpy(*out_run_index, mesh.runIndex.data(), riLen * sizeof(uint32_t));
-  } else {
-    *out_run_original_id = nullptr;
-    *out_run_index = nullptr;
-    *out_num_run_index = 0;
+    pRunOrig = xmalloc(numRuns * sizeof(uint32_t));
+    memcpy(pRunOrig.get(), mesh.runOriginalID.data(), numRuns * sizeof(uint32_t));
+    riLen = (int)mesh.runIndex.size();
+    pRunIdx = xmalloc(riLen * sizeof(uint32_t));
+    memcpy(pRunIdx.get(), mesh.runIndex.data(), riLen * sizeof(uint32_t));
   }
+
+  // All allocations succeeded — hand ownership to Go.
+  *out_num_verts = nv;
+  *out_num_tris = nt;
+  *out_vertices = static_cast<float*>(pVerts.release());
+  *out_indices = static_cast<uint32_t*>(pIdxs.release());
+  *out_num_runs = numRuns;
+  *out_run_original_id = static_cast<uint32_t*>(pRunOrig.release());
+  *out_run_index = static_cast<uint32_t*>(pRunIdx.release());
+  *out_num_run_index = riLen;
 } catch (...) {
   *out_vertices = nullptr;
   *out_num_verts = 0;
