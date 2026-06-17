@@ -1,5 +1,5 @@
 # Metric Fastener Showcase
-var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@f95a707"
+var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@77cec59"
 
 fn Main(
     thread String = "m8" where [
