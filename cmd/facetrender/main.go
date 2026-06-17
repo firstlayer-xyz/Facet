@@ -50,7 +50,7 @@ func evalMain(source string) (*evaluator.EvalResult, error) {
 // color buffer (nil when uncolored), erroring on empty geometry. The 40° edge
 // threshold matches the in-app viewport's normal smoothing.
 func solidsToBuffers(solids []*manifold.Solid) (positions []float32, colors []byte, err error) {
-	dm := manifold.MergeExtractExpandedMeshes(solids, 40)
+	dm := manifold.MergeExtractExpandedMeshes(solids, manifold.DefaultDisplayEdgeThresholdDeg)
 	if len(dm.ExpandedRaw) == 0 {
 		return nil, nil, fmt.Errorf("model produced no geometry")
 	}

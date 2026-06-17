@@ -81,10 +81,9 @@ var exampleOverrides = map[string]map[string]interface{}{
 	"Moon.fct": {"date": "1/14/2000"},
 }
 
-// guiEdgeThresholdDeg mirrors the edge threshold the desktop /eval handler
-// passes to MergeExtractExpandedMeshes (desktop/eval_handler.go). Keeping the
-// same value here means the test renders each example exactly as the GUI does.
-const guiEdgeThresholdDeg = 40
+// guiEdgeThresholdDeg is the shared display edge threshold every renderer uses,
+// so the test renders each example exactly as the GUI does (and can't drift).
+const guiEdgeThresholdDeg = manifold.DefaultDisplayEdgeThresholdDeg
 
 // assertRendersInGUI builds the display mesh the desktop /eval handler hands to
 // the 3D viewer (manifold.MergeExtractExpandedMeshes) and fails if it is empty.

@@ -12,6 +12,13 @@ import (
 // matches the web viewer's legacy flat color (0.55, 0.7, 0.88).
 var DefaultFaceColor = [3]byte{0x8c, 0xb3, 0xe0} // 140, 179, 224
 
+// DefaultDisplayEdgeThresholdDeg is the dihedral-angle threshold (degrees) for
+// splitting smooth-shaded edges when extracting a display mesh. Every renderer
+// path (desktop /eval + frame handlers, cmd/facetc, cmd/facetrender, the wasm
+// viewer) must use the same value so previews match, so it lives here rather
+// than as a hand-copied literal at each MergeExtractExpandedMeshes call site.
+const DefaultDisplayEdgeThresholdDeg float32 = 40
+
 // ParseHexRGB parses "#RRGGBB" or "#RRGGBBAA" (alpha ignored) into RGB bytes.
 func ParseHexRGB(s string) ([3]byte, bool) {
 	s = strings.TrimPrefix(s, "#")

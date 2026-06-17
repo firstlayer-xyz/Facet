@@ -199,7 +199,7 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 			return
 		}
 
-		dm := manifold.MergeExtractExpandedMeshes(solids, 40)
+		dm := manifold.MergeExtractExpandedMeshes(solids, manifold.DefaultDisplayEdgeThresholdDeg)
 		stats := result.Stats
 		meta, binData := appendMeshBinary(nil, dm)
 		header.Mesh = meta
@@ -325,7 +325,7 @@ func jsFrame(this js.Value, args []js.Value) interface{} {
 // packSolidFrame builds the binary response (mesh + per-frame stats) for a
 // single Solid — the shape the viewer expects from a frame render.
 func packSolidFrame(solid *manifold.Solid) ([]byte, error) {
-	dm := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, 40)
+	dm := manifold.MergeExtractExpandedMeshes([]*manifold.Solid{solid}, manifold.DefaultDisplayEdgeThresholdDeg)
 	meta, binData := appendMeshBinary(nil, dm)
 	stats := evaluator.SolidFrameStats(solid, dm)
 	return packResponse(evalResponseHeader{Mesh: meta, Stats: &stats}, binData)
@@ -383,7 +383,7 @@ func exportDisplayMesh(source, entryName, overridesJSON string, timeMs float64) 
 	if err != nil {
 		return nil, err
 	}
-	return manifold.MergeExtractExpandedMeshes(solids, 40), nil
+	return manifold.MergeExtractExpandedMeshes(solids, manifold.DefaultDisplayEdgeThresholdDeg), nil
 }
 
 // displayMeshForExport flattens an extracted DisplayMesh into the inputs

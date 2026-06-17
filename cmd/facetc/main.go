@@ -251,7 +251,7 @@ func main() {
 	case ".obj":
 		err = manifold.ExportOBJMulti(solids, output)
 	case ".png", ".jpg", ".jpeg":
-		dm := manifold.MergeExtractExpandedMeshes(solids, 40)
+		dm := manifold.MergeExtractExpandedMeshes(solids, manifold.DefaultDisplayEdgeThresholdDeg)
 		err = renderImage(dm.ExpandedPositions(), dm.ExpandedColors(), output, ext, size)
 	default:
 		err = fmt.Errorf("unsupported export format %q (supported: .3mf, .stl, .obj, .png)", ext)
