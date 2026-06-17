@@ -16,6 +16,16 @@ type Mesh struct {
 // DisplayMesh holds mesh data as raw byte slices for efficient binary transfer.
 // Created by extracting directly from C buffers without intermediate Go typed
 // slices.
+//
+// Which fields are populated depends on the extractor and build, so a consumer
+// must match the two:
+//   - Indexed fields (VertRaw/IdxRaw/FaceGroupRaw, VertexCount/IndexCount) are
+//     filled only by the native indexed extractors (ToDisplayMesh,
+//     MergeExtractDisplayMeshes); they are EMPTY in the wasm build.
+//   - Expanded fields (ExpandedRaw/EdgeLinesRaw, ExpandedCount/EdgeCount) are
+//     filled by the expanded extractors and by every wasm extractor.
+// So reading IdxRaw works on desktop but yields empty data on wasm — read
+// ExpandedRaw for code that must run in both.
 type DisplayMesh struct {
 	VertRaw        []byte            // float32 LE vertex positions (xyz, 12 bytes per vertex)
 	IdxRaw         []byte            // uint32 LE triangle indices (4 bytes each)
