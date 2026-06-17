@@ -186,26 +186,34 @@ void facet_extract_polymesh(
   }
 
   // Output vertices
-  *out_num_verts = (int)(vertices.size() / 3);
-  *out_vertices = (double*)malloc(vertices.size() * sizeof(double));
-  memcpy(*out_vertices, vertices.data(), vertices.size() * sizeof(double));
+  MallocPtr pVerts = xmalloc(vertices.size() * sizeof(double));
+  memcpy(pVerts.get(), vertices.data(), vertices.size() * sizeof(double));
 
   // Output faces as flat index array + sizes
-  *out_num_faces = (int)faces.size();
-  *out_face_sizes = (int*)malloc(faces.size() * sizeof(int));
+  MallocPtr pSizes = xmalloc(faces.size() * sizeof(int));
+  int* faceSizes = static_cast<int*>(pSizes.get());
   int totalIndices = 0;
   for (size_t i = 0; i < faces.size(); i++) {
-    (*out_face_sizes)[i] = (int)faces[i].size();
+    faceSizes[i] = (int)faces[i].size();
     totalIndices += (int)faces[i].size();
   }
-  *out_face_indices_len = totalIndices;
-  *out_face_indices = (int*)malloc(totalIndices * sizeof(int));
+
+  MallocPtr pIndices = xmalloc(totalIndices * sizeof(int));
+  int* faceIndices = static_cast<int*>(pIndices.get());
   int idx = 0;
   for (auto& face : faces) {
     for (int vi : face) {
-      (*out_face_indices)[idx++] = vi;
+      faceIndices[idx++] = vi;
     }
   }
+
+  // All allocations succeeded — hand ownership to Go.
+  *out_num_verts = (int)(vertices.size() / 3);
+  *out_vertices = static_cast<double*>(pVerts.release());
+  *out_num_faces = (int)faces.size();
+  *out_face_sizes = static_cast<int*>(pSizes.release());
+  *out_face_indices_len = totalIndices;
+  *out_face_indices = static_cast<int*>(pIndices.release());
 } catch (...) {
   // Exception barrier: null every output so a C++ throw becomes a clean
   // failure Go reads, never UB unwinding across the extern "C" boundary.
