@@ -226,7 +226,10 @@ func (a *App) beforeClose(ctx context.Context) bool {
 		Buttons:       []string{"Yes", "No"},
 	})
 	if err != nil {
-		return false // allow close on error
+		// Only reached with unsaved changes present, so a dialog failure must
+		// NOT silently discard the user's work — prevent close and let them
+		// retry or save first.
+		return true // prevent close
 	}
 	return result != "Yes" // true = prevent close
 }
