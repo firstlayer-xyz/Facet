@@ -106,6 +106,7 @@ export class HeadTracker {
     } catch (err) {
       console.error('HeadTracker: failed to start:', err);
       this.stop();
+      throw err;
     }
   }
 
