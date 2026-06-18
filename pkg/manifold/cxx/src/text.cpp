@@ -133,7 +133,15 @@ void facet_text_to_cross_section(
     const char* halign, const char* valign, FacetSketchRet* out) {
 
   if (!text || text[0] == '\0') {
-    wrap_cs(new CrossSection(), out);
+    // This early return precedes the main exception barrier below, but
+    // `new CrossSection()` can still throw std::bad_alloc. Barrier it here so a
+    // failed allocation surfaces a null result instead of unwinding into Go (UB).
+    try {
+      wrap_cs(new CrossSection(), out);
+    } catch (...) {
+      out->ptr = nullptr;
+      out->size = 0;
+    }
     return;
   }
 
