@@ -1247,7 +1247,16 @@ export class Viewer {
       return false;
     }
     this.headTracker = new HeadTracker();
-    await this.headTracker.start(this.container, deviceId, yOffset);
+    try {
+      await this.headTracker.start(this.container, deviceId, yOffset);
+    } catch (err) {
+      // start() already stopped the half-initialized tracker; drop it and let
+      // the failure propagate so parallaxEnabled stays false and the caller can
+      // surface the error (camera denied, no device, …) instead of the button
+      // showing "on" over dead tracking.
+      this.headTracker = null;
+      throw err;
+    }
     this.parallaxEnabled = true;
     return true;
   }
