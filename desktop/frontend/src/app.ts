@@ -1020,9 +1020,13 @@ async function openOpenedFile(result: main.OpenedFile) {
 }
 
 export async function openFile() {
-  const result = await OpenFile();
-  if (!result) return;
-  await openOpenedFile(result);
+  try {
+    const result = await OpenFile();
+    if (!result) return;
+    await openOpenedFile(result);
+  } catch (err) {
+    reportError('OpenFile', err);
+  }
 }
 
 export async function openRecentFile(path: string) {
@@ -1052,6 +1056,17 @@ async function formatSource(source: string): Promise<string> {
 
 /** Core save logic. Pass forceDialog=true for Save As. */
 async function doSave(forceDialog: boolean) {
+  try {
+    await doSaveInner(forceDialog);
+  } catch (err) {
+    // Surface the failure (disk full, permission denied, …) instead of leaving
+    // the promise to reject silently. markClean() runs only on success below, so
+    // the document correctly stays dirty.
+    reportError('SaveFile', err);
+  }
+}
+
+async function doSaveInner(forceDialog: boolean) {
   const source = await formatSource(editor.getContent());
   editor.setContentSilent(source);
   const active = tabStore.active();
@@ -1085,9 +1100,13 @@ export function saveFile() { return doSave(false); }
 export function saveFileAs() { return doSave(true); }
 
 export async function newFile() {
-  const key = await CreateScratchFile('Untitled-' + Date.now());
-  openTab(key, '', 'Untitled', false);
-  patchSettings({ activeTab: key });
+  try {
+    const key = await CreateScratchFile('Untitled-' + Date.now());
+    openTab(key, '', 'Untitled', false);
+    patchSettings({ activeTab: key });
+  } catch (err) {
+    reportError('NewFile', err);
+  }
 }
 
 export function showError(err: unknown) {
