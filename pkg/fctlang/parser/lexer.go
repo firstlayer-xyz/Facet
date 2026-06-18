@@ -258,10 +258,17 @@ func (l *lexer) nextRaw() (Token, error) {
 	//   .                method-chain continuation on the next line
 	//   &  |             && / || binary operator on the next line
 	//   +  -  *  /  %  ^  arithmetic continuation on the next line
+	//   ??  ?.           nullish-coalescing / optional-chaining continuation
 	if l.pendingSemi && l.pos < len(l.src) {
 		switch l.src[l.pos] {
 		case ')', ']', '.', '&', '|', '+', '-', '*', '/', '%', '^':
 			l.pendingSemi = false
+		case '?':
+			// `??` and `?.` continue the expression onto the next line; a bare
+			// `?` (ternary) does not, so disambiguate on the following character.
+			if l.pos+1 < len(l.src) && (l.src[l.pos+1] == '?' || l.src[l.pos+1] == '.') {
+				l.pendingSemi = false
+			}
 		}
 	}
 
