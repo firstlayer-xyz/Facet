@@ -266,11 +266,22 @@ func (e *Emitter) unionStmts(stmts []ast.Stmt) string {
 // single part is returned bare. Any part that itself contains a top-level
 // boolean operator is parenthesized so it combines as a single operand.
 func unionParts(parts []string) string {
-	out := parenthesizeIfOperator(parts[0])
-	for _, p := range parts[1:] {
-		out += " + " + parenthesizeIfOperator(p)
+	return foldParts(parts, " + ")
+}
+
+// foldParts joins rendered geometry parts with sep, parenthesizing any part that
+// contains a top-level boolean operator so it combines as a single operand. A
+// strings.Builder keeps folding N siblings O(total length) rather than O(N^2) —
+// machine-generated SCAD (voxel/point-cloud exports) can emit thousands of them.
+func foldParts(parts []string, sep string) string {
+	var b strings.Builder
+	for i, p := range parts {
+		if i > 0 {
+			b.WriteString(sep)
+		}
+		b.WriteString(parenthesizeIfOperator(p))
 	}
-	return out
+	return b.String()
 }
 
 // stmt emits a single statement as a Facet geometry expression ("" if none).

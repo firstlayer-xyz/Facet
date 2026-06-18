@@ -35,11 +35,7 @@ func (e *Emitter) boolean(n *ast.ModuleCall) string {
 		return unionParts(parts)
 	}
 	op := boolOp(n.Name)
-	out := parenthesizeIfOperator(parts[0])
-	for _, p := range parts[1:] {
-		out += " " + op + " " + parenthesizeIfOperator(p)
-	}
-	return out
+	return foldParts(parts, " "+op+" ")
 }
 
 // boolOp maps a boolean module name to its Facet operator.
