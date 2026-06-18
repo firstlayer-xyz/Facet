@@ -428,14 +428,22 @@ func virtualRelTarget(pctx parentCtx, sub string) (subDir, subPath string, err e
 func resolveRelativeDir(pctx parentCtx, subPath string) (string, error) {
 	abs := filepath.Clean(filepath.Join(pctx.dir, subPath))
 	rootClean := filepath.Clean(pctx.root)
-	rel, err := filepath.Rel(rootClean, abs)
-	if err != nil {
-		return "", fmt.Errorf("containment check: %w", err)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if escapesRoot(rootClean, abs) {
 		return "", fmt.Errorf("relative import escapes containment root %q", rootClean)
 	}
 	return abs, nil
+}
+
+// escapesRoot reports whether abs lies outside root — i.e. reaching it from root
+// requires a "../" step. Both paths should be absolute and Cleaned. A filepath.Rel
+// error (e.g. different Windows volumes) means containment can't be established, so
+// it counts as escaping.
+func escapesRoot(root, abs string) bool {
+	rel, err := filepath.Rel(root, abs)
+	if err != nil {
+		return true
+	}
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // resolveRelativeVirtual resolves subPath against pctx.subDir within a
@@ -730,7 +738,7 @@ func (r *resolver) loadFromOverride(rawPath string, lp *LibPath, overrideDir str
 		// Defense in depth (validateLibPath already rejects ".."): ensure the
 		// joined path stays inside the override root, like the relative-import
 		// loaders do, so it can't read files outside the override directory.
-		if rel, err := filepath.Rel(overrideDir, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if escapesRoot(overrideDir, dir) {
 			return nil, fmt.Errorf("installed override %q: subpath escapes the override directory", rawPath)
 		}
 	}
