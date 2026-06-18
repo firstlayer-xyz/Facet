@@ -281,7 +281,7 @@ func (e *Emitter) sphereCtor(n *ast.ModuleCall) (ctor, radius string, ok bool) {
 	ctor = fmt.Sprintf("Sphere(%s: %s%s)", key, val, e.segmentsSuffix(n, rMM, rOK))
 	radius = val
 	if key == "d" {
-		radius = "(" + val + ") / 2"
+		radius = half(val)
 	}
 	return ctor, radius, true
 }
@@ -380,9 +380,9 @@ func (e *Emitter) circle(n *ast.ModuleCall) string {
 	ctor := fmt.Sprintf("Circle(%s: %s%s)", key, val, e.segmentsSuffix(n, rMM, rOK))
 	var off string
 	if key == "d" {
-		off = "-" + val + " / 2"
+		off = negateHalf(val)
 	} else {
-		off = "-" + val
+		off = negate(val)
 	}
 	return fmt.Sprintf("%s.Move(x: %s, y: %s)", ctor, off, off)
 }
@@ -400,7 +400,7 @@ func (e *Emitter) square(n *ast.ModuleCall) string {
 		y := e.expr(v.Elems[1], kLength)
 		ctor := fmt.Sprintf("Square(x: %s, y: %s)", x, y)
 		if boolArg(n, "center", 1) {
-			return fmt.Sprintf("%s.Move(x: -%s / 2, y: -%s / 2)", ctor, x, y)
+			return fmt.Sprintf("%s.Move(x: %s, y: %s)", ctor, negateHalf(x), negateHalf(y))
 		}
 		return ctor
 	}
@@ -408,7 +408,7 @@ func (e *Emitter) square(n *ast.ModuleCall) string {
 	s := e.expr(size, kLength)
 	ctor := fmt.Sprintf("Square(s: %s)", s)
 	if boolArg(n, "center", 1) {
-		return fmt.Sprintf("%s.Move(x: -%s / 2, y: -%s / 2)", ctor, s, s)
+		return fmt.Sprintf("%s.Move(x: %s, y: %s)", ctor, negateHalf(s), negateHalf(s))
 	}
 	return ctor
 }

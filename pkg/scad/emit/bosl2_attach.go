@@ -660,7 +660,7 @@ func (e *Emitter) radiusHalf(n *ast.ModuleCall, posIdx int) (string, bool) {
 		return "", false
 	}
 	if key == "d" {
-		return val + " / 2", true
+		return half(val), true
 	}
 	return val, true
 }
