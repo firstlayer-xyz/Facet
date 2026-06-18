@@ -636,21 +636,19 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 			}, nil, nil
 		}
 
+		// Hold the lock across the whole read-modify-write so a concurrent edit
+		// between the read and the write can't be silently clobbered (lost update).
 		state.mu.Lock()
 		code := state.editorCode
-		state.mu.Unlock()
-
 		idx := strings.Index(code, input.Search)
 		if idx < 0 {
+			state.mu.Unlock()
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{&mcp.TextContent{Text: "Search text not found in editor. Make sure it matches the code exactly, including whitespace and newlines."}},
 			}, nil, nil
 		}
-
 		newCode := code[:idx] + input.Replace + code[idx+len(input.Search):]
-
-		state.mu.Lock()
 		state.editorCode = newCode
 		state.mu.Unlock()
 
