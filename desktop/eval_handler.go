@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"time"
 
 	"facet/pkg/fctlang/checker"
@@ -326,6 +327,10 @@ func appendMeshBinary(buf []byte, dm *manifold.DisplayMesh) (*meshMeta, []byte) 
 		FaceGroupCount: dm.FaceGroupCount,
 		FaceColors:     dm.FaceColorMap,
 	}
+
+	// Grow once for all sections so the appends below don't repeatedly realloc and
+	// copy a multi-MB buffer (this runs on every edit and every applied frame).
+	buf = slices.Grow(buf, len(dm.VertRaw)+len(dm.IdxRaw)+len(dm.FaceGroupRaw)+len(dm.ExpandedRaw)+len(dm.EdgeLinesRaw))
 
 	meta.Vertices = blobRef{Offset: len(buf), Size: len(dm.VertRaw)}
 	buf = append(buf, dm.VertRaw...)
