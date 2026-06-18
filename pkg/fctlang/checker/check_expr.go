@@ -282,7 +282,12 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 		// dispatch in evalForYield.
 		iterIsOptional := false
 		for _, clause := range ex.Clauses {
-			iterType := c.inferExpr(clause.Iter, env)
+			// Infer against childEnv, not env: in a multi-clause comprehension a
+			// later clause's iterable may reference an earlier clause's loop var
+			// (e.g. `for a xs, b a.cols`), and those vars are bound into childEnv
+			// below. A clause's own var is bound only after its iter is inferred,
+			// so it still cannot reference itself.
+			iterType := c.inferExpr(clause.Iter, childEnv)
 			if iterType.ft == typeOptional && len(ex.Clauses) == 1 {
 				iterIsOptional = true
 				if clause.Index != "" {

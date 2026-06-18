@@ -137,7 +137,10 @@ func (c *checker) srcGlobalEnv(srcKey string) *typeEnv {
 func (c *checker) checkStructDefaults() {
 	for srcKey, src := range c.prog.Sources {
 		c.currentSrcKey = srcKey
-		env := c.newStdEnv()
+		// Use the source's global env (stdlib + its module-level vars/consts), not a
+		// bare stdlib env: a field default may legitimately reference a global, and
+		// inferring against newStdEnv() would reject it as undefined.
+		env := c.srcGlobalEnv(srcKey)
 		for _, sd := range src.StructDecls() {
 			for _, f := range sd.Fields {
 				if f.Default == nil {
