@@ -4,7 +4,7 @@ Comprehensive reference for the Facet programming language.
 
 ## Grammar (EBNF)
 
-**Semicolons are optional.** The lexer inserts them automatically on newlines after line-terminating tokens (`IDENT`, `NUMBER`, `STRING`, `` ` ``, `)`, `]`, `true`, `false`, `yield`, `nil`). Note that `}` is intentionally *not* a terminator, so `} else {` and `} catch {` can span lines. Insertion is suppressed when the next line starts with a continuation character (`)`, `]`, `.`, `&`, `|`, `^`, `+`, `-`, `*`, `/`, `%`), allowing multi-line expressions and method chains.
+**Semicolons are optional.** The lexer inserts them automatically on newlines after line-terminating tokens (`IDENT`, `NUMBER`, `STRING`, `` ` ``, `)`, `]`, `true`, `false`, `yield`, `nil`). Note that `}` is intentionally *not* a terminator, so `} else {` can span lines. Insertion is suppressed when the next line starts with a continuation character (`)`, `]`, `.`, `&`, `|`, `^`, `+`, `-`, `*`, `/`, `%`), allowing multi-line expressions and method chains.
 
 ```ebnf
 program     = { var_decl | const_decl | type_decl | function } ;
