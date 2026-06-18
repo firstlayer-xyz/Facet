@@ -83,6 +83,9 @@ func (s *Solid) SetColor(r, g, b, a float64) *Solid {
 
 // transformSolid wraps the result of a unary solid transform, carrying over the FaceMap.
 func transformSolid(s *Solid, id int) *Solid {
+	if id == 0 {
+		return nil // kernel failed — nil, not a silently-empty solid (matches native)
+	}
 	r := newSolid(id)
 	r.FaceMap = s.withFaceMap()
 	return r

@@ -175,6 +175,9 @@ func ComposeSolids(solids []*Solid) (*Solid, error) {
 		runtime.KeepAlive(s)
 	}
 	r := newSolid(ret)
+	if r == nil {
+		return nil, fmt.Errorf("ComposeSolids: compose failed")
+	}
 	for _, s := range solids {
 		r.FaceMap = mergeFaceMaps(r.FaceMap, s.FaceMap)
 	}

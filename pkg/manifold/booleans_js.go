@@ -98,6 +98,9 @@ func ComposeSolids(solids []*Solid) (*Solid, error) {
 		arr.Call("push", s.id)
 	}
 	id := js.Global().Call("_mf_compose", arr).Int()
+	if id == 0 {
+		return nil, fmt.Errorf("ComposeSolids: compose failed")
+	}
 	r := newSolid(id)
 	for _, s := range solids {
 		r.FaceMap = mergeFaceMaps(r.FaceMap, s.FaceMap)
