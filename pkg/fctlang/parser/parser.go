@@ -1,6 +1,9 @@
 package parser
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 // SourceKind describes the origin of a parsed source file.
 type SourceKind int
@@ -20,6 +23,13 @@ type Source struct {
 	Text             string     // raw source code; zero after Parse
 	Declarations     []Decl
 	TrailingComments []Comment // comments after last declaration
+
+	// funcsCache memoizes Functions(): Declarations are immutable after Parse, and
+	// Functions() is called per call-expression during type checking, so rebuilding
+	// the slice each time made checking O(call-sites x declarations). Computed once
+	// via funcsOnce. Source is always used by pointer, so the Once is never copied.
+	funcsOnce  sync.Once
+	funcsCache []*Function
 }
 
 // Parse parses a facet source string and returns the AST.
