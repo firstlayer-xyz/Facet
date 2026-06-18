@@ -95,7 +95,9 @@ func TestBatchBooleanMatchesPairwiseFold(t *testing.T) {
 				cubeAt(t, 2, 1, 1, 1), cubeAt(t, 2, 5, 1, 1), cubeAt(t, 2, 1, 5, 1),
 			}
 		}, 1000 - 24},
-		// The 2-operand case the evaluator routes here when not on the fast path.
+		// BatchBoolean's own 2-operand handling. (The evaluator never routes a
+		// 2-operand call here — it takes the pairwise fast path — but the kernel
+		// entry point must still be correct for a direct 2-element call.)
 		{"union-pair", OpUnion, func() []*Solid {
 			return []*Solid{cubeAt(t, 1, 0, 0, 0), cubeAt(t, 1, 2, 0, 0)}
 		}, 2},
@@ -119,16 +121,48 @@ func TestBatchBooleanMatchesPairwiseFold(t *testing.T) {
 	}
 }
 
-// A colored operand's color must survive the batch onto the result's face map,
-// exactly as it does through the pairwise ops (mergeFaceMaps).
+// faceColorSet collects the distinct non-NoColor colors in a solid's face map.
+func faceColorSet(s *Solid) map[uint32]bool {
+	set := map[uint32]bool{}
+	for _, fi := range s.FaceMap {
+		if fi.Color != NoColor {
+			set[fi.Color] = true
+		}
+	}
+	return set
+}
+
+// Every colored operand's color must survive the batch onto the result's face
+// map, exactly as it does through the pairwise ops (mergeFaceMaps). Two
+// differently-colored operands prove the batch carries all colors in input
+// order, not just the first — a set membership check, independent of Go's
+// nondeterministic map-iteration order.
 func TestBatchBooleanPreservesColor(t *testing.T) {
-	red := cubeAt(t, 2, 0, 0, 0).SetColor(1, 0, 0, 1) // 0xFF0000
-	got, err := BatchBoolean([]*Solid{red, cubeAt(t, 2, 3, 0, 0), cubeAt(t, 2, 6, 0, 0)}, OpUnion)
+	red := cubeAt(t, 2, 0, 0, 0).SetColor(1, 0, 0, 1)  // 0xFF0000
+	blue := cubeAt(t, 2, 3, 0, 0).SetColor(0, 0, 1, 1) // 0x0000FF
+	got, err := BatchBoolean([]*Solid{red, blue, cubeAt(t, 2, 6, 0, 0)}, OpUnion)
 	if err != nil {
 		t.Fatal(err)
 	}
+	colors := faceColorSet(got)
+	if !colors[0xFF0000] || !colors[0x0000FF] {
+		t.Errorf("union dropped a color: got %v, want both 0xFF0000 and 0x0000FF", colors)
+	}
+}
+
+// Under Subtract, BatchBoolean decomposes to head − union(tail) — a structurally
+// different reduction than union — so the head's color must still carry through.
+func TestBatchBooleanPreservesColorDifference(t *testing.T) {
+	red := cubeAt(t, 10, 0, 0, 0).SetColor(1, 0, 0, 1) // 0xFF0000 base
+	got, err := BatchBoolean([]*Solid{red, cubeAt(t, 2, 1, 1, 1), cubeAt(t, 2, 5, 1, 1)}, OpDifference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !relClose(got.Volume(), 1000-16) { // 10³ less two disjoint 2³ cavities
+		t.Errorf("difference volume = %v, want %v", got.Volume(), 1000-16)
+	}
 	if c := firstFaceColor(got); c != 0xFF0000 {
-		t.Errorf("result lost color: firstFaceColor = 0x%06X, want 0xFF0000", c)
+		t.Errorf("difference dropped head color: firstFaceColor = 0x%06X, want 0xFF0000", c)
 	}
 }
 
@@ -159,12 +193,14 @@ func pairwiseFoldSketches(sketches []*Sketch, op BoolOp) *Sketch {
 }
 
 func TestSketchBatchBooleanSingleOperand(t *testing.T) {
-	got, err := SketchBatchBoolean([]*Sketch{squareAt(t, 2, 0, 0)}, OpUnion)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !relClose(got.Area(), 4) {
-		t.Errorf("single-square area = %v, want 4", got.Area())
+	for _, op := range []BoolOp{OpUnion, OpDifference, OpIntersection} {
+		got, err := SketchBatchBoolean([]*Sketch{squareAt(t, 2, 0, 0)}, op)
+		if err != nil {
+			t.Fatalf("op %d: %v", op, err)
+		}
+		if !relClose(got.Area(), 4) {
+			t.Errorf("op %d: single-square area = %v, want 4", op, got.Area())
+		}
 	}
 }
 
@@ -189,7 +225,7 @@ func BenchmarkUnionFold(b *testing.B) {
 	solids := disjointCubes(b, 64)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = pairwiseFoldSolidsBench(solids, OpUnion)
+		_ = pairwiseFoldSolids(solids, OpUnion)
 	}
 }
 
@@ -202,14 +238,6 @@ func BenchmarkUnionBatch(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-}
-
-func pairwiseFoldSolidsBench(solids []*Solid, op BoolOp) *Solid {
-	r := solids[0]
-	for _, s := range solids[1:] {
-		r = r.Union(s)
-	}
-	return r
 }
 
 func TestSketchBatchBooleanMatchesPairwiseFold(t *testing.T) {

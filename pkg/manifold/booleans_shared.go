@@ -25,13 +25,13 @@ const (
 
 // mergedFaceMaps folds the inputs' face maps in input order, so a key present in
 // an earlier solid wins — matching the precedence of pairwise a.Union(b). Shared
-// by the native and wasm BatchBoolean so both carry colors identically.
+// by the native and wasm BatchBoolean so both carry colors identically. The fold
+// starts from an empty map so the result always owns its storage and never
+// aliases an input's FaceMap (a single-element call must not hand back
+// solids[0].FaceMap, which a later in-place mutation could corrupt).
 func mergedFaceMaps(solids []*Solid) map[uint32]FaceInfo {
-	if len(solids) == 0 {
-		return nil
-	}
-	m := solids[0].FaceMap
-	for _, s := range solids[1:] {
+	var m map[uint32]FaceInfo
+	for _, s := range solids {
 		m = mergeFaceMaps(m, s.FaceMap)
 	}
 	return m

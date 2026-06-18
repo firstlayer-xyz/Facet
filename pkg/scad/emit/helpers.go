@@ -68,8 +68,9 @@ const scadLookupHelper = `fn scad_lookup(key Number, table [][]Number) Number {
 
 // scadUnionHelper unions a runtime list of solids whose length isn't known at
 // transpile time (conditional geometry — Union(arr: [G] + (cond ? [..] : []))).
-// The stdlib Union requires at least two elements; a one-element list is just its
-// element. (A zero-element list has no Solid form — Union then reports it.)
+// A one-element list returns its element directly (Union would do the same, but
+// the explicit guard keeps the result a plain Solid); a zero-element list has no
+// Solid form, which Union then reports.
 const scadUnionHelper = `fn scad_union(arr []Solid) Solid {
 	if Size(of: arr) == 1 { return arr[0] }
 	return Union(arr: arr)
