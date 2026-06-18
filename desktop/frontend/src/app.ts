@@ -842,7 +842,14 @@ export function refreshEditorUI() {
   runViaHTTP();
 }
 
+// Monotonically increasing token: starting a run supersedes any older in-flight
+// one (which gets aborted). Only the latest run resets the run state, so a
+// superseded run's finally doesn't flip the UI to idle while the newer run is
+// still running.
+let runGeneration = 0;
+
 async function runViaHTTP() {
+  const gen = ++runGeneration;
   const sources = editor.getAllSources();
   const active = tabStore.active();
   const picked = tabStore.activeState()?.pickedEntry ?? null;
@@ -864,7 +871,11 @@ async function runViaHTTP() {
     // UI silently idle with nothing rendered.
     showError(e);
   } finally {
-    setRunState('idle');
+    // Only the most recent run clears the state; a superseded run must not flip
+    // the UI to idle while its successor is still running.
+    if (gen === runGeneration) {
+      setRunState('idle');
+    }
   }
 }
 
