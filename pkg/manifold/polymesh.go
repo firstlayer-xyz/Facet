@@ -572,13 +572,17 @@ func (pm *PolyMesh) Snub() *PolyMesh {
 			if fi2 == fi {
 				fi2 = pair[1]
 			}
-			// 4 inset verts: fi:vi, fi:vj, fi2:vi, fi2:vj
+			// 4 inset verts: fi:vi, fi:vj, fi2:vi, fi2:vj.
+			// Wind the gap triangles opposite to the inset faces they border:
+			// inset face fi traverses a->b, so these must traverse b->a (and
+			// fi2 traverses c->d, so they must traverse d->c) for a consistent,
+			// orientable surface.
 			a := addInsetVert(fi, vi)
 			b := addInsetVert(fi, vj)
 			c := addInsetVert(fi2, vj)
 			d := addInsetVert(fi2, vi)
-			faces = append(faces, []int{a, b, c})
-			faces = append(faces, []int{a, c, d})
+			faces = append(faces, []int{c, b, a})
+			faces = append(faces, []int{d, c, a})
 		}
 	}
 
