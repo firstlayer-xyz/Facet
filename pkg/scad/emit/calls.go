@@ -121,6 +121,15 @@ func (e *Emitter) call(n *ast.Call) string {
 		if len(n.Args) >= 1 {
 			parts := make([]string, len(n.Args))
 			for i, a := range n.Args {
+				// Facet models lists as []Number and concat as list `+`. A scalar
+				// arg would become numeric/broadcast `+` rather than OpenSCAD's
+				// wrap-and-flatten (concat(1, 2) is [1, 2], not 3), so a
+				// provably-scalar literal is untranslatable — error loudly instead
+				// of emitting a silently-wrong value.
+				switch a.Value.(type) {
+				case *ast.Num, *ast.Str, *ast.Bool, *ast.Undef:
+					return e.errf(n.Pos(), "concat() of a scalar literal is not supported: Facet concatenates lists with +, so wrap the scalar in a list (e.g. concat(xs, [x]))")
+				}
 				parts[i] = e.operand(a.Value, kNumber)
 			}
 			return strings.Join(parts, " + ")
