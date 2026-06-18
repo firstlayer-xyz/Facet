@@ -352,8 +352,10 @@ func (a *App) AddRecentFile(path string) {
 	}
 }
 
-// CreateScratchFile creates a new empty .fct file in the scratch directory
-// and returns its absolute path. The file persists across crashes for recovery.
+// CreateScratchFile creates a new empty .fct file in the scratch directory and
+// returns its absolute path. It is the on-disk home for a "New File" tab; the
+// editor edits its content in memory and only an explicit save writes it back,
+// so the file stays empty on disk until then — it is not a crash-recovery store.
 func (a *App) CreateScratchFile(name string) (string, error) {
 	dir, err := scratchDir()
 	if err != nil {
