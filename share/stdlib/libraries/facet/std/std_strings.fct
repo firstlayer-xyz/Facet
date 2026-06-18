@@ -9,8 +9,8 @@
 # ascender top), "center" (y=0 at vertical midpoint), or "bottom" (y=0 at
 # descender bottom).
 # ```
-# fn Main() { Text("HELLO", 8 mm).Extrude(2 mm) }
-# fn Main() { Text("HI", 8 mm, halign: "center", valign: "center").Extrude(2 mm) }
+# fn Main() { Text(text: "HELLO", s: 8 mm).Extrude(z: 2 mm) }
+# fn Main() { Text(text: "HI", s: 8 mm, halign: "center", valign: "center").Extrude(z: 2 mm) }
 # ```
 fn Text(
     text String,

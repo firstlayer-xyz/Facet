@@ -4,7 +4,7 @@
 # 2D rectangle with bounding-box min corner at (0,0) and max at (x,y).
 # `x` = width, `y` = height.
 # ```
-# fn Main() { Square(20 mm, 20 mm).Extrude(10 mm) }
+# fn Main() { Square(x: 20 mm, y: 20 mm).Extrude(z: 10 mm) }
 # ```
 fn Square(x, y Length) Sketch {
     return _square(x, y)
@@ -14,7 +14,7 @@ fn Square(x, y Length) Sketch {
 # to 2r on each axis). Optional `segments` controls smoothness (default 32);
 # use 6 for a hexagon. Accepts either `r:` (radius) or `d:` (diameter).
 # ```
-# fn Main() { Circle(r: 5 mm).Extrude(20 mm) }
+# fn Main() { Circle(r: 5 mm).Extrude(z: 20 mm) }
 # ```
 fn Circle(
     r Length,
@@ -82,7 +82,7 @@ fn Star(n Number, d Length, id Length) Sketch {
 # Evenly-spaced points along a circular arc. Returns `segments + 1` Vec2 (2D) or Vec3 (3D at `center.z`).
 # `startAngle` to `endAngle` are inclusive. Use as input to `Polygon` or `Sweep`.
 # ```
-# fn Main() { Polygon(Arc(Vec2{0 mm, 0 mm}, 10 mm, 0 deg, 90 deg, 16)).Extrude(5 mm) }
+# fn Main() { Polygon(points: Arc(center: Vec2{x: 0 mm, y: 0 mm}, r: 10 mm, startAngle: 0 deg, endAngle: 90 deg, segments: 16)).Extrude(z: 5 mm) }
 # ```
 fn Arc(center Vec2, r Length, startAngle, endAngle Angle, segments Number) []Vec2 {
     return for i [0:segments] {
@@ -222,7 +222,7 @@ fn Sketch.Area() Number {
 # Optional args: `slices` (resolution for twist), `twist` (total rotation bottom→top),
 # `taperX`/`taperY` (top-face taper; 1 = no change).
 # ```
-# fn Main() { Circle(5 mm).Extrude(20 mm) }
+# fn Main() { Circle(r: 5 mm).Extrude(z: 20 mm) }
 # ```
 fn Sketch.Extrude(
     z Length,

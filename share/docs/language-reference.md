@@ -60,8 +60,7 @@ libExpr     = "lib" STRING ;
 call        = IDENT "(" [ args ] ")" ;
 structLit   = [ IDENT ] "{" [ fieldInits ] "}" ;
 fieldInits  = IDENT ":" expr { "," IDENT ":" expr } [ "," ] ;
-args        = namedArg { "," namedArg }
-            | expr { "," expr } ;
+args        = namedArg { "," namedArg } ;
 namedArg    = IDENT ":" expr ;
 array       = "[" [ expr { "," expr } [ "," ] ] "]"
             | "[" expr ":" [ "<" | ">" | "<=" | ">=" ] expr [ ":" expr ] "]" ;
@@ -534,6 +533,7 @@ fn Name(param1 Type, param2 Type) ReturnType {
   caller omits it, it binds `nil` (None). `param Type? = nil` is equivalent but
   redundant. Read the value with `?? fallback` or `if var`.
 - Default values and constraints are not allowed on grouped parameters.
+- **Call sites must use named arguments** (`name: value`); a positional argument is a compile error (`…() arguments must be named`). This applies to free functions, methods, library calls, and function-valued variables alike — only internal `_`-prefixed builtins take positional arguments. (Definitions still declare parameters positionally as `name Type`; the rule is about *calls*.)
 
 ### Overloading
 
