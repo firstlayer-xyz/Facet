@@ -69,7 +69,7 @@ Top-level `type` values the reader must handle:
 - `system` — `subtype` of `init` (emitted at the start of EVERY turn, not just
   the first), `hook_started`, `hook_response`, `thinking_tokens`, or `error`.
   Only `error` is surfaced; the rest are silent by design.
-- `rate_limit_event` — informational; ignore (currently logged as unhandled).
+- `rate_limit_event` — informational; ignored. The reader's `switch event["type"]` has no matching case and no `default`, so this type falls through silently (not logged).
 - `error` — stream-level error; surface it.
 
 ## Interrupt: control frame IS honored → Task 8a

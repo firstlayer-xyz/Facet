@@ -6,7 +6,7 @@ Running notes on non-obvious architectural decisions. Add to this as things come
 
 Two channels coexist:
 
-1. **Localhost HTTP server** ([app/mcp_service.go](../app/mcp_service.go), [app/http_server.go](../app/http_server.go)) — bound to `127.0.0.1:<random-port>`, bearer-token authenticated, Host-header validated. Routes:
+1. **Localhost HTTP server** ([desktop/mcp_service.go](../desktop/mcp_service.go), [desktop/http_server.go](../desktop/http_server.go)) — bound to `127.0.0.1:<random-port>`, bearer-token authenticated, Host-header validated. Routes:
    - `POST /eval` — source → evaluation result (mesh data, Declarations, References, errors)
    - `POST /check` — source → syntax/type errors only
    - `POST /mcp` — MCP streamable HTTP handler for assistant tools (`get_editor_code`, `edit_code`, `replace_code`, `check_syntax`, `get_documentation`)
@@ -31,7 +31,7 @@ The same HTTP server hosts `/mcp`, so external MCP clients (Claude Code, etc.) t
 
 The geometry kernel is C++ — Manifold and FreeType. Everything else is Go. The C++ side exists because those libraries are C++; it is **not** a general-purpose geometry layer we add code to by default.
 
-The boundary is defined in [app/pkg/manifold/cxx/include/facet_cxx.h](../app/pkg/manifold/cxx/include/facet_cxx.h) (one `extern "C"` block) and wrapped Go-side by files in [app/pkg/manifold/](../app/pkg/manifold/) — primitives, booleans, transforms, extrusions, operations, queries, mesh I/O. No caller bypasses that wrapper; all cross-boundary traffic funnels through it.
+The boundary is defined in [pkg/manifold/cxx/include/facet_cxx.h](../pkg/manifold/cxx/include/facet_cxx.h) (one `extern "C"` block) and wrapped Go-side by files in [pkg/manifold/](../pkg/manifold/) — primitives, booleans, transforms, extrusions, operations, queries, mesh I/O. No caller bypasses that wrapper; all cross-boundary traffic funnels through it.
 
 ### Default: Go
 
@@ -60,5 +60,5 @@ When you need to add something new, write it in Go unless it has to call a C++ l
 ### What *not* to infer from these rules
 
 - Chaining C calls is not banned. Three Manifold ops in a row is just using the API.
-- C++ isn't off-limits for custom geometry — Sweep and Loft (in [bindings.cpp](../app/pkg/manifold/cxx/src/bindings.cpp)) contain Facet-specific frame/contour math because it's tightly coupled to building a `Manifold` from vertex/triangle arrays. Moving that to Go would marshal the same data back across the boundary, which isn't automatically cheaper. Revisit only with a measurement.
+- C++ isn't off-limits for custom geometry — Sweep and Loft (in [bindings_extrude.cpp](../pkg/manifold/cxx/src/bindings_extrude.cpp)) contain Facet-specific frame/contour math because it's tightly coupled to building a `Manifold` from vertex/triangle arrays. Moving that to Go would marshal the same data back across the boundary, which isn't automatically cheaper. Revisit only with a measurement.
 - These rules describe the boundary, not an aesthetic preference for one language. Pick the side where the library lives.

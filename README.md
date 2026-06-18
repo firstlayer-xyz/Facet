@@ -39,9 +39,9 @@ Parameters with `where` clauses become sliders in the UI. Change `fins` from 4 t
 ![Multi-file library browsing](images/codeview.png)
 - **Face-click navigation** -- click a face in the 3D viewport to jump to the source
 - **Debug stepping** -- step through operations one at a time to see how your model is built
-- **Export** -- STL, OBJ, 3MF, GLB
+- **Export** -- STL, OBJ, 3MF
 - **Slicer integration** -- send directly to BambuStudio, OrcaSlicer, PrusaSlicer, or Cura
-- **AI assistant** -- built-in chat panel that can read and edit your code (supports Claude, Ollama, and others)
+- **AI assistant** -- built-in chat panel that can read and edit your code (currently powered by Claude; support for Ollama and other providers is coming soon)
 
 ![AI assistant generating a Golden Gate Bridge model](images/aiview.png)
 

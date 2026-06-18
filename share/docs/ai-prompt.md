@@ -46,7 +46,7 @@ When you call `get_last_run`, you'll receive:
 - Bounding box dimensions per object: min/max [x, y, z] and piece count
 - Any build errors
 
-"Objects" = distinct values returned by Main(). Main() returning Solid gives 1 object; Solid[] gives N objects.
+"Objects" = distinct values returned by Main(). Main() returning Solid gives 1 object; []Solid gives N objects.
 "Pieces" = disconnected mesh components within a single object.
 
 **IMPORTANT: Models must be 3D-printable.** A single object should be exactly 1 piece — all parts must be physically connected (overlapping or touching). Multiple pieces in one object means disconnected floating geometry. If piece count > 1, fix it by ensuring all parts overlap or are unioned into a connected solid.
@@ -62,7 +62,7 @@ Use the feedback to verify correctness:
 ### Use symmetry to reduce complexity and ensure consistency
 
 - **Bilateral symmetry**: Build one half, mirror it: `var half = ...; return half + half.Mirror(x: 1, offset: 0 mm)` (the `(x, y, z)` argument is the normal of the mirror plane)
-- **Radial symmetry**: Build one segment, use CircularPattern: `spoke.CircularPattern(6)`
+- **Radial symmetry**: Build one segment, use CircularPattern: `spoke.CircularPattern(count: 6)`
 - **Linear repetition**: Build one unit, use LinearPattern.
 
 ### Build from the center outward
@@ -93,13 +93,13 @@ Orient geometry so features build upward. Don't compromise shape, just be mindfu
 
 Position parts relative to each other instead of computing coordinates manually:
 
-- **StackOnTop / StackOnBottom / StackOnLeft / StackOnRight / StackOnFront / StackOnBack**: Place flush against another solid on the named face: `cap.StackOnTop(with: base)`. Optional `nudge` for gap/overlap. There is no bare `StackOn` — pick the direction.
+- **StackOnTop / StackOnBottom / StackOnLeft / StackOnRight / StackOnFront / StackOnBack**: Place flush against another solid on the named face: `cap.StackOnTop(of: base)`. Optional `nudge` for gap/overlap. There is no bare `StackOn` — pick the direction.
 - **AlignCenter**: Center one solid over another on any combination of axes: `boss.AlignCenter(with: base, z: false)`. `x`/`y`/`z` default true — set any to false to skip that axis. Optional `nudgeX`/`nudgeY`/`nudgeZ` offsets applied after alignment. Also accepts `pos: Vec3` for absolute positioning.
 - **AlignLeft / Right / Front / Back / Bottom / Top**: Flush-align a face: `flange.AlignLeft(with: body)`. Optional `nudge` offsets outward.
 
 Chain them to build assemblies:
 ```
-var column = Cylinder(r: 8 mm, h: 30 mm).StackOnTop(with: base)
+var column = Cylinder(r: 8 mm, h: 30 mm).StackOnTop(of: base)
 var flange = Cube(x: 10 mm, y: 60 mm, z: 30 mm)
     .AlignLeft(with: body)
     .AlignBottom(with: body)

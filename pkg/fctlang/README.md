@@ -12,25 +12,25 @@ Parse → Load → Check → Evaluate
 
 Lexes and parses Facet source into an AST.
 
-- **Entry:** `Parse(source string) (*Source, error)`
+- **Entry:** `Parse(source, path string, kind SourceKind) (*Source, error)`
 - **Returns:** `*Source` — the root AST node containing `Globals`, `Functions`, and `StructDecls`
 - **Key types:** `Source`, `Function`, `Param`, `StructDecl`, `Stmt`, `Expr`, `SourceError`
 
 ### 2. loader
 
-Resolves library imports (`use "github.com/org/repo"`) and builds a complete program with all dependencies.
+Resolves library imports (`lib "github.com/org/repo"`, used as a value expression, e.g. `var F = lib "github.com/org/repo"`) and builds a complete program with all dependencies.
 
-- **Entry:** `Load(ctx, source, libDir, opts) (*Program, error)`
-- **Returns:** `*Program` — contains the main `Source` plus all resolved library sources in a `Libs` map
-- **Key types:** `Program`, `LibCache`, `Options`
+- **Entry:** `Load(ctx, source, key, kind, libDir, opts) (Program, error)`
+- **Returns:** `Program` — holds all parsed sources in a `Sources map[string]*parser.Source` (canonical key → source, including the main source, local/remote libraries, and the embedded stdlib under key `::std`), plus an `Imports map[string]string` mapping import paths to those keys
+- **Key types:** `Program`, `Cache`, `Options`
 
-Libraries are fetched from git, cached locally, and parsed. `LibCache` allows reuse across invocations.
+Libraries are fetched from git, cached locally, and parsed. `Cache` bundles the storage primitives that let the loader reuse bare git clones across invocations.
 
 ### 3. checker
 
 Static type checking, type inference, and declaration extraction. Does not enforce any particular entry point — that is the evaluator's responsibility.
 
-- **Entry:** `Check(prog *Program) *Result`
+- **Entry:** `Check(prog loader.Program) *Result`
 - **Returns:** `*Result` containing:
   - `Errors` — type errors found during analysis
   - `VarTypes` — variable name to type mappings
@@ -39,11 +39,11 @@ Static type checking, type inference, and declaration extraction. Does not enfor
 
 ### 4. evaluator
 
-Evaluates a checked program by calling a named entry point function. The entry point must be a function that returns `Solid`, `[]Solid`, or `PolyMesh`.
+Evaluates a checked program by calling a named entry point function. The entry point must be a function that returns `Solid`, `[]Solid`, `PolyMesh`, or `Animation`.
 
 - **Entry:** `Eval(ctx, prog, currentKey, overrides, entryPoint) (*EvalResult, error)`
 - **Debug:** `EvalDebug(ctx, prog, currentKey, overrides, entryPoint) (*DebugResult, error)`
-- **Returns:** `*EvalResult` with `Solids []*manifold.Solid` and `ModelStats` (volume, surface area)
+- **Returns:** `*EvalResult` with `Solids []*manifold.Solid`, an optional `Animation *Animation`, and `Stats ModelStats` (volume, surface area, triangle/vertex counts, bounding box)
 
 Parameters:
 - `currentKey` — source key of the program being evaluated; used to resolve relative library references

@@ -5,7 +5,7 @@ in freedesktop file managers (GNOME Files/Nautilus, Caja, Nemo, Thunar via tumbl
 
 - **`facet.xml`** — `shared-mime-info` definitions registering MIME types for
   `*.fct` (`application/x-facet`), `*.stl` (`model/stl`), `*.obj` (`model/obj`),
-  and `*.3mf` (`application/vnd.ms-package.3dmanufacturing-3dmodel+xml`).
+  and `*.3mf` (`model/3mf`, with `application/vnd.ms-package.3dmanufacturing-3dmodel+xml` registered as an alias).
 - **`facet.thumbnailer`** — a freedesktop *thumbnailer* that renders the preview
   by running `facetc %i -o %o -format png -size %s` (see `facetc -o preview.png`,
   the pure-Go headless renderer in `pkg/render`).
