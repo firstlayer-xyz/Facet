@@ -464,7 +464,7 @@ func (f *formatter) formatStructDecl(sd *parser.StructDecl, trailing []parser.Co
 func (f *formatter) formatStmts(stmts []parser.Stmt) {
 	prevEndLine := 0
 	for _, s := range stmts {
-		startLine := stmtStartLine(s)
+		startLine := stmtRenderStartLine(s)
 		if prevEndLine > 0 && startLine > 0 && startLine > prevEndLine+1 {
 			f.write("\n")
 		}
@@ -498,6 +498,19 @@ func stmtStartLine(s parser.Stmt) int {
 		return s.Pos.Line
 	}
 	return 0
+}
+
+// stmtRenderStartLine returns the source line of the first thing the formatter
+// renders for s — its first leading comment if it has one, otherwise the
+// statement itself. The blank-line gap between statements is measured from this:
+// using stmtStartLine instead would treat a leading comment that immediately
+// follows the previous statement as an empty source line and insert a spurious
+// blank before the comment.
+func stmtRenderStartLine(s parser.Stmt) int {
+	if leading, _ := splitComments(stmtComments(s)); len(leading) > 0 && leading[0].Pos.Line > 0 {
+		return leading[0].Pos.Line
+	}
+	return stmtStartLine(s)
 }
 
 // stmtEndLine returns the approximate last line of a statement, or 0 if unavailable.
