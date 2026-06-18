@@ -200,7 +200,22 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 		}
 
 		dm := manifold.MergeExtractExpandedMeshes(solids, manifold.DefaultDisplayEdgeThresholdDeg)
-		stats := result.Stats
+		// Match the desktop handler's stats: an Animation entry has no static
+		// solids, so result.Stats is zero — derive Volume/SurfaceArea from the
+		// rendered snapshot solids. Both paths then fill in the mesh triangle/
+		// vertex counts and the bounding box (which result.Stats omits).
+		var stats evaluator.ModelStats
+		if result.Animation != nil {
+			for _, s := range solids {
+				stats.Volume += s.Volume()
+				stats.SurfaceArea += s.SurfaceArea()
+			}
+		} else {
+			stats = result.Stats
+		}
+		stats.Triangles += dm.IndexCount / 3
+		stats.Vertices += dm.VertexCount
+		stats.BBoxMin, stats.BBoxMax = manifold.SolidsBounds(solids)
 		meta, binData := appendMeshBinary(nil, dm)
 		header.Mesh = meta
 		header.Stats = &stats
