@@ -581,12 +581,24 @@ func init() {
 			return nil, fmt.Errorf("%s() callback must take exactly 1 argument, got %d", name, len(fv.params))
 		}
 		var warpErr error
+		// pt and argMap are reused for every vertex instead of reallocated.
+		// This is safe because warp callbacks are fully serialized by warpMu
+		// (manifold_callbacks.go) — never concurrent — and callFunctionVal
+		// deep-copies the argument into the lambda's scope before the body runs,
+		// so the body can never observe pt mutating between vertices. argMap[param]
+		// is reset each call because callFunctionVal's coerceArgs overwrites it.
+		pt := makePtVecStruct3("Vec3", 0, 0, 0)
+		paramName := fv.params[0].Name
+		argMap := map[string]value{paramName: pt}
 		result := r.Warp(func(x, y, z float64) (float64, float64, float64) {
 			if warpErr != nil {
 				return x, y, z
 			}
-			pt := makePtVecStruct3("Vec3", x, y, z)
-			res, callErr := e.callFunctionVal(fv, map[string]value{fv.params[0].Name: pt})
+			pt.fields["x"] = length{mm: x}
+			pt.fields["y"] = length{mm: y}
+			pt.fields["z"] = length{mm: z}
+			argMap[paramName] = pt
+			res, callErr := e.callFunctionVal(fv, argMap)
 			if callErr != nil {
 				warpErr = callErr
 				return x, y, z
