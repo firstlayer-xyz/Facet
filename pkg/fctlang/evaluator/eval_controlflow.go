@@ -164,7 +164,17 @@ func (e *evaluator) evalForYieldOptional(ex *parser.ForYieldExpr, opt *optionalV
 	var results []value
 	prev := e.yieldTarget
 	e.yieldTarget = &results
-	defer func() { e.yieldTarget = prev }()
+	// A yield in this loop's body must collect here, not into an enclosing fold's
+	// accumulator — clear foldAcc for the loop's extent (mirroring evalForYieldArray).
+	// blockYield checks foldAcc before yieldTarget, so leaving an enclosing fold's
+	// foldAcc live would send these yields to the wrong place and leave results
+	// empty, silently turning the result into None.
+	prevFold := e.foldAcc
+	e.foldAcc = nil
+	defer func() {
+		e.yieldTarget = prev
+		e.foldAcc = prevFold
+	}()
 	if err := e.evalForBody(ex.Body, iterLocals, &results); err != nil {
 		return nil, err
 	}
