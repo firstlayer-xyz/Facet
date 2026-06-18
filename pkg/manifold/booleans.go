@@ -139,3 +139,48 @@ func (a *Sketch) Intersection(b *Sketch) *Sketch {
 	runtime.KeepAlive(b)
 	return newSketch(ret)
 }
+
+// BatchBoolean combines solids with op in a single kernel tree-reduction, which
+// is far cheaper than folding pairwise booleans over a growing accumulator
+// (O(N log N) vs O(N^2)). Panics on a nil operand; errors on an empty slice.
+// Face maps are merged in input order (first-wins), matching the pairwise ops.
+func BatchBoolean(solids []*Solid, op BoolOp) (*Solid, error) {
+	if len(solids) == 0 {
+		return nil, errBatchBooleanEmpty
+	}
+	requireSolids("BatchBoolean", solids...)
+	ptrs := make([]*C.ManifoldPtr, len(solids))
+	for i, s := range solids {
+		ptrs[i] = s.ptr
+	}
+	var ret C.FacetSolidRet
+	C.facet_batch_boolean(&ptrs[0], C.size_t(len(solids)), C.int(op), &ret)
+	runtime.KeepAlive(solids)
+	s := newSolid(ret)
+	if s == nil {
+		return nil, errBatchBooleanFailed
+	}
+	s.FaceMap = mergedFaceMaps(solids)
+	return s, nil
+}
+
+// SketchBatchBoolean is the 2D counterpart of BatchBoolean (sketches carry no
+// face map).
+func SketchBatchBoolean(sketches []*Sketch, op BoolOp) (*Sketch, error) {
+	if len(sketches) == 0 {
+		return nil, errBatchBooleanEmpty
+	}
+	requireSketches("SketchBatchBoolean", sketches...)
+	ptrs := make([]*C.ManifoldCrossSection, len(sketches))
+	for i, p := range sketches {
+		ptrs[i] = p.ptr
+	}
+	var ret C.FacetSketchRet
+	C.facet_cs_batch_boolean(&ptrs[0], C.size_t(len(sketches)), C.int(op), &ret)
+	runtime.KeepAlive(sketches)
+	s := newSketch(ret)
+	if s == nil {
+		return nil, errBatchBooleanFailed
+	}
+	return s, nil
+}

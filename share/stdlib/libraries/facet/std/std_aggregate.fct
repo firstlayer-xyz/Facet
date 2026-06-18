@@ -141,7 +141,7 @@ fn Solid.LinearPattern(
     var copies = for i [0:<count] {
         yield self.Move(x: i * spacing.x, y: i * spacing.y, z: i * spacing.z)
     }
-    return fold a, b copies { yield a + b }
+    return _union(copies)
 }
 
 # Repeats a solid `count` times evenly around the Z axis (full 360°, or `span` degrees).
@@ -154,12 +154,12 @@ fn Solid.CircularPattern(
         assert count >= 1, "CircularPattern requires count >= 1"
         var step = 360 / count * 1 deg
         var copies = for i [0:<count] { yield self.Rotate(z: i * step) }
-        return fold a, b copies { yield a + b }
+        return _union(copies)
     } else {
         assert count >= 2, "CircularPattern with span requires count >= 2"
         var step = span / (count - 1)
         var copies = for i [0:<count] { yield self.Rotate(z: i * step) }
-        return fold a, b copies { yield a + b }
+        return _union(copies)
     }
 }
 
@@ -172,7 +172,7 @@ fn Sketch.LinearPattern(
     var copies = for i [0:<count] {
         yield self.Move(x: i * spacing.x, y: i * spacing.y)
     }
-    return fold a, b copies { yield a + b }
+    return _union(copies)
 }
 
 # Same as Solid.CircularPattern but for Sketch.
@@ -184,12 +184,12 @@ fn Sketch.CircularPattern(
         assert count >= 1, "CircularPattern requires count >= 1"
         var step = 360 / count * 1 deg
         var copies = for i [0:<count] { yield _rotate_origin(self, i * step) }
-        return fold a, b copies { yield a + b }
+        return _union(copies)
     } else {
         assert count >= 2, "CircularPattern with span requires count >= 2"
         var step = span / (count - 1)
         var copies = for i [0:<count] { yield _rotate_origin(self, i * step) }
-        return fold a, b copies { yield a + b }
+        return _union(copies)
     }
 }
 
