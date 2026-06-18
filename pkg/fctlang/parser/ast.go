@@ -92,13 +92,16 @@ func (s *StructDecl) DeclComments() []Comment { return s.Comments }
 
 // Functions returns all function declarations in source order.
 func (s *Source) Functions() []*Function {
-	var fns []*Function
-	for _, d := range s.Declarations {
-		if fn, ok := d.(*Function); ok {
-			fns = append(fns, fn)
+	// Memoized: Declarations are immutable after Parse and this is called per
+	// call-expression during checking. Callers treat the result as read-only.
+	s.funcsOnce.Do(func() {
+		for _, d := range s.Declarations {
+			if fn, ok := d.(*Function); ok {
+				s.funcsCache = append(s.funcsCache, fn)
+			}
 		}
-	}
-	return fns
+	})
+	return s.funcsCache
 }
 
 // Globals returns all global variable declarations in source order.
