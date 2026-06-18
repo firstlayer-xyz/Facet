@@ -459,7 +459,7 @@ fn Main() {
 func TestCheckLinearPattern(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).LinearPattern(count: 3, spacing: Vec3{x: 10 mm});
+    return Cube(s: Vec3{x: 5 mm, y: 5 mm, z: 5 mm}).LinearPattern(count: 3, gap: 5 mm);
 }
 `)
 }
@@ -475,7 +475,7 @@ fn Main() {
 func TestCheckSketchLinearPattern(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
-    return Square(x: 5 mm, y: 5 mm).LinearPattern(count: 3, spacing: Vec2{x: 10 mm}).Extrude(z: 5 mm);
+    return Square(x: 5 mm, y: 5 mm).LinearPattern(count: 3, gap: 5 mm).Extrude(z: 5 mm);
 }
 `)
 }

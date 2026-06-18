@@ -1,0 +1,15 @@
+fn Main(
+    width Length = 80 mm where [40:160] mm,
+    depth Length = 60 mm where [30:120] mm,
+    thickness Length = 3 mm where [1:6] mm,
+    holeD Length = 8 mm where [4:16] mm,
+    wall Length = 1.5 mm where [0.5:4] mm,
+) Solid {
+    # A flat frame with a honeycomb of hexagonal holes punched through it.
+    # HexPattern packs the holes from their own size plus the wall gap; the
+    # stamp is centered on the plate (X/Y only) before subtraction.
+    var plate = Cube(x: width, y: depth, z: thickness)
+    var hole = Ngon(n: 6, d: holeD).Extrude(z: thickness)
+    var holes = hole.HexPattern(width: width - 2 * wall, depth: depth - 2 * wall, gap: wall)
+    return plate - holes.AlignCenter(with: plate, z: false)
+}
