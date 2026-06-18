@@ -289,6 +289,13 @@ func (c *checker) inferReturnTypes() {
 // validateFunctions performs full validation on all functions (Pass 2).
 func (c *checker) validateFunctions() {
 	for srcKey, src := range c.prog.Sources {
+		// The stdlib ships pre-validated and immutable, so re-checking its bodies
+		// on every edit is pure waste (this pass runs on each debounced keystroke).
+		// Skip it here, NOT in inferReturnTypes (Pass 1) — that pass still needs to
+		// populate inferredReturns for unannotated stdlib functions.
+		if srcKey == loader.StdlibPath {
+			continue
+		}
 		c.currentSrcKey = srcKey
 		srcEnv := c.srcGlobalEnv(srcKey)
 		savedStructDecls := c.structDecls
