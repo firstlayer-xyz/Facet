@@ -1,6 +1,9 @@
 package parser
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // MarshalJSON serializes a Pos to JSON with lowercase keys.
 func (p Pos) MarshalJSON() ([]byte, error) {
@@ -198,7 +201,10 @@ func marshalStmt(s Stmt) interface{} {
 		}
 		return m
 	default:
-		return map[string]interface{}{"type": "Unknown"}
+		// The switch is exhaustive over Stmt; an unhandled type is a programmer
+		// error (a new node added without a case), not user input. Fail loudly
+		// rather than silently serializing it as an opaque placeholder.
+		panic(fmt.Sprintf("ast_json: unhandled statement node %T", s))
 	}
 }
 
@@ -274,6 +280,7 @@ func marshalExpr(e Expr) interface{} {
 			"receiver": marshalExpr(e.Receiver),
 			"method":   e.Method,
 			"args":     marshalExprs(e.Args),
+			"optional": e.Optional,
 			"pos":      e.Pos,
 		}
 	case *UnitExpr:
@@ -290,6 +297,7 @@ func marshalExpr(e Expr) interface{} {
 			"type":     "FieldAccessExpr",
 			"receiver": marshalExpr(e.Receiver),
 			"field":    e.Field,
+			"optional": e.Optional,
 			"pos":      e.Pos,
 		}
 	case *IndexExpr:
@@ -396,8 +404,19 @@ func marshalExpr(e Expr) interface{} {
 			"body":       marshalStmts(e.Body),
 			"pos":        e.Pos,
 		}
+	case *TernaryExpr:
+		return map[string]interface{}{
+			"type": "TernaryExpr",
+			"cond": marshalExpr(e.Cond),
+			"then": marshalExpr(e.Then),
+			"else": marshalExpr(e.Else),
+			"pos":  e.Pos,
+		}
 	default:
-		return map[string]interface{}{"type": "Unknown"}
+		// The switch is exhaustive over Expr; an unhandled type is a programmer
+		// error (a new node added without a case), not user input. Fail loudly
+		// rather than silently serializing it as an opaque placeholder.
+		panic(fmt.Sprintf("ast_json: unhandled expression node %T", e))
 	}
 }
 
