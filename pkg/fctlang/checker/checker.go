@@ -239,6 +239,11 @@ func (c *checker) checkDuplicateFunctions() {
 
 // inferReturnTypes infers return types for unannotated functions (Pass 1).
 func (c *checker) inferReturnTypes() {
+	// Pass 1 only gathers return types; Pass 2 (validateFunctions) re-checks every
+	// body and is the source of truth for diagnostics. Suppress emission here so a
+	// body error isn't reported once per pass.
+	c.suppressErrors = true
+	defer func() { c.suppressErrors = false }()
 	for srcKey, src := range c.prog.Sources {
 		c.currentSrcKey = srcKey
 		srcEnv := c.srcGlobalEnv(srcKey)
@@ -408,7 +413,12 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, srcE
 		}
 	}
 	if !hasYield {
+		// checkStmts above already reported any errors in these return expressions;
+		// this walk only re-infers their types to compare them, so suppress emission
+		// to avoid reporting each one a second time.
+		c.suppressErrors = true
 		retTypes := c.collectReturnTypes(fn.Body, env)
+		c.suppressErrors = false
 		if len(retTypes) > 1 {
 			first := retTypes[0]
 			for _, rt := range retTypes[1:] {
@@ -559,6 +569,11 @@ type checker struct {
 	// structSrcKey maps each *parser.StructDecl identity to the source key it
 	// was declared in. Built once in initChecker; used by fileForStruct.
 	structSrcKey map[*parser.StructDecl]string
+	// suppressErrors drops diagnostics while an auxiliary type-gathering walk runs
+	// (return-type inference in Pass 1, collectReturnTypes in Pass 2). Those walks
+	// re-infer expressions that the single validating checkStmts pass already
+	// reported, so emitting from them would duplicate every body error.
+	suppressErrors bool
 }
 
 func initChecker(prog loader.Program) *checker {
@@ -695,10 +710,16 @@ func (c *checker) recordVarType(name string, env *typeEnv) {
 }
 
 func (c *checker) addError(pos parser.Pos, msg string) {
+	if c.suppressErrors {
+		return
+	}
 	c.errors = append(c.errors, parser.SourceError{File: c.currentSrcKey, Line: pos.Line, Col: pos.Col, Message: msg})
 }
 
 func (c *checker) addErrorSpan(pos parser.Pos, endCol int, msg string) {
+	if c.suppressErrors {
+		return
+	}
 	c.errors = append(c.errors, parser.SourceError{File: c.currentSrcKey, Line: pos.Line, Col: pos.Col, EndCol: endCol, Message: msg})
 }
 
