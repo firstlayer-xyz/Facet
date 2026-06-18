@@ -276,8 +276,17 @@ func (e *evaluator) builtinBatchBool(name string, args []value) (value, error) {
 	if !ok {
 		return nil, fmt.Errorf("%s() argument must be an Array, got %s", name, typeName(args[0]))
 	}
-	if len(arr.elems) < 2 {
-		return nil, fmt.Errorf("%s() requires at least 2 elements, got %d", name, len(arr.elems))
+	if len(arr.elems) == 0 {
+		return nil, fmt.Errorf("%s() requires at least 1 element, got 0", name)
+	}
+	// A single element is itself — no boolean to perform. The binary +/-/&
+	// operators and the pattern helpers rely on this for the count==1 case.
+	if len(arr.elems) == 1 {
+		return arr.elems[0], nil
+	}
+	op, opErr := batchBoolOp(name)
+	if opErr != nil {
+		return nil, opErr
 	}
 
 	switch arr.elems[0].(type) {
@@ -290,18 +299,20 @@ func (e *evaluator) builtinBatchBool(name string, args []value) (value, error) {
 			}
 			solids[i] = s
 		}
-		result := solids[0]
-		for _, f := range solids[1:] {
-			switch name {
-			case "_union":
-				result = result.Union(f)
-			case "_difference":
-				result = result.Difference(f)
-			case "_intersection":
-				result = result.Intersection(f)
+		// Fast path for the dominant 2-operand case (every binary +/-/&): the
+		// direct pairwise boolean avoids the slice + array-of-pointers + vector
+		// allocation that the batch entry point requires.
+		if len(solids) == 2 {
+			switch op {
+			case manifold.OpUnion:
+				return solids[0].Union(solids[1]), nil
+			case manifold.OpDifference:
+				return solids[0].Difference(solids[1]), nil
+			default:
+				return solids[0].Intersection(solids[1]), nil
 			}
 		}
-		return result, nil
+		return manifold.BatchBoolean(solids, op)
 	case *manifold.Sketch:
 		sketches := make([]*manifold.Sketch, len(arr.elems))
 		for i, elem := range arr.elems {
@@ -311,21 +322,33 @@ func (e *evaluator) builtinBatchBool(name string, args []value) (value, error) {
 			}
 			sketches[i] = p
 		}
-		result := sketches[0]
-		for _, f := range sketches[1:] {
-			switch name {
-			case "_union":
-				result = result.Union(f)
-			case "_difference":
-				result = result.Difference(f)
-			case "_intersection":
-				result = result.Intersection(f)
+		if len(sketches) == 2 {
+			switch op {
+			case manifold.OpUnion:
+				return sketches[0].Union(sketches[1]), nil
+			case manifold.OpDifference:
+				return sketches[0].Difference(sketches[1]), nil
+			default:
+				return sketches[0].Intersection(sketches[1]), nil
 			}
 		}
-		return result, nil
+		return manifold.SketchBatchBoolean(sketches, op)
 	default:
 		return nil, fmt.Errorf("%s() elements must be Solids or Sketches, got %s", name, typeName(arr.elems[0]))
 	}
+}
+
+// batchBoolOp maps the boolean builtin name to its manifold.BoolOp.
+func batchBoolOp(name string) (manifold.BoolOp, error) {
+	switch name {
+	case "_union":
+		return manifold.OpUnion, nil
+	case "_difference":
+		return manifold.OpDifference, nil
+	case "_intersection":
+		return manifold.OpIntersection, nil
+	}
+	return 0, fmt.Errorf("%s: not a batch boolean operation", name)
 }
 
 // ---------------------------------------------------------------------------

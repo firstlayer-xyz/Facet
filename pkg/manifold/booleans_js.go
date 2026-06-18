@@ -107,3 +107,40 @@ func ComposeSolids(solids []*Solid) (*Solid, error) {
 	}
 	return r, nil
 }
+
+// BatchBoolean combines solids with op in one kernel tree-reduction. wasm twin of
+// the native build; same semantics so both produce identical geometry + colors.
+func BatchBoolean(solids []*Solid, op BoolOp) (*Solid, error) {
+	if len(solids) == 0 {
+		return nil, errBatchBooleanEmpty
+	}
+	requireSolids("BatchBoolean", solids...)
+	arr := js.Global().Get("Array").New()
+	for _, s := range solids {
+		arr.Call("push", s.id)
+	}
+	id := js.Global().Call("_mf_batch_boolean", arr, int(op)).Int()
+	if id == 0 {
+		return nil, errBatchBooleanFailed
+	}
+	s := newSolid(id)
+	s.FaceMap = mergedFaceMaps(solids)
+	return s, nil
+}
+
+// SketchBatchBoolean is the 2D counterpart (no face map).
+func SketchBatchBoolean(sketches []*Sketch, op BoolOp) (*Sketch, error) {
+	if len(sketches) == 0 {
+		return nil, errBatchBooleanEmpty
+	}
+	requireSketches("SketchBatchBoolean", sketches...)
+	arr := js.Global().Get("Array").New()
+	for _, p := range sketches {
+		arr.Call("push", p.id)
+	}
+	id := js.Global().Call("_mf_cs_batch_boolean", arr, int(op)).Int()
+	if id == 0 {
+		return nil, errBatchBooleanFailed
+	}
+	return newSketch(id), nil
+}

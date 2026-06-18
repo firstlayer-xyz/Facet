@@ -416,6 +416,13 @@ function setupBridge() {
     M._free(ptr);
     return solidPtr();
   };
+  globalThis._mf_batch_boolean = (idsArr, op) => {
+    const a = Array.from(idsArr);
+    const ptr = copyU32ArrayToHeap(a);
+    M._facet_batch_boolean(ptr, a.length, op, SOLID_RET);
+    M._free(ptr);
+    return solidPtr();
+  };
 
   // ── 3D Transforms ─────────────────────────────────────────────────────────
   globalThis._mf_translate    = (id, x, y, z)             => (M._facet_translate(id, x, y, z, SOLID_RET),    solidPtr());
@@ -552,6 +559,13 @@ function setupBridge() {
     const a = Array.from(idsArr);
     const ptr = copyU32ArrayToHeap(a);
     M._facet_cs_batch_hull(ptr, a.length, SKETCH_RET);
+    M._free(ptr);
+    return sketchPtr();
+  };
+  globalThis._mf_cs_batch_boolean = (idsArr, op) => {
+    const a = Array.from(idsArr);
+    const ptr = copyU32ArrayToHeap(a);
+    M._facet_cs_batch_boolean(ptr, a.length, op, SKETCH_RET);
     M._free(ptr);
     return sketchPtr();
   };

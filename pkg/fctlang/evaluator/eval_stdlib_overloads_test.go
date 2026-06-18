@@ -299,3 +299,40 @@ fn Main() Solid {
 		t.Fatal("expected non-empty partial CircularPattern mesh")
 	}
 }
+
+// ── Pattern count==1 — the single-copy boundary of the batch-union path ───────
+
+// A pattern of count 1 yields one copy. The aggregate helpers fold it with
+// Union(copies), which must return that single copy unchanged rather than
+// erroring on "too few operands" — the guard now accepts a 1-element batch.
+func TestEvalLinearPatternSingleCopy(t *testing.T) {
+	src := `
+fn Main() Solid {
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).LinearPattern(count: 1, spacing: Vec3{x: 20 mm, y: 0 mm, z: 0 mm});
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	// One copy → a plain 10mm cube, no second instance 20mm away.
+	assertMeshSize(t, mesh, 10, 10, 10, 0.01)
+}
+
+// Three evenly-spaced copies span from the first cube's near edge to the third
+// cube's far edge: 2*spacing + edge = 2*20 + 10 = 50mm. Exercises the N>=3
+// batch-union path through the stdlib pattern helper.
+func TestEvalLinearPatternThreeCopies(t *testing.T) {
+	src := `
+fn Main() Solid {
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).LinearPattern(count: 3, spacing: Vec3{x: 20 mm, y: 0 mm, z: 0 mm});
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	assertMeshSize(t, mesh, 50, 10, 10, 0.01)
+}

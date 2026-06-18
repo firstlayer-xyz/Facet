@@ -27,6 +27,28 @@ void facet_intersection(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out) try 
   wrap(new Manifold(*as_cpp(a) ^ *as_cpp(b)), out);
 } catch (...) { facetClear(out); }
 
+// facet_batch_boolean unions/subtracts/intersects N solids at once via the
+// kernel's tree-reduction BatchBoolean (op: 0=Add, 1=Subtract, 2=Intersect,
+// matching OpType). This is asymptotically better than folding pairwise booleans
+// over a growing accumulator. No .AsOriginal() (unlike hull): BatchBoolean
+// preserves the per-solid originalIDs the FaceMap/color path depends on.
+void facet_batch_boolean(ManifoldPtr** solids, size_t count, int op, FacetSolidRet* out) try {
+  std::vector<Manifold> vec(count);
+  for (size_t i = 0; i < count; i++) {
+    vec[i] = *as_cpp(solids[i]);
+  }
+  wrap(new Manifold(Manifold::BatchBoolean(vec, static_cast<OpType>(op))), out);
+} catch (...) { facetClear(out); }
+
+// facet_cs_batch_boolean is the 2D (CrossSection) counterpart.
+void facet_cs_batch_boolean(ManifoldCrossSection** sketches, size_t count, int op, FacetSketchRet* out) try {
+  std::vector<CrossSection> vec(count);
+  for (size_t i = 0; i < count; i++) {
+    vec[i] = *as_cpp_cs(sketches[i]);
+  }
+  wrap_cs(new CrossSection(CrossSection::BatchBoolean(vec, static_cast<OpType>(op))), out);
+} catch (...) { facetClear(out); }
+
 // Insert seats b into a: cut b's shape out of a, drop any piece of a that b
 // traps inside itself (a "plug"), then union b back in. A piece is a plug iff
 // it lies entirely within b's convex hull, tested by exact boolean

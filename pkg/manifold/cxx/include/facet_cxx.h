@@ -86,6 +86,12 @@ void facet_difference(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out);
 void facet_intersection(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out);
 void facet_insert(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out);
 
+// facet_batch_boolean combines N solids in one tree-reduction (op: 0=Add,
+// 1=Subtract, 2=Intersect — matching manifold's OpType), avoiding the O(N^2) of
+// folding pairwise booleans over a growing accumulator. Subtract is head minus
+// the union of the tail. Order matters for Subtract and for FaceMap precedence.
+void facet_batch_boolean(ManifoldPtr** solids, size_t count, int op, FacetSolidRet* out);
+
 // Splits m into connected components. Returns count; fills *out_components
 // with a malloc'd array of FacetSolidRet (one per component). Caller frees
 // each component's ptr with facet_delete_solid, then frees *out_components
@@ -99,6 +105,7 @@ int facet_decompose(ManifoldPtr* m, FacetSolidRet** out_components);
 void facet_cs_union(ManifoldCrossSection* a, ManifoldCrossSection* b, FacetSketchRet* out);
 void facet_cs_difference(ManifoldCrossSection* a, ManifoldCrossSection* b, FacetSketchRet* out);
 void facet_cs_intersection(ManifoldCrossSection* a, ManifoldCrossSection* b, FacetSketchRet* out);
+void facet_cs_batch_boolean(ManifoldCrossSection** sketches, size_t count, int op, FacetSketchRet* out);
 
 // ---------------------------------------------------------------------------
 // 3D Transforms
