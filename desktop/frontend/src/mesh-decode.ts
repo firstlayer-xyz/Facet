@@ -1,6 +1,4 @@
 import * as THREE from 'three';
-import { computeFacePlanes, detectCircularEdges } from './measurement';
-import type { MeasurementCache } from './measurement';
 
 /** Decoded mesh ready for Three.js BufferGeometry. */
 export interface DecodedMesh {
@@ -10,8 +8,6 @@ export interface DecodedMesh {
   faceColors?: Record<string, string>;
   expanded?: Float32Array;   // pre-expanded non-indexed positions (3 floats * 3 verts * numTri)
   edgeLines?: Float32Array;  // pre-computed edge line segments (6 floats per edge)
-  /** Per-mesh precomputed data for dimensioning (face planes + circular edge loops). */
-  measurementCache?: MeasurementCache;
 }
 
 export interface DebugMeshRef {
@@ -62,15 +58,9 @@ export function decodeBinaryMesh(binary: ArrayBuffer, meta: BinaryMeshMeta): Dec
   if (meta.edgeLines) {
     result.edgeLines = new Float32Array(binary, meta.edgeLines.offset, meta.edgeLines.size / 4);
   }
-  // Precompute dimensioning cache if the data we need is present. Face planes
-  // require per-triangle face groups; circular edge detection requires the
-  // face-group boundary edges (edgeLines). Skip silently otherwise — this
-  // path is used for debug-step meshes where dimensioning isn't exposed.
-  if (result.faceGroups) {
-    const facePlanes = computeFacePlanes(result.vertices, result.indices, result.faceGroups);
-    const circularEdges = result.edgeLines ? detectCircularEdges(result.edgeLines) : [];
-    result.measurementCache = { facePlanes, circularEdges };
-  }
+  // The dimensioning cache (face planes + circular-edge fitting) is built lazily
+  // on first snap (see Viewer.meshMeasurementData) rather than here: it's only
+  // needed while measuring, so computing it on every decode is pure waste.
   return result;
 }
 
