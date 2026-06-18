@@ -9,6 +9,8 @@ import {
   buildMeasurement,
   buildRadial,
   buildCornerAngle,
+  computeFacePlanes,
+  detectCircularEdges,
   DEFAULT_MEASUREMENT_FORMAT,
   type Measurement,
   type MeasurementFormat,
@@ -485,10 +487,7 @@ export class Viewer {
       mesh.userData.faceColors = decoded.faceColors ?? null;
     }
 
-    // Store measurement data on the mesh for snap resolution.
-    if (decoded.measurementCache) {
-      mesh.userData.measurementCache = decoded.measurementCache;
-    }
+    // edgeLines feed lazy circular-edge detection (built on first snap).
     if (decoded.edgeLines) {
       mesh.userData.edgeLines = decoded.edgeLines;
     }
@@ -820,14 +819,24 @@ export class Viewer {
     edgeLines?: Float32Array;
     cache: MeasurementCache;
   } | null {
-    const cache = mesh.userData.measurementCache as MeasurementCache | undefined;
-    if (!cache) return null;
     const vertices = mesh.userData.fgVertices as Float32Array | undefined
       ?? (mesh.geometry.getAttribute('position')?.array as Float32Array | undefined);
     const indices = mesh.userData.fgIndices as Uint32Array | undefined;
     if (!vertices || !indices) return null;
     const faceGroups = mesh.userData.faceGroups as Uint32Array | undefined;
     const edgeLines = mesh.userData.edgeLines as Float32Array | undefined;
+    // Build the measurement cache lazily on first snap and memoize it on the mesh.
+    // Face planes + circular-edge fitting are only needed while measuring, so they
+    // are not computed on every decode. Face planes need per-triangle face groups.
+    let cache = mesh.userData.measurementCache as MeasurementCache | undefined;
+    if (!cache) {
+      if (!faceGroups) return null;
+      cache = {
+        facePlanes: computeFacePlanes(vertices, indices, faceGroups),
+        circularEdges: edgeLines ? detectCircularEdges(edgeLines) : [],
+      };
+      mesh.userData.measurementCache = cache;
+    }
     return { vertices, indices, faceGroups, edgeLines, cache };
   }
 
