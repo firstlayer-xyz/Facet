@@ -20,6 +20,9 @@ func (p *parser) parseIfStmt() (*IfStmt, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := p.rejectUnderscoreIdent(nameTok, "variable"); err != nil {
+			return nil, err
+		}
 		bindVar = nameTok.Text
 		if _, err := p.expect(TokenEquals); err != nil {
 			return nil, err

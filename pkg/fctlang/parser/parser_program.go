@@ -151,15 +151,9 @@ func (p *parser) parseStructDecl() (*StructDecl, error) {
 				return nil, err
 			}
 		}
-		var fieldConstraint Expr
-		if p.cur.Type == TokenWhere {
-			if err := p.next(); err != nil { // consume 'where'
-				return nil, err
-			}
-			fieldConstraint, err = p.parseConstraint()
-			if err != nil {
-				return nil, err
-			}
+		fieldConstraint, err := p.parseWhereConstraint()
+		if err != nil {
+			return nil, err
 		}
 		if err := p.consumeOptionalSemi(); err != nil {
 			return nil, err
