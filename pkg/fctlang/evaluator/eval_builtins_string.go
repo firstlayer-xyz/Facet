@@ -139,7 +139,15 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
-		return float64(strings.Index(s, substr)), nil
+		// Return a rune index, not a byte offset: SubStr/Length operate on runes,
+		// so a byte offset would mis-index any string with multi-byte characters.
+		// strings.Index returns -1 when absent; preserve it (the stdlib maps it to
+		// None).
+		idx := strings.Index(s, substr)
+		if idx < 0 {
+			return float64(-1), nil
+		}
+		return float64(len([]rune(s[:idx]))), nil
 	})
 
 	builtinRegistry["_contains"] = stringMethod("_contains", func(s string, args []value) (value, error) {
