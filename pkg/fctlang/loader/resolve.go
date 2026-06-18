@@ -785,7 +785,10 @@ func validateLibPath(p string) error {
 	if path.IsAbs(p) || (len(p) >= 2 && p[1] == ':') {
 		return fmt.Errorf("library path %q: absolute paths are not allowed", p)
 	}
-	for _, seg := range strings.Split(p, "/") {
+	// Split on both separators: a lib path is URL-style, but on Windows a
+	// backslash segment like `..\x` is a real traversal, and splitting on "/"
+	// alone would leave it intact and slip past the ".." check.
+	for _, seg := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
 		if seg == ".." {
 			return fmt.Errorf("library path %q: '..' is not allowed", p)
 		}

@@ -197,6 +197,14 @@ func TestValidateLibPathTraversal(t *testing.T) {
 	if err := validateLibPath("github.com/u/r/sub/..@main"); err == nil {
 		t.Fatal("expected error for '..' traversal hidden behind an @ref")
 	}
+	// A backslash-separated segment is a real traversal on Windows and must not
+	// slip past the check by hiding inside a single forward-slash segment.
+	if err := validateLibPath("vendor\\..\\secret"); err == nil {
+		t.Fatal("expected error for '..' traversal using backslash separators")
+	}
+	if err := validateLibPath("vendor/sub\\..\\..\\etc"); err == nil {
+		t.Fatal("expected error for mixed-separator '..' traversal")
+	}
 }
 
 // TestParseLibPathRefVariants pins parsing across the three @ref shapes
