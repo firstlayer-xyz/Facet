@@ -20,7 +20,7 @@ Common patterns you can copy directly into your program:
 | Move a shape | `.Move(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})` |
 | Rotate a shape | `.Rotate(x: 0 deg, y: 0 deg, z: 45 deg, around: Vec3{})` |
 | Mirror across YZ plane | `.Mirror(x: 1, y: 0, z: 0, offset: 0 mm)` |
-| Repeat in a line | `.LinearPattern(count: 4, spacing: Vec3{x: 10 mm})` |
+| Repeat in a line | `.LinearPattern(count: 4, gap: 5 mm)` |
 | Repeat in a ring | `.CircularPattern(count: 6)` |
 | Fillet a profile | `sketch.Fillet(r: 2 mm).Extrude(z: 5 mm)` |
 | Arc of points | `Arc(center: Vec2{x: 0 mm, y: 0 mm}, r: 10 mm, startAngle: 0 deg, endAngle: 90 deg, segments: 16)` |
@@ -800,8 +800,8 @@ Repeat shapes along a line or around an axis:
 fn Main() {
     var peg = Cylinder(r: 3 mm, h: 10 mm)
 
-    # 5 copies spaced 15mm apart along X
-    var row = peg.LinearPattern(count: 5, spacing: Vec3{x: 15 mm})
+    # 5 copies with 10mm gaps along X (the default axis)
+    var row = peg.LinearPattern(count: 5, gap: 10 mm)
 
     # 8 copies evenly around Z axis (full 360 degrees)
     var ring = peg.CircularPattern(count: 8)

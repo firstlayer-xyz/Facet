@@ -277,7 +277,7 @@ Repeat a sketch in a line or around a center point.
 ```
 fn Main() {
     var hole = Circle(r: 3 mm)
-    var row = hole.LinearPattern(count: 5, spacing: Vec2{x: 10 mm})
+    var row = hole.LinearPattern(count: 5, gap: 4 mm)
     return (Square(x: 55 mm, y: 10 mm) - row.Move(x: 5 mm, y: 5 mm)).Extrude(z: 3 mm)
 }
 ```
