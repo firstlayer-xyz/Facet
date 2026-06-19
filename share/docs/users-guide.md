@@ -565,7 +565,7 @@ Functions are values. You can create an anonymous function (lambda) with `fn`:
 
 ```
 var move = fn(s Solid) Solid { return s.Move(v: Vec3{x: 20 mm, y: 0 mm, z: 0 mm}) }
-var result = move(Cube(s: 10 mm))
+var result = move(s: Cube(s: 10 mm))
 ```
 
 Lambdas capture variables from the enclosing scope:
@@ -574,14 +574,14 @@ Lambdas capture variables from the enclosing scope:
 fn Main() {
     var dx = 25 mm
     var shift = fn(s Solid) Solid { return s.Move(v: Vec3{x: dx, y: 0 mm, z: 0 mm}) }
-    return shift(Sphere(r: 10 mm))
+    return shift(s: Sphere(r: 10 mm))
 }
 ```
 
 Pass functions as arguments using `fn(Type) ReturnType` as the parameter type:
 
 ```
-fn Apply(s Solid, f fn(Solid) Solid) Solid { return f(s) }
+fn Apply(s Solid, f fn(Solid) Solid) Solid { return f(s: s) }
 
 fn Main() {
     return Apply(s: Sphere(r: 10 mm), f: fn(s Solid) Solid { return s.Move(x: 15 mm) })

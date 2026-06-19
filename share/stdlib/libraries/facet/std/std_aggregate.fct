@@ -118,7 +118,7 @@ fn Loft(profiles []Sketch, heights []Length) Solid {
 # `gap` sets spacing between items; `nil` (the default) auto-picks 10% of the largest footprint dimension.
 # ```
 # fn Main() []Solid {
-#     return Layout([Cube(10 mm), Sphere(5 mm), Cylinder(3 mm, 15 mm)])
+#     return Layout(solids: [Cube(s: 10 mm), Sphere(r: 5 mm), Cylinder(r: 3 mm, h: 15 mm)])
 # }
 # ```
 fn Layout(
