@@ -308,7 +308,7 @@ fn Main() Solid {
 func TestEvalLinearPatternSingleCopy(t *testing.T) {
 	src := `
 fn Main() Solid {
-    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).LinearPattern(count: 1, spacing: Vec3{x: 20 mm, y: 0 mm, z: 0 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).LinearPattern(count: 1, gap: 10 mm);
 }
 `
 	prog := parseTestProg(t, src)
@@ -320,13 +320,13 @@ fn Main() Solid {
 	assertMeshSize(t, mesh, 10, 10, 10, 0.01)
 }
 
-// Three evenly-spaced copies span from the first cube's near edge to the third
-// cube's far edge: 2*spacing + edge = 2*20 + 10 = 50mm. Exercises the N>=3
-// batch-union path through the stdlib pattern helper.
+// Three copies at pitch = cell width + gap = 10 + 10 = 20mm span from the first
+// cube's near edge to the third cube's far edge: 2*20 + 10 = 50mm. Exercises the
+// N>=3 batch-union path through the stdlib pattern helper.
 func TestEvalLinearPatternThreeCopies(t *testing.T) {
 	src := `
 fn Main() Solid {
-    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).LinearPattern(count: 3, spacing: Vec3{x: 20 mm, y: 0 mm, z: 0 mm});
+    return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}).LinearPattern(count: 3, gap: 10 mm);
 }
 `
 	prog := parseTestProg(t, src)

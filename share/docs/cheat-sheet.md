@@ -124,8 +124,10 @@ a ^ b      # exclude: symmetric difference
 | `Decompose(s: solid)` | Split into disconnected components → `[]Solid` |
 | `solid.Split(cutter: c)` | `[inside, outside]` |
 | `solid.SplitByPlane(normal:, offset:)` | `[above, below]` |
-| `solid.LinearPattern(count: 4, spacing: Vec3{x: 10 mm})` | Repeat in a line |
-| `solid.CircularPattern(count: 6)` | Repeat around Z; `span:` for an arc |
+| `solid.LinearPattern(count: 4, gap: 5 mm)` | Repeat along `axis:` (default +X); `length:` to fill a span |
+| `solid.GridPattern(countX: 4, countY: 3, gap: Vec2{x: 2 mm, y: 2 mm})` | Tile a grid; `width,depth` to fill; `rowOffset` to stagger (0.5 = brick) |
+| `solid.HexPattern(countX: 5, countY: 4, gap: 1 mm)` | Honeycomb packing; `width,depth` to fill |
+| `solid.CircularPattern(count: 6)` | Repeat around Z; `span:` for an arc, `center:` to orbit a point |
 | `Layout(solids: [...])` | Bin-pack onto the XY plane → `[]Solid`; `gap:` |
 
 Build the array first with `for … yield` or `fold`, then union it:

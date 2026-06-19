@@ -131,65 +131,257 @@ fn Layout(
 # ---------------------------------------------------------------------------
 # Pattern Operations
 # ---------------------------------------------------------------------------
-# Repeats a solid `count` times at even `spacing`.
-# Copies are placed at 0, 1×spacing, … (count-1)×spacing and unioned together.
+# The translational patterns (Linear/Grid/Hex) share one vocabulary: copies are
+# spaced by their own bounding box plus a `gap` (edge-to-edge: 0 tiles seamlessly,
+# positive leaves walls, negative overlaps). Each comes in two forms — a count
+# form (`count`/`countX,countY`) and a region form (`length`/`width,depth`) that
+# derives the count to fill the region and delegates to the count form. Copies
+# are corner-anchored (the first is `self`) and combined with the batched Union.
+
+# Repeats a solid `count` times along `axis`, spaced by the cell's extent along
+# that axis plus `gap`.
 fn Solid.LinearPattern(
     count Number,
-    spacing Vec3 = Vec3{},
+    gap Length = 0 mm,
+    axis Vec3 = Vec3{x: 1 mm},
 ) Solid {
     assert count >= 1, "LinearPattern requires count >= 1"
-    var copies = for i [0:<count] {
-        yield self.Move(x: i * spacing.x, y: i * spacing.y, z: i * spacing.z)
-    }
-    return _union(copies)
+    var u = Normalize(v: axis)
+    var dx = Number(from: u.x)
+    var dy = Number(from: u.y)
+    var dz = Number(from: u.z)
+    var b = self.Bounds()
+    # Sqrt(d*d) = |d|; the AABB's extent projected onto the axis.
+    var size = Sqrt(n: dx * dx) * b.Width() + Sqrt(n: dy * dy) * b.Depth()
+        + Sqrt(n: dz * dz) * b.Height()
+    var pitch = size + gap
+    return Union(arr: for i [0:<count] {
+        yield self.Move(x: dx * i * pitch, y: dy * i * pitch, z: dz * i * pitch)
+    })
 }
 
-# Repeats a solid `count` times evenly around the Z axis (full 360°, or `span` degrees).
-# Requires `count >= 2` when `span` is given.
+# Fills `length` along `axis` with as many copies as fit, then delegates.
+fn Solid.LinearPattern(
+    length Length,
+    gap Length = 0 mm,
+    axis Vec3 = Vec3{x: 1 mm},
+) Solid {
+    var u = Normalize(v: axis)
+    var dx = Number(from: u.x)
+    var dy = Number(from: u.y)
+    var dz = Number(from: u.z)
+    var b = self.Bounds()
+    var size = Sqrt(n: dx * dx) * b.Width() + Sqrt(n: dy * dy) * b.Depth()
+        + Sqrt(n: dz * dz) * b.Height()
+    var count = Floor(n: (length - size) / (size + gap)) + 1
+    assert count >= 1, "LinearPattern: length too small to fit one copy"
+    return self.LinearPattern(count: count, gap: gap, axis: axis)
+}
+
+# Repeats a solid `count` times evenly around the Z axis through `center` (full
+# 360°, or `span` degrees). Requires `count >= 2` when `span` is given.
 fn Solid.CircularPattern(
     count Number,
     span Angle = 0 deg,
+    center Vec3 = Vec3{},
 ) Solid {
     if span == 0 deg {
         assert count >= 1, "CircularPattern requires count >= 1"
         var step = 360 / count * 1 deg
-        var copies = for i [0:<count] { yield self.Rotate(z: i * step) }
-        return _union(copies)
+        return Union(arr: for i [0:<count] {
+            yield self.Rotate(z: i * step, around: center)
+        })
     } else {
         assert count >= 2, "CircularPattern with span requires count >= 2"
         var step = span / (count - 1)
-        var copies = for i [0:<count] { yield self.Rotate(z: i * step) }
-        return _union(copies)
+        return Union(arr: for i [0:<count] {
+            yield self.Rotate(z: i * step, around: center)
+        })
     }
 }
 
-# Same as Solid.LinearPattern but for Sketch.
+# Tiles a solid across a `countX × countY` grid in the XY plane. `rowOffset` is a
+# fraction of the horizontal pitch applied cumulatively with wrap, so 0 is an
+# aligned grid, 0.5 a half-cell stagger (honeycomb/running bond), 1/3 a three-row
+# bond, etc.
+fn Solid.GridPattern(
+    countX, countY Number,
+    gap Vec2 = Vec2{},
+    rowOffset Number = 0,
+) Solid {
+    assert countX >= 1, "GridPattern requires countX >= 1"
+    assert countY >= 1, "GridPattern requires countY >= 1"
+    var b = self.Bounds()
+    var sx = b.Width() + gap.x
+    var sy = b.Depth() + gap.y
+    return Union(arr: for j [0:<countY], i [0:<countX] {
+        var f = j * rowOffset
+        yield self.Move(x: i * sx + (f - Floor(n: f)) * sx, y: j * sy)
+    })
+}
+
+# Fills a `width × depth` region with a grid, then delegates.
+fn Solid.GridPattern(
+    width, depth Length,
+    gap Vec2 = Vec2{},
+    rowOffset Number = 0,
+) Solid {
+    var b = self.Bounds()
+    var countX = Floor(n: (width - b.Width()) / (b.Width() + gap.x)) + 1
+    var countY = Floor(n: (depth - b.Depth()) / (b.Depth() + gap.y)) + 1
+    assert countX >= 1, "GridPattern: width too small to fit one copy"
+    assert countY >= 1, "GridPattern: depth too small to fit one copy"
+    return self.GridPattern(countX: countX, countY: countY, gap: gap, rowOffset: rowOffset)
+}
+
+# Tiles a solid into a `countX × countY` hexagonal (honeycomb) lattice: horizontal
+# pitch is the cell width + `gap`, the row pitch is pitch·√3/2, and odd rows are
+# offset half a pitch — the densest packing, and a seamless honeycomb for a
+# pointy-top hexagonal cell with gap 0.
+fn Solid.HexPattern(
+    countX, countY Number,
+    gap Length = 0 mm,
+) Solid {
+    assert countX >= 1, "HexPattern requires countX >= 1"
+    assert countY >= 1, "HexPattern requires countY >= 1"
+    var b = self.Bounds()
+    var p = b.Width() + gap
+    var sy = p * Sqrt(n: 3) / 2
+    return Union(arr: for j [0:<countY], i [0:<countX] {
+        yield self.Move(x: i * p + (j % 2) * (p / 2), y: j * sy)
+    })
+}
+
+# Fills a `width × depth` region with a honeycomb, then delegates.
+fn Solid.HexPattern(
+    width, depth Length,
+    gap Length = 0 mm,
+) Solid {
+    var b = self.Bounds()
+    var p = b.Width() + gap
+    var sy = p * Sqrt(n: 3) / 2
+    var countX = Floor(n: (width - b.Width()) / p) + 1
+    var countY = Floor(n: (depth - b.Depth()) / sy) + 1
+    assert countX >= 1, "HexPattern: width too small to fit one copy"
+    assert countY >= 1, "HexPattern: depth too small to fit one copy"
+    return self.HexPattern(countX: countX, countY: countY, gap: gap)
+}
+
+# Same as Solid.LinearPattern (count form) but for Sketch.
 fn Sketch.LinearPattern(
     count Number,
-    spacing Vec2 = Vec2{},
+    gap Length = 0 mm,
+    axis Vec2 = Vec2{x: 1 mm},
 ) Sketch {
     assert count >= 1, "LinearPattern requires count >= 1"
-    var copies = for i [0:<count] {
-        yield self.Move(x: i * spacing.x, y: i * spacing.y)
-    }
-    return _union(copies)
+    var mag = Sqrt(n: Dot(a: axis, b: axis))
+    var dx = Number(from: axis.x) / mag
+    var dy = Number(from: axis.y) / mag
+    var b = self.Bounds()
+    var size = Sqrt(n: dx * dx) * b.Width() + Sqrt(n: dy * dy) * b.Depth()
+    var pitch = size + gap
+    return Union(arr: for i [0:<count] {
+        yield self.Move(x: dx * i * pitch, y: dy * i * pitch)
+    })
 }
 
-# Same as Solid.CircularPattern but for Sketch.
+# Same as Solid.LinearPattern (region form) but for Sketch.
+fn Sketch.LinearPattern(
+    length Length,
+    gap Length = 0 mm,
+    axis Vec2 = Vec2{x: 1 mm},
+) Sketch {
+    var mag = Sqrt(n: Dot(a: axis, b: axis))
+    var dx = Number(from: axis.x) / mag
+    var dy = Number(from: axis.y) / mag
+    var b = self.Bounds()
+    var size = Sqrt(n: dx * dx) * b.Width() + Sqrt(n: dy * dy) * b.Depth()
+    var count = Floor(n: (length - size) / (size + gap)) + 1
+    assert count >= 1, "LinearPattern: length too small to fit one copy"
+    return self.LinearPattern(count: count, gap: gap, axis: axis)
+}
+
+# Same as Solid.CircularPattern but for Sketch (rotation about `center` in XY).
 fn Sketch.CircularPattern(
     count Number,
     span Angle = 0 deg,
+    center Vec2 = Vec2{},
 ) Sketch {
     if span == 0 deg {
         assert count >= 1, "CircularPattern requires count >= 1"
         var step = 360 / count * 1 deg
-        var copies = for i [0:<count] { yield _rotate_origin(self, i * step) }
-        return _union(copies)
+        return Union(arr: for i [0:<count] {
+            yield _rotate_origin(self.Move(x: -center.x, y: -center.y), i * step)
+                .Move(x: center.x, y: center.y)
+        })
     } else {
         assert count >= 2, "CircularPattern with span requires count >= 2"
         var step = span / (count - 1)
-        var copies = for i [0:<count] { yield _rotate_origin(self, i * step) }
-        return _union(copies)
+        return Union(arr: for i [0:<count] {
+            yield _rotate_origin(self.Move(x: -center.x, y: -center.y), i * step)
+                .Move(x: center.x, y: center.y)
+        })
     }
+}
+
+# Same as Solid.GridPattern (count form) but for Sketch.
+fn Sketch.GridPattern(
+    countX, countY Number,
+    gap Vec2 = Vec2{},
+    rowOffset Number = 0,
+) Sketch {
+    assert countX >= 1, "GridPattern requires countX >= 1"
+    assert countY >= 1, "GridPattern requires countY >= 1"
+    var b = self.Bounds()
+    var sx = b.Width() + gap.x
+    var sy = b.Depth() + gap.y
+    return Union(arr: for j [0:<countY], i [0:<countX] {
+        var f = j * rowOffset
+        yield self.Move(x: i * sx + (f - Floor(n: f)) * sx, y: j * sy)
+    })
+}
+
+# Same as Solid.GridPattern (region form) but for Sketch.
+fn Sketch.GridPattern(
+    width, depth Length,
+    gap Vec2 = Vec2{},
+    rowOffset Number = 0,
+) Sketch {
+    var b = self.Bounds()
+    var countX = Floor(n: (width - b.Width()) / (b.Width() + gap.x)) + 1
+    var countY = Floor(n: (depth - b.Depth()) / (b.Depth() + gap.y)) + 1
+    assert countX >= 1, "GridPattern: width too small to fit one copy"
+    assert countY >= 1, "GridPattern: depth too small to fit one copy"
+    return self.GridPattern(countX: countX, countY: countY, gap: gap, rowOffset: rowOffset)
+}
+
+# Same as Solid.HexPattern (count form) but for Sketch.
+fn Sketch.HexPattern(
+    countX, countY Number,
+    gap Length = 0 mm,
+) Sketch {
+    assert countX >= 1, "HexPattern requires countX >= 1"
+    assert countY >= 1, "HexPattern requires countY >= 1"
+    var b = self.Bounds()
+    var p = b.Width() + gap
+    var sy = p * Sqrt(n: 3) / 2
+    return Union(arr: for j [0:<countY], i [0:<countX] {
+        yield self.Move(x: i * p + (j % 2) * (p / 2), y: j * sy)
+    })
+}
+
+# Same as Solid.HexPattern (region form) but for Sketch.
+fn Sketch.HexPattern(
+    width, depth Length,
+    gap Length = 0 mm,
+) Sketch {
+    var b = self.Bounds()
+    var p = b.Width() + gap
+    var sy = p * Sqrt(n: 3) / 2
+    var countX = Floor(n: (width - b.Width()) / p) + 1
+    var countY = Floor(n: (depth - b.Depth()) / sy) + 1
+    assert countX >= 1, "HexPattern: width too small to fit one copy"
+    assert countY >= 1, "HexPattern: depth too small to fit one copy"
+    return self.HexPattern(countX: countX, countY: countY, gap: gap)
 }
 

@@ -93,7 +93,7 @@ Hand-written recursive-descent parser.
 | Move a solid | `.Move(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm})` |
 | Rotate a solid | `.Rotate(x: 0 deg, y: 0 deg, z: 45 deg, around: Vec3{})` |
 | Mirror across YZ plane | `.Mirror(x: 1, y: 0, z: 0, offset: 0 mm)` |
-| Repeat in a line | `.LinearPattern(count: 4, spacing: Vec3{x: 10 mm})` |
+| Repeat in a line | `.LinearPattern(count: 4, gap: 5 mm)` |
 | Repeat in a ring | `.CircularPattern(count: 6)` |
 | Fillet a profile | `sketch.Fillet(r: 2 mm).Extrude(z: 5 mm)` |
 | Interactive slider | `r Length = 5 mm where [1:20] mm` (on fn params) |
