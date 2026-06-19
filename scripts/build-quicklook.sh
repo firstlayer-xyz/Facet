@@ -48,7 +48,7 @@ LIBS=(
 
 build_ext() { # appex  exe  info.plist  principal.swift
   local appex="$1" exe="$2" plist="$3" main="$4"
-  echo "build-quicklook: $appex…"
+  echo "build-quicklook: ${appex}…"
   swiftc -target "$SWIFT_TGT" -sdk "$SDK" -module-name "$exe" \
     -import-objc-header "$WORK/libfacetrender.h" \
     -framework Cocoa -framework Quartz -framework SceneKit \
