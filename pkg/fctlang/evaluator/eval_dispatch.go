@@ -25,6 +25,18 @@ func findMethods(funcs []*parser.Function, name, receiverType string, nArgs int)
 	return candidates
 }
 
+// funcHasParam reports whether fn declares a parameter named name. A linear
+// scan is cheaper than a map for the small parameter lists Facet functions
+// have, and allocates nothing on the hot path.
+func funcHasParam(fn *parser.Function, name string) bool {
+	for _, p := range fn.Params {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveOverload performs type-based overload resolution on candidates.
 // args is a map[string]value keyed by parameter name.
 // resolver is the evaluator used for fillDefaults/coerceArgs.
@@ -42,36 +54,43 @@ func (e *evaluator) resolveOverload(
 		return nil, nil, false
 	}
 
+	singleCandidate := len(candidates) == 1
 	for _, fn := range candidates {
-		// Validate that all provided arg names match declared parameters.
-		paramNames := make(map[string]bool, len(fn.Params))
-		for _, p := range fn.Params {
-			paramNames[p.Name] = true
-		}
+		// Validate that all provided arg names match declared parameters. A
+		// linear scan over the (small) parameter list avoids allocating a
+		// lookup map on every call — this path runs once per nested call inside
+		// hot loops such as Solid.Warp.
 		badName := false
 		for name := range args {
-			if !paramNames[name] {
+			if !funcHasParam(fn, name) {
 				badName = true
 				break
 			}
 		}
 		if badName {
-			if len(candidates) > 1 {
+			if !singleCandidate {
 				continue
 			}
 			// Single candidate — produce a specific error for bad names.
 			for name := range args {
-				if !paramNames[name] {
+				if !funcHasParam(fn, name) {
 					return nil, e.errAt(pos, "%s() has no parameter named %q", method, name), true
 				}
 			}
 		}
 
-		// Copy the args map so fillDefaults/coerceArgs don't mutate the caller's map
-		// when we need to try the next candidate.
-		argMap := make(map[string]value, len(args))
-		for k, v := range args {
-			argMap[k] = v
+		// With multiple candidates we copy the args map: fillDefaults/coerceArgs
+		// mutate it in place, and a failed candidate falls through to the next,
+		// which must see the original arg names and values. With a single
+		// candidate there is no fallthrough, and resolveOverload returns ok=true
+		// on this path (callers return immediately and never read args again),
+		// so mutating the caller's map directly is safe and skips an allocation.
+		argMap := args
+		if !singleCandidate {
+			argMap = make(map[string]value, len(args))
+			for k, v := range args {
+				argMap[k] = v
+			}
 		}
 
 		if fillErr := resolver.fillDefaults(fn, argMap, resolver.globals); fillErr != nil {
