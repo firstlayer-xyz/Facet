@@ -334,6 +334,17 @@ func (e *evaluator) evalFieldAccess(ex *parser.FieldAccessExpr, locals map[strin
 		}
 		return some(v, ""), nil
 	}
+	// Library const access: `Lib.NAME`. The checker guarantees NAME is a
+	// const global of the library (vars are not importable), so the cached
+	// evaluated value is safe to expose.
+	if r, ok := unwrap(recv).(*libRef); ok {
+		if globals, ok := e.libEvalCache[r.path]; ok {
+			if v, ok := globals[ex.Field]; ok {
+				return v, nil
+			}
+		}
+		return nil, e.errAt(ex.Pos, "library has no exported const %q", ex.Field)
+	}
 	sv, ok := unwrap(recv).(*structVal)
 	if !ok {
 		return nil, e.errAt(ex.Pos, "cannot access field %q on %s", ex.Field, typeName(recv))

@@ -45,6 +45,40 @@ fn Main() {
 	}
 }
 
+// A library `const` is importable as `Lib.NAME` and its value flows into the
+// importer's geometry. (A `var` is not importable — that is enforced by the
+// checker; see TestCheckLibraryVarImportRejected.)
+func TestEvalLibraryConstAccess(t *testing.T) {
+	libDir := t.TempDir()
+	libPath := libDir + "/test/consts"
+	if err := os.MkdirAll(libPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	libSrc := `
+const GRID = 42 mm;
+fn Box() { return Cube(s: Vec3{x: GRID, y: GRID, z: GRID}); }
+`
+	if err := os.WriteFile(libPath+"/consts.fct", []byte(libSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	src := `
+var L = lib "test/consts";
+
+fn Main() {
+    return Cube(s: Vec3{x: L.GRID, y: 10 mm, z: 10 mm});
+}
+`
+	prog := parseTestProg(t, src)
+	resolveTestProg(t, prog, libDir, &loader.Options{})
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	// L.GRID == 42 mm sets the box width.
+	assertMeshSize(t, mesh, 42, 10, 10, 0.1)
+}
+
 func TestEvalLibraryInvalidPath(t *testing.T) {
 	tests := []struct {
 		name string
