@@ -202,13 +202,20 @@ func (e *evaluator) run() (*EvalResult, error) {
 	}
 
 
-	// Build PosMap: resolve solidTracks to face IDs
+	return &EvalResult{Solids: solids, Stats: stats, PosMap: buildPosMap(*e.solidTracks)}, nil
+}
+
+// buildPosMap resolves solidTracks into a source-position → face-ID index for
+// face-click navigation: every solid produced at a source position contributes
+// its FaceMap's IDs to that position's entry. Shared by the one-shot Eval path
+// and the per-frame Animation path so face-click works in both.
+func buildPosMap(tracks []SolidTrack) []PosEntry {
 	type posKey struct {
-		file     string
+		file      string
 		line, col int
 	}
 	posToIDs := make(map[posKey]map[uint32]bool)
-	for _, track := range *e.solidTracks {
+	for _, track := range tracks {
 		if len(track.Solid.FaceMap) == 0 {
 			continue
 		}
@@ -237,8 +244,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 		}
 		return posMap[i].Col < posMap[j].Col
 	})
-
-	return &EvalResult{Solids: solids, Stats: stats, PosMap: posMap}, nil
+	return posMap
 }
 
 // extractSolids validates that all elements of an array are Solids and returns them.

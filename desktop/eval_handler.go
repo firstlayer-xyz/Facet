@@ -249,7 +249,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 			respond(&header, nil, nil)
 			return
 		}
-		solid, ferr := evalResult.Animation.Frame(initialFrameTimeMs())
+		solid, posMap, ferr := evalResult.Animation.FrameWithPosMap(initialFrameTimeMs())
 		if ferr != nil {
 			header.Errors = append(header.Errors, sourceErrorFromErr(ferr))
 			respond(&header, nil, nil)
@@ -261,6 +261,9 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 		header.Mesh = meta
 		animStats := evaluator.SolidFrameStats(solid, merged)
 		header.Stats = &animStats
+		// PosMap lets the frontend resolve face-click → source on the initial
+		// animation frame, matching the static render and the /frame path.
+		header.PosMap = posMap
 		respond(&header, binaryData, []*manifold.Solid{solid})
 		return
 	}

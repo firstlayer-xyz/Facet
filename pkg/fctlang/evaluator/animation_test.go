@@ -103,3 +103,44 @@ func TestAnimationFrameVariesWithTime(t *testing.T) {
 		t.Fatalf("Frame(10) volume = %v, want 8000", v)
 	}
 }
+
+// FrameWithPosMap must return a populated source-position → face-ID map for
+// every frame, so face-click → source navigation works during animation
+// playback. Without it the frontend received an empty posMap and silently
+// swallowed every click. Regression for "clicking a face does nothing on
+// animated models". Two frames are checked because playback truncates the
+// per-frame tracks between frames — the rebuild must still produce a posMap.
+func TestAnimationFrameWithPosMap(t *testing.T) {
+	src := `fn Main() Animation {
+    return Animation{frame: fn(t Number) Solid { return Cube(s: (10 + t) * 1 mm) }}
+}
+`
+	anim := evalAnim(t, src, "Main")
+
+	for _, tm := range []float64{0, 10} {
+		solid, posMap, err := anim.FrameWithPosMap(tm)
+		if err != nil {
+			t.Fatalf("FrameWithPosMap(%v): %v", tm, err)
+		}
+		if len(posMap) == 0 {
+			t.Fatalf("FrameWithPosMap(%v): empty PosMap — face-click would be dead on animation frames", tm)
+		}
+		// At least one mapped face ID must be a real face of the rendered solid,
+		// so a click that lands on a face group resolves to a source position.
+		faceIDs := map[uint32]bool{}
+		for id := range solid.FaceMap {
+			faceIDs[id] = true
+		}
+		matched := false
+		for _, e := range posMap {
+			for _, id := range e.FaceIDs {
+				if faceIDs[id] {
+					matched = true
+				}
+			}
+		}
+		if !matched {
+			t.Fatalf("FrameWithPosMap(%v): no PosMap face ID matches the frame solid's FaceMap — clicks could not resolve", tm)
+		}
+	}
+}

@@ -175,7 +175,7 @@ func handleFrame(ctx context.Context, w http.ResponseWriter, req frameRequest, s
 		return
 	}
 
-	solid, err := anim.Frame(req.TimeMs)
+	solid, posMap, err := anim.FrameWithPosMap(req.TimeMs)
 	if err != nil {
 		if ctx.Err() != nil {
 			return
@@ -189,6 +189,8 @@ func handleFrame(ctx context.Context, w http.ResponseWriter, req frameRequest, s
 	var binaryData []byte
 	meta, binaryData := appendMeshBinary(binaryData, merged)
 	frameStats := evaluator.SolidFrameStats(solid, merged)
-	header := evalResponseHeader{Mesh: meta, Stats: &frameStats}
+	// PosMap lets the frontend resolve face-click → source on animation frames,
+	// exactly as the static render does.
+	header := evalResponseHeader{Mesh: meta, Stats: &frameStats, PosMap: posMap}
 	writeBinaryResponse(w, header, binaryData)
 }

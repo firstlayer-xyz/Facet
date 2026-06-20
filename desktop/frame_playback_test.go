@@ -53,6 +53,27 @@ func TestFramePlaybackReturnsMeshEachTick(t *testing.T) {
 	}
 }
 
+// Each /frame response must carry a PosMap so face-click → source navigation
+// works during playback. The handler previously set only Mesh and Stats, leaving
+// the frontend with an empty map that silently swallowed every click on an
+// animated model. Regression for "clicking a face does nothing on animated
+// models".
+func TestFramePlaybackCarriesPosMap(t *testing.T) {
+	sources := map[string]string{"main.fct": cubeAnimSrc}
+	sessions := newSessionCache()
+	rec := httptest.NewRecorder()
+	handleFrame(context.Background(), rec, frameRequest{
+		Sources: sources, Key: "main.fct", Entry: "Main", TimeMs: 0,
+	}, sessions)
+	hdr := decodeFrameMesh(t, rec)
+	if len(hdr.Errors) > 0 {
+		t.Fatalf("unexpected errors: %v", hdr.Errors)
+	}
+	if len(hdr.PosMap) == 0 {
+		t.Fatal("frame response has empty PosMap — face-click would be dead during playback")
+	}
+}
+
 // The session is built inside the first /frame request and reused for later
 // frames. The cached evaluator must not stay bound to that first request's
 // context: once the request returns and its context is canceled, subsequent
