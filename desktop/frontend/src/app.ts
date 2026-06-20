@@ -35,6 +35,18 @@ function isEphemeralKind(kind: number): boolean {
   return kind === SOURCE_STDLIB || kind === SOURCE_CACHED;
 }
 
+/** Files excluded from face-click → source navigation (stdlib). Shared by the
+ *  static render and animation playback so face-click behaves identically. */
+function stdlibExcludeFiles(sources: Record<string, SourceEntry> | undefined): Set<string> {
+  const ex = new Set<string>();
+  if (sources) {
+    for (const [path, entry] of Object.entries(sources)) {
+      if (entry.kind === SOURCE_STDLIB) ex.add(path);
+    }
+  }
+  return ex;
+}
+
 // Dependencies injected via initApp()
 let viewer: Viewer;
 let editor: EditorHandle;
@@ -252,7 +264,10 @@ export function initApp(deps: AppDeps) {
     getSources: () => editor.getAllSources(),
     applyFrame: (binary, header) => {
       const decoded = header.mesh ? decodeBinaryMesh(binary, header.mesh) : null;
-      viewer.applyEvalResult(decoded, header.posMap ?? [], { autofit: false });
+      // excludeFiles is stable across frames (same program), so derive it from
+      // the current eval result rather than the per-frame header.
+      const excludeFiles = stdlibExcludeFiles(evalStore.current()?.sources);
+      viewer.applyEvalResult(decoded, header.posMap ?? [], { autofit: false, excludeFiles });
     },
     onStateChange: () => updateRunButtonForPlayback(),
   });
@@ -917,12 +932,7 @@ function handleHTTPResult(resp: EvalResponse) {
 
 function handleEvalHTTPResult(data: EvalResult, binary: ArrayBuffer) {
   setDebugBarVisible(false);
-  const excludeFiles = new Set<string>();
-  if (data.sources) {
-    for (const [path, entry] of Object.entries(data.sources)) {
-      if (entry.kind === SOURCE_STDLIB) excludeFiles.add(path);
-    }
-  }
+  const excludeFiles = stdlibExcludeFiles(data.sources);
   const decoded = data.mesh ? decodeBinaryMesh(binary, data.mesh) : null;
   viewer.applyEvalResult(decoded, data.posMap ?? [], { excludeFiles });
   if (data.stats && data.time !== undefined) showStats(data.stats, data.time);

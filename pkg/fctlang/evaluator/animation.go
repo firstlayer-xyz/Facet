@@ -44,7 +44,27 @@ func (r *EvalResult) StaticSolids(timeMs float64) ([]*manifold.Solid, error) {
 func (a *Animation) Frame(timeMs float64) (*manifold.Solid, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.frameLocked(timeMs)
+}
 
+// FrameWithPosMap evaluates the frame and also returns its source-position →
+// face-ID map, so interactive playback supports face-click → source navigation
+// exactly as the static render does. The PosMap is built from the live per-frame
+// solidTracks under the same lock, before the next Frame truncates them.
+func (a *Animation) FrameWithPosMap(timeMs float64) (*manifold.Solid, []PosEntry, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	solid, err := a.frameLocked(timeMs)
+	if err != nil {
+		return nil, nil, err
+	}
+	return solid, buildPosMap(*a.e.solidTracks), nil
+}
+
+// frameLocked evaluates the model at timeMs and returns its Solid. The caller
+// must hold a.mu; the per-frame solidTracks are left live for the caller to
+// read (e.g. FrameWithPosMap) until the next frame truncates them.
+func (a *Animation) frameLocked(timeMs float64) (*manifold.Solid, error) {
 	// Discard the previous frame's solidTracks so their C++ geometry is released.
 	// Invariant-setup tracks (accumulated before the Animation was built) are
 	// preserved; only per-frame tracks (indices >= baseTracks) are pruned.
