@@ -493,6 +493,25 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 			}
 			return optionalOf(fieldType)
 		}
+		// Library member access: `Lib.NAME`. Only `const` globals are
+		// importable across the library boundary. A library's globals are
+		// evaluated once and shared across all importers, so exposing a
+		// mutable `var` would be a shared-mutable-state hazard; a `const` is
+		// immutable by construction and safe to expose. Functions are reached
+		// through call expressions, not as field access.
+		if recvType.ft == typeLibrary {
+			if libEnv := c.libGlobalEnv(ex.Receiver); libEnv != nil {
+				if t, found := libEnv.lookup(ex.Field); found {
+					if libEnv.isConst(ex.Field) {
+						return t
+					}
+					c.addError(ex.Pos, fmt.Sprintf("cannot import %q from a library: only const globals are importable, not var", ex.Field))
+					return unknown()
+				}
+			}
+			c.addError(ex.Pos, fmt.Sprintf("library has no exported const %q", ex.Field))
+			return unknown()
+		}
 		if recvType.ft != typeStruct {
 			c.addError(ex.Pos, fmt.Sprintf("cannot access field %q on %s", ex.Field, recvType.displayName()))
 			return unknown()
@@ -582,6 +601,22 @@ func (c *checker) lookupFieldType(recvType typeInfo, fieldName string, pos parse
 
 
 // resolveStructName tries to determine the struct type name of an expression.
+// libGlobalEnv returns the cached global type-env of the library that the
+// receiver expression refers to (e.g. `L` in `L.GRID`), or nil if the
+// receiver is not a known library variable. Used to resolve and validate
+// library member access (`Lib.NAME`).
+func (c *checker) libGlobalEnv(recv parser.Expr) *typeEnv {
+	ident, ok := recv.(*parser.IdentExpr)
+	if !ok {
+		return nil
+	}
+	libPath, ok := c.libVarToPath[ident.Name]
+	if !ok {
+		return nil
+	}
+	return c.srcEnvs[c.prog.Resolve(libPath)]
+}
+
 func (c *checker) resolveStructName(expr parser.Expr, env *typeEnv) string {
 	switch ex := expr.(type) {
 	case *parser.IdentExpr:
