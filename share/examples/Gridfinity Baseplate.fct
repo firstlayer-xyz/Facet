@@ -1,5 +1,5 @@
 # Gridfinity Baseplate — a grid of cells that bins snap into
-var G = lib "github.com/firstlayer-xyz/gridfinity@v0.1.0"
+var G = lib "github.com/firstlayer-xyz/gridfinity@79dd43c"
 
 fn Main(
     width Number = 4 where [1:8:1],

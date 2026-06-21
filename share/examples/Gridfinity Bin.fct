@@ -1,5 +1,5 @@
 # Gridfinity Bin — parametric storage bin (compartments, lip, scoop, label)
-var G = lib "github.com/firstlayer-xyz/gridfinity@v0.1.0"
+var G = lib "github.com/firstlayer-xyz/gridfinity@79dd43c"
 
 fn Main(
     width Number = 2 where [1:6:1],
