@@ -123,8 +123,10 @@ export class FunctionPreview {
       this.panel.appendChild(header);
     }
 
-    // Params grid
-    const configurableParams = this.selected.params.filter(p => p.constraint);
+    // Params grid. A param gets a control when makeParamInput can render one:
+    // any Bool (a checkbox toggle, no `where` needed) or a constrained param
+    // (slider for a range, segmented buttons for an enum).
+    const configurableParams = this.selected.params.filter(p => p.type === 'Bool' || p.constraint);
     if (configurableParams.length > 0) {
       const grid = document.createElement('div');
       grid.className = 'fn-preview-params-grid';

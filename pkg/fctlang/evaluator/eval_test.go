@@ -239,6 +239,35 @@ fn MyBox(w Length = 20 where [10:100], h Length = 30 where [10:100]) Solid {
 	}
 }
 
+// An unconstrained Bool entry-point parameter (no `where` clause — the common
+// case, e.g. a Gridfinity bin's lip/magnets toggles) must still honor a JSON
+// override, so a checkbox in the desktop/web UI actually changes the geometry.
+// convertOverrides routes a constraint-less param through convertByType, which
+// accepts a bool. Regression for the parametric Bool controls.
+func TestEvalUnconstrainedBoolOverride(t *testing.T) {
+	src := `
+fn Main(big Bool = false) Solid {
+    var s = big ? 20 mm : 10 mm;
+    return Cube(s: Vec3{x: s, y: s, z: s});
+}
+`
+	prog := parseTestProg(t, src)
+
+	// Default (false) → 10 mm cube.
+	def, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval default: %v", err)
+	}
+	assertMeshSize(t, def, 10, 10, 10, 0.1)
+
+	// Override big=true (a JSON bool, exactly as the checkbox sends) → 20 mm cube.
+	on, err := evalMerged(context.Background(), prog, map[string]interface{}{"big": true})
+	if err != nil {
+		t.Fatalf("eval with bool override: %v", err)
+	}
+	assertMeshSize(t, on, 20, 20, 20, 0.1)
+}
+
 func TestEvalVariables(t *testing.T) {
 	src := `
 fn Main() Solid {
