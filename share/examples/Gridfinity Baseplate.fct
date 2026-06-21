@@ -1,0 +1,11 @@
+# Gridfinity Baseplate — a grid of cells that bins snap into
+var G = lib "github.com/firstlayer-xyz/gridfinity@79dd43c"
+
+fn Main(
+    width Number = 4 where [1:8:1],
+    depth Number = 4 where [1:8:1],
+    magnets Bool = false,
+    screws Bool = false,
+) Solid {
+    return G.Baseplate(x: width, y: depth, magnets: magnets, screws: screws)
+}

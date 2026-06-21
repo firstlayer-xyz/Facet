@@ -1,0 +1,26 @@
+# Gridfinity Bin — parametric storage bin (compartments, lip, scoop, label)
+var G = lib "github.com/firstlayer-xyz/gridfinity@79dd43c"
+
+fn Main(
+    width Number = 2 where [1:6:1],
+    depth Number = 1 where [1:6:1],
+    height Number = 3 where [1:12:1],
+    columns Number = 2 where [1:6:1],
+    rows Number = 1 where [1:6:1],
+    lip Bool = true,
+    magnets Bool = false,
+    scoop Bool = true,
+    label Bool = true,
+) Solid {
+    return G.Bin(
+        x: width,
+        y: depth,
+        z: height,
+        divX: columns,
+        divY: rows,
+        lip: lip,
+        magnets: magnets,
+        scoop: scoop,
+        label: label
+    )
+}
