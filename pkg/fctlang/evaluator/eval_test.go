@@ -2255,6 +2255,34 @@ fn Main() {
 	}
 }
 
+func TestEvalStructOptionalFieldDefaultsToNil(t *testing.T) {
+	// An optional-typed struct field omitted from the literal defaults to nil
+	// (None), mirroring optional function parameters — no explicit `= nil`.
+	src := `
+type Style {
+    tint Color?;
+    size Length = 4 mm;
+}
+
+fn Main() {
+    var a = Style {};
+    assert a.tint == nil, "omitted optional field is nil";
+    assert a.size == 4 mm, "non-optional default still applies";
+    var b = Style { tint: Color(hex: "#ff0000") };
+    assert b.tint != nil, "provided optional field is present";
+    return Cube(s: Vec3{x: a.size, y: a.size, z: a.size});
+}
+`
+	prog := parseTestProg(t, src)
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	if mesh == nil {
+		t.Fatal("expected non-nil mesh")
+	}
+}
+
 // --- Anonymous struct literals ---
 
 func TestEvalAnonymousStructBasic(t *testing.T) {
