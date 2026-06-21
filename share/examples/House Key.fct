@@ -5,13 +5,36 @@ var kw = [2, 5, 3, 4, 1]
 # Schlage SC1 bitting (pin depths 0-9)
 var sc = [3, 7, 2, 5, 1]
 
+# Keyway cross-sections: x = blade thickness, y = height from bitting edge to
+# spine. The blade is the side silhouette intersected with this profile swept
+# down its length. Warding traced from real keys by ervanalb/keygen.
+
+# KW1 (Kwikset) keyway: 2.00 mm thick, two grooves.
+var kw1_keyway = [
+    Vec2{x: 0 mm, y: 2.879 mm}, Vec2{x: 0 mm, y: 0 mm}, Vec2{x: 2 mm, y: 0 mm},
+    Vec2{x: 2 mm, y: 0.677 mm}, Vec2{x: 1.04 mm, y: 0.762 mm}, Vec2{x: 1.04 mm, y: 2.201 mm},
+    Vec2{x: 2 mm, y: 2.201 mm}, Vec2{x: 2 mm, y: 3.979 mm}, Vec2{x: 1.44 mm, y: 4.741 mm},
+    Vec2{x: 1.44 mm, y: 8.509 mm}, Vec2{x: 0.16 mm, y: 8.509 mm}, Vec2{x: 0.16 mm, y: 4.572 mm},
+    Vec2{x: 0.64 mm, y: 4.572 mm}, Vec2{x: 1.04 mm, y: 3.979 mm}, Vec2{x: 1.04 mm, y: 3.217 mm},
+    Vec2{x: 0.48 mm, y: 3.217 mm}
+]
+
+# SC1 (Schlage C) keyway: 1.91 mm thick, one S-shaped groove.
+var sc1_keyway = [
+    Vec2{x: 1.91 mm, y: 0 mm}, Vec2{x: 1.91 mm, y: 1.516 mm}, Vec2{x: 0.955 mm, y: 3.548 mm},
+    Vec2{x: 0.955 mm, y: 3.802 mm}, Vec2{x: 1.91 mm, y: 4.225 mm}, Vec2{x: 1.91 mm, y: 8.712 mm},
+    Vec2{x: 0.955 mm, y: 8.712 mm}, Vec2{x: 0.955 mm, y: 5.072 mm}, Vec2{x: 0 mm, y: 4.564 mm},
+    Vec2{x: 0 mm, y: 3.294 mm}, Vec2{x: 0.887 mm, y: 1.431 mm}, Vec2{x: 0.887 mm, y: 1.177 mm},
+    Vec2{x: 0 mm, y: 0.754 mm}, Vec2{x: 0 mm, y: 0 mm}
+]
+
 # ---------------------------------------------------------------------------
 # Key Struct
 # ---------------------------------------------------------------------------
 type Key {
     bitting      []Number
+    keyway       []Vec2
     blade_width  Length
-    blade_thick  Length
     blade_length Length
     first_pin    Length
     pin_spacing  Length
@@ -30,7 +53,7 @@ fn Kwikset(bitting []Number) Key {
     for i, d bitting {
         assert d >= 1 && d <= 7, "Kwikset pin depths must be 1-7"
     }
-    return Key{bitting: bitting, blade_width: 8.560 mm, blade_thick: 2.032 mm,
+    return Key{bitting: bitting, keyway: kw1_keyway, blade_width: 8.560 mm,
         blade_length: 28.575 mm, first_pin: 6.274 mm, pin_spacing: 3.810 mm,
         depth_inc: 0.584 mm, max_depth: 8.357 mm, min_cut: 1, bow_width: 20 mm,
         bow_height: 22 mm}
@@ -41,7 +64,7 @@ fn Schlage(bitting []Number) Key {
     for i, d bitting {
         assert d >= 0 && d <= 9, "Schlage pin depths must be 0-9"
     }
-    return Key{bitting: bitting, blade_width: 8.509 mm, blade_thick: 2.032 mm,
+    return Key{bitting: bitting, keyway: sc1_keyway, blade_width: 8.509 mm,
         blade_length: 26.988 mm, first_pin: 5.867 mm, pin_spacing: 3.962 mm,
         depth_inc: 0.381 mm, max_depth: 8.509 mm, min_cut: 0, bow_width: 20 mm,
         bow_height: 22 mm}
@@ -71,10 +94,17 @@ fn Key.CutAt(x Length) Length {
 # ---------------------------------------------------------------------------
 fn Key.Build() Solid {
     var bw = self.blade_width
-    var bt = self.blade_thick
     var bl = self.blade_length
     var tip_len = 4 mm
     var tip_start = bl - tip_len
+
+    # Keyway profile swept the length of the blade. Extruded along Z, then turned
+    # so the sweep runs along X (length), height stays on Y, thickness on Z.
+    var keyway = Polygon(points: self.keyway).Extrude(z: bl + 2 mm)
+        .Rotate(from: Vec3{z: 1 mm}, to: Vec3{x: 1 mm})
+        .AlignLeft(pos: -1 mm).AlignFront(pos: 0 mm).AlignBottom(pos: 0 mm)
+    var bt = keyway.Height()
+
     var n = 150
     var n_total = n + 2
     var profile_pts = for i [0:<n_total] {
@@ -88,7 +118,9 @@ fn Key.Build() Solid {
             yield Vec2{y: bw}
         }
     }
-    var blade = Polygon(points: profile_pts).Extrude(z: bt)
+    var silhouette = Polygon(points: profile_pts).Extrude(z: bt)
+    var blade = silhouette & keyway
+
     var bow_w = self.bow_width
     var bow_h = self.bow_height
     var bow_body = Square(x: bow_w, y: bow_h).Fillet(r: 3 mm)
