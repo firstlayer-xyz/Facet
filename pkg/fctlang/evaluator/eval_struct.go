@@ -163,6 +163,11 @@ func (e *evaluator) resolveFieldDefault(f *parser.StructField, locals map[string
 // zeroValue returns the zero value for a type name.
 // Primitive types return their zero. Struct types return a struct with all fields zeroed.
 func zeroValue(tn string) (value, error) {
+	// An optional type's zero value is None, so an omitted optional field
+	// defaults to nil — the same as an optional function parameter.
+	if strings.HasSuffix(tn, "?") {
+		return none(strings.TrimSuffix(tn, "?")), nil
+	}
 	switch tn {
 	case "Number":
 		return float64(0), nil
