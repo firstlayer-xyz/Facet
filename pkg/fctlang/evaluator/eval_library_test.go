@@ -218,3 +218,30 @@ fn Main() {
 		t.Errorf("error should mention library path: %v", err)
 	}
 }
+
+// The inline form L.Widget{...}.Boxed() (parser + evaluator together).
+func TestEvalLibraryStructLiteralInlineChain(t *testing.T) {
+	libDir := t.TempDir()
+	libPath := libDir + "/test/widget"
+	if err := os.MkdirAll(libPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	libSrc := `
+type Widget { w Length = 10 mm }
+fn Widget.Boxed() { return Cube(s: Vec3{x: self.w, y: self.w, z: self.w}); }
+`
+	if err := os.WriteFile(libPath+"/widget.fct", []byte(libSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+var L = lib "test/widget";
+fn Main() { return L.Widget{w: 20 mm}.Boxed(); }
+`
+	prog := parseTestProg(t, src)
+	resolveTestProg(t, prog, libDir, &loader.Options{})
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	assertMeshSize(t, mesh, 20, 20, 20, 0.1)
+}
