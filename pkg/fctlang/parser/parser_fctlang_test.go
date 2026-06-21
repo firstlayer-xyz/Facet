@@ -2312,6 +2312,18 @@ func TestParseReservedKeywords(t *testing.T) {
 	}
 }
 
+func TestParseLocalStructLiteralMethodChainStillWorks(t *testing.T) {
+	src := `fn Main() { return Color{r: 1, g: 0, b: 0, a: 1}.Hex(); }`
+	prog, err := parser.Parse(src, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
+	if _, ok := ret.Value.(*parser.MethodCallExpr); !ok {
+		t.Fatalf("expected MethodCallExpr, got %T", ret.Value)
+	}
+}
+
 func TestParseQualifiedStructLiteralMethodChain(t *testing.T) {
 	src := `fn Main() { return L.Widget{w: 1 mm}.Boxed(); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)
