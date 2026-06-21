@@ -2312,5 +2312,44 @@ func TestParseReservedKeywords(t *testing.T) {
 	}
 }
 
+func TestParseLocalStructLiteralMethodChainStillWorks(t *testing.T) {
+	src := `fn Main() { return Color{r: 1, g: 0, b: 0, a: 1}.Hex(); }`
+	prog, err := parser.Parse(src, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	ret := prog.Functions()[0].Body[0].(*parser.ReturnStmt)
+	if _, ok := ret.Value.(*parser.MethodCallExpr); !ok {
+		t.Fatalf("expected MethodCallExpr, got %T", ret.Value)
+	}
+}
+
+func TestParseQualifiedStructLiteralMethodChain(t *testing.T) {
+	src := `fn Main() { return L.Widget{w: 1 mm}.Boxed(); }`
+	prog, err := parser.Parse(src, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	fn := prog.Functions()[0]
+	ret, ok := fn.Body[0].(*parser.ReturnStmt)
+	if !ok {
+		t.Fatalf("expected ReturnStmt, got %T", fn.Body[0])
+	}
+	mc, ok := ret.Value.(*parser.MethodCallExpr)
+	if !ok {
+		t.Fatalf("expected MethodCallExpr, got %T", ret.Value)
+	}
+	if mc.Method != "Boxed" {
+		t.Fatalf("expected method Boxed, got %q", mc.Method)
+	}
+	sl, ok := mc.Receiver.(*parser.StructLitExpr)
+	if !ok {
+		t.Fatalf("expected StructLitExpr receiver, got %T", mc.Receiver)
+	}
+	if sl.TypeName != "L.Widget" {
+		t.Fatalf("expected TypeName L.Widget, got %q", sl.TypeName)
+	}
+}
+
 // ensure math import stays used
 var _ = math.Pi

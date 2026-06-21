@@ -244,12 +244,20 @@ func (p *parser) isUnitSuffix() bool {
 	return isAngle || isUnit
 }
 
-// parsePostfix → parsePrimary { "." IDENT "(" [ args ] ")" | "[" expr "]" | UNIT }
+// parsePostfix → parsePrimary { "." IDENT "(" [ args ] ")" | "[" expr "]" | UNIT | Lib.Type "{" ... "}" }
 func (p *parser) parsePostfix() (Expr, error) {
 	expr, err := p.parsePrimary()
 	if err != nil {
 		return nil, err
 	}
+	return p.parsePostfixOn(expr)
+}
+
+// parsePostfixOn applies postfix operators to an already-parsed expression,
+// looping until none apply. Pulling this out of parsePostfix lets a qualified
+// struct literal (`Lib.Type{...}`) feed back through the chain so a method or
+// field can follow it (`Lib.Type{...}.Solid()`).
+func (p *parser) parsePostfixOn(expr Expr) (Expr, error) {
 	for p.cur.Type == TokenDot || p.cur.Type == TokenQuestionDot || p.cur.Type == TokenLBracket || p.isUnitSuffix() {
 		// Unit suffix: 5 mm, (1/2) mm, Foo() deg
 		if p.isUnitSuffix() {
@@ -281,6 +289,7 @@ func (p *parser) parsePostfix() (Expr, error) {
 					return nil, err
 				}
 				var end Expr
+				var err error
 				if p.cur.Type != TokenRBracket {
 					end, err = p.parseExpr()
 					if err != nil {
@@ -348,16 +357,20 @@ func (p *parser) parsePostfix() (Expr, error) {
 		}
 		expr = &MethodCallExpr{Receiver: expr, Method: method.Text, Args: args, Pos: Pos{methodLine, methodCol}, Optional: optional}
 	}
-	// Check for qualified struct literal: T.Thread { field: val }
+	// Qualified struct literal: T.Thread { field: val }. After parsing it,
+	// continue the chain so `.method()` / `.field` can follow.
 	// Pos points at T (start of the whole expression) for diagnostics;
 	// TypeNamePos points at Thread (the field token after the dot) so
 	// references resolve there.
 	if p.cur.Type == TokenLBrace {
 		if fa, ok := expr.(*FieldAccessExpr); ok {
 			if id, ok := fa.Receiver.(*IdentExpr); ok {
-				qualName := id.Name + "." + fa.Field
 				if p.isStructLitStart() || p.isEmptyBrace() {
-					return p.parseStructLit(qualName, id.Pos, fa.Pos)
+					lit, err := p.parseStructLit(id.Name+"."+fa.Field, id.Pos, fa.Pos)
+					if err != nil {
+						return nil, err
+					}
+					return p.parsePostfixOn(lit)
 				}
 			}
 		}

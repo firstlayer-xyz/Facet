@@ -48,12 +48,16 @@ func (e *evaluator) evalStructLit(ex *parser.StructLitExpr, locals map[string]va
 		return &structVal{typeName: "", fields: fieldMap, lib: e.currentLib}, nil
 	}
 
+	// Default to the current library context; a qualified literal overrides
+	// this with the *owning* library so method dispatch resolves there.
+	structLib := e.currentLib
 	decl, ok := e.structDecls[ex.TypeName]
-	if !ok {
-		if dotIdx := strings.IndexByte(ex.TypeName, '.'); dotIdx >= 0 {
-			libName := ex.TypeName[:dotIdx]
-			bareName := ex.TypeName[dotIdx+1:]
-			if lv, lvOk := e.resolveLibraryVar(libName); lvOk {
+	if dotIdx := strings.IndexByte(ex.TypeName, '.'); dotIdx >= 0 {
+		libName := ex.TypeName[:dotIdx]
+		bareName := ex.TypeName[dotIdx+1:]
+		if lv, lvOk := e.resolveLibraryVar(libName); lvOk {
+			structLib = lv
+			if !ok {
 				for _, sd := range e.prog.Sources[e.prog.Resolve(lv.path)].StructDecls() {
 					if sd.Name == bareName {
 						decl = sd
@@ -143,7 +147,7 @@ func (e *evaluator) evalStructLit(ex *parser.StructLitExpr, locals map[string]va
 	if dotIdx := strings.IndexByte(ex.TypeName, '.'); dotIdx >= 0 {
 		bareName = ex.TypeName[dotIdx+1:]
 	}
-	return &structVal{typeName: bareName, fields: fieldMap, decl: decl, lib: e.currentLib}, nil
+	return &structVal{typeName: bareName, fields: fieldMap, decl: decl, lib: structLib}, nil
 }
 
 // resolveFieldDefault returns the default value for a struct field.
