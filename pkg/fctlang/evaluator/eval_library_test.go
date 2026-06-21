@@ -79,6 +79,41 @@ fn Main() {
 	assertMeshSize(t, mesh, 42, 10, 10, 0.1)
 }
 
+// A library const can be a struct, and sharing it across the import boundary is
+// safe: an importer that copies it to a local and mutates that copy must not
+// corrupt the library's shared value. (The const is evaluated once and shared in
+// libEvalCache; copy-on-bind is what keeps the mutation local.) This locks the
+// safety premise of the feature for the struct case the scalar test can't reach.
+func TestEvalLibraryConstStructCopySafe(t *testing.T) {
+	libDir := t.TempDir()
+	libPath := libDir + "/test/cstruct"
+	if err := os.MkdirAll(libPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	libSrc := `const V = Vec3{x: 1 mm, y: 2 mm, z: 3 mm};`
+	if err := os.WriteFile(libPath+"/cstruct.fct", []byte(libSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+var L = lib "test/cstruct";
+
+fn Main() {
+    var p = L.V;
+    p.x = 99 mm;                                   // mutate the local copy only
+    return Cube(s: Vec3{x: L.V.x, y: 10 mm, z: 10 mm});  // re-read the shared const
+}
+`
+	prog := parseTestProg(t, src)
+	resolveTestProg(t, prog, libDir, &loader.Options{})
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("eval error: %v", err)
+	}
+	// If the local copy aliased the shared const, width would be 99; copy-on-bind
+	// keeps L.V.x == 1 mm.
+	assertMeshSize(t, mesh, 1, 10, 10, 0.1)
+}
+
 func TestEvalLibraryInvalidPath(t *testing.T) {
 	tests := []struct {
 		name string
