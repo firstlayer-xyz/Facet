@@ -315,30 +315,106 @@ void facet_loft(ManifoldCrossSection** sketches, size_t n_sketches,
     }
   }
 
+  // Oversample each ring. Angular correspondence (below) samples at uniform
+  // angles, but a high-curvature feature (a rounded-rect corner) spans a small
+  // angular range, so at the raw vertex count it collapses to a chamfer.
+  // Sampling several times denser resolves corners back into smooth arcs while
+  // keeping every ring's count identical (so the correspondence stays exact).
+  for (auto& t : contourTargets) {
+    if (t == 0) continue;
+    size_t dense = t * 6;
+    if (dense > 1024) dense = 1024;
+    t = dense;
+  }
+
   // Total vertices per ring.
   size_t ringVerts = 0;
   for (auto t : contourTargets) ringVerts += t;
   if (ringVerts == 0) { wrap(new Manifold(), out); return; }
 
-  // Resample all sketches so each has maxContours contours, each with
-  // matching vertex count. Missing contours degenerate to centroid of
-  // the existing contours.
-  std::vector<std::vector<SimplePolygon>> resampled(n_sketches);
-  for (size_t s = 0; s < n_sketches; s++) {
-    resampled[s].resize(maxContours);
-    // Compute centroid of existing contours for degenerate fill.
-    vec2 centroid = {0, 0};
-    size_t totalPts = 0;
-    for (auto& poly : allPolys[s]) {
-      for (auto& v : poly) { centroid.x += v.x; centroid.y += v.y; totalPts++; }
+  // resampleContourAngular places targetN points where rays cast from the
+  // contour's centroid at uniform angles cross the contour. Unlike arc-length,
+  // this aligns the same angular feature across every ring (a corner at angle θ
+  // maps to the corner at θ on the next ring), so lofting profiles whose corners
+  // occupy different fractions of the perimeter — rounded rects of different
+  // radii, a tapered foot — no longer twists. Sampling follows the contour's
+  // winding (CCW vs CW hole). Returns false if the contour is not star-shaped
+  // from its centroid (a ray misses), so the caller can fall back to arc-length.
+  const double kPi = 3.14159265358979323846;
+  auto resampleContourAngular = [&](const SimplePolygon& contour,
+                                    size_t targetN) -> std::pair<SimplePolygon, bool> {
+    size_t n = contour.size();
+    if (n < 3 || targetN < 3) return {{}, false};
+    vec2 ctr = {0, 0};
+    double area2 = 0;
+    for (size_t e = 0; e < n; e++) {
+      const vec2& A = contour[e];
+      const vec2& B = contour[(e + 1) % n];
+      ctr.x += A.x;
+      ctr.y += A.y;
+      area2 += A.x * B.y - B.x * A.y;
     }
-    if (totalPts > 0) { centroid.x /= totalPts; centroid.y /= totalPts; }
-    for (size_t c = 0; c < maxContours; c++) {
-      if (c < allPolys[s].size()) {
-        resampled[s][c] = resampleContour(allPolys[s][c], contourTargets[c]);
+    ctr.x /= (double)n;
+    ctr.y /= (double)n;
+    double sign = (area2 < 0) ? -1.0 : 1.0;  // match the contour's winding
+    SimplePolygon result;
+    result.reserve(targetN);
+    for (size_t i = 0; i < targetN; i++) {
+      double theta = sign * 2.0 * kPi * (double)i / (double)targetN;
+      vec2 dir = {std::cos(theta), std::sin(theta)};
+      double bestT = -1.0;
+      vec2 bestP = {0, 0};
+      for (size_t e = 0; e < n; e++) {
+        const vec2& A = contour[e];
+        const vec2& B = contour[(e + 1) % n];
+        vec2 edge = {B.x - A.x, B.y - A.y};
+        vec2 w = {A.x - ctr.x, A.y - ctr.y};
+        double dxe = dir.x * edge.y - dir.y * edge.x;  // dir × edge
+        if (std::abs(dxe) < 1e-12) continue;           // ray parallel to edge
+        double tpar = (w.x * edge.y - w.y * edge.x) / dxe;  // (w × edge)/(dir × edge)
+        double spar = (w.x * dir.y - w.y * dir.x) / dxe;    // (w × dir)/(dir × edge)
+        if (tpar >= -1e-9 && spar >= -1e-9 && spar <= 1.0 + 1e-9 && tpar > bestT) {
+          bestT = tpar;
+          bestP = {ctr.x + tpar * dir.x, ctr.y + tpar * dir.y};
+        }
+      }
+      if (bestT < 0) return {{}, false};  // ray missed → not star-shaped
+      result.push_back(bestP);
+    }
+    return {result, true};
+  };
+
+  // Resample all sketches so each has maxContours contours with matching vertex
+  // counts. Per contour index, prefer angular correspondence (used for every
+  // ring or none, so the rings stay consistent); fall back to arc-length when
+  // any ring's contour is missing or not star-shaped.
+  std::vector<std::vector<SimplePolygon>> resampled(n_sketches);
+  for (size_t s = 0; s < n_sketches; s++) resampled[s].resize(maxContours);
+
+  for (size_t c = 0; c < maxContours; c++) {
+    size_t targetN = contourTargets[c];
+    std::vector<SimplePolygon> angular(n_sketches);
+    bool allAngular = true;
+    for (size_t s = 0; s < n_sketches; s++) {
+      if (c >= allPolys[s].size()) { allAngular = false; break; }
+      auto r = resampleContourAngular(allPolys[s][c], targetN);
+      if (!r.second) { allAngular = false; break; }
+      angular[s] = std::move(r.first);
+    }
+    for (size_t s = 0; s < n_sketches; s++) {
+      if (allAngular) {
+        resampled[s][c] = angular[s];
+      } else if (c < allPolys[s].size()) {
+        resampled[s][c] = resampleContour(allPolys[s][c], targetN);
       } else {
-        // Degenerate: fill missing contour with centroid points.
-        resampled[s][c] = SimplePolygon(contourTargets[c], centroid);
+        // Degenerate: fill a missing contour with the sketch's centroid.
+        vec2 centroid = {0, 0};
+        size_t totalPts = 0;
+        for (auto& poly : allPolys[s]) {
+          for (auto& v : poly) { centroid.x += v.x; centroid.y += v.y; totalPts++; }
+        }
+        if (totalPts > 0) { centroid.x /= totalPts; centroid.y /= totalPts; }
+        resampled[s][c] = SimplePolygon(targetN, centroid);
       }
     }
   }
