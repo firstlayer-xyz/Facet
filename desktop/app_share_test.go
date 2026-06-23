@@ -2,12 +2,12 @@ package main
 
 import (
 	"bytes"
-	"compress/flate"
 	"encoding/base64"
-	"io"
 	"math/rand"
 	"strings"
 	"testing"
+
+	"facet/pkg/sharelink"
 )
 
 func TestShareURLRoundtrip(t *testing.T) {
@@ -23,15 +23,13 @@ func TestShareURLRoundtrip(t *testing.T) {
 		t.Fatalf("url %q lacks prefix %q", url, prefix)
 	}
 
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(url, prefix))
+	got, err := sharelink.Decode(strings.TrimPrefix(url, prefix))
 	if err != nil {
-		t.Fatalf("base64url decode: %v", err)
+		t.Fatalf("sharelink.Decode: %v", err)
 	}
-	got, err := io.ReadAll(flate.NewReader(bytes.NewReader(raw)))
-	if err != nil {
-		t.Fatalf("inflate: %v", err)
-	}
-	if string(got) != source {
+	// This source has no comments and fits a QR, so it is not minified — the
+	// roundtrip must reproduce it byte-for-byte.
+	if got != source {
 		t.Errorf("roundtrip mismatch:\n got: %q\nwant: %q", got, source)
 	}
 }
@@ -54,9 +52,49 @@ func TestBuildShareLinkQR(t *testing.T) {
 	}
 }
 
+// A small function buried under a large, high-entropy comment block: the
+// un-minified encoding exceeds QR capacity, but minify-on-overflow strips the
+// comments so a QR can still be produced.
+func TestMinifyShrinksSourceToFitQR(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("fn Main() Solid {\n")
+	r := rand.New(rand.NewSource(7))
+	tok := make([]byte, 48)
+	for i := 0; i < 80; i++ {
+		r.Read(tok)
+		b.WriteString("    // ")
+		b.WriteString(base64.RawURLEncoding.EncodeToString(tok))
+		b.WriteString("\n")
+	}
+	b.WriteString("    return Cube(size: 10 mm)\n}\n")
+	source := b.String()
+
+	// Setup sanity: the un-minified encoding really is too big for a QR.
+	plain, err := encodeShare(source)
+	if err != nil {
+		t.Fatalf("encodeShare: %v", err)
+	}
+	if len(plain) <= maxQRBytes {
+		t.Fatalf("test setup: un-minified url is %d chars, need > %d to exercise minify", len(plain), maxQRBytes)
+	}
+
+	link, err := (&App{}).BuildShareLink(source)
+	if err != nil {
+		t.Fatalf("BuildShareLink: %v", err)
+	}
+	if link.QRPNG == "" {
+		t.Errorf("minify-on-overflow failed to fit the QR cap; url is %d chars", len(link.URL))
+	}
+	// The QR'd URL must be the minified one — strictly smaller than the plain one.
+	if len(link.URL) >= len(plain) {
+		t.Errorf("expected minified url (%d) shorter than plain url (%d)", len(link.URL), len(plain))
+	}
+}
+
 func TestBuildShareLinkSkipsQRWhenTooLong(t *testing.T) {
 	// Incompressible input past QR byte capacity but within the URL cap: the
-	// link must still be produced, with the QR explicitly absent.
+	// link must still be produced, with the QR explicitly absent. It does not
+	// parse, so minify-on-overflow cannot shrink it.
 	buf := make([]byte, 2400)
 	rand.New(rand.NewSource(2)).Read(buf)
 

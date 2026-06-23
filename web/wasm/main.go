@@ -22,6 +22,7 @@ import (
 	"facet/pkg/fctlang/loader"
 	"facet/pkg/fctlang/parser"
 	"facet/pkg/manifold"
+	"facet/pkg/sharelink"
 	"facet/share/examples"
 )
 
@@ -58,8 +59,29 @@ func main() {
 	js.Global().Set("facetExamples", js.FuncOf(jsExamples))
 	js.Global().Set("facetExample", js.FuncOf(jsExample))
 	js.Global().Set("facetExport", js.FuncOf(jsExport))
+	js.Global().Set("facetDecodeShare", js.FuncOf(jsDecodeShare))
 	// Block forever — WASM runtime must stay alive.
 	select {}
+}
+
+// jsDecodeShare decodes a share URL's #code= payload (base64url of
+// version ++ brotli(source)) back into source text. It is synchronous — pure
+// CPU with no I/O, unlike the parse/eval exports — so it returns the result
+// object directly rather than a Promise.
+//
+// JS signature: facetDecodeShare(payload: string) → {ok: bool, text?: string, error?: string}
+func jsDecodeShare(this js.Value, args []js.Value) interface{} {
+	if len(args) < 1 {
+		return jsErrorObj("facetDecodeShare: expected payload string argument")
+	}
+	text, err := sharelink.Decode(args[0].String())
+	if err != nil {
+		return jsErrorObj(err.Error())
+	}
+	result := js.Global().Get("Object").New()
+	result.Set("ok", true)
+	result.Set("text", text)
+	return result
 }
 
 // wasmLoaderOpts returns the loader Options used by every browser-side eval/
