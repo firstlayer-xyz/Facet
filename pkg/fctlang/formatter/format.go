@@ -12,7 +12,8 @@ import (
 
 // Options controls formatter behavior.
 type Options struct {
-	MaxLineLength int // 0 = use default (80)
+	MaxLineLength int  // 0 = use default (80)
+	Minify        bool // strip comments, indentation, blank lines, and wrapping
 }
 
 // Format formats a parsed Facet AST back to source code.
@@ -20,12 +21,24 @@ func Format(src *parser.Source) string {
 	return formatWithOptions(src, Options{})
 }
 
+// Minify formats a parsed Facet AST to the most compact equivalent source:
+// no indentation, no line wrapping, no comments, and no blank lines. The output
+// parses back to the same (comment-free) AST — newlines between statements are
+// kept so Go-style ASI inserts the same semicolons.
+func Minify(src *parser.Source) string {
+	return formatWithOptions(src, Options{Minify: true})
+}
+
 // formatWithOptions formats with explicit options.
 func formatWithOptions(src *parser.Source, opts Options) string {
-	if opts.MaxLineLength <= 0 {
+	indent := "    "
+	if opts.Minify {
+		indent = ""
+		opts.MaxLineLength = 1 << 30 // never wrap
+	} else if opts.MaxLineLength <= 0 {
 		opts.MaxLineLength = 80
 	}
-	f := &formatter{indent: "    ", opts: opts}
+	f := &formatter{indent: indent, opts: opts}
 	f.formatSource(src)
 	return f.buf.String()
 }
@@ -182,7 +195,7 @@ func (f *formatter) formatSource(src *parser.Source) {
 	prevEndLine := 0
 	for i, decl := range src.Declarations {
 		pos := decl.DeclPos()
-		if i > 0 {
+		if i > 0 && !f.opts.Minify {
 			_, prevIsVar := src.Declarations[i-1].(*parser.VarStmt)
 			_, curIsVar := decl.(*parser.VarStmt)
 			if prevIsVar && curIsVar {
@@ -235,6 +248,9 @@ func (f *formatter) formatSource(src *parser.Source) {
 }
 
 func (f *formatter) writeComments(comments []parser.Comment) {
+	if f.opts.Minify {
+		return
+	}
 	for _, c := range comments {
 		f.writeIndent()
 		if c.IsDoc {
@@ -260,6 +276,9 @@ func splitComments(comments []parser.Comment) (leading, trailing []parser.Commen
 // writeTrailingComment appends an inline comment at the end of the current line
 // (before the newline). Called after writing a statement but before writeln.
 func (f *formatter) writeTrailingComment(comments []parser.Comment) {
+	if f.opts.Minify {
+		return
+	}
 	for _, c := range comments {
 		if c.IsDoc {
 			f.write(" # " + c.Text)
@@ -441,7 +460,10 @@ func (f *formatter) formatStructDecl(sd *parser.StructDecl, trailing []parser.Co
 		f.writeComments(fLeading)
 		f.writeIndent()
 		f.write(field.Name)
-		padding := maxNameLen - len(field.Name) + 1
+		padding := 1
+		if !f.opts.Minify {
+			padding = maxNameLen - len(field.Name) + 1
+		}
 		for i := 0; i < padding; i++ {
 			f.write(" ")
 		}
@@ -465,7 +487,7 @@ func (f *formatter) formatStmts(stmts []parser.Stmt) {
 	prevEndLine := 0
 	for _, s := range stmts {
 		startLine := stmtRenderStartLine(s)
-		if prevEndLine > 0 && startLine > 0 && startLine > prevEndLine+1 {
+		if prevEndLine > 0 && startLine > 0 && startLine > prevEndLine+1 && !f.opts.Minify {
 			f.write("\n")
 		}
 		f.formatStmt(s)
@@ -1182,8 +1204,11 @@ func (f *formatter) formatArgs(args []parser.Expr, callLine int) {
 	}
 	// Force multi-line if args carry comments (can't inline a comment).
 	// Also force if the user explicitly wrote args on multiple lines.
-	userMultiLine := argsHaveComments(args) ||
-		(callLine > 0 && maxArgLine(args) > callLine)
+	// Minify keeps everything on one line: comments are dropped, so there is
+	// nothing that forces a break.
+	userMultiLine := !f.opts.Minify &&
+		(argsHaveComments(args) ||
+			(callLine > 0 && maxArgLine(args) > callLine))
 
 	if !userMultiLine {
 		// Measure single-line width

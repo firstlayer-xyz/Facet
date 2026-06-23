@@ -1,12 +1,14 @@
 package main
 
 import (
-	"bytes"
-	"compress/flate"
 	"encoding/base64"
 	"fmt"
 
 	qrcode "github.com/skip2/go-qrcode"
+
+	"facet/pkg/fctlang/formatter"
+	"facet/pkg/fctlang/parser"
+	"facet/pkg/sharelink"
 )
 
 // facetWebPreviewURL is the hosted browser preview (GitHub Pages, deployed
@@ -31,23 +33,44 @@ type ShareLink struct {
 	QRPNG string `json:"qrpng"`
 }
 
-// shareURL encodes source into the web preview's share-link form:
-// the #code= hash fragment carrying base64url(deflate-raw(utf8 source)).
-// The web preview decodes it on boot and renders the model.
-func shareURL(source string) (string, error) {
-	var buf bytes.Buffer
-	w, err := flate.NewWriter(&buf, flate.BestCompression)
+// encodeShare encodes source into the web preview's share-link form: the
+// preview URL with a #code= hash fragment carrying the sharelink payload. The
+// web preview decodes it on boot and renders the model.
+func encodeShare(source string) (string, error) {
+	payload, err := sharelink.Encode(source)
 	if err != nil {
 		return "", err
 	}
-	if _, err := w.Write([]byte(source)); err != nil {
-		return "", err
-	}
-	if err := w.Close(); err != nil {
-		return "", err
-	}
+	return facetWebPreviewURL + "#code=" + payload, nil
+}
 
-	url := facetWebPreviewURL + "#code=" + base64.RawURLEncoding.EncodeToString(buf.Bytes())
+// minifySource strips comments, indentation, and blank lines from source while
+// preserving its meaning. It is best-effort: source that does not parse (e.g.
+// while the user is mid-edit) is returned with ok=false, because reformatting
+// unparseable source could corrupt it — the caller then shares the original.
+func minifySource(source string) (minified string, ok bool) {
+	src, err := parser.Parse(source, "", parser.SourceUser)
+	if err != nil {
+		return "", false
+	}
+	return formatter.Minify(src), true
+}
+
+// shareURL encodes source into the web-preview share URL. When the source is
+// too large for a QR code, it is minified and re-encoded to try to fit; the
+// smaller encoding is kept. The result is hard-capped at the URL length limit.
+func shareURL(source string) (string, error) {
+	url, err := encodeShare(source)
+	if err != nil {
+		return "", err
+	}
+	if len(url) > maxQRBytes {
+		if minified, ok := minifySource(source); ok {
+			if murl, err := encodeShare(minified); err == nil && len(murl) < len(url) {
+				url = murl
+			}
+		}
+	}
 	if len(url) > maxShareURLLen {
 		return "", fmt.Errorf("source too large to share as a URL: %d characters (limit %d)", len(url), maxShareURLLen)
 	}

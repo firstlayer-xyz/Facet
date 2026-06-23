@@ -1,13 +1,19 @@
-// End-to-end test: a #code=<base64url(deflate-raw)> URL hash — as produced by
-// the desktop app's Share button — loads and renders on boot instead of the
-// default example, and a corrupt payload surfaces a visible decode error
-// rather than silently falling through to the default example.
+// End-to-end test: a #code=<base64url(version ++ brotli)> URL hash — the format
+// the desktop app's Share button produces (see pkg/sharelink) — loads and
+// renders on boot instead of the default example. A corrupt payload and a
+// decompression bomb each surface a visible decode error rather than silently
+// falling through to the default example. The wasm engine decodes via
+// facetDecodeShare; this test exercises that path with an independent brotli
+// implementation (Node's RFC-7932 zlib), confirming format compatibility.
 
 const zlib = require('zlib');
 const { chromium } = require('playwright');
 const { runTest } = require('./harness');
 
 const URL = process.env.FACET_WEB_URL || 'http://localhost:8000/';
+
+// Must match pkg/sharelink.FormatBrotli.
+const SHARE_FORMAT_BROTLI = 0x01;
 
 const SRC = `
 fn Main() Solid {
@@ -16,7 +22,10 @@ fn Main() Solid {
 `;
 
 function encodeShareHash(source) {
-  return zlib.deflateRawSync(Buffer.from(source, 'utf8')).toString('base64url');
+  const compressed = zlib.brotliCompressSync(Buffer.from(source, 'utf8'), {
+    params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 },
+  });
+  return Buffer.concat([Buffer.from([SHARE_FORMAT_BROTLI]), compressed]).toString('base64url');
 }
 
 runTest('share-hash', async ({ page }) => {
