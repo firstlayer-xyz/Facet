@@ -1,5 +1,5 @@
 # Gridfinity Bin — parametric storage bin (compartments, lip, scoop, label)
-var G = lib "github.com/firstlayer-xyz/gridfinity@79dd43c"
+var G = lib "github.com/firstlayer-xyz/gridfinity@6eea2a2"
 
 fn Main(
     width Number = 2 where [1:6:1],
@@ -9,10 +9,12 @@ fn Main(
     rows Number = 1 where [1:6:1],
     lip Bool = true,
     magnets Bool = false,
+    screws Bool = false,
     scoop Bool = true,
-    label Bool = true,
+    label String = "M3" where [],
+    emboss Length = -0.6 mm where [-2:2] mm,
 ) Solid {
-    return G.Bin(
+    return G.Bin{
         x: width,
         y: depth,
         z: height,
@@ -20,7 +22,9 @@ fn Main(
         divY: rows,
         lip: lip,
         magnets: magnets,
+        screws: screws,
         scoop: scoop,
-        label: label
-    )
+        text: label,
+        emboss: emboss,
+    }.Solid()
 }
