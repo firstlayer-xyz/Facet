@@ -93,19 +93,22 @@ type App struct {
 	libraries *LibraryManager
 	eval      *EvalService
 	mcp       *MCPService
+	http      *HTTPServer
 }
 
 // NewApp creates a new App application struct.
 func NewApp() *App {
 	assistant := NewAssistantService()
 	eval := NewEvalService()
+	mcp := NewMCPService(eval)
 	return &App{
 		config:    NewConfigStore(),
 		logs:      NewLogCapture(),
 		assistant: assistant,
 		libraries: NewLibraryManager(assistant),
 		eval:      eval,
-		mcp:       NewMCPService(eval),
+		mcp:       mcp,
+		http:      NewHTTPServer(eval, mcp),
 	}
 }
 
@@ -117,8 +120,8 @@ func NewApp() *App {
 // result, so returning before the server is ready (port 0, during startup) would
 // pin every eval to http://127.0.0.1:0 — "Load failed" for the whole session.
 func (a *App) GetHTTPAuth() HTTPAuth {
-	a.mcp.WaitReady(a.ctx)
-	return a.mcp.Auth()
+	a.http.WaitReady(a.ctx)
+	return a.http.Auth()
 }
 
 // buildVersion is the user-facing version string shown in the About page.
@@ -173,8 +176,8 @@ func (a *App) startup(ctx context.Context) {
 	a.assistant.RebuildSystemPrompt()
 	a.logs.Start(ctx)
 
-	// Start in-process HTTP server (MCP + eval endpoints)
-	if _, _, err := a.mcp.Start(ctx); err != nil {
+	// Start the in-process HTTP server (eval/frame/check + the assistant's mcp).
+	if err := a.http.Start(ctx); err != nil {
 		log.Printf("[http] failed to start: %v", err)
 	}
 

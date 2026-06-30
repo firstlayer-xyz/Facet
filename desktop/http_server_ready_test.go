@@ -11,11 +11,12 @@ import (
 // Otherwise the frontend reads port 0, caches it, and every eval dead-ends with
 // "Load failed" for the whole session.
 func TestWaitReadyBlocksUntilStart(t *testing.T) {
-	svc := NewMCPService(NewEvalService())
+	eval := NewEvalService()
+	srv := NewHTTPServer(eval, NewMCPService(eval))
 
 	returned := make(chan struct{})
 	go func() {
-		svc.WaitReady(context.Background())
+		srv.WaitReady(context.Background())
 		close(returned)
 	}()
 
@@ -28,11 +29,10 @@ func TestWaitReadyBlocksUntilStart(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	port, _, err := svc.Start(ctx)
-	if err != nil {
+	if err := srv.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if port == 0 {
+	if port, _ := srv.Endpoint(); port == 0 {
 		t.Fatal("Start bound port 0")
 	}
 
