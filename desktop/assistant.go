@@ -350,8 +350,21 @@ func (a *App) PickImageFile() (string, error) {
 // edits to read-only files and tab switches mid-run don't leak to the wrong
 // file. imagePaths is a list of image file paths to attach (Claude only).
 func (a *App) SendAssistantMessage(userMessage, editorCode, errors, activeTabPath string, activeTabReadOnly bool, imagePaths []string) error {
-	return a.assistant.Send(userMessage, editorCode, errors, activeTabPath, activeTabReadOnly, imagePaths, a.mcp)
+	return a.assistant.Send(userMessage, editorCode, errors, activeTabPath, activeTabReadOnly, imagePaths, a.assistantBridge())
 }
+
+// assistantBridge composes what AssistantService needs: the /mcp connection
+// details (port/token) from the HTTP server, and the editor-context latch from
+// the MCP service. Composed here so neither service depends on the other.
+type assistantBridge struct {
+	http *HTTPServer
+	mcp  *MCPService
+}
+
+func (a *App) assistantBridge() assistantBridge { return assistantBridge{http: a.http, mcp: a.mcp} }
+
+func (b assistantBridge) Endpoint() (int, string)                 { return b.http.Endpoint() }
+func (b assistantBridge) SetContext(code, path string, ro bool)   { b.mcp.SetContext(code, path, ro) }
 
 // CancelAssistant cancels any in-flight assistant request.
 func (a *App) CancelAssistant() {

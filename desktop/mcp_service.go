@@ -5,9 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
-	"net"
-	"net/http"
 	"net/url"
 	"sort"
 	"strings"
@@ -333,19 +330,12 @@ type HTTPAuth struct {
 	Token string `json:"token"`
 }
 
-// MCPService owns the localhost HTTP server that exposes the MCP endpoint
-// (/mcp), the eval endpoint (/eval), and the syntax-check endpoint
-// (/check). It also holds the bearer token shared across those endpoints
-// and the editor-code state that MCP tools read and write.
-//
-// Start wires the /eval route through an EvalService so this service is
-// decoupled from eval pipeline details — it only needs an http.Handler.
+// MCPService builds the MCP server and registers the assistant tools that read
+// and write the editor's code/context and answer questions/permissions. The
+// HTTPServer hosts the resulting handler at /mcp (alongside /eval and /check);
+// this service no longer owns the listener or the bearer token.
 type MCPService struct {
-	eval     *EvalService
 	state    *mcpState
-	port     int
-	token    string
-	ready    chan struct{} // closed once Start has bound the listener and set port/token
 	eventCtx context.Context
 
 	// In-flight ask_user_question calls. Each tool invocation parks a
@@ -402,14 +392,13 @@ type permissionDecision struct {
 	Remember bool
 }
 
-// NewMCPService creates a new MCP service. The HTTP server is not started
-// until Start is called. The MCPService registers itself as the run recorder
-// on the EvalService so every /eval response updates the lastRun slot.
+// NewMCPService creates a new MCP service. It registers itself as the run
+// recorder on the EvalService so every /eval response updates the lastRun slot
+// that the get_last_run tool reports. The MCP server itself is built lazily by
+// buildServer when the HTTPServer mounts /mcp.
 func NewMCPService(eval *EvalService) *MCPService {
 	m := &MCPService{
-		eval:        eval,
 		state:       newMCPState(),
-		ready:       make(chan struct{}),
 		questions:   make(map[string]chan questionAnswer),
 		screenshots: make(map[string]chan screenshotResult),
 		permissions: make(map[string]chan permissionDecision),
@@ -564,11 +553,6 @@ func (m *MCPService) ClearRememberedPermissions() {
 	m.rememberedMu.Unlock()
 }
 
-// Endpoint returns the port and bearer token for the localhost HTTP server.
-// Satisfies AssistantMCPBridge so AssistantService can wire MCP credentials
-// into Claude Code without a circular dependency.
-func (m *MCPService) Endpoint() (int, string) { return m.port, m.token }
-
 // SetContext latches the per-run editor state for MCP tools: current code,
 // the active tab's path, and whether that tab is read-only. Satisfies
 // AssistantMCPBridge.
@@ -582,22 +566,11 @@ func (m *MCPService) RecordRun(r runSummary) {
 	m.state.setLastRun(r)
 }
 
-// Auth returns the port + bearer token as an HTTPAuth payload for the
-// frontend.
-func (m *MCPService) Auth() HTTPAuth {
-	return HTTPAuth{Port: m.port, Token: m.token}
-}
-
-// Start creates the HTTP listener, registers the MCP tools and routes,
-// and launches the server goroutine. The server is shut down when ctx is
-// cancelled. Returns the port and token on success.
-func (m *MCPService) Start(ctx context.Context) (int, string, error) {
+// buildServer constructs the MCP server and registers all assistant tools
+// (which read/write the editor context and answer questions/permissions). The
+// HTTPServer mounts the returned server at /mcp and owns the listener + token.
+func (m *MCPService) buildServer(ctx context.Context) *mcp.Server {
 	m.eventCtx = ctx
-
-	token, err := generateToken()
-	if err != nil {
-		return 0, "", err
-	}
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "facet-gui",
@@ -1079,70 +1052,5 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 		}, nil, nil
 	})
 
-	// Start HTTP listener first so we know the port before wiring middleware.
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, "", fmt.Errorf("failed to start HTTP server: %w", err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-
-	handleMcp := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		return server
-	}, &mcp.StreamableHTTPOptions{Stateless: true})
-
-	frameSessions := newSessionCache()
-
-	mux := http.NewServeMux()
-	mux.Handle("/mcp", handleMcp)
-	mux.Handle("/eval", m.eval.HTTPHandler(frameSessions))
-	mux.HandleFunc("/check", handleCheck)
-	mux.HandleFunc("/frame", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var req frameRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		handleFrame(r.Context(), w, req, frameSessions)
-	})
-
-	log.Printf("[http] server listening on http://127.0.0.1:%d (mcp, eval)", port)
-
-	httpServer := &http.Server{Handler: authMiddleware(token, port, mux)}
-	go func() {
-		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Printf("[http] server error: %v", err)
-		}
-	}()
-
-	go func() {
-		<-ctx.Done()
-		shutCtx, shutCancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer shutCancel()
-		httpServer.Shutdown(shutCtx)
-	}()
-
-	m.port = port
-	m.token = token
-	close(m.ready) // unblock WaitReady: the listener is bound and port/token are set
-	return port, token, nil
-}
-
-// WaitReady blocks until Start has bound the HTTP listener (port/token are set),
-// or until ctx is cancelled, or a safety timeout elapses. GetHTTPAuth calls this
-// so a frontend eval issued during startup waits for the server instead of
-// reading port 0 — which the client would cache, dead-ending every eval with
-// "Load failed" for the whole session.
-func (m *MCPService) WaitReady(ctx context.Context) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	select {
-	case <-m.ready:
-	case <-ctx.Done():
-	case <-time.After(10 * time.Second):
-	}
+	return server
 }
