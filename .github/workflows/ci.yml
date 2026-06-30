@@ -135,6 +135,17 @@ jobs:
           CC: zig cc
           CXX: zig c++
 
+      # Runs ./desktop/... (HTTP server, eval/frame handlers, MCP startup) which
+      # `make test` does not — it covers ./pkg/... only. Placed after Build Facet
+      # so the embedded frontend/dist and wailsjs bindings already exist.
+      - name: Run desktop tests
+        run: make test-desktop-go
+        env:
+          GOROOT: ${{ github.workspace }}/.go-toolchain
+          PATH: ${{ github.workspace }}/.go-toolchain/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+          CC: zig cc
+          CXX: zig c++
+
       - name: Package binary + .deb
         run: |
           mkdir -p dist
