@@ -338,6 +338,21 @@ func (e *evaluator) trackIfSolid(pos parser.Pos, v value) {
 	}
 }
 
+// reidentifyBinding gives a single-part solid its own identity when it is bound
+// to a name. Transforms preserve a solid's original ID, so `b = a.Rotate(...)`
+// otherwise shares `a`'s identity and the two can't be selected or colored apart
+// in a combined model. Re-originaling at the binding makes distinct variables
+// distinct objects with no user annotation. Multi-part solids already carry
+// distinct per-part identities, so they pass through untouched — collapsing them
+// to one original would flatten their per-part colors. Non-solid values pass
+// through unchanged.
+func reidentifyBinding(v value) value {
+	if s, ok := v.(*manifold.Solid); ok && len(s.FaceMap) <= 1 {
+		return s.Reidentify()
+	}
+	return v
+}
+
 func (e *evaluator) recordStep(op string, pos parser.Pos, entries ...debugEntry) {
 	if !e.debug {
 		return

@@ -456,6 +456,7 @@ function setupBridge() {
 
   // ── 3D Operations ─────────────────────────────────────────────────────────
   globalThis._mf_hull            = id => (M._facet_hull(id, SOLID_RET), solidPtr());
+  globalThis._mf_as_original     = id => (M._facet_as_original(id, SOLID_RET), solidPtr());
   globalThis._mf_batch_hull      = idsArr => {
     const a = Array.from(idsArr);
     const ptr = copyU32ArrayToHeap(a);
