@@ -28,6 +28,25 @@ func (s *Solid) Hull() *Solid {
 	return r
 }
 
+// Reidentify returns the solid marked as a fresh original, so its faces carry a
+// new identity distinct from whatever it was derived from. Transforms (Move,
+// Rotate, …) preserve a solid's original ID, so two solids built from one
+// primitive — e.g. b := a.Move(...) — otherwise share an ID and cannot be
+// selected or colored apart. The evaluator calls this when a single-part solid
+// is bound to a variable, so distinct variables are distinct objects with no
+// user annotation. Like Hull, it collapses to a single ID and carries over any
+// input color, so it is only applied to single-part solids (a multi-part solid
+// already has distinct per-part identities, and collapsing would flatten them).
+func (s *Solid) Reidentify() *Solid {
+	requireSolids("Reidentify", s)
+	var ret C.FacetSolidRet
+	C.facet_as_original(s.ptr, &ret)
+	runtime.KeepAlive(s)
+	r := newSolid(ret)
+	seedHullFaceMap(r, int(ret.original_id), firstFaceColor(s))
+	return r
+}
+
 // BatchHull computes the convex hull of multiple solids together.
 // Returns an error if solids is empty.
 func BatchHull(solids []*Solid) (*Solid, error) {

@@ -15,6 +15,14 @@ func (s *Solid) Hull() *Solid {
 	return r
 }
 
+func (s *Solid) Reidentify() *Solid {
+	requireSolids("Reidentify", s)
+	id := js.Global().Call("_mf_as_original", s.id).Int()
+	r := newSolid(id)
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
+	return r
+}
+
 func BatchHull(solids []*Solid) (*Solid, error) {
 	if len(solids) == 0 {
 		return nil, fmt.Errorf("BatchHull: solids is empty")
