@@ -39,14 +39,15 @@ export interface EvalAuth {
 let cachedAuth: EvalAuth | null = null;
 
 export async function getEvalAuth(): Promise<EvalAuth> {
-  if (!cachedAuth) {
-    const auth = await GetHTTPAuth();
-    cachedAuth = {
-      origin: `http://127.0.0.1:${auth.port}`,
-      token: auth.token,
-    };
-  }
-  return cachedAuth;
+  if (cachedAuth) return cachedAuth;
+  // GetHTTPAuth blocks until the server's listener is bound, so this normally
+  // resolves to a live port. Only cache a live port: if the server failed to
+  // bind (port 0 after the backend's bounded wait), don't pin a dead origin for
+  // the whole session — the next eval re-asks and blocks again.
+  const auth = await GetHTTPAuth();
+  const resolved = { origin: `http://127.0.0.1:${auth.port}`, token: auth.token };
+  if (auth.port) cachedAuth = resolved;
+  return resolved;
 }
 
 export interface EvalRequest {

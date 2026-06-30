@@ -112,7 +112,12 @@ func NewApp() *App {
 // GetHTTPAuth returns the port + bearer token for the localhost HTTP server.
 // The frontend must include `Authorization: Bearer <token>` on every request
 // to /eval, /check, or /mcp.  Exposed via Wails binding.
+//
+// It blocks until the server has bound its listener. The frontend caches this
+// result, so returning before the server is ready (port 0, during startup) would
+// pin every eval to http://127.0.0.1:0 — "Load failed" for the whole session.
 func (a *App) GetHTTPAuth() HTTPAuth {
+	a.mcp.WaitReady(a.ctx)
 	return a.mcp.Auth()
 }
 

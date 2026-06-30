@@ -345,6 +345,7 @@ type MCPService struct {
 	state    *mcpState
 	port     int
 	token    string
+	ready    chan struct{} // closed once Start has bound the listener and set port/token
 	eventCtx context.Context
 
 	// In-flight ask_user_question calls. Each tool invocation parks a
@@ -408,6 +409,7 @@ func NewMCPService(eval *EvalService) *MCPService {
 	m := &MCPService{
 		eval:        eval,
 		state:       newMCPState(),
+		ready:       make(chan struct{}),
 		questions:   make(map[string]chan questionAnswer),
 		screenshots: make(map[string]chan screenshotResult),
 		permissions: make(map[string]chan permissionDecision),
@@ -1125,5 +1127,22 @@ func (m *MCPService) Start(ctx context.Context) (int, string, error) {
 
 	m.port = port
 	m.token = token
+	close(m.ready) // unblock WaitReady: the listener is bound and port/token are set
 	return port, token, nil
+}
+
+// WaitReady blocks until Start has bound the HTTP listener (port/token are set),
+// or until ctx is cancelled, or a safety timeout elapses. GetHTTPAuth calls this
+// so a frontend eval issued during startup waits for the server instead of
+// reading port 0 — which the client would cache, dead-ending every eval with
+// "Load failed" for the whole session.
+func (m *MCPService) WaitReady(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case <-m.ready:
+	case <-ctx.Done():
+	case <-time.After(10 * time.Second):
+	}
 }
