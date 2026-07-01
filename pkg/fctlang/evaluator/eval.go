@@ -338,19 +338,69 @@ func (e *evaluator) trackIfSolid(pos parser.Pos, v value) {
 	}
 }
 
-// reidentifyBinding gives a single-part solid its own identity when it is bound
-// to a name. Transforms preserve a solid's original ID, so `b = a.Rotate(...)`
-// otherwise shares `a`'s identity and the two can't be selected or colored apart
-// in a combined model. Re-originaling at the binding makes distinct variables
-// distinct objects with no user annotation. Multi-part solids already carry
-// distinct per-part identities, so they pass through untouched — collapsing them
-// to one original would flatten their per-part colors. Non-solid values pass
-// through unchanged.
-func reidentifyBinding(v value) value {
-	if s, ok := v.(*manifold.Solid); ok && len(s.FaceMap) <= 1 {
-		return s.Reidentify()
+// reidentifyBinding gives a solid its own identity when a binding REUSES an
+// existing named solid — that is, its faces are a subset of a solid already in
+// scope, as in `var a = proto; var b = proto.Rotate(...); var c = proto...`.
+// Transforms preserve original IDs, so those copies otherwise share proto's
+// identity and can't be selected or colored apart in a combined model.
+//
+// A fresh construction (a primitive, or a NewX() call producing new IDs) and an
+// assembly of already-distinct parts (`var part = a + b + c`) are left as-is:
+// they don't alias a scoped solid, so #264's most-specific-first posMap ordering
+// already resolves a click to the right sub-part. Only uniformly colored solids
+// are re-originaled — collapsing a multi-color solid would flatten its per-part
+// colors, so those pass through untouched. Non-solid values pass through, too.
+func reidentifyBinding(v value, scope map[string]value) value {
+	s, ok := v.(*manifold.Solid)
+	if !ok || !uniformlyColored(s) || !reusesScopedSolid(s, scope) {
+		return v
 	}
-	return v
+	return s.Reidentify()
+}
+
+// uniformlyColored reports whether every face of the solid shares one color and
+// alpha (including all-uncolored). Reidentify collapses to a single face, so it
+// is only lossless — safe to apply here — when the faces are uniform.
+func uniformlyColored(s *manifold.Solid) bool {
+	first := true
+	var shared manifold.FaceInfo
+	for _, fi := range s.FaceMap {
+		if first {
+			shared, first = fi, false
+			continue
+		}
+		if fi != shared {
+			return false
+		}
+	}
+	return true
+}
+
+// reusesScopedSolid reports whether s's face IDs are a subset of some solid
+// already bound in scope — i.e. s is a copy or transform of one named solid (an
+// alias to break), not a fresh construction or an assembly spanning several of
+// them (which is a superset of any single one).
+func reusesScopedSolid(s *manifold.Solid, scope map[string]value) bool {
+	if len(s.FaceMap) == 0 {
+		return false
+	}
+	for _, bound := range scope {
+		other, ok := unwrap(bound).(*manifold.Solid)
+		if !ok || len(s.FaceMap) > len(other.FaceMap) {
+			continue
+		}
+		subset := true
+		for id := range s.FaceMap {
+			if _, in := other.FaceMap[id]; !in {
+				subset = false
+				break
+			}
+		}
+		if subset {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *evaluator) recordStep(op string, pos parser.Pos, entries ...debugEntry) {
