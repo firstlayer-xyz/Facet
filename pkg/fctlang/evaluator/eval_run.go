@@ -235,7 +235,17 @@ func buildPosMap(tracks []SolidTrack) []PosEntry {
 		}
 		posMap = append(posMap, entry)
 	}
+	// Order most-specific-first: entries covering fewer face IDs come before
+	// broader ones. A face-click resolves to the first source entry that owns
+	// the clicked face, so the narrowest binding wins over whole-model entries
+	// (the entry point's return, an outer `a + b` union), which cover every
+	// face. Without this, clicking any face lands on the whole-model entry and
+	// highlights everything — defeating per-binding identity. Line/col break
+	// ties so the ordering stays deterministic.
 	sort.Slice(posMap, func(i, j int) bool {
+		if len(posMap[i].FaceIDs) != len(posMap[j].FaceIDs) {
+			return len(posMap[i].FaceIDs) < len(posMap[j].FaceIDs)
+		}
 		if posMap[i].File != posMap[j].File {
 			return posMap[i].File < posMap[j].File
 		}
