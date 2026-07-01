@@ -167,7 +167,7 @@ func (e *evaluator) bindVar(s *parser.VarStmt, locals map[string]value) error {
 			return e.wrapErr(s.Pos, cerr)
 		}
 	}
-	cv := reidentifyBinding(copyValue(v))
+	cv := reidentifyBinding(copyValue(v), locals)
 	if s.Constraint != nil {
 		cv = &constrainedVal{inner: cv, constraint: s.Constraint, name: s.Name}
 	}
@@ -197,13 +197,13 @@ func (e *evaluator) reassignVar(s *parser.AssignStmt, locals map[string]value) e
 	}
 	var newVal value
 	if cv, isCon := getConstraint(existing); isCon {
-		newVal = reidentifyBinding(copyValue(v))
+		newVal = reidentifyBinding(copyValue(v), locals)
 		if cerr := e.validateConstraint(cv.name, cv.constraint, newVal, locals); cerr != nil {
 			return e.wrapErr(s.Pos, cerr)
 		}
 		newVal = &constrainedVal{inner: newVal, constraint: cv.constraint, name: cv.name}
 	} else {
-		newVal = reidentifyBinding(copyValue(v))
+		newVal = reidentifyBinding(copyValue(v), locals)
 	}
 	locals[s.Name] = newVal
 	e.trackIfSolid(s.Pos, newVal)

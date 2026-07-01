@@ -1,6 +1,8 @@
 package evaluator
 
 import (
+	"context"
+	"slices"
 	"testing"
 
 	"facet/pkg/manifold"
@@ -50,5 +52,47 @@ func TestBindingDoesNotFlattenMultipart(t *testing.T) {
 }`)
 	if got := len(s.FaceMap); got != 2 {
 		t.Fatalf("multi-part binding: want 2 parts preserved, got %d", got)
+	}
+}
+
+// TestBindingReidentifiesReusedMultipartSolid pins the reuse case: one uncolored
+// 2-part `proto` is reused for a, b, c and assembled into `part`. Each reuse must
+// get its own identity so the three connectors are distinct objects, while the
+// assembly `part` is NOT collapsed — a click resolves to the specific connector,
+// not the whole part.
+func TestBindingReidentifiesReusedMultipartSolid(t *testing.T) {
+	prog := parseTestProg(t, `fn Main() Solid {
+    var proto = Cylinder(d: 20 mm, h: 40 mm) + Cylinder(d: 10 mm, h: 60 mm)
+    var a = proto
+    var b = proto.Rotate(z: 90 deg)
+    var c = proto.Rotate(x: 45 deg)
+    var part = a + b + c + Sphere(d: 8 mm)
+    return part
+}`)
+	result, err := Eval(context.Background(), prog, testMainKey, nil, "Main")
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	// a, b, c each collapse to their own id; proto's ids are reidentified away and
+	// don't reach the output. With the sphere that's 4 distinct objects.
+	if got := len(result.Solids[0].FaceMap); got != 4 {
+		t.Fatalf("proto reused for a/b/c + sphere: want 4 distinct objects, got %d", got)
+	}
+	// Every face's first posMap entry must own it alone, so a click lands on the
+	// specific connector's binding, not the whole `part` assembly.
+	for id := range result.Solids[0].FaceMap {
+		var first *PosEntry
+		for i := range result.PosMap {
+			if slices.Contains(result.PosMap[i].FaceIDs, id) {
+				first = &result.PosMap[i]
+				break
+			}
+		}
+		if first == nil {
+			t.Fatalf("face %d has no posMap entry", id)
+		}
+		if len(first.FaceIDs) != 1 {
+			t.Errorf("face %d: first posMap entry owns %d ids (want 1) — click would highlight more than this object", id, len(first.FaceIDs))
+		}
 	}
 }
