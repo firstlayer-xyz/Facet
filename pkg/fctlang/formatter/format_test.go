@@ -771,6 +771,24 @@ func TestFormatNegativeIndex(t *testing.T) {
 	}
 }
 
+// TestFormatPreservesPrecedenceParens guards two semantics-changing paren drops:
+// a non-associative comparison chain that would no longer parse, and a prefix
+// unary receiver that would reparse with a flipped meaning.
+func TestFormatPreservesPrecedenceParens(t *testing.T) {
+	cmp := formatString("fn Main() Bool {\n    var a = true\n    var b = false\n    var c = true\n    return (a == b) == c\n}\n")
+	if !strings.Contains(cmp, "(a == b) == c") {
+		t.Errorf("comparison chain lost its parens:\n%s", cmp)
+	}
+	if _, err := parser.Parse(cmp, "", parser.SourceUser); err != nil {
+		t.Errorf("formatted comparison no longer parses (%v):\n%s", err, cmp)
+	}
+
+	un := formatString("fn Number.Sq() Number {\n    return self * self\n}\nfn Main() Number {\n    var x = 3\n    return (-x).Sq()\n}\n")
+	if !strings.Contains(un, "(-x).Sq()") {
+		t.Errorf("unary receiver lost its parens (would flip sign on reparse):\n%s", un)
+	}
+}
+
 // annotate replaces newlines with ↵\n so diff lines are visible in test output.
 func annotate(s string) string {
 	return strings.ReplaceAll(s, "\n", "↵\n")
