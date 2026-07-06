@@ -11,6 +11,11 @@ import (
 // expr emits a SCAD expression as Facet, tagging bare numeric literals with the
 // requested kind (mm / deg / bare Number).
 func (e *Emitter) expr(x ast.Expr, k kind) string {
+	if x == nil {
+		// A caller passed a missing optional argument (a nil ast.Expr). Surface a
+		// located-less error rather than dereferencing nil in the switch below.
+		return e.errf(ast.Pos{}, "internal: nil expression")
+	}
 	if k == kAngle {
 		// OpenSCAD angles are plain numbers in degrees; Facet has a distinct
 		// Angle type. Bridge at the boundary: a literal becomes `<n> deg`, any
