@@ -372,9 +372,24 @@ function attachTypeHovers(el: HTMLElement, entries: DocEntry[]): void {
 }
 
 // Inline markdown: backticks, bold, italic, links
+
+// A URL may go into an href only if it is scheme-relative/relative or uses an
+// allowlisted scheme. Denylisting schemes (the old javascript:/data: check) is
+// unsafe: vbscript:, blob:, and whitespace-obfuscated variants like
+// "java\tscript:" — which browsers resolve by ignoring control characters —
+// slip through. Strip control and space characters before testing the scheme so
+// obfuscation can't hide it, then require http/https/mailto or no scheme at all.
 function isSafeURL(url: string): boolean {
-  const trimmed = url.trim().toLowerCase();
-  return !trimmed.startsWith('javascript:') && !trimmed.startsWith('data:');
+  const cleaned = url.replace(/[\u0000-\u0020]/g, '').toLowerCase();
+  if (/^(?:https?|mailto):/.test(cleaned)) return true;
+  return !/^[a-z][a-z0-9+.-]*:/.test(cleaned); // relative, absolute-path, or #anchor
+}
+
+// Escape a value for interpolation inside a double-quoted attribute. renderMarkdown
+// has already entity-escaped & < > in the surrounding text; the quote characters
+// it leaves untouched are what an attacker uses to break out of href="...".
+function escapeAttr(value: string): string {
+  return value.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function inlineMarkdown(text: string): string {
@@ -383,7 +398,7 @@ function inlineMarkdown(text: string): string {
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, url) =>
-      isSafeURL(url) ? `<a href="${url}">${label}</a>` : label);
+      isSafeURL(url) ? `<a href="${escapeAttr(url)}">${label}</a>` : label);
 }
 
 // Convert a label string to a CSS-safe element id fragment.
