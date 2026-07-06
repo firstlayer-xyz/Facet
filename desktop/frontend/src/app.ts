@@ -633,11 +633,14 @@ async function closeTab(file: string) {
     // still showing this file's model.
     const remaining = tabStore.order().filter(k => k !== file);
     if (remaining.length > 0) {
-      switchToTab(remaining[0]);
+      switchToTab(remaining[0], true);
     } else {
-      const scratch = await CreateScratchFile('Untitled');
-      addTab({ path: scratch, dirty: false, cursor: null, label: tabLabel(scratch), pickedEntry: null, entryOverrides: {} });
-      switchToTab(scratch);
+      // Unique name (like newFile) so the replacement scratch can never be the
+      // path we're closing — otherwise switchToTab would treat it as already
+      // active and disposeModel below would throw on the still-displayed model.
+      const scratch = await CreateScratchFile('Untitled-' + Date.now());
+      addTab({ path: scratch, dirty: false, cursor: null, label: 'Untitled', pickedEntry: null, entryOverrides: {} });
+      switchToTab(scratch, true);
     }
   }
   // Cancel any in-flight eval if the active tab is being closed
@@ -678,9 +681,12 @@ async function closeTab(file: string) {
   // notification needed here.
 }
 
-export function switchToTab(file: string) {
+// force bypasses the debug-mode guard: closing the active tab must switch the
+// editor off the model it's about to dispose, even mid-debug. The guard only
+// exists to block user-initiated navigation while stepping.
+export function switchToTab(file: string, force = false) {
   if (tabStore.isActive(file)) return;
-  if (debugMode && !debugStepping) return;
+  if (!force && debugMode && !debugStepping) return;
 
   // Save cursor position for the tab we're leaving
   const prev = tabStore.active();
