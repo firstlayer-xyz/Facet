@@ -8,8 +8,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// fakeMCPBridge is a minimal AssistantMCPBridge that reports a fixed endpoint,
+// used to drive the MCP-enabled launch path in tests.
+type fakeMCPBridge struct {
+	port  int
+	token string
+}
+
+func (f fakeMCPBridge) Endpoint() (int, string)                        { return f.port, f.token }
+func (f fakeMCPBridge) SetContext(code, activeTabPath string, ro bool) {}
 
 func TestBuildUserFrameTextOnly(t *testing.T) {
 	frame, err := buildUserFrame("hello world", nil)
@@ -245,4 +256,84 @@ func TestClaudeAssistantSurfacesOversizeLine(t *testing.T) {
 	// Must terminate with an error rather than hang forever on cmd.Wait.
 	waitForEvent(t, rec, "assistant:error")
 	ca.Close()
+}
+
+// TestClaudeMCPTokenNotInArgv guards the fix for the argv token leak: with MCP
+// enabled the auth token must never appear on the child's command line (which
+// any local process can read via ps//proc/cmdline). It must instead be passed
+// as a --mcp-config file path.
+func TestClaudeMCPTokenNotInArgv(t *testing.T) {
+	const token = "s3cr3t-mcp-token"
+	rec := &recordingEmitter{}
+	ca := newClaudeAssistant(rec, fakeMCPBridge{port: 12345, token: token}, fakeBinPath())
+
+	var capturedArgs []string
+	ca.newCmd = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		capturedArgs = args
+		full := append([]string{"-test.run=TestHelperProcess", "--", "claude", ""}, args...)
+		return exec.CommandContext(ctx, os.Args[0], full...)
+	}
+	if err := ca.Send(Turn{UserMessage: "hi"}, SessionConfig{MaxTurns: 2}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	waitForEvent(t, rec, "assistant:done")
+	ca.Close()
+
+	for _, a := range capturedArgs {
+		if strings.Contains(a, token) {
+			t.Fatalf("token leaked into argv: %q", a)
+		}
+	}
+	// The config must be handed over by path, not inlined as JSON.
+	cfgVal := argValue(capturedArgs, "--mcp-config")
+	if cfgVal == "" {
+		t.Fatalf("no --mcp-config in args: %v", capturedArgs)
+	}
+	if strings.HasPrefix(strings.TrimSpace(cfgVal), "{") {
+		t.Fatalf("--mcp-config is inline JSON, expected a file path: %q", cfgVal)
+	}
+}
+
+// TestWriteMCPConfig verifies the config file is private (0600) and carries the
+// token and endpoint, so passing it by path is a faithful substitute for the
+// inline config.
+func TestWriteMCPConfig(t *testing.T) {
+	const token = "unit-token-abc"
+	path, err := writeMCPConfig(45321, token)
+	if err != nil {
+		t.Fatalf("writeMCPConfig: %v", err)
+	}
+	defer os.Remove(path)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("config perms = %o, want 0600 (token must be owner-only)", perm)
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	var cfg struct {
+		MCPServers map[string]struct {
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatalf("config is not valid JSON: %v\n%s", err, b)
+	}
+	facet, ok := cfg.MCPServers["facet"]
+	if !ok {
+		t.Fatalf("no facet server in config: %s", b)
+	}
+	if got, want := facet.Headers["Authorization"], "Bearer "+token; got != want {
+		t.Errorf("Authorization = %q, want %q", got, want)
+	}
+	if !strings.Contains(facet.URL, "127.0.0.1:45321") {
+		t.Errorf("url = %q, want it to target 127.0.0.1:45321", facet.URL)
+	}
 }
