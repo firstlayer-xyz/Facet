@@ -24,7 +24,7 @@ func (s *Solid) Hull() *Solid {
 	runtime.KeepAlive(s)
 	r := newSolid(ret)
 	// Hull creates new geometry; carry over any color from the input.
-	seedHullFaceMap(r, int(ret.original_id), firstFaceColor(s))
+	seedHullFaceMap(r, int(ret.original_id), firstFaceInfo(s))
 	return r
 }
 
@@ -43,7 +43,7 @@ func (s *Solid) Reidentify() *Solid {
 	C.facet_as_original(s.ptr, &ret)
 	runtime.KeepAlive(s)
 	r := newSolid(ret)
-	seedHullFaceMap(r, int(ret.original_id), firstFaceColor(s))
+	seedHullFaceMap(r, int(ret.original_id), firstFaceInfo(s))
 	return r
 }
 
@@ -63,7 +63,7 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 	runtime.KeepAlive(solids)
 	r := newSolid(ret)
 	// Hull creates new geometry; carry over any color from inputs.
-	seedHullFaceMap(r, int(ret.original_id), firstFaceColor(solids...))
+	seedHullFaceMap(r, int(ret.original_id), firstFaceInfo(solids...))
 	return r, nil
 }
 
@@ -136,7 +136,7 @@ func (s *Solid) Offset(delta, edgeLen float64) *Solid {
 	runtime.KeepAlive(s)
 	r := newSolid(ret)
 	// Offset creates new geometry; carry over any color from the input.
-	seedHullFaceMap(r, int(ret.original_id), firstFaceColor(s))
+	seedHullFaceMap(r, int(ret.original_id), firstFaceInfo(s))
 	return r
 }
 

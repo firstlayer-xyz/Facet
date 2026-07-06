@@ -55,6 +55,26 @@ func TestBindingDoesNotFlattenMultipart(t *testing.T) {
 	}
 }
 
+// TestBindingReusePreservesAlpha guards that reidentifying a REUSED translucent
+// solid keeps its alpha. Collapsing to one face must carry color AND alpha —
+// dropping alpha silently turned the copy fully opaque in the viewport and 3MF
+// export.
+func TestBindingReusePreservesAlpha(t *testing.T) {
+	s := evalSolid(t, `fn Main() Solid {
+    var proto = Cube(s: 10 mm).Color(c: Color(r: 1, g: 0, b: 0, a: 0.5))
+    var a = proto.Move(x: 30 mm)
+    return a
+}`)
+	if got := len(s.FaceMap); got != 1 {
+		t.Fatalf("want 1 face group, got %d", got)
+	}
+	for id, fi := range s.FaceMap {
+		if fi.Color != 0xFF0000 || fi.Alpha != 128 {
+			t.Fatalf("reuse dropped translucency: face %d = color %#06x alpha %d, want 0xff0000 alpha 128", id, fi.Color, fi.Alpha)
+		}
+	}
+}
+
 // TestBindingReidentifiesReusedMultipartSolid pins the reuse case: one uncolored
 // 2-part `proto` is reused for a, b, c and assembled into `part`. Each reuse must
 // get its own identity so the three connectors are distinct objects, while the

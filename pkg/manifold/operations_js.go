@@ -11,7 +11,7 @@ func (s *Solid) Hull() *Solid {
 	requireSolids("Hull", s)
 	id := js.Global().Call("_mf_hull", s.id).Int()
 	r := newSolid(id)
-	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(s))
 	return r
 }
 
@@ -19,7 +19,7 @@ func (s *Solid) Reidentify() *Solid {
 	requireSolids("Reidentify", s)
 	id := js.Global().Call("_mf_as_original", s.id).Int()
 	r := newSolid(id)
-	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(s))
 	return r
 }
 
@@ -34,7 +34,7 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 	}
 	id := js.Global().Call("_mf_batch_hull", arr).Int()
 	r := newSolid(id)
-	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(solids...))
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(solids...))
 	return r, nil
 }
 
@@ -82,7 +82,7 @@ func (s *Solid) Offset(delta, edgeLen float64) *Solid {
 	requireSolids("Offset", s)
 	id := js.Global().Call("_mf_offset", s.id, delta, edgeLen).Int()
 	r := newSolid(id)
-	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceColor(s))
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(s))
 	return r
 }
 
