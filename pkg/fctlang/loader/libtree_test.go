@@ -27,10 +27,15 @@ func makeInMemoryRepo(t *testing.T, files map[string]string) (*git.Repository, p
 	if err != nil {
 		t.Fatalf("git.Init: %v", err)
 	}
+	return repo, writeCommit(t, store, "test", files)
+}
 
-	// Stage blobs and build a tree object manually so we don't need a
-	// working directory. go-git's high-level API requires a worktree for
-	// commit; the low-level plumbing here creates the same objects.
+// writeCommit stages the given files into a tree and writes a parentless commit
+// pointing at it, returning the commit SHA. Built from plumbing objects so no
+// working directory is needed. The message differentiates otherwise-identical
+// commits so distinct calls yield distinct SHAs.
+func writeCommit(t *testing.T, store *memory.Storage, message string, files map[string]string) plumbing.Hash {
+	t.Helper()
 	entries := []object.TreeEntry{}
 	for p, content := range files {
 		obj := store.NewEncodedObject()
@@ -59,11 +64,10 @@ func makeInMemoryRepo(t *testing.T, files map[string]string) (*git.Repository, p
 	// Group entries by directory by recursively building sub-trees.
 	rootHash := writeTree(t, store, "", entries)
 
-	// Build the commit pointing at the root tree.
 	commit := &object.Commit{
 		Author:    object.Signature{Name: "t", Email: "t@t", When: time.Now()},
 		Committer: object.Signature{Name: "t", Email: "t@t", When: time.Now()},
-		Message:   "test",
+		Message:   message,
 		TreeHash:  rootHash,
 	}
 	cobj := store.NewEncodedObject()
@@ -74,7 +78,7 @@ func makeInMemoryRepo(t *testing.T, files map[string]string) (*git.Repository, p
 	if err != nil {
 		t.Fatalf("store commit: %v", err)
 	}
-	return repo, sha
+	return sha
 }
 
 // writeTree takes a flat list of TreeEntry whose Name may be a nested path,

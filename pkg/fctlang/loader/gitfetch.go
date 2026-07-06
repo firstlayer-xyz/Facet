@@ -448,21 +448,27 @@ func openCachedRepo(c *Cache, path string) (*git.Repository, error) {
 	return git.Open(c.StorerFor(path), c.WorktreeFor(path))
 }
 
-// resolveRepoHead returns the commit SHA of the repo's HEAD. A bare clone
-// tracks the remote's default branch via HEAD, so this is what "latest" means
-// for a Fork operation.
+// resolveRepoHead returns the commit SHA of the remote's default branch —
+// what "latest" means for a Fork operation. HEAD symbolically names that
+// branch (e.g. refs/heads/main), but on a bare clone the local branch it points
+// at is frozen at clone time; resolveRef maps the branch name onto its fetched
+// remote-tracking ref so we get the up-to-date commit rather than the stale one.
 func resolveRepoHead(repo *git.Repository) (plumbing.Hash, error) {
-	ref, err := repo.Head()
-	if err == nil {
-		return ref.Hash(), nil
+	if head, err := repo.Reference(plumbing.HEAD, false); err == nil && head.Type() == plumbing.SymbolicReference {
+		if h, err := resolveRef(repo, head.Target().Short()); err == nil {
+			return *h, nil
+		}
 	}
-	// Bare clones created by go-git sometimes expose the default branch only
-	// under refs/remotes/origin/HEAD — try the DWIM candidates before giving up.
-	h, err2 := resolveRef(repo, "HEAD")
-	if err2 == nil {
+	// Detached HEAD, or a clone that never recorded a symbolic HEAD: fall back to
+	// resolving HEAD directly (covers refs/remotes/origin/HEAD and the local head).
+	if h, err := resolveRef(repo, "HEAD"); err == nil {
 		return *h, nil
 	}
-	return plumbing.ZeroHash, err
+	ref, err := repo.Head()
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return ref.Hash(), nil
 }
 
 func ensureLib(ctx context.Context, c *Cache, gitCacheDir string, lp *LibPath) (*LibTree, error) {
@@ -642,15 +648,17 @@ func fetchAll(ctx context.Context, repo *git.Repository) error {
 	return nil
 }
 
-// resolveRef applies git's DWIM rules for rev-parsing a simple ref on a bare
-// clone. Order matches gitrevisions(7): exact object (full or abbreviated
-// SHA), tag, branch.
+// resolveRef rev-parses a simple ref on a bare clone. A mutable branch is
+// resolved through its fetched remote-tracking ref (refs/remotes/origin/<ref>),
+// never refs/heads/<ref>: go-git freezes the local head branch at clone time
+// and fetchAll only advances the remote-tracking refs, so the local head is
+// permanently stale. Tags are tried first to match git's tag-over-branch
+// precedence; the bare ref is the fallthrough for an exact SHA.
 func resolveRef(repo *git.Repository, ref string) (*plumbing.Hash, error) {
 	candidates := []plumbing.Revision{
-		plumbing.Revision(ref),
 		plumbing.Revision("refs/tags/" + ref),
-		plumbing.Revision("refs/heads/" + ref),
 		plumbing.Revision("refs/remotes/origin/" + ref),
+		plumbing.Revision(ref),
 	}
 	var lastErr error
 	for _, c := range candidates {
