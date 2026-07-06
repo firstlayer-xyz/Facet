@@ -833,6 +833,17 @@ func opPrec(op string) int {
 	}
 }
 
+// isNonAssoc reports whether op does not chain: the parser accepts at most one
+// (a < b < c is a syntax error), so an equal-precedence operand on EITHER side
+// must be parenthesized when re-emitted, not just the right.
+func isNonAssoc(op string) bool {
+	switch op {
+	case "==", "!=", "<", ">", "<=", ">=":
+		return true
+	}
+	return false
+}
+
 func (f *formatter) formatExpr(e parser.Expr) {
 	f.formatExprPrec(e, 0)
 }
@@ -873,17 +884,33 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 	case *parser.IdentExpr:
 		f.write(e.Name)
 	case *parser.UnaryExpr:
+		// A postfix op (method/field/index receiver, which passes parentPrec 11)
+		// binds tighter than a prefix unary, so a unary receiver must keep its
+		// parens: (-a).M() reparses correctly, -a.M() reparses as -(a.M()).
+		needParens := parentPrec > 10
+		if needParens {
+			f.write("(")
+		}
 		f.write(e.Op)
-		f.formatExprPrec(e.Operand, 10) // unary binds tighter than anything
+		f.formatExprPrec(e.Operand, 10)
+		if needParens {
+			f.write(")")
+		}
 	case *parser.BinaryExpr:
 		prec := opPrec(e.Op)
 		needParens := prec < parentPrec
 		if needParens {
 			f.write("(")
 		}
-		f.formatExprPrec(e.Left, prec)
+		// Left-associative ops only need the right side forced at prec+1.
+		// Comparisons don't chain (a == b == c is a syntax error), so an
+		// equal-precedence comparison on the LEFT must be parenthesized too.
+		leftPrec := prec
+		if isNonAssoc(e.Op) {
+			leftPrec = prec + 1
+		}
+		f.formatExprPrec(e.Left, leftPrec)
 		f.write(" " + e.Op + " ")
-		// Right side needs parens if same precedence (left-associative)
 		f.formatExprPrec(e.Right, prec+1)
 		if needParens {
 			f.write(")")
