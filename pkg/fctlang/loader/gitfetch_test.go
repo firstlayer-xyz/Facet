@@ -2,7 +2,61 @@ package loader
 
 import (
 	"testing"
+
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/storage/memory"
 )
+
+// TestResolveRefPrefersFetchedHeadOverStaleLocalBranch reproduces the @main
+// staleness bug: on a bare clone go-git freezes refs/heads/<default> at clone
+// time while fetchAll advances only refs/remotes/origin/*. resolveRef must
+// resolve a branch through its fetched remote-tracking ref, and resolveRepoHead
+// (the Fork entry point) must agree — otherwise a pinned @main permanently
+// serves the clone-time commit.
+func TestResolveRefPrefersFetchedHeadOverStaleLocalBranch(t *testing.T) {
+	store := memory.NewStorage()
+	repo, err := git.Init(store, nil)
+	if err != nil {
+		t.Fatalf("git.Init: %v", err)
+	}
+	stale := writeCommit(t, store, "clone-time", map[string]string{"lib.fct": "// v1"})
+	fresh := writeCommit(t, store, "post-fetch", map[string]string{"lib.fct": "// v2"})
+	if stale == fresh {
+		t.Fatal("commits must differ for the test to distinguish them")
+	}
+
+	setHash := func(name string, target plumbing.Hash) {
+		ref := plumbing.NewHashReference(plumbing.ReferenceName(name), target)
+		if err := store.SetReference(ref); err != nil {
+			t.Fatalf("set %s: %v", name, err)
+		}
+	}
+	setHash("refs/heads/main", stale)          // frozen local branch
+	setHash("refs/remotes/origin/main", fresh) // fetched, up-to-date
+	head := plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.ReferenceName("refs/heads/main"))
+	if err := store.SetReference(head); err != nil {
+		t.Fatalf("set HEAD: %v", err)
+	}
+
+	got, err := resolveRef(repo, "main")
+	if err != nil {
+		t.Fatalf("resolveRef(main): %v", err)
+	}
+	if *got != fresh {
+		t.Errorf("resolveRef(main) = %s, want fresh remote head %s (served stale local branch %s)",
+			got.String()[:7], fresh.String()[:7], stale.String()[:7])
+	}
+
+	repoHead, err := resolveRepoHead(repo)
+	if err != nil {
+		t.Fatalf("resolveRepoHead: %v", err)
+	}
+	if repoHead != fresh {
+		t.Errorf("resolveRepoHead = %s, want fresh %s (served stale %s)",
+			repoHead.String()[:7], fresh.String()[:7], stale.String()[:7])
+	}
+}
 
 // TestLibPathToNamespace pins the canonical namespace shape that both
 // the checker (for `var T = lib "..."` typing) and the desktop /eval
