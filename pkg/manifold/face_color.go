@@ -25,26 +25,28 @@ func clamp01(v float64) float64 {
 	return v
 }
 
-// firstFaceColor returns the first explicitly-assigned color across the given
-// solids' face maps, or NoColor if none is colored. Hull/offset operations
-// produce new geometry and carry an input color onto the result.
-func firstFaceColor(solids ...*Solid) uint32 {
+// firstFaceInfo returns the color AND alpha of the first explicitly-colored face
+// across the given solids, or the uncolored FaceInfo if none is colored. Ops
+// that produce a single new original (Hull, Offset, Reidentify) carry an input
+// face onto the result; carrying only the color would silently turn a
+// translucent input opaque.
+func firstFaceInfo(solids ...*Solid) FaceInfo {
 	for _, s := range solids {
 		for _, v := range s.FaceMap {
 			if v.Color != NoColor {
-				return v.Color
+				return v
 			}
 		}
 	}
-	return NoColor
+	return FaceInfo{Color: NoColor}
 }
 
-// seedHullFaceMap assigns color to the result's single originalID face. A
-// negative originalID means the kernel did not mark an original, so the map is
-// left empty — uint32(negative) would wrap into a garbage key.
-func seedHullFaceMap(r *Solid, originalID int, color uint32) {
+// seedHullFaceMap assigns a single face (color and alpha) to the result's one
+// originalID. A negative originalID means the kernel did not mark an original,
+// so the map is left empty — uint32(negative) would wrap into a garbage key.
+func seedHullFaceMap(r *Solid, originalID int, face FaceInfo) {
 	if originalID >= 0 {
-		r.FaceMap = map[uint32]FaceInfo{uint32(originalID): {Color: color}}
+		r.FaceMap = map[uint32]FaceInfo{uint32(originalID): face}
 	}
 }
 

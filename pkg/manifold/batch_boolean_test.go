@@ -161,8 +161,8 @@ func TestBatchBooleanPreservesColorDifference(t *testing.T) {
 	if !relClose(got.Volume(), 1000-16) { // 10³ less two disjoint 2³ cavities
 		t.Errorf("difference volume = %v, want %v", got.Volume(), 1000-16)
 	}
-	if c := firstFaceColor(got); c != 0xFF0000 {
-		t.Errorf("difference dropped head color: firstFaceColor = 0x%06X, want 0xFF0000", c)
+	if c := firstFaceInfo(got).Color; c != 0xFF0000 {
+		t.Errorf("difference dropped head color: firstFaceInfo = 0x%06X, want 0xFF0000", c)
 	}
 }
 
