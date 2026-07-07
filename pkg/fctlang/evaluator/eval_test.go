@@ -756,6 +756,18 @@ func TestEvalPrismRegular(t *testing.T) {
 	if mesh == nil || len(mesh.Vertices) == 0 {
 		t.Fatal("expected non-empty mesh")
 	}
+	assertCornerAnchored(t, mesh)
+}
+
+// assertCornerAnchored checks a primitive honors the project-wide invariant that
+// its bounding-box min corner sits at the origin.
+func assertCornerAnchored(t *testing.T, m *manifold.Mesh) {
+	t.Helper()
+	minX, minY, minZ, _, _, _ := meshBounds(m)
+	const tol = 1e-3
+	if abs32(minX) > tol || abs32(minY) > tol || abs32(minZ) > tol {
+		t.Errorf("not corner-anchored: bbox min = (%.4f, %.4f, %.4f), want (0, 0, 0)", minX, minY, minZ)
+	}
 }
 
 func TestEvalPrismHexagonal(t *testing.T) {
@@ -768,6 +780,7 @@ func TestEvalPrismHexagonal(t *testing.T) {
 	if mesh == nil || len(mesh.Vertices) == 0 {
 		t.Fatal("expected non-empty mesh")
 	}
+	assertCornerAnchored(t, mesh)
 }
 
 func TestEvalPrismArbitraryTriangle(t *testing.T) {

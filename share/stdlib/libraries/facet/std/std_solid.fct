@@ -201,7 +201,11 @@ fn Prism(
     sides Number = 3,
 ) Solid {
     var r = s / (2 * Sin(a: 180 deg / sides))
-    return _cylinder(h, r, r, sides)
+    # Ngon is corner-anchored (bbox min at 0,0); _cylinder is not — it translates
+    # by the circumradius, but an n-gon's vertices don't touch the circumcircle's
+    # bounding box, so the doc's (0,0,0) origin only holds via Ngon's actual-bounds
+    # shift. Same polygon (vertices at i·360/sides, circumradius r), extruded 0→h.
+    return Ngon(n: sides, r: r).Extrude(z: h)
 }
 
 # Right prism with an arbitrary triangle cross-section. `a`, `b`, `c` are the
