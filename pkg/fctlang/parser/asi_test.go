@@ -443,9 +443,10 @@ fn Main() {
 `)
 }
 
-func TestASIParse_BareYieldASI(t *testing.T) {
-	// "yield\n" (no value) should become "yield ;" via ASI.
-	mustParse(t, "bare yield via ASI", `
+func TestASIParse_BareYieldRejectedViaASI(t *testing.T) {
+	// "yield\n" (no value) is ASI-terminated to "yield ;" — a bare yield, which
+	// is a parse error. The ASI path must not smuggle a valueless yield through.
+	mustParseError(t, "bare yield via ASI", `
 fn Main() {
     var arr = for i [0:3] {
         if i == 1 {

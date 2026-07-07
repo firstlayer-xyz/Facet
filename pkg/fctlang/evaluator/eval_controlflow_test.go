@@ -812,68 +812,16 @@ fn Main() {
 	}
 }
 
-func TestEvalBareYieldGuard(t *testing.T) {
-	// Bare yield; skips the iteration — only even numbers collected
-	// nums = [0, 2, 4], solids has 3 cubes, union them
+// TestEvalGuardedYieldFilters verifies the guarded-yield filter idiom (which
+// replaced the removed bare-`yield;` no-op) actually drops iterations: only even
+// indices contribute a cube, so the union spans x in [0, 13], not [0, 16].
+func TestEvalGuardedYieldFilters(t *testing.T) {
 	src := `
 fn Main() {
-    var solids = for i [0:5] {
-        if i % 2 != 0 {
-            yield;
-        }
-        yield Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm});
-    };
-    return fold acc, s solids {
-        yield acc + s;
-    };
-}
-`
-	prog := parseTestProg(t, src)
-	mesh, err := evalMerged(context.Background(), prog, nil)
-	if err != nil {
-		t.Fatalf("eval error: %v", err)
-	}
-	if mesh == nil {
-		t.Fatal("expected mesh, got nil")
-	}
-}
-
-func TestEvalBareYieldGuardFilter(t *testing.T) {
-	// Use bare yield to filter: collect only values > 2
-	// nums = [3, 4, 5], 3 cubes translated and unioned
-	src := `
-fn Main() {
-    var cubes = for i [1:5] {
-        if i <= 2 {
-            yield;
-        }
-        yield Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}).Move(v: Vec3 { x: i * 1 mm, y: 0 mm, z: 0 mm });
-    };
-    return fold acc, s cubes {
-        yield acc + s;
-    };
-}
-`
-	prog := parseTestProg(t, src)
-	mesh, err := evalMerged(context.Background(), prog, nil)
-	if err != nil {
-		t.Fatalf("eval error: %v", err)
-	}
-	if mesh == nil {
-		t.Fatal("expected mesh, got nil")
-	}
-}
-
-func TestEvalBareYieldInsideBlock(t *testing.T) {
-	// Bare yield inside a nested block (if body) within for-yield
-	// Odd numbers only: [1, 3, 5]
-	src := `
-fn Main() {
-    var cubes = for i [1:6] {
+    var cubes = for i [0:<6] {
         if i % 2 == 0 {
-            yield;
+            yield Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}).Move(v: Vec3{x: i * 3 mm, y: 0 mm, z: 0 mm})
         }
-        yield Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}).Move(v: Vec3 { x: i * 1 mm, y: 0 mm, z: 0 mm });
     };
     return fold acc, s cubes {
         yield acc + s;
@@ -887,6 +835,12 @@ fn Main() {
 	}
 	if mesh == nil {
 		t.Fatal("expected mesh, got nil")
+	}
+	// Even indices {0,2,4} → cubes at x {0,6,12}, so maxX = 13. If the guard did
+	// not filter (the old bare-yield bug), all six would appear and maxX = 16.
+	_, _, _, maxX, _, _ := meshBounds(mesh)
+	if maxX < 12.9 || maxX > 13.1 {
+		t.Fatalf("guarded filter kept the wrong cubes: maxX = %.3f, want ~13 (even indices only)", maxX)
 	}
 }
 

@@ -458,12 +458,11 @@ for i, val array { body }           # enumerate
 for i range, j range { body }       # cartesian product
 ```
 
-Collects values into an Array. Use `yield expr;` to produce a value. Use `yield;` (bare, no value) to skip an iteration — nothing is added to the result array for that iteration. This is the idiomatic way to filter:
+Collects values into an Array. Use `yield expr;` to produce a value. To filter, guard the `yield` with an `if` — an iteration that reaches no `yield` contributes nothing to the result. (A bare `yield;` with no value is a compile error.)
 
 ```
 var evens = for i [0:<10] {
-    if i % 2 != 0 { yield; }
-    yield i;
+    if i % 2 == 0 { yield i }
 };
 ```
 
