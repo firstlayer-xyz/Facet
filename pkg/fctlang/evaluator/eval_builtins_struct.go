@@ -51,12 +51,21 @@ func init() {
 				if err != nil {
 					return nil, err
 				}
-				maxIter = int(n)
+				// maxIter feeds the kernel's canonicalization loop, which does not
+				// clamp — bound it like every other count arg so a huge value can't
+				// hang the host.
+				maxIter, err = requireCount(name, 1, n, maxRefine)
+				if err != nil {
+					return nil, err
+				}
 			}
 			if len(args) > 1 {
 				n, err := requireNumber(name, 2, args[1])
 				if err != nil {
 					return nil, err
+				}
+				if n <= 0 {
+					return nil, fmt.Errorf("%s() tolerance must be positive, got %v", name, n)
 				}
 				tol = n
 			}
