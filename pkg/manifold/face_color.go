@@ -25,17 +25,26 @@ func clamp01(v float64) float64 {
 	return v
 }
 
-// firstFaceInfo returns the color AND alpha of the first explicitly-colored face
-// across the given solids, or the uncolored FaceInfo if none is colored. Ops
-// that produce a single new original (Hull, Offset, Reidentify) carry an input
-// face onto the result; carrying only the color would silently turn a
-// translucent input opaque.
+// firstFaceInfo returns the color AND alpha of a colored face across the given
+// solids, or the uncolored FaceInfo if none is colored. Ops that produce a
+// single new original (Hull, Offset, Reidentify) carry an input face onto the
+// result; carrying only the color would silently turn a translucent input
+// opaque. After a boolean the FaceMap holds several colored originalIDs, so the
+// colored face with the lowest ID is chosen — iterating the map directly would
+// pick a different color per run (Go randomizes map order), making an identical
+// program render/export in a different color each time.
 func firstFaceInfo(solids ...*Solid) FaceInfo {
 	for _, s := range solids {
-		for _, v := range s.FaceMap {
-			if v.Color != NoColor {
-				return v
+		best := FaceInfo{Color: NoColor}
+		var bestID uint32
+		found := false
+		for id, v := range s.FaceMap {
+			if v.Color != NoColor && (!found || id < bestID) {
+				best, bestID, found = v, id, true
 			}
+		}
+		if found {
+			return best
 		}
 	}
 	return FaceInfo{Color: NoColor}
