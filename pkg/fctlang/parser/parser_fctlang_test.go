@@ -167,6 +167,21 @@ func TestParseFloatLiteral(t *testing.T) {
 	}
 }
 
+func TestParseRatioFloatDenominator(t *testing.T) {
+	// `1/2.5` used to tokenize as `1/2` `.` `5` and fail to parse ("expected
+	// identifier, got 5"). The denominator's fractional part must be part of the
+	// number token.
+	for _, src := range []string{
+		`fn Main() Number { return 1/2.5 }`,
+		`fn Main() Number { return 1.5/2.5 }`,
+		`fn Main() Number { return 10/2.5 }`,
+	} {
+		if _, err := parser.Parse(src, "", parser.SourceUser); err != nil {
+			t.Fatalf("%q should parse, got: %v", src, err)
+		}
+	}
+}
+
 func TestParseRatioLiteral(t *testing.T) {
 	src := `fn Main() Solid { return Cube(s: {x: 1/2 mm, y: 3/4 mm, z: 7/8 mm}); }`
 	prog, err := parser.Parse(src, "", parser.SourceUser)

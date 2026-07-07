@@ -521,12 +521,22 @@ func (l *lexer) nextRaw() (Token, error) {
 				l.advance()
 			}
 		}
-		// Ratio: digits / digits (e.g. 1/2, 3/4)
+		// Ratio: digits / digits (e.g. 1/2, 3/4). The denominator may itself be a
+		// float (e.g. 1/2.5) — consume its fractional part like the numerator's
+		// above, so the whole ratio lands in one token and parseNumberText can
+		// ParseFloat each side. Without this, `1/2.5` tokenized as `1/2` `.` `5`.
 		if l.pos < len(l.src) && l.peek() == '/' &&
 			l.pos+1 < len(l.src) && unicode.IsDigit(l.src[l.pos+1]) {
 			l.advance() // consume '/'
 			for l.pos < len(l.src) && unicode.IsDigit(l.peek()) {
 				l.advance()
+			}
+			if l.pos < len(l.src) && l.peek() == '.' &&
+				l.pos+1 < len(l.src) && unicode.IsDigit(l.src[l.pos+1]) {
+				l.advance() // decimal point
+				for l.pos < len(l.src) && unicode.IsDigit(l.peek()) {
+					l.advance()
+				}
 			}
 		}
 		text := string(l.src[start:l.pos])
