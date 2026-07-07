@@ -583,6 +583,7 @@ export class Viewer {
       if (mesh.userData.originalTransparent === undefined) {
         mesh.userData.originalTransparent = mat.transparent;
         mesh.userData.originalOpacity = mat.opacity;
+        mesh.userData.originalDepthWrite = mat.depthWrite;
       }
 
       // Enable transparency for non-highlighted faces
@@ -625,9 +626,13 @@ export class Viewer {
         const mat = mesh.material as THREE.MeshStandardMaterial;
         mat.transparent = mesh.userData.originalTransparent;
         mat.opacity = mesh.userData.originalOpacity;
-        mat.depthWrite = true;
+        // Restore the saved depthWrite — a translucent material is created with
+        // depthWrite=false; hardcoding true here left it writing depth after the
+        // first highlight, so faces behind it vanished by draw order.
+        mat.depthWrite = mesh.userData.originalDepthWrite;
         delete mesh.userData.originalTransparent;
         delete mesh.userData.originalOpacity;
+        delete mesh.userData.originalDepthWrite;
       }
     }
   }
@@ -1051,8 +1056,22 @@ export class Viewer {
     // Restore original materials before disposing (drawing/wireframe mode may have swapped them)
     this._restoreDrawingMaterials();
     this._clearDrawingOverlays();
-    // Wireframe lines are children of meshes — they get removed with the mesh, just clear state
+    // Dispose wireframe GPU resources before dropping the references. The boundary
+    // LineSegments are children of the meshes, which _disposeObject3D does not
+    // traverse; and each mesh now holds the swapped-in wireframe material, so the
+    // saved original (vertex-colored) material would otherwise leak on every re-eval.
+    for (const lines of this.wireframeLineObjects) {
+      lines.geometry.dispose();
+      (lines.material as THREE.Material).dispose();
+    }
     this.wireframeLineObjects = [];
+    for (const mat of this.wireframeOriginalMaterials.values()) {
+      if (Array.isArray(mat)) {
+        mat.forEach((m) => m.dispose());
+      } else {
+        mat.dispose();
+      }
+    }
     this.wireframeOriginalMaterials.clear();
 
     for (const obj of this.userMeshes) {
