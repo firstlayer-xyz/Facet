@@ -341,6 +341,13 @@ func (t *LibTree) ExtractTo(destDir string) error {
 			}
 		}
 		dst := filepath.Join(tmpDir, filepath.FromSlash(subPath))
+		// A tree entry name can contain path separators (backslashes count on
+		// Windows) and dot segments the hidden-file skip above doesn't catch, so
+		// confirm the cleaned destination stays under tmpDir before writing —
+		// otherwise a crafted library could write arbitrary files on Fork.
+		if escapesRoot(tmpDir, dst) {
+			return fmt.Errorf("library entry %q escapes the fork directory", subPath)
+		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
