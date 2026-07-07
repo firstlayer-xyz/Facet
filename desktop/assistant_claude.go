@@ -118,6 +118,9 @@ type claudeProc struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	doneCh chan struct{} // closed when the reader goroutine returns
+	// mcpConfigPath is the 0600 temp file holding the MCP config (with the auth
+	// token). Removed once the process exits; empty when MCP is disabled.
+	mcpConfigPath string
 }
 
 // claudeAssistant owns one persistent claude stream-json process per
@@ -191,7 +194,26 @@ func (c *claudeAssistant) startLocked(sig launchSig) error {
 	if c.sessionID == "" {
 		c.sessionID = newUUID()
 	}
-	args := claudeArgs(sig, c.sessionID, resume)
+	// The MCP config carries the auth token, so it goes in a private temp file
+	// passed by path — never inline in argv, which is world-readable via ps.
+	var mcpConfigPath string
+	if sig.mcpPort > 0 && sig.mcpToken != "" {
+		path, err := writeMCPConfig(sig.mcpPort, sig.mcpToken)
+		if err != nil {
+			return fmt.Errorf("write mcp config: %w", err)
+		}
+		mcpConfigPath = path
+	}
+	// Until the reader goroutine takes ownership (below), any early return must
+	// clean up the temp file itself.
+	started := false
+	defer func() {
+		if !started && mcpConfigPath != "" {
+			_ = os.Remove(mcpConfigPath)
+		}
+	}()
+
+	args := claudeArgs(sig, c.sessionID, resume, mcpConfigPath)
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := c.newCmd(ctx, c.binPath, args...)
 	cmd.Dir = os.TempDir()
@@ -211,8 +233,9 @@ func (c *claudeAssistant) startLocked(sig launchSig) error {
 		cancel()
 		return fmt.Errorf("start claude: %w", err)
 	}
-	p := &claudeProc{cmd: cmd, stdin: stdin, ctx: ctx, cancel: cancel, doneCh: make(chan struct{})}
+	p := &claudeProc{cmd: cmd, stdin: stdin, ctx: ctx, cancel: cancel, doneCh: make(chan struct{}), mcpConfigPath: mcpConfigPath}
 	c.proc = p
+	started = true
 	c.sig = sig
 	log.Printf("[assistant] claude session %s started (resume=%v)", c.sessionID, resume)
 	go c.read(p, stdout)
@@ -254,6 +277,11 @@ func (c *claudeAssistant) read(p *claudeProc, stdout io.Reader) {
 		p.cancel()
 	}
 	err := p.cmd.Wait()
+	// The process has exited and no longer needs its MCP config, so drop the
+	// token-bearing temp file. Runs even if this proc was superseded below.
+	if p.mcpConfigPath != "" {
+		_ = os.Remove(p.mcpConfigPath)
+	}
 	c.mu.Lock()
 	if c.proc != p {
 		c.mu.Unlock()
@@ -478,7 +506,7 @@ func waitProc(p *claudeProc) {
 	<-p.doneCh
 }
 
-func claudeArgs(sig launchSig, sessionID string, resume bool) []string {
+func claudeArgs(sig launchSig, sessionID string, resume bool, mcpConfigPath string) []string {
 	args := []string{
 		"-p",
 		"--input-format", "stream-json",
@@ -487,8 +515,8 @@ func claudeArgs(sig launchSig, sessionID string, resume bool) []string {
 		"--system-prompt", sig.systemPrompt,
 		"--max-turns", fmt.Sprintf("%d", sig.maxTurns),
 	}
-	if sig.mcpPort > 0 && sig.mcpToken != "" {
-		args = append(args, mcpArgs(sig.mcpPort, sig.mcpToken)...)
+	if mcpConfigPath != "" {
+		args = append(args, mcpArgs(mcpConfigPath)...)
 	} else {
 		args = append(args, "--tools", "")
 	}
@@ -515,9 +543,11 @@ func claudeArgs(sig launchSig, sessionID string, resume bool) []string {
 // time out on user input".
 const mcpToolTimeoutMS int64 = 365 * 24 * 60 * 60 * 1000 // 1 year
 
-// mcpArgs builds the --mcp-config block pointing at our in-process MCP server.
-func mcpArgs(port int, token string) []string {
-	mcpCfg := map[string]any{
+// mcpConfig is the --mcp-config document pointing the CLI at our in-process MCP
+// server. Its Authorization header is the sole secret guarding /eval, /mcp and
+// /frame, so it must never reach the process argv (see writeMCPConfig).
+func mcpConfig(port int, token string) map[string]any {
+	return map[string]any{
 		"mcpServers": map[string]any{
 			"facet": map[string]any{
 				"type":    "http",
@@ -527,9 +557,39 @@ func mcpArgs(port int, token string) []string {
 			},
 		},
 	}
-	b, _ := json.Marshal(mcpCfg)
+}
+
+// writeMCPConfig serialises the MCP config to a private (0600) temp file and
+// returns its path. Passing the config by path keeps the auth token out of argv,
+// where any local process could read it via ps or /proc/<pid>/cmdline.
+func writeMCPConfig(port int, token string) (string, error) {
+	b, err := json.Marshal(mcpConfig(port, token))
+	if err != nil {
+		return "", err
+	}
+	// os.CreateTemp opens the file with 0600, so the token is owner-readable only.
+	f, err := os.CreateTemp("", "facet-mcp-*.json")
+	if err != nil {
+		return "", err
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		_ = os.Remove(f.Name())
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
+}
+
+// mcpArgs points the CLI at the MCP config file (built by writeMCPConfig) and
+// scopes it to our tools. The config is referenced by path so the token inside
+// it stays off the command line.
+func mcpArgs(configPath string) []string {
 	return []string{
-		"--mcp-config", string(b), "--strict-mcp-config",
+		"--mcp-config", configPath, "--strict-mcp-config",
 		"--allowedTools", "mcp__facet__*",
 		"--permission-prompt-tool", "mcp__facet__request_permission",
 	}
