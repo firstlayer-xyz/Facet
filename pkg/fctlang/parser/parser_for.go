@@ -158,15 +158,11 @@ func (p *parser) parseForStatement(comments []Comment) (Stmt, error) {
 		if err := p.next(); err != nil {
 			return nil, err
 		}
-		// Bare yield (no value) — skip this iteration. Accept ';' (explicit or
-		// ASI-inserted after a newline) or '}' (same-line "yield }").
+		// A bare `yield` contributes no element and does not skip the iteration,
+		// so it can only ever be a mistake. Reject it and point at the real filter
+		// idiom — guard the yield with an if.
 		if p.cur.Type == TokenSemicolon || p.cur.Type == TokenRBrace {
-			if p.cur.Type == TokenSemicolon {
-				if err := p.next(); err != nil {
-					return nil, err
-				}
-			}
-			return &YieldStmt{Value: nil, Pos: Pos{yieldLine, yieldCol}, Comments: comments}, nil
+			return nil, p.errorf("`yield` requires a value; to filter, guard it with an if (e.g. `if cond { yield x }`)")
 		}
 		expr, err := p.parseExpr()
 		if err != nil {

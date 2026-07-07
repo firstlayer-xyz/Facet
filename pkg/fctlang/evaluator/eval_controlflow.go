@@ -246,16 +246,13 @@ func (e *evaluator) evalForBody(body []parser.Stmt, locals map[string]value, res
 			return false, nil, fmt.Errorf("for-yield can only contribute via 'yield'; to exit the enclosing function, extract the loop into its own function and return from there")
 		},
 		onYield: func(s *parser.YieldStmt, locals map[string]value) error {
-			// Bare yield (no value) skips this iteration.
-			if s.Value == nil {
-				return nil
-			}
 			v, err := e.evalExpr(s.Value, locals)
 			if err != nil {
 				return err
 			}
-			// nil means the expression had no value (e.g. if-without-else
-			// where the branch contained explicit yields). Skip it.
+			// nil means the expression had no value (e.g. if-without-else where
+			// the branch contained explicit yields). Skip it. (A bare `yield`
+			// with no expression at all is a parse error, so s.Value is non-nil.)
 			if v != nil {
 				// Each per-clause range is capped (maxRangeSize), but a nested
 				// for-yield is a cartesian product, so the *accumulated* result

@@ -453,13 +453,14 @@ fn Main() {
 }
 ```
 
-Use `yield` to specify what value to collect from each iteration:
+Use `yield` to specify what value to collect from each iteration. To filter,
+guard the `yield` with an `if` — an iteration that reaches no `yield` contributes
+nothing to the result:
 
 ```
 # Filter: only even indices
 var evens = for i [0:<10] {
-    if i % 2 != 0 { yield; }  # skip odd
-    yield i;
+    if i % 2 == 0 { yield i }
 };
 ```
 
