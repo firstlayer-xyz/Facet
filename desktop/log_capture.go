@@ -112,17 +112,11 @@ func (lc *LogCapture) Start(ctx context.Context) {
 	}
 	tee := io.MultiWriter(writers...)
 
-	go func() {
-		scanner := bufio.NewScanner(r)
-		scanner.Buffer(make([]byte, 64*1024), 64*1024)
-		for scanner.Scan() {
-			line := scanner.Text() + "\n"
-			tee.Write([]byte(line))
-			if ctx != nil {
-				wailsRuntime.EventsEmit(ctx, "log:stderr", line)
-			}
+	go pumpStderr(r, tee, func(line string) {
+		if ctx != nil {
+			wailsRuntime.EventsEmit(ctx, "log:stderr", line)
 		}
-	}()
+	})
 
 	// Close the write end of the pipe when ctx is cancelled,
 	// which causes the scanner goroutine above to exit.
@@ -130,6 +124,29 @@ func (lc *LogCapture) Start(ctx context.Context) {
 		<-ctx.Done()
 		w.Close()
 	}()
+}
+
+// pumpStderr copies stderr from r to w line by line, calling emit per line for
+// the live log view. If the scanner stops on an error — most importantly a line
+// longer than the buffer cap — it keeps draining r to w with io.Copy instead of
+// returning. This matters because r is the pipe os.Stderr now points at: a dead
+// reader would let the pipe fill and wedge every subsequent log.Printf forever.
+// Per-line emit stops after such an error, which only degrades the (degenerate)
+// oversized-line case.
+func pumpStderr(r io.Reader, w io.Writer, emit func(string)) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 64*1024), 64*1024)
+	for scanner.Scan() {
+		line := scanner.Text() + "\n"
+		_, _ = w.Write([]byte(line))
+		if emit != nil {
+			emit(line)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		_, _ = io.WriteString(w, "[log-capture] stderr scanner stopped: "+err.Error()+"; draining without per-line events\n")
+		_, _ = io.Copy(w, r)
+	}
 }
 
 // Stderr returns the current stderr ring-buffer contents. Empty string if
