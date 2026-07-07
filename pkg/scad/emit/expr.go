@@ -146,6 +146,13 @@ func (e *Emitter) operand(x ast.Expr, k kind) string {
 // the parens `a + b` would mis-bind — `a + b / 2`, `-a + b` — silently resizing
 // or shifting the geometry.
 
+// paren wraps an already-emitted expression so a surrounding operator binds to
+// the whole value, not just its first/last term. Like half/negate it always
+// parenthesizes; the formatter drops the parens again for an atomic operand, so
+// only a compound one (a + b, a - b) keeps them — exactly where a splice such as
+// `factor * spacing` or `rmaj - rmin` would otherwise mis-group.
+func paren(expr string) string { return "(" + expr + ")" }
+
 // half renders `expr / 2`, used wherever a diameter expression is halved to a radius.
 func half(expr string) string { return "(" + expr + ") / 2" }
 

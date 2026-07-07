@@ -3,6 +3,6 @@ fn Main() Solid {
         r: (23 mm - 15 mm) / 2
     ).Move(
         x: (23 mm + 15 mm) / 2 - (23 mm - 15 mm) / 2,
-        y: -(23 mm - 15 mm) / 2
+        y: -((23 mm - 15 mm) / 2)
     ).Revolve().Move(x: 60 mm)
 }

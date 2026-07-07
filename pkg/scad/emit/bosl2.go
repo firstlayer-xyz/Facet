@@ -356,8 +356,8 @@ func (e *Emitter) bosl2GridCopies(n *ast.ModuleCall) string {
 	}
 	vi := e.freshLoopVar()
 	vj := e.freshLoopVar()
-	ox := "(" + vi + " - (" + nx + " - 1) / 2) * " + sx
-	oy := "(" + vj + " - (" + ny + " - 1) / 2) * " + sy
+	ox := "(" + vi + " - (" + nx + " - 1) / 2) * " + paren(sx)
+	oy := "(" + vj + " - (" + ny + " - 1) / 2) * " + paren(sy)
 	e.usesUnion = true // scad_union: a single-instance distributor is a one-element list
 	return "scad_union(arr: for " + vi + " [0:" + nx + " - 1], " + vj + " [0:" + ny +
 		" - 1] { yield " + child + ".Move(x: " + ox + ", y: " + oy + ") })"
@@ -430,9 +430,9 @@ func (e *Emitter) bosl2ArcCopies(n *ast.ModuleCall) string {
 		if eaVal, eaLit := literalNumber(ea); eaLit && (eaVal >= 360 || (saLit && eaVal <= saVal)) {
 			return e.errf(n.Pos(), "arc_copies: a full or wrapping arc (ea ≥ 360, or ea ≤ sa) is not supported; omit ea for a full circle")
 		}
-		ang = "(" + saStr + " + " + v + " * (" + eaStr + " - " + saStr + ") / (" + cnt + " - 1)) * 1 deg"
+		ang = "(" + saStr + " + " + v + " * (" + eaStr + " - " + paren(saStr) + ") / (" + cnt + " - 1)) * 1 deg"
 	} else {
-		ang = "(" + v + " * 360 / " + cnt + ") * 1 deg"
+		ang = "(" + v + " * 360 / " + paren(cnt) + ") * 1 deg"
 	}
 	e.usesUnion = true
 	return "scad_union(arr: for " + v + " [0:" + cnt + " - 1] { yield " + child +
@@ -459,7 +459,7 @@ func (e *Emitter) bosl2RotCopies(n *ast.ModuleCall) string {
 		inner = child + ".Move(x: " + e.expr(r, kLength) + ")"
 	}
 	v := e.freshLoopVar()
-	angle := "(" + v + " * 360 / " + cnt + ") * 1 deg"
+	angle := "(" + v + " * 360 / " + paren(cnt) + ") * 1 deg"
 	e.usesUnion = true
 	return "scad_union(arr: for " + v + " [0:" + cnt + " - 1] { yield " + inner + ".Rotate(z: " + angle + ") })"
 }
@@ -777,7 +777,7 @@ func (e *Emitter) bosl2LineCopies(n *ast.ModuleCall) string {
 	var parts []string
 	for _, c := range []struct{ axis, s string }{{"x", sx}, {"y", sy}, {"z", sz}} {
 		if c.s != "0 mm" {
-			parts = append(parts, c.axis+": "+factor+" * "+c.s)
+			parts = append(parts, c.axis+": "+factor+" * "+paren(c.s))
 		}
 	}
 	if len(parts) == 0 {
@@ -827,7 +827,7 @@ func (e *Emitter) bosl2LinearCopies(n *ast.ModuleCall, axis string) string {
 		return e.errf(n.Pos(), "%s has no child geometry", n.Name)
 	}
 	v := e.freshLoopVar()
-	offset := "(" + v + " - (" + count + " - 1) / 2) * " + spacing
+	offset := "(" + v + " - (" + count + " - 1) / 2) * " + paren(spacing)
 	e.usesUnion = true
 	return "scad_union(arr: for " + v + " [0:" + count + " - 1] { yield " + child + ".Move(" + axis + ": " + offset + ") })"
 }
@@ -1199,7 +1199,7 @@ func (e *Emitter) bosl2Torus(n *ast.ModuleCall) string {
 	// A circle of r_min, recentered onto (r_maj, 0) in the profile plane, then
 	// revolved about Z. Facet's Circle is corner-origin, so the move is
 	// (r_maj - r_min, -r_min).
-	return fmt.Sprintf("Circle(r: %s).Move(x: %s - %s, y: -%s).Revolve()", rmin, rmaj, rmin, rmin)
+	return fmt.Sprintf("Circle(r: %s).Move(x: %s - %s, y: %s).Revolve()", rmin, rmaj, paren(rmin), negate(rmin))
 }
 
 // torusRadii resolves a torus's (major, minor) radii from r_maj/r_min,
@@ -1213,7 +1213,7 @@ func (e *Emitter) torusRadii(n *ast.ModuleCall) (rmaj, rmin string, ok bool) {
 	or, ook := e.tubeRadius(n, "or", "od")
 	ir, iok := e.tubeRadius(n, "ir", "id")
 	if ook && iok {
-		return "(" + or + " + " + ir + ") / 2", "(" + or + " - " + ir + ") / 2", true
+		return "(" + or + " + " + ir + ") / 2", "(" + or + " - " + paren(ir) + ") / 2", true
 	}
 	return "", "", false
 }

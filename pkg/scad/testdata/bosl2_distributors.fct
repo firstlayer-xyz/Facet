@@ -12,7 +12,7 @@ fn Main() Solid {
     ) + scad_union(
         arr: for scad_i1 [0:3 - 1] {
             yield Cube(x: 16 mm, y: 16 mm, z: 2 mm).AlignCenter(pos: Vec3{})
-                .Move(z: (scad_i1 - (3 - 1) / 2) * 20 mm / (3 - 1))
+                .Move(z: (scad_i1 - (3 - 1) / 2) * (20 mm / (3 - 1)))
         }
     )
 }
