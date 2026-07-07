@@ -2,8 +2,24 @@ package evaluator
 
 import (
 	"context"
+	"math"
 	"testing"
 )
+
+// meshVolume returns the enclosed volume of a closed triangle mesh via the
+// divergence theorem (|Σ v0·(v1×v2)| / 6). Used to distinguish a solid from its
+// complement, which share a bounding box but not a volume.
+func meshVolume(vertices []float32, indices []uint32) float64 {
+	var v6 float64
+	for i := 0; i+2 < len(indices); i += 3 {
+		a, b, c := indices[i]*3, indices[i+1]*3, indices[i+2]*3
+		ax, ay, az := float64(vertices[a]), float64(vertices[a+1]), float64(vertices[a+2])
+		bx, by, bz := float64(vertices[b]), float64(vertices[b+1]), float64(vertices[b+2])
+		cx, cy, cz := float64(vertices[c]), float64(vertices[c+1]), float64(vertices[c+2])
+		v6 += ax*(by*cz-bz*cy) - ay*(bx*cz-bz*cx) + az*(bx*cy-by*cx)
+	}
+	return math.Abs(v6) / 6
+}
 
 // ── Mesh.* face-coordinate accessors ──────────────────────────────────────────
 // All tested against a 20mm cube → mesh: bounds (0,0,0)..(20,20,20).
@@ -337,6 +353,15 @@ fn Main() Solid {
 	}
 	if mesh == nil || len(mesh.Vertices) == 0 {
 		t.Fatal("expected non-empty LevelSet mesh")
+	}
+	// The SDF is negative-inside, so the solid is the radius-10 sphere:
+	// (4/3)π·1000 ≈ 4189 mm³. If the kernel fed the SDF in unnegated (the fixed
+	// bug), Manifold's positive-inside LevelSet would extract the complement —
+	// the 20³ bounds box minus a sphere cavity, ≈ 3811 mm³. Asserting the volume
+	// (not just non-emptiness) pins the sign.
+	vol := meshVolume(mesh.Vertices, mesh.Indices)
+	if vol < 4000 || vol > 4400 {
+		t.Fatalf("LevelSet sphere volume = %.1f mm³, want ~4189; a value near 3811 means the SDF sign is inverted", vol)
 	}
 }
 

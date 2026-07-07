@@ -46,9 +46,13 @@ void facet_level_set(int callback_id,
                      double max_x, double max_y, double max_z,
                      double edge_length, FacetSolidRet* out) try {
   Box bounds{vec3{min_x, min_y, min_z}, vec3{max_x, max_y, max_z}};
+  // Manifold's LevelSet treats POSITIVE values as inside, but Facet's SDF
+  // contract (facet_cxx.h, std_mesh.fct, the Go wrappers, and the evaluator's
+  // error default) is the standard negative-inside convention. Negate the
+  // bridge so a user's negative-inside SDF yields the solid, not its complement.
   wrap(new Manifold(Manifold::LevelSet(
       [callback_id](vec3 v) -> double {
-        return facetLevelSetBridge(callback_id, v.x, v.y, v.z);
+        return -facetLevelSetBridge(callback_id, v.x, v.y, v.z);
       },
       bounds, edge_length, 0.0, -1.0, false).AsOriginal()), out);
 } catch (...) { facetClear(out); }
