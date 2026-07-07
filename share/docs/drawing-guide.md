@@ -334,4 +334,4 @@ Each of these is covered in detail in the User's Guide under "2D to 3D".
 
 ## What's Next
 
-You can combine everything in this guide to build complex 2D profiles — plates with mounting holes, decorative outlines, gaskets, gear blanks, and more. For reusable parts, check out Facet's built-in libraries: threads, gears, fasteners, knurling, and others. Load a library with `var T = lib "facet/threads"` and start building on what others have made.
+You can combine everything in this guide to build complex 2D profiles — plates with mounting holes, decorative outlines, gaskets, gear blanks, and more. For reusable parts, check out the community [facetlibs](https://github.com/firstlayer-xyz/facetlibs) collection — threads, fasteners, knurling, shapes, and more. Import one with `var T = lib "github.com/firstlayer-xyz/facetlibs/threads@413a17e"` and start building on what others have made.
