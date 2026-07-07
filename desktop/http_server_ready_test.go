@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -14,10 +16,9 @@ func TestWaitReadyBlocksUntilStart(t *testing.T) {
 	eval := NewEvalService()
 	srv := NewHTTPServer(eval, NewMCPService(eval))
 
-	returned := make(chan struct{})
+	returned := make(chan error, 1)
 	go func() {
-		srv.WaitReady(context.Background())
-		close(returned)
+		returned <- srv.WaitReady(context.Background())
 	}()
 
 	// Before Start, WaitReady must stay blocked.
@@ -36,10 +37,34 @@ func TestWaitReadyBlocksUntilStart(t *testing.T) {
 		t.Fatal("Start bound port 0")
 	}
 
-	// After Start signals ready, the waiter must unblock promptly.
+	// After Start signals ready, the waiter must unblock promptly with nil (bound).
 	select {
-	case <-returned:
+	case err := <-returned:
+		if err != nil {
+			t.Fatalf("WaitReady returned an error after a successful Start: %v", err)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("WaitReady did not return after Start signalled ready")
+	}
+}
+
+// TestWaitReadyReturnsStartError verifies the failure path: when Start finishes
+// with an error, WaitReady returns it immediately (ready is already closed)
+// instead of hanging for 10s and then handing back zero auth. GetHTTPAuth turns
+// this into a surfaced error rather than pinning port 0 for the session.
+func TestWaitReadyReturnsStartError(t *testing.T) {
+	srv := &HTTPServer{ready: make(chan struct{})}
+	srv.startErr = fmt.Errorf("listen failed")
+	close(srv.ready)
+
+	done := make(chan error, 1)
+	go func() { done <- srv.WaitReady(context.Background()) }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "listen failed") {
+			t.Fatalf("WaitReady should return the start error, got: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("WaitReady hung on a failed Start instead of returning immediately")
 	}
 }
