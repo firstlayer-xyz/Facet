@@ -276,6 +276,13 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
+			// A negative radius flips the shrink-then-grow into grow-then-shrink
+			// (morphological closing — fills concave notches, leaves convex corners
+			// sharp), the opposite of the documented rounding. Zero is a meaningless
+			// no-op. Reject both.
+			if radius <= 0 {
+				return nil, fmt.Errorf("%s() radius must be positive, got %v mm", name, radius)
+			}
 			shrunk := r.Offset(-radius, 0)
 			result := shrunk.Offset(radius, 0)
 			return result, nil

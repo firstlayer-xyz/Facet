@@ -518,6 +518,13 @@ func parseHexColorRGBA(s string) (float64, float64, float64, float64, error) {
 		s = hex
 	}
 	s = strings.TrimPrefix(s, "#")
+	// Sscanf's %x matches a prefix and ignores trailing garbage ("abcdeg" parses
+	// as 3 channels with "g" dropped), so reject any non-hex rune up front.
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return 0, 0, 0, 0, fmt.Errorf("invalid hex color %q", s)
+		}
+	}
 	var r, g, b, a uint8
 	a = 255
 	switch len(s) {
