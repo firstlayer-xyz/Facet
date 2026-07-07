@@ -154,7 +154,14 @@ jobs:
           tar czf dist/Facet-linux-amd64.tar.gz -C dist Facet-linux-amd64
           rm dist/Facet-linux-amd64
 
-          VERSION="0.1.0"
+          # Derive the package version from the ref so a tagged release ships a
+          # .deb whose version matches the tag (dpkg/apt can then upgrade). Non-tag
+          # builds get a sortable dev version so their artifacts never collide.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0+${GITHUB_SHA::7}"
+          fi
           PKG="facet_${VERSION}_amd64"
           mkdir -p "$PKG/DEBIAN" "$PKG/usr/bin" "$PKG/usr/share/applications" "$PKG/usr/share/icons/hicolor/256x256/apps"
 
