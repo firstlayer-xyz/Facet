@@ -98,7 +98,7 @@ Hand-written recursive-descent parser.
 | Fillet a profile | `sketch.Fillet(r: 2 mm).Extrude(z: 5 mm)` |
 | Interactive slider | `r Length = 5 mm where [1:20] mm` (on fn params) |
 | Dropdown selector | `s String = "m3" where ["m3", "m4", "m5"]` (on fn params) |
-| Load a library | `var T = lib "facet/threads"` |
+| Load a library | `var T = lib "github.com/firstlayer-xyz/facetlibs/threads@413a17e"` |
 | Get bounding box | `solid.Bounds().Width()` |
 | Convex hull | `Hull(arr: [a, b, c])` |
 

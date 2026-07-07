@@ -26,7 +26,7 @@ Common patterns you can copy directly into your program:
 | Arc of points | `Arc(center: Vec2{x: 0 mm, y: 0 mm}, r: 10 mm, startAngle: 0 deg, endAngle: 90 deg, segments: 16)` |
 | Interactive slider | `r Length = 5 mm where [1:20] mm` (on fn params) |
 | Dropdown selector | `s String = "m3" where ["m3", "m4", "m5"]` (on fn params) |
-| Load a library | `var T = lib "facet/threads"` |
+| Load a library | `var T = lib "github.com/firstlayer-xyz/facetlibs/threads@413a17e"` |
 | Get bounding box | `solid.Bounds().Width()` or `solid.Width()` |
 | Convex hull | `Hull(arr: [a, b, c])` |
 
@@ -700,27 +700,37 @@ Libraries package reusable functions into separate namespaces.
 
 ### Loading a Library
 
+A library is a Git repository, imported by its URL and pinned to a specific
+commit so a model always resolves to the same code:
+
 ```
-var T = lib "facet/threads";
+var T = lib "github.com/firstlayer-xyz/facetlibs/threads@413a17e";
 
 fn Main() {
     return T.Thread(size: "m8").Outside(length: 20 mm)
 }
 ```
 
-### Built-in Libraries
+### Community Libraries
 
-Facet ships with several built-in libraries:
+Facet does not bundle any libraries beyond the standard library — they live in
+Git and are fetched on demand. The
+[facetlibs](https://github.com/firstlayer-xyz/facetlibs) repository collects
+general-purpose modules; import any of them by its path under
+`github.com/firstlayer-xyz/facetlibs/`, pinned to a commit:
 
-| Library | Description |
-|---------|-------------|
-| `facet/threads` | ISO metric, UTS, and NPT thread generation |
-| `facet/gears` | Involute spur gear profiles |
-| `facet/knurling` | Diamond crosshatch grip texture |
-| `facet/fasteners` | Hex bolts, socket head cap screws, nuts, standoffs |
-| `facet/lego` | Lego-compatible brick geometry |
-| `facet/keys` | House key models (Kwikset, Schlage) |
-| `facet/fuzzy` | Fuzzy skin texture via vertex displacement |
+| Module | Description |
+|--------|-------------|
+| `threads` | ISO metric, UTS/SAE, and NPT pipe thread generation |
+| `fasteners` | Hex bolts, socket-head cap screws, nuts, standoffs |
+| `knurling` | Diamond crosshatch grip texture |
+| `polyhedra` | Platonic and Archimedean solids |
+| `shapes` | Rounded rects, pills, ovals, rings, and other 2D shapes |
+| `curves` | Bézier and Catmull-Rom curve sampling |
+| `turtle` | Turtle-graphics path construction |
+
+For example, `var F = lib "github.com/firstlayer-xyz/facetlibs/fasteners@413a17e"`.
+Pin to a commit rather than a branch so your model keeps rendering the same way.
 
 ### Remote Libraries
 
