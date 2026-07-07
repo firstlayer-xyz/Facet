@@ -75,11 +75,12 @@ func authMiddleware(token string, port int, next http.Handler) http.Handler {
 // handler, so a change or failure in the assistant tooling cannot stop /eval
 // from binding.
 type HTTPServer struct {
-	eval  *EvalService
-	mcp   *MCPService
-	port  int
-	token string
-	ready chan struct{} // closed once Start has bound the listener and set port/token
+	eval     *EvalService
+	mcp      *MCPService
+	port     int
+	token    string
+	startErr error         // non-nil if Start failed; read after <-ready
+	ready    chan struct{} // closed once Start has finished — success or failure
 }
 
 // NewHTTPServer wires the core eval service and the MCP handler provider. The
@@ -93,6 +94,16 @@ func NewHTTPServer(eval *EvalService, mcp *MCPService) *HTTPServer {
 // closes ready before returning, so WaitReady unblocks as soon as the listener
 // is accepting connections.
 func (s *HTTPServer) Start(ctx context.Context) error {
+	// bind owns all the fallible work; Start closes ready on every path (success
+	// or failure) with startErr recorded, so WaitReady never hangs on a failed
+	// Start and callers can tell "not ready yet" from "will never be ready".
+	err := s.bind(ctx)
+	s.startErr = err
+	close(s.ready)
+	return err
+}
+
+func (s *HTTPServer) bind(ctx context.Context) error {
 	token, err := generateToken()
 	if err != nil {
 		return err
@@ -146,7 +157,6 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 
 	s.port = port
 	s.token = token
-	close(s.ready)
 	return nil
 }
 
@@ -157,18 +167,22 @@ func (s *HTTPServer) Auth() HTTPAuth { return HTTPAuth{Port: s.port, Token: s.to
 // Satisfies the connection half of AssistantMCPBridge.
 func (s *HTTPServer) Endpoint() (int, string) { return s.port, s.token }
 
-// WaitReady blocks until Start has bound the listener (port/token set), or until
-// ctx is cancelled, or a 10s safety timeout elapses. GetHTTPAuth calls this so a
-// frontend eval issued during startup waits for the server instead of reading
-// port 0 — which the client caches, dead-ending every eval with "Load failed"
-// for the whole session.
-func (s *HTTPServer) WaitReady(ctx context.Context) {
+// WaitReady blocks until Start has finished, returning nil once the listener is
+// bound or the error Start failed with. It returns ctx.Err() if ctx is cancelled
+// and a timeout error if Start neither succeeds nor fails within 10s (it should
+// always resolve quickly, since Start closes ready on every path). GetHTTPAuth
+// calls this so a frontend eval issued during startup waits for the server and
+// surfaces a real error instead of silently reading port 0.
+func (s *HTTPServer) WaitReady(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	select {
 	case <-s.ready:
+		return s.startErr
 	case <-ctx.Done():
+		return ctx.Err()
 	case <-time.After(10 * time.Second):
+		return fmt.Errorf("HTTP server did not become ready within 10s")
 	}
 }

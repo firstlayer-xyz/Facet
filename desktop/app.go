@@ -116,12 +116,15 @@ func NewApp() *App {
 // The frontend must include `Authorization: Bearer <token>` on every request
 // to /eval, /check, or /mcp.  Exposed via Wails binding.
 //
-// It blocks until the server has bound its listener. The frontend caches this
-// result, so returning before the server is ready (port 0, during startup) would
-// pin every eval to http://127.0.0.1:0 — "Load failed" for the whole session.
-func (a *App) GetHTTPAuth() HTTPAuth {
-	a.http.WaitReady(a.ctx)
-	return a.http.Auth()
+// It blocks until the server has bound its listener. If the server failed to
+// start, it returns that error (surfaced to the frontend as a rejected promise)
+// rather than fabricating zero auth — which the client would pin, dead-ending
+// every eval with an unexplained "Load failed" for the whole session.
+func (a *App) GetHTTPAuth() (HTTPAuth, error) {
+	if err := a.http.WaitReady(a.ctx); err != nil {
+		return HTTPAuth{}, fmt.Errorf("HTTP server unavailable: %w", err)
+	}
+	return a.http.Auth(), nil
 }
 
 // buildVersion is the user-facing version string shown in the About page.
