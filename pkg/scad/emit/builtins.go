@@ -309,12 +309,16 @@ func (e *Emitter) cylinder(n *ast.ModuleCall) string {
 
 	var ctor string
 	switch {
-	case hasR1 || hasR2:
+	case hasR1 || hasR2 || hasD1 || hasD2:
+		// A frustum: at least one end is given explicitly. Resolve both ends to
+		// radius expressions with OpenSCAD's defaulting so a bare r1 (or d1, or a
+		// mixed r1+d2) neither dereferences a nil operand nor misrenders — a
+		// missing end falls back to the shared base radius, not to nothing.
+		base := e.cylinderBaseRadius(n)
 		ctor = fmt.Sprintf("Frustum(r1: %s, r2: %s, h: %s%s)",
-			e.expr(r1, kLength), e.expr(r2, kLength), hStr, segs)
-	case hasD1 || hasD2:
-		ctor = fmt.Sprintf("Frustum(d1: %s, d2: %s, h: %s%s)",
-			e.expr(d1, kLength), e.expr(d2, kLength), hStr, segs)
+			e.cylinderEndRadius(r1, hasR1, d1, hasD1, base),
+			e.cylinderEndRadius(r2, hasR2, d2, hasD2, base),
+			hStr, segs)
 	default:
 		// Per OpenSCAD, positional args are (h, r): h is idx 0, r is idx 1.
 		key, val, found := e.radiusArg(n, 1)
@@ -336,6 +340,33 @@ func (e *Emitter) cylinder(n *ast.ModuleCall) string {
 		return ctor + ".AlignCenter(pos: Vec3{})"
 	}
 	return ctor + ".AlignCenter(pos: Vec3{}, z: false)"
+}
+
+// cylinderBaseRadius is the fallback radius for a cylinder end that sets neither
+// its own r<n> nor d<n>. Per OpenSCAD it is d/2 if d is given, else r, else 1.
+func (e *Emitter) cylinderBaseRadius(n *ast.ModuleCall) string {
+	if d, ok := arg(n, "d", -1); ok {
+		return half(e.expr(d, kLength))
+	}
+	if r, ok := arg(n, "r", -1); ok {
+		return e.expr(r, kLength)
+	}
+	return "1 mm"
+}
+
+// cylinderEndRadius resolves one end of a cylinder/cone to a radius expression:
+// an explicit diameter is halved, an explicit radius is used as-is, and an unset
+// end falls back to the shared base radius. This matches OpenSCAD, where each
+// end independently defaults and a diameter takes precedence over a radius.
+func (e *Emitter) cylinderEndRadius(rEnd ast.Expr, hasR bool, dEnd ast.Expr, hasD bool, base string) string {
+	switch {
+	case hasD:
+		return half(e.expr(dEnd, kLength))
+	case hasR:
+		return e.expr(rEnd, kLength)
+	default:
+		return base
+	}
 }
 
 // cylinderAnchored places a centered core cylinder by its BOSL2 anchor/spin/orient
