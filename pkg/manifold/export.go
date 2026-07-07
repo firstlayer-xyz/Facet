@@ -16,15 +16,6 @@ import (
 	"github.com/firstlayer-xyz/meshio"
 )
 
-// unionAll reduces a non-empty slice of Solids into one via pairwise union.
-func unionAll(solids []*Solid) *Solid {
-	result := solids[0]
-	for i := 1; i < len(solids); i++ {
-		result = result.Union(solids[i])
-	}
-	return result
-}
-
 // RunMesh holds extracted triangle mesh data with run information
 // for mapping originalIDs back to face colors.
 type RunMesh struct {
@@ -139,7 +130,11 @@ func Export3MFMulti(solids []*Solid, path string, attachments []meshio.Attachmen
 	if len(solids) == 0 {
 		return fmt.Errorf("no solids to export")
 	}
-	return Export3MF(unionAll(solids), path, attachments)
+	u, err := BatchBoolean(solids, OpUnion)
+	if err != nil {
+		return err
+	}
+	return Export3MF(u, path, attachments)
 }
 
 // ExportSTL exports a single Solid to a binary STL file.
@@ -153,7 +148,11 @@ func ExportSTLMulti(solids []*Solid, path string) error {
 	if len(solids) == 0 {
 		return fmt.Errorf("no solids to export")
 	}
-	return ExportSTL(unionAll(solids), path)
+	u, err := BatchBoolean(solids, OpUnion)
+	if err != nil {
+		return err
+	}
+	return ExportSTL(u, path)
 }
 
 // ExportOBJ exports a single Solid to a Wavefront OBJ file with per-face colors.
@@ -176,5 +175,9 @@ func ExportOBJMulti(solids []*Solid, path string) error {
 	if len(solids) == 0 {
 		return fmt.Errorf("no solids to export")
 	}
-	return ExportOBJ(unionAll(solids), path)
+	u, err := BatchBoolean(solids, OpUnion)
+	if err != nil {
+		return err
+	}
+	return ExportOBJ(u, path)
 }
