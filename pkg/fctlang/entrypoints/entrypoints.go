@@ -162,7 +162,7 @@ func entryPointLess(a, b string) bool {
 func extractParamConstraint(c parser.Expr) *ParamConstraint {
 	switch c := c.(type) {
 	case *parser.ConstrainedRange:
-		pc := &ParamConstraint{Kind: "range", Exclusive: c.Range.Exclusive}
+		pc := &ParamConstraint{Kind: "range", Exclusive: c.Range.IsExclusive()}
 		if min, ok := literalNumber(c.Range.Start); ok {
 			pc.Min = min
 		}
@@ -176,7 +176,7 @@ func extractParamConstraint(c parser.Expr) *ParamConstraint {
 		}
 		return pc
 	case *parser.RangeExpr:
-		pc := &ParamConstraint{Kind: "range", Exclusive: c.Exclusive}
+		pc := &ParamConstraint{Kind: "range", Exclusive: c.IsExclusive()}
 		if min, ok := literalValue(c.Start); ok {
 			pc.Min = min
 		}

@@ -170,7 +170,7 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 			}
 			i := startF + float64(count)*stepF
 			if stepF > 0 {
-				if ex.Exclusive {
+				if ex.IsExclusive() {
 					if i >= endF-eps {
 						break
 					}
@@ -180,7 +180,7 @@ func (e *evaluator) evalExpr(expr parser.Expr, locals map[string]value) (value, 
 					}
 				}
 			} else {
-				if ex.Exclusive {
+				if ex.IsExclusive() {
 					if i <= endF+eps {
 						break
 					}

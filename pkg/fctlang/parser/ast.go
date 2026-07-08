@@ -79,15 +79,15 @@ type Decl interface {
 	DeclComments() []Comment
 }
 
-func (*VarStmt) declNode()              {}
-func (*Function) declNode()             {}
-func (*StructDecl) declNode()           {}
+func (*VarStmt) declNode()    {}
+func (*Function) declNode()   {}
+func (*StructDecl) declNode() {}
 
-func (v *VarStmt) DeclPos() Pos        { return v.Pos }
-func (v *VarStmt) DeclComments() []Comment { return v.Comments }
-func (f *Function) DeclPos() Pos       { return f.Pos }
-func (f *Function) DeclComments() []Comment { return f.Comments }
-func (s *StructDecl) DeclPos() Pos     { return s.Pos }
+func (v *VarStmt) DeclPos() Pos               { return v.Pos }
+func (v *VarStmt) DeclComments() []Comment    { return v.Comments }
+func (f *Function) DeclPos() Pos              { return f.Pos }
+func (f *Function) DeclComments() []Comment   { return f.Comments }
+func (s *StructDecl) DeclPos() Pos            { return s.Pos }
 func (s *StructDecl) DeclComments() []Comment { return s.Comments }
 
 // Functions returns all function declarations in source order.
@@ -342,7 +342,6 @@ func IsNumericLiteral(expr Expr) bool {
 	return false
 }
 
-
 // UnaryExpr represents a unary operation (e.g. -x, !b).
 type UnaryExpr struct {
 	Op      string // "-" or "!"
@@ -377,10 +376,15 @@ func (*ArrayLitExpr) exprNode() {}
 // Exclusive is true when < or > modifier is used on the end bound.
 type RangeExpr struct {
 	Start, End Expr
-	Step       Expr // nil when not specified (defaults to 1 or -1)
-	Exclusive  bool // true when < or > modifier used
+	Step       Expr   // nil when not specified (defaults to 1 or -1)
+	Bound      string // the literal end-bound modifier as written: "", "<", ">", "<=", ">="
 	Pos        Pos
 }
+
+// IsExclusive reports whether the end bound is exclusive. The one-character
+// modifiers (< and >) exclude the end; <=, >=, and the default include it —
+// so exclusivity is exactly a one-character Bound.
+func (r *RangeExpr) IsExclusive() bool { return len(r.Bound) == 1 }
 
 func (*RangeExpr) exprNode() {}
 
@@ -448,9 +452,9 @@ func (*AssignStmt) stmtNode() {}
 
 // FieldAssignStmt represents a struct field assignment: receiver.field = expr;
 type FieldAssignStmt struct {
-	Receiver Expr      // the struct expression (e.g., IdentExpr for "f")
-	Field    string    // field name
-	Value    Expr      // new value
+	Receiver Expr   // the struct expression (e.g., IdentExpr for "f")
+	Field    string // field name
+	Value    Expr   // new value
 	Pos      Pos
 	Comments []Comment
 }

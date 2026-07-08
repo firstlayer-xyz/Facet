@@ -719,6 +719,20 @@ func TestFormatIdempotent(t *testing.T) {
 	}
 }
 
+// TestFormatRangeBoundModifier pins that the formatter reproduces the exact
+// range end-bound modifier the user wrote. Deriving it from a bool rewrote `>`
+// to `<` and dropped explicit `<=`/`>=`.
+func TestFormatRangeBoundModifier(t *testing.T) {
+	for _, mod := range []string{"", "<", ">", "<=", ">="} {
+		src := "fn Main() {\n    var arr = for i [0:" + mod + "3] {\n        yield i\n    }\n    return arr\n}\n"
+		got := formatString(src)
+		want := "[0:" + mod + "3]"
+		if !strings.Contains(got, want) {
+			t.Errorf("range modifier %q not preserved: want %q in:\n%s", mod, want, got)
+		}
+	}
+}
+
 func TestFormatSliceExpr(t *testing.T) {
 	input := "fn Main() {\n    var x = [1, 2, 3]\n    var a = x[1:3]\n    var b = x[:2]\n    var c = x[1:]\n    return Cube(s: 10 mm)\n}\n"
 	got := formatString(input)

@@ -770,7 +770,7 @@ func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *type
 				if factor, isAngle := parser.AngleFactors[con.Unit]; isAngle {
 					lo, hi := startN*factor, endN*factor
 					if valDeg, ok := tryConstAngleDeg(g.Value); ok {
-						if con.Range.Exclusive {
+						if con.Range.IsExclusive() {
 							if valDeg < lo || valDeg >= hi {
 								c.addError(g.Pos, fmt.Sprintf("value %.4g %s is out of range [%g:<%g] %s", valDeg/factor, con.Unit, startN, endN, con.Unit))
 							}
@@ -781,7 +781,7 @@ func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *type
 				} else if factor, isUnit := parser.UnitFactors[con.Unit]; isUnit {
 					lo, hi := startN*factor, endN*factor
 					if valMM, ok := tryConstLengthMM(g.Value); ok {
-						if con.Range.Exclusive {
+						if con.Range.IsExclusive() {
 							if valMM < lo || valMM >= hi {
 								c.addError(g.Pos, fmt.Sprintf("value %.4g %s is out of range [%g:<%g] %s", valMM/factor, con.Unit, startN, endN, con.Unit))
 							}
@@ -837,7 +837,7 @@ func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *type
 		if startMM, ok1 := tryConstLengthMM(con.Start); ok1 {
 			if endMM, ok2 := tryConstLengthMM(con.End); ok2 {
 				if valMM, ok3 := tryConstLengthMM(g.Value); ok3 {
-					if con.Exclusive {
+					if con.IsExclusive() {
 						if valMM < startMM || valMM >= endMM {
 							c.addError(g.Pos, "value is out of range")
 						}
@@ -849,7 +849,7 @@ func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *type
 		} else if startN, ok1 := tryConstFloat(con.Start); ok1 {
 			if endN, ok2 := tryConstFloat(con.End); ok2 {
 				if valN, ok3 := tryConstFloat(g.Value); ok3 {
-					if con.Exclusive {
+					if con.IsExclusive() {
 						if valN < startN || valN >= endN {
 							c.addError(g.Pos, fmt.Sprintf("value %g is out of range [%g:<%g]", valN, startN, endN))
 						}

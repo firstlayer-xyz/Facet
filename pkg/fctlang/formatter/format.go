@@ -288,7 +288,6 @@ func (f *formatter) writeTrailingComment(comments []parser.Comment) {
 	}
 }
 
-
 func (f *formatter) formatVarDeclTrailing(v *parser.VarStmt, trailing []parser.Comment) {
 	f.writeIndent()
 	if v.IsConst {
@@ -992,9 +991,9 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 		f.write("[")
 		f.formatExpr(e.Start)
 		f.write(":")
-		if e.Exclusive {
-			f.write("<")
-		}
+		// Reproduce the exact bound modifier the user wrote (`<`, `>`, `<=`, `>=`);
+		// using Exclusive alone rewrote `>` to `<` and dropped `<=`/`>=`.
+		f.write(e.Bound)
 		f.formatExpr(e.End)
 		if e.Step != nil {
 			f.write(":")
