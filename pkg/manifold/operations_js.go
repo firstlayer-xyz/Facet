@@ -91,23 +91,23 @@ func SplitSolid(m, cutter *Solid) [2]*Solid {
 	arr := js.Global().Call("_mf_split", m.id, cutter.id)
 	// Both halves originate from m's geometry; the cutter's FaceMap is
 	// intentionally not propagated (its faces appear in neither result), matching
-	// the native build and SplitSolidByPlane.
-	fm := m.withFaceMap()
+	// the native build and SplitSolidByPlane. Each half gets its OWN copy —
+	// sharing one instance (as before) let a later mutation of one half's map
+	// bleed into the other, unlike native (operations.go).
 	first := newSolid(arr.Index(0).Int())
-	first.FaceMap = fm
+	first.FaceMap = m.withFaceMap()
 	second := newSolid(arr.Index(1).Int())
-	second.FaceMap = fm
+	second.FaceMap = m.withFaceMap()
 	return [2]*Solid{first, second}
 }
 
 func SplitSolidByPlane(s *Solid, nx, ny, nz, offset float64) [2]*Solid {
 	requireSolids("SplitSolidByPlane", s)
 	arr := js.Global().Call("_mf_split_by_plane", s.id, nx, ny, nz, offset)
-	fm := s.withFaceMap()
 	first := newSolid(arr.Index(0).Int())
-	first.FaceMap = fm
+	first.FaceMap = s.withFaceMap()
 	second := newSolid(arr.Index(1).Int())
-	second.FaceMap = fm
+	second.FaceMap = s.withFaceMap()
 	return [2]*Solid{first, second}
 }
 
