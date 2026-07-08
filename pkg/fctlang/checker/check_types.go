@@ -34,8 +34,13 @@ type typeInfo struct {
 	elem       *typeInfo  // non-nil for typed arrays
 	structName string     // for struct types
 	funcParams []typeInfo // for function types: parameter types
-	funcReturn *typeInfo  // for function types: return type (nil = void)
-	inner      *typeInfo  // non-nil for optional types (T?), points to T
+	// funcParamNames parallels funcParams for lambda VALUES, whose parameter
+	// names are known from source; nil for fn-type annotations (whose syntax
+	// carries only types). Never part of type identity (see typeInfoEqual) — it
+	// only lets a call by name resolve reordered named args to positions.
+	funcParamNames []string
+	funcReturn     *typeInfo // for function types: return type (nil = void)
+	inner          *typeInfo // non-nil for optional types (T?), points to T
 }
 
 // simple creates a typeInfo for a basic type (non-array, non-struct).
@@ -47,9 +52,11 @@ func arrayOf(elem typeInfo) typeInfo { return typeInfo{ft: typeArray, elem: &ele
 // structTI creates a struct typeInfo with the given name.
 func structTI(name string) typeInfo { return typeInfo{ft: typeStruct, structName: name} }
 
-// funcTI creates a function typeInfo with parameter and return types.
-func funcTI(params []typeInfo, ret *typeInfo) typeInfo {
-	return typeInfo{ft: typeFunc, funcParams: params, funcReturn: ret}
+// funcTI creates a function typeInfo with parameter and return types. names
+// parallels params for lambda values (parameter names known from source) and is
+// nil for fn-type annotations; it is not part of type identity.
+func funcTI(params []typeInfo, names []string, ret *typeInfo) typeInfo {
+	return typeInfo{ft: typeFunc, funcParams: params, funcParamNames: names, funcReturn: ret}
 }
 
 // optionalOf wraps a typeInfo as Optional<T>. Optionals don't nest —
@@ -237,7 +244,7 @@ func parseFuncTypeInfo(s string) typeInfo {
 		r := typeFromNameStr(ret)
 		retTI = &r
 	}
-	return funcTI(paramTIs, retTI)
+	return funcTI(paramTIs, nil, retTI) // fn-type syntax carries no param names
 }
 
 // resolveFuncTypeStr is the checker-aware variant of parseFuncTypeInfo: it
@@ -257,7 +264,7 @@ func (c *checker) resolveFuncTypeStr(parentStruct, typeName string) typeInfo {
 		r := c.resolveType(parentStruct, ret)
 		retTI = &r
 	}
-	return funcTI(paramTIs, retTI)
+	return funcTI(paramTIs, nil, retTI) // fn-type syntax carries no param names
 }
 
 // resolveType turns a type string into a typeInfo, handling every form the

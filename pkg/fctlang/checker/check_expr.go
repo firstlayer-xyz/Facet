@@ -546,6 +546,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 	case *parser.LambdaExpr:
 		childEnv := env.child()
 		var paramTypes []typeInfo
+		var paramNames []string
 		for _, p := range ex.Params {
 			pt := c.resolveType("", p.Type)
 			if pt.ft == typeUnknown && p.Type != "" {
@@ -555,6 +556,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 			}
 			childEnv.set(p.Name, pt)
 			paramTypes = append(paramTypes, pt)
+			paramNames = append(paramNames, p.Name)
 		}
 		retType := c.checkStmts(ex.Body, childEnv)
 		var ret *typeInfo
@@ -564,7 +566,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 		} else if retType.ft != typeUnknown {
 			ret = &retType
 		}
-		return funcTI(paramTypes, ret)
+		return funcTI(paramTypes, paramNames, ret)
 
 	default:
 		return unknown()
