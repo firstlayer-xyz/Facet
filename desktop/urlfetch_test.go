@@ -117,3 +117,22 @@ func TestFetchContentTextTruncates(t *testing.T) {
 		t.Fatalf("expected truncation marker, got tail: %q", got.Text[len(got.Text)-80:])
 	}
 }
+
+// TestFetchClientBlocksCrossHostRedirect verifies fetch_url's redirect policy:
+// a redirect within the approved host is allowed, but a redirect to a different
+// host is refused — an approved host must not be able to 302 the fetch to an
+// arbitrary other public host it was never granted.
+func TestFetchClientBlocksCrossHostRedirect(t *testing.T) {
+	cr := newFetchClient().CheckRedirect
+	orig, _ := http.NewRequest("GET", "https://approved.example.com/a", nil)
+
+	same, _ := http.NewRequest("GET", "https://approved.example.com/b", nil)
+	if err := cr(same, []*http.Request{orig}); err != nil {
+		t.Errorf("same-host redirect should be allowed, got: %v", err)
+	}
+
+	cross, _ := http.NewRequest("GET", "https://evil.example.com/x", nil)
+	if err := cr(cross, []*http.Request{orig}); err == nil {
+		t.Error("cross-host redirect should be refused")
+	}
+}
