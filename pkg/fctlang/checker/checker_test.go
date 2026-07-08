@@ -1843,7 +1843,7 @@ func TestCollisionQualifiedFieldAccess(t *testing.T) {
 	faExpr := &parser.FieldAccessExpr{
 		Receiver: &parser.IdentExpr{Name: "a"},
 		Field:    "width",
-		Pos:      parser.Pos{1, 1},
+		Pos:      parser.Pos{Line: 1, Col: 1},
 	}
 	ft := c.inferExpr(faExpr, env)
 	if ft.ft != typeLength {
@@ -1854,7 +1854,7 @@ func TestCollisionQualifiedFieldAccess(t *testing.T) {
 	faExpr2 := &parser.FieldAccessExpr{
 		Receiver: &parser.IdentExpr{Name: "a"},
 		Field:    "height",
-		Pos:      parser.Pos{1, 1},
+		Pos:      parser.Pos{Line: 1, Col: 1},
 	}
 	ft2 := c.inferExpr(faExpr2, env)
 	if ft2.ft != typeUnknown {
@@ -1886,7 +1886,7 @@ func TestCollisionMethodDispatch(t *testing.T) {
 	mc1 := &parser.MethodCallExpr{
 		Receiver: &parser.IdentExpr{Name: "a"},
 		Method:   "GetWidth",
-		Pos:      parser.Pos{1, 1},
+		Pos:      parser.Pos{Line: 1, Col: 1},
 	}
 	rt1 := c.checkMethodCall(mc1, env)
 	if rt1.ft != typeLength {
@@ -1898,7 +1898,7 @@ func TestCollisionMethodDispatch(t *testing.T) {
 	mc2 := &parser.MethodCallExpr{
 		Receiver: &parser.IdentExpr{Name: "a"},
 		Method:   "GetHeight",
-		Pos:      parser.Pos{1, 1},
+		Pos:      parser.Pos{Line: 1, Col: 1},
 	}
 	c.checkMethodCall(mc2, env)
 	if len(c.errors) <= errsBefore {
@@ -1909,7 +1909,7 @@ func TestCollisionMethodDispatch(t *testing.T) {
 	mc3 := &parser.MethodCallExpr{
 		Receiver: &parser.IdentExpr{Name: "b"},
 		Method:   "GetHeight",
-		Pos:      parser.Pos{1, 1},
+		Pos:      parser.Pos{Line: 1, Col: 1},
 	}
 	rt3 := c.checkMethodCall(mc3, env)
 	if rt3.ft != typeLength {
@@ -1996,7 +1996,7 @@ func TestNonCollidingMethodsViaBothKeys(t *testing.T) {
 	mc := &parser.MethodCallExpr{
 		Receiver: &parser.IdentExpr{Name: "w"},
 		Method:   "GetSize",
-		Pos:      parser.Pos{1, 1},
+		Pos:      parser.Pos{Line: 1, Col: 1},
 	}
 	rt := c.checkMethodCall(mc, env)
 	if rt.ft != typeLength {
@@ -2014,7 +2014,7 @@ func TestLibReturnStructMethodDispatch(t *testing.T) {
 		Receiver: &parser.IdentExpr{Name: "T"},
 		Method:   "MakeWidget",
 		Args:     []parser.Expr{&parser.NamedArg{Name: "s", Value: &parser.NumberLit{Value: 10}}},
-		Pos:      parser.Pos{1, 1},
+		Pos:      parser.Pos{Line: 1, Col: 1},
 	}
 	retType := c.checkMethodCall(mcExpr, env)
 	if retType.ft != typeStruct {
@@ -2031,7 +2031,7 @@ func TestLibReturnStructMethodDispatch(t *testing.T) {
 	mc := &parser.MethodCallExpr{
 		Receiver: &parser.IdentExpr{Name: "w"},
 		Method:   "GetSize",
-		Pos:      parser.Pos{2, 1},
+		Pos:      parser.Pos{Line: 2, Col: 1},
 	}
 	errsBefore := len(c.errors)
 	rt := c.checkMethodCall(mc, env)

@@ -121,6 +121,12 @@ jobs:
           CC: zig cc
           CXX: zig c++
 
+      - name: Lint (gofmt + vet)
+        run: make lint
+        env:
+          CC: zig cc
+          CXX: zig c++
+
       - name: Run tests
         run: make test
         env:
