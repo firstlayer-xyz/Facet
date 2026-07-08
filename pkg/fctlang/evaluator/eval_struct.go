@@ -192,6 +192,14 @@ func (e *evaluator) zeroStruct(typeName string) (value, error) {
 // itself by value (directly or through other structs) has no finite zero value —
 // error instead of recursing until the Go stack overflows (a process crash).
 func (e *evaluator) zeroStructRec(typeName string, visiting []string) (value, error) {
+	// Solid and Sketch are opaque built-ins (runtime *manifold.Solid /
+	// *manifold.Sketch); their empty `type Solid {}` / `type Sketch {}` stubs are
+	// documentation handles, not zero-able structs. Without this guard an omitted
+	// field of these types fabricates a bogus empty structVal instead of the
+	// clean "missing field" error the caller then produces.
+	if typeName == "Solid" || typeName == "Sketch" {
+		return nil, fmt.Errorf("no zero value for type %s", typeName)
+	}
 	for _, anc := range visiting {
 		if anc == typeName {
 			return nil, fmt.Errorf("struct type %q contains itself (via %s) and has no zero value", typeName, strings.Join(append(visiting, typeName), " → "))
