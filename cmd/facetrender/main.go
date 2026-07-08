@@ -75,7 +75,7 @@ func previewBuffers(path string) (positions []float32, colors []byte, err error)
 	if err != nil {
 		return nil, nil, err
 	}
-	solids, err := result.StaticSolids(0)
+	solids, err := result.StaticSolids(context.Background(), 0)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -213,7 +213,7 @@ func animationFrame(handle int32, timeMs float64) (positions []float32, colors [
 	if result == nil || result.Animation == nil {
 		return nil, nil
 	}
-	solid, err := result.Animation.Frame(timeMs)
+	solid, err := result.Animation.Frame(context.Background(), timeMs)
 	if err != nil {
 		return nil, nil
 	}

@@ -213,7 +213,7 @@ func jsEval(this js.Value, args []js.Value) interface{} {
 		if result.Animation != nil {
 			animSession.store(source, entryName, overridesJSON, result.Animation)
 		}
-		solids, err := result.StaticSolids(float64(time.Now().UnixMilli()))
+		solids, err := result.StaticSolids(context.Background(), float64(time.Now().UnixMilli()))
 		if err != nil {
 			header.Errors = append(header.Errors, parser.SourceError{Message: err.Error()})
 			bin, _ := packResponse(header, nil)
@@ -344,7 +344,7 @@ func jsFrame(this js.Value, args []js.Value) interface{} {
 			resolve.Invoke(bytesToU8(bin))
 			return
 		}
-		solid, err := anim.Frame(timeMs)
+		solid, err := anim.Frame(context.Background(), timeMs)
 		if err != nil {
 			bin, _ := packErrorResponse(err.Error())
 			resolve.Invoke(bytesToU8(bin))
@@ -416,7 +416,7 @@ func exportDisplayMesh(source, entryName, overridesJSON string, timeMs float64) 
 	if err != nil {
 		return nil, err
 	}
-	solids, err := result.StaticSolids(timeMs)
+	solids, err := result.StaticSolids(context.Background(), timeMs)
 	if err != nil {
 		return nil, err
 	}

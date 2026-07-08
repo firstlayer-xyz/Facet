@@ -1,6 +1,7 @@
 package evaluator
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -21,12 +22,12 @@ type Animation struct {
 
 // StaticSolids returns the solids a one-shot consumer — file export, the CLI,
 // the web preview — should render for this result. For an Animation entry it
-// renders a single frame at timeMs (a static snapshot); otherwise it returns
-// the entry's solids unchanged. This keeps non-playback callers from silently
-// emitting an empty model when the entry is an Animation.
-func (r *EvalResult) StaticSolids(timeMs float64) ([]*manifold.Solid, error) {
+// renders a single frame at timeMs (a static snapshot) under ctx; otherwise it
+// returns the entry's solids unchanged. This keeps non-playback callers from
+// silently emitting an empty model when the entry is an Animation.
+func (r *EvalResult) StaticSolids(ctx context.Context, timeMs float64) ([]*manifold.Solid, error) {
 	if r.Animation != nil {
-		s, err := r.Animation.Frame(timeMs)
+		s, err := r.Animation.Frame(ctx, timeMs)
 		if err != nil {
 			return nil, err
 		}
@@ -40,21 +41,22 @@ func (r *EvalResult) StaticSolids(timeMs float64) ([]*manifold.Solid, error) {
 //
 // Frame is concurrency-safe: concurrent calls on the same handle are serialized.
 // It is NOT re-entrant — the lock is held across the frame closure, so the
-// closure must not call back into Frame on the same handle.
-func (a *Animation) Frame(timeMs float64) (*manifold.Solid, error) {
+// closure must not call back into Frame on the same handle. ctx cancels a
+// runaway frame (e.g. a heavy per-iteration loop).
+func (a *Animation) Frame(ctx context.Context, timeMs float64) (*manifold.Solid, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.frameLocked(timeMs)
+	return a.frameLocked(ctx, timeMs)
 }
 
 // FrameWithPosMap evaluates the frame and also returns its source-position →
 // face-ID map, so interactive playback supports face-click → source navigation
 // exactly as the static render does. The PosMap is built from the live per-frame
 // solidTracks under the same lock, before the next Frame truncates them.
-func (a *Animation) FrameWithPosMap(timeMs float64) (*manifold.Solid, []PosEntry, error) {
+func (a *Animation) FrameWithPosMap(ctx context.Context, timeMs float64) (*manifold.Solid, []PosEntry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	solid, err := a.frameLocked(timeMs)
+	solid, err := a.frameLocked(ctx, timeMs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -64,7 +66,17 @@ func (a *Animation) FrameWithPosMap(timeMs float64) (*manifold.Solid, []PosEntry
 // frameLocked evaluates the model at timeMs and returns its Solid. The caller
 // must hold a.mu; the per-frame solidTracks are left live for the caller to
 // read (e.g. FrameWithPosMap) until the next frame truncates them.
-func (a *Animation) frameLocked(timeMs float64) (*manifold.Solid, error) {
+func (a *Animation) frameLocked(ctx context.Context, timeMs float64) (*manifold.Solid, error) {
+	// Install this call's context so a runaway frame (nested ranges, heavy
+	// per-iteration geometry) is cancelable — the eval loop polls e.ctx.Err()
+	// each iteration. Safe under a.mu: the lock serializes frame calls, and any
+	// sub-evaluator spawned during the frame snapshots e.ctx at creation, so it
+	// inherits this ctx. This replaces the old permanent detach to
+	// context.Background(); the build context that produced the handle is no
+	// longer consulted at frame time, so a canceled build request can't kill
+	// playback while a live per-frame ctx keeps each frame cancelable.
+	a.e.ctx = ctx
+
 	// Discard the previous frame's per-frame solidTracks (indices >= baseTracks);
 	// invariant-setup tracks accumulated before the Animation was built are kept.
 	// A plain reslice suffices: a track holds only a face-ID slice now (no

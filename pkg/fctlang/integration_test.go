@@ -149,7 +149,7 @@ func TestAllExamples(t *testing.T) {
 				// Animation examples produce no static solids; render one frame
 				// and verify it yields a display mesh the GUI could draw — the
 				// desktop /eval handler renders the initial frame the same way.
-				solid, err := result.Animation.Frame(1700000000000)
+				solid, err := result.Animation.Frame(context.Background(), 1700000000000)
 				if err != nil {
 					t.Fatalf("%s: Animation.Frame: %v", name, err)
 				}

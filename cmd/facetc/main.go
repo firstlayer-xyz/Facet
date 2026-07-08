@@ -237,7 +237,7 @@ func main() {
 	if result.Animation != nil {
 		fmt.Fprintf(os.Stderr, "note: %s returns an Animation; exporting a single frame at the current time\n", entry)
 	}
-	solids, err := result.StaticSolids(float64(time.Now().UnixMilli()))
+	solids, err := result.StaticSolids(context.Background(), float64(time.Now().UnixMilli()))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "eval error: %v\n", err)
 		os.Exit(1)

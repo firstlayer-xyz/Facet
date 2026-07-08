@@ -1,7 +1,6 @@
 package evaluator
 
 import (
-	"context"
 	"facet/pkg/fctlang/parser"
 	"fmt"
 	"math"
@@ -127,17 +126,10 @@ func (e *evaluator) run() (*EvalResult, error) {
 			if len(frameFn.params) != 1 {
 				return nil, e.errAt(entryFn.Pos, "Animation.frame must take exactly one parameter (time in ms), got %d", len(frameFn.params))
 			}
-			// The handle is retained and its frame closure runs per displayed frame,
-			// long after this build's context is done (e.g. the HTTP request that
-			// built the session has returned). Detach from that context so later
-			// Frame calls aren't canceled along with it.
-			//
-			// This is the only write to e.ctx after construction, and it happens
-			// here on the single build goroutine before the handle is published to
-			// any caller. Frame readers observe it through whatever synchronization
-			// publishes the handle (the desktop session cache's mutex), so no
-			// additional locking is needed for the swap itself.
-			e.ctx = context.Background()
+			// The handle is retained and its frame closure runs per displayed
+			// frame, long after this build's context is done. Each Frame call
+			// installs its own context (see frameLocked), so the build context is
+			// never consulted at frame time — no detach is needed here.
 			return &EvalResult{
 				Animation: &Animation{e: e, frame: frameFn, argName: frameFn.params[0].Name, baseTracks: len(*e.solidTracks)},
 			}, nil
