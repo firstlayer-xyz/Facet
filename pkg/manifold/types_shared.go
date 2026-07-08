@@ -24,6 +24,7 @@ type Mesh struct {
 //     MergeExtractDisplayMeshes); they are EMPTY in the wasm build.
 //   - Expanded fields (ExpandedRaw/EdgeLinesRaw, ExpandedCount/EdgeCount) are
 //     filled by the expanded extractors and by every wasm extractor.
+//
 // So reading IdxRaw works on desktop but yields empty data on wasm — read
 // ExpandedRaw for code that must run in both.
 type DisplayMesh struct {

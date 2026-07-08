@@ -201,7 +201,6 @@ func (e *evaluator) run() (*EvalResult, error) {
 		stats.SurfaceArea += s.SurfaceArea()
 	}
 
-
 	return &EvalResult{Solids: solids, Stats: stats, PosMap: buildPosMap(*e.solidTracks)}, nil
 }
 

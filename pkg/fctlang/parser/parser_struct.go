@@ -139,4 +139,3 @@ func (p *parser) parseTypedArrayLit(typeName string, line, col int) (Expr, error
 	}
 	return &ArrayLitExpr{TypeName: typeName, Elems: elems, Pos: Pos{line, col}}, nil
 }
-

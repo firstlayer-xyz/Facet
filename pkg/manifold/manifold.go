@@ -92,7 +92,6 @@ func (sk *Sketch) ExternalMemSize() int {
 	return int(sk.memSize)
 }
 
-
 // SetColor returns a copy of the solid with a uniform RGBA color on all faces.
 // Alpha 1 is fully opaque. Each channel is clamped to [0, 1] before quantization
 // so out-of-range inputs can't wrap into a wrong color through int conversion +

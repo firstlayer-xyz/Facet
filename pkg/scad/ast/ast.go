@@ -258,34 +258,34 @@ type Let struct {
 	P     Pos
 }
 
-func (*Num) exprNode()     {}
-func (*Str) exprNode()     {}
-func (*Ident) exprNode()   {}
-func (*Bool) exprNode()    {}
-func (*Undef) exprNode()   {}
-func (*Vector) exprNode()  {}
-func (*Range) exprNode()   {}
+func (*Num) exprNode()      {}
+func (*Str) exprNode()      {}
+func (*Ident) exprNode()    {}
+func (*Bool) exprNode()     {}
+func (*Undef) exprNode()    {}
+func (*Vector) exprNode()   {}
+func (*Range) exprNode()    {}
 func (*ListComp) exprNode() {}
-func (*Binary) exprNode()  {}
-func (*Unary) exprNode()   {}
-func (*Ternary) exprNode() {}
-func (*Call) exprNode()    {}
-func (*Index) exprNode()   {}
-func (*Member) exprNode()  {}
-func (*Let) exprNode()     {}
+func (*Binary) exprNode()   {}
+func (*Unary) exprNode()    {}
+func (*Ternary) exprNode()  {}
+func (*Call) exprNode()     {}
+func (*Index) exprNode()    {}
+func (*Member) exprNode()   {}
+func (*Let) exprNode()      {}
 
-func (n *Num) Pos() Pos     { return n.P }
-func (n *Str) Pos() Pos     { return n.P }
-func (n *Ident) Pos() Pos   { return n.P }
-func (n *Bool) Pos() Pos    { return n.P }
-func (n *Undef) Pos() Pos   { return n.P }
-func (n *Vector) Pos() Pos  { return n.P }
+func (n *Num) Pos() Pos      { return n.P }
+func (n *Str) Pos() Pos      { return n.P }
+func (n *Ident) Pos() Pos    { return n.P }
+func (n *Bool) Pos() Pos     { return n.P }
+func (n *Undef) Pos() Pos    { return n.P }
+func (n *Vector) Pos() Pos   { return n.P }
 func (n *Range) Pos() Pos    { return n.P }
 func (n *ListComp) Pos() Pos { return n.P }
-func (n *Binary) Pos() Pos  { return n.P }
-func (n *Unary) Pos() Pos   { return n.P }
-func (n *Ternary) Pos() Pos { return n.P }
-func (n *Call) Pos() Pos    { return n.P }
-func (n *Index) Pos() Pos   { return n.P }
-func (n *Member) Pos() Pos  { return n.P }
-func (n *Let) Pos() Pos     { return n.P }
+func (n *Binary) Pos() Pos   { return n.P }
+func (n *Unary) Pos() Pos    { return n.P }
+func (n *Ternary) Pos() Pos  { return n.P }
+func (n *Call) Pos() Pos     { return n.P }
+func (n *Index) Pos() Pos    { return n.P }
+func (n *Member) Pos() Pos   { return n.P }
+func (n *Let) Pos() Pos      { return n.P }

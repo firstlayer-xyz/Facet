@@ -647,4 +647,3 @@ func (a *App) GetDocGuides() []DocGuide {
 	}
 	return guides
 }
-

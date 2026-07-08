@@ -320,8 +320,10 @@ func (p *parser) parseFunction() (*Function, error) {
 // paramGroup → name { "," name } typeExpr [ "=" defaultExpr ] [ "where" constraint ]
 // Each group has one or more names followed by a shared type.
 // Defaults and constraints are only allowed on single-name groups (not grouped params).
-//   fn Foo(x, y, z Length)              →  all required
-//   fn Foo(radius Length, seg Number = 0)  →  seg has default
+//
+//	fn Foo(x, y, z Length)              →  all required
+//	fn Foo(radius Length, seg Number = 0)  →  seg has default
+//
 // Required params must come before optional params (across the entire signature).
 func (p *parser) parseParams() ([]*Param, error) {
 	var params []*Param

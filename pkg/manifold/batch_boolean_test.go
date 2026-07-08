@@ -242,10 +242,10 @@ func BenchmarkUnionBatch(b *testing.B) {
 
 func TestSketchBatchBooleanMatchesPairwiseFold(t *testing.T) {
 	cases := []struct {
-		name    string
-		op      BoolOp
-		build   func() []*Sketch
-		wantA   float64
+		name  string
+		op    BoolOp
+		build func() []*Sketch
+		wantA float64
 	}{
 		{"union-disjoint", OpUnion, func() []*Sketch {
 			return []*Sketch{squareAt(t, 1, 0, 0), squareAt(t, 1, 2, 0), squareAt(t, 1, 4, 0)}

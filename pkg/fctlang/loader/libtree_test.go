@@ -147,7 +147,7 @@ func writeTree(t *testing.T, store *memory.Storage, _ string, entries []object.T
 // from a bare-clone object store — the load path used for cached remote libs.
 func TestVirtualLibTreeReadFile(t *testing.T) {
 	repo, sha := makeInMemoryRepo(t, map[string]string{
-		"fasteners.fct":                "var V = 1\n",
+		"fasteners.fct":                   "var V = 1\n",
 		"fasteners/knurling/knurling.fct": "var K = 2\n",
 	})
 	tree := &LibTree{repo: repo, sha: sha, origin: "github.com/t/r"}
@@ -180,15 +180,15 @@ func TestVirtualLibTreeReadFile(t *testing.T) {
 func TestListLibraryModules(t *testing.T) {
 	repo, sha := makeInMemoryRepo(t, map[string]string{
 		// Three valid library modules.
-		"fasteners/fasteners.fct":  "// fasteners",
-		"gears/gears.fct":          "// gears",
-		"polyhedra/polyhedra.fct":  "// polyhedra",
+		"fasteners/fasteners.fct": "// fasteners",
+		"gears/gears.fct":         "// gears",
+		"polyhedra/polyhedra.fct": "// polyhedra",
 		// Top-level .fct that's NOT a module (no matching dir) — should be ignored.
-		"README.fct":               "// readme",
+		"README.fct": "// readme",
 		// A directory with a non-matching .fct — should be ignored.
-		"misc/other.fct":           "// not a library module",
+		"misc/other.fct": "// not a library module",
 		// Deeper nesting — should be ignored (only top-level modules).
-		"nested/deep/inner.fct":    "// deeper",
+		"nested/deep/inner.fct": "// deeper",
 	})
 	tree := &LibTree{repo: repo, sha: sha, origin: "github.com/t/r"}
 
@@ -237,10 +237,10 @@ func TestVirtualLibTreeWalk(t *testing.T) {
 // disk and skips hidden entries.
 func TestVirtualLibTreeExtractTo(t *testing.T) {
 	repo, sha := makeInMemoryRepo(t, map[string]string{
-		"visible.fct":     "keep\n",
-		".hidden":         "skip\n",
-		"sub/.dotdir/x":   "skip nested\n",
-		"sub/kept.fct":    "nested keep\n",
+		"visible.fct":   "keep\n",
+		".hidden":       "skip\n",
+		"sub/.dotdir/x": "skip nested\n",
+		"sub/kept.fct":  "nested keep\n",
 	})
 	tree := &LibTree{repo: repo, sha: sha, origin: "github.com/t/r"}
 

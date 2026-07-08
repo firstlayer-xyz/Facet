@@ -9,65 +9,65 @@ import (
 type TokenType int
 
 const (
-	TokenIdent     TokenType = iota // identifier
-	TokenNumber                     // integer or float literal
-	TokenLParen                     // (
-	TokenRParen                     // )
-	TokenLBrace                     // {
-	TokenRBrace                     // }
-	TokenComma                      // ,
-	TokenSemicolon                  // ;
-	TokenEquals                     // =
-	TokenPlus                       // +
-	TokenMinus                      // -
-	TokenStar                       // *
-	TokenSlash                      // /
-	TokenMod                    // %
-	TokenCaret                  // ^
-	TokenDot                    // .
-	TokenLBracket               // [
-	TokenRBracket               // ]
-	TokenLess                   // <
-	TokenGreater                // >
-	TokenLessEq                 // <=
-	TokenGreaterEq              // >=
-	TokenEqEq                   // ==
-	TokenBang                   // !
-	TokenBangEq                 // !=
-	TokenAmp                    // &
-	TokenAmpEq                  // &=
-	TokenAmpAmp                 // &&
-	TokenPipe                   // |
-	TokenPipeEq                 // |=
-	TokenPipePipe               // ||
-	TokenReturn                     // return keyword
-	TokenVar                        // var keyword
-	TokenFor                        // for keyword
-	TokenYield                      // yield keyword
-	TokenFold                       // fold keyword
-	TokenAssert                     // assert keyword
-	TokenIf                         // if keyword
-	TokenElse                       // else keyword
-	TokenTrue                       // true keyword
-	TokenFalse                      // false keyword
-	TokenLib                        // lib keyword
-	TokenTypeKw                     // type keyword
-	TokenFn                         // fn keyword
-	TokenConst                      // const keyword
-	TokenWhere                      // where keyword
-	TokenString                     // string literal
-	TokenRawString                  // raw string literal (backtick)
-	TokenColon                      // :
-	TokenQuestion                   // ? — postfix marker on a type making it Optional
-	TokenQuestionQuestion           // ?? — nullish coalescing: opt ?? fallback
-	TokenQuestionDot                // ?. — optional chaining: opt?.field / opt?.method()
-	TokenNil                        // nil keyword — the None variant of an Optional
-	TokenPlusEq                     // +=
-	TokenMinusEq                    // -=
-	TokenStarEq                     // *=
-	TokenSlashEq                    // /=
-	TokenModEq                      // %=
-	TokenCaretEq                    // ^=
+	TokenIdent            TokenType = iota // identifier
+	TokenNumber                            // integer or float literal
+	TokenLParen                            // (
+	TokenRParen                            // )
+	TokenLBrace                            // {
+	TokenRBrace                            // }
+	TokenComma                             // ,
+	TokenSemicolon                         // ;
+	TokenEquals                            // =
+	TokenPlus                              // +
+	TokenMinus                             // -
+	TokenStar                              // *
+	TokenSlash                             // /
+	TokenMod                               // %
+	TokenCaret                             // ^
+	TokenDot                               // .
+	TokenLBracket                          // [
+	TokenRBracket                          // ]
+	TokenLess                              // <
+	TokenGreater                           // >
+	TokenLessEq                            // <=
+	TokenGreaterEq                         // >=
+	TokenEqEq                              // ==
+	TokenBang                              // !
+	TokenBangEq                            // !=
+	TokenAmp                               // &
+	TokenAmpEq                             // &=
+	TokenAmpAmp                            // &&
+	TokenPipe                              // |
+	TokenPipeEq                            // |=
+	TokenPipePipe                          // ||
+	TokenReturn                            // return keyword
+	TokenVar                               // var keyword
+	TokenFor                               // for keyword
+	TokenYield                             // yield keyword
+	TokenFold                              // fold keyword
+	TokenAssert                            // assert keyword
+	TokenIf                                // if keyword
+	TokenElse                              // else keyword
+	TokenTrue                              // true keyword
+	TokenFalse                             // false keyword
+	TokenLib                               // lib keyword
+	TokenTypeKw                            // type keyword
+	TokenFn                                // fn keyword
+	TokenConst                             // const keyword
+	TokenWhere                             // where keyword
+	TokenString                            // string literal
+	TokenRawString                         // raw string literal (backtick)
+	TokenColon                             // :
+	TokenQuestion                          // ? — postfix marker on a type making it Optional
+	TokenQuestionQuestion                  // ?? — nullish coalescing: opt ?? fallback
+	TokenQuestionDot                       // ?. — optional chaining: opt?.field / opt?.method()
+	TokenNil                               // nil keyword — the None variant of an Optional
+	TokenPlusEq                            // +=
+	TokenMinusEq                           // -=
+	TokenStarEq                            // *=
+	TokenSlashEq                           // /=
+	TokenModEq                             // %=
+	TokenCaretEq                           // ^=
 	TokenEOF
 	TokenReserved // reserved keyword (cannot be used as identifier)
 )

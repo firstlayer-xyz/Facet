@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-
 // buildStructDecls creates a lookup map from a program's struct declarations,
 // merged with stdlib struct declarations.
 func buildStructDecls(prog loader.Program, currentKey string) map[string]*parser.StructDecl {

@@ -46,11 +46,11 @@ func checkEuler(t *testing.T, name string, pm *PolyMesh) {
 
 func TestPlatonicSolids(t *testing.T) {
 	tests := []struct {
-		name      string
-		mesh      *PolyMesh
-		verts     int
-		edges     int
-		faces     int
+		name       string
+		mesh       *PolyMesh
+		verts      int
+		edges      int
+		faces      int
 		unitRadius bool // true if circumradius should be 1.0
 	}{
 		{"Tetrahedron", newTetrahedron(), 4, 6, 4, true},

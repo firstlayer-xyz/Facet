@@ -3,8 +3,9 @@
 // (no cross-origin-isolation headers, since the build needs no SharedArrayBuffer).
 //
 // Usage:
-//   go run scripts/serve-web.go
-//   go run scripts/serve-web.go -addr :8080 -dir web
+//
+//	go run scripts/serve-web.go
+//	go run scripts/serve-web.go -addr :8080 -dir web
 package main
 
 import (

@@ -228,7 +228,6 @@ fn Main() {
 `)
 }
 
-
 func TestCheckIfElse(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
@@ -856,7 +855,6 @@ func TestCheckImplicitReturn(t *testing.T) {
 	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }`)
 }
 
-
 func TestCheckImplicitReturnIfElse(t *testing.T) {
 	expectNoErrors(t, `
 fn Main() {
@@ -1353,7 +1351,6 @@ fn Main() {
 }
 `)
 }
-
 
 func TestCheckVarsInsideIfBranches(t *testing.T) {
 	// Variables defined inside if branches should not produce false

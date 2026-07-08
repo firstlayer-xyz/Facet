@@ -32,14 +32,14 @@ type Guide struct {
 
 // APISection holds doc entries for one source-level section within a library.
 type APISection struct {
-	Name    string         // "3D Constructors", etc.; empty for ungrouped entries
-	Slug    string         // URL-safe anchor id derived from Name
+	Name    string // "3D Constructors", etc.; empty for ungrouped entries
+	Slug    string // URL-safe anchor id derived from Name
 	Entries []doc.DocEntry
 }
 
 // APIGroup holds all sections for a library or category.
 type APIGroup struct {
-	Name     string       // "Standard Library", "facet/gears", etc.
+	Name     string // "Standard Library", "facet/gears", etc.
 	Sections []APISection
 }
 

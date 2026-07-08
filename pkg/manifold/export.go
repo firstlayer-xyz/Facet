@@ -19,10 +19,10 @@ import (
 // RunMesh holds extracted triangle mesh data with run information
 // for mapping originalIDs back to face colors.
 type RunMesh struct {
-	Vertices       []float32 // flat xyz positions
-	Indices        []uint32  // triangle indices
-	RunOriginalID  []uint32  // originalID per run
-	RunIndex       []uint32  // start triVerts index per run (len = NumRuns+1)
+	Vertices      []float32 // flat xyz positions
+	Indices       []uint32  // triangle indices
+	RunOriginalID []uint32  // originalID per run
+	RunIndex      []uint32  // start triVerts index per run (len = NumRuns+1)
 }
 
 // extractRunMesh extracts mesh data with run information from a Solid.

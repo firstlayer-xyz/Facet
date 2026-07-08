@@ -23,8 +23,8 @@ type constVal struct {
 // Reassignment to this binding re-validates the constraint.
 type constrainedVal struct {
 	inner      value
-	constraint parser.Expr   // AST constraint expression for re-validation
-	name       string // binding name, for error messages
+	constraint parser.Expr // AST constraint expression for re-validation
+	name       string      // binding name, for error messages
 }
 
 // unwrap returns the underlying value, stripping any constVal and constrainedVal wrappers.
@@ -79,7 +79,7 @@ type structVal struct {
 	typeName string
 	fields   map[string]value
 	decl     *parser.StructDecl // declaration from the scope where this struct was defined
-	lib      *libRef // non-nil if struct was created in a library context
+	lib      *libRef            // non-nil if struct was created in a library context
 }
 
 // optionalVal represents the runtime form of an Optional. When `present`
@@ -138,7 +138,7 @@ type debugEntry struct {
 // DebugStep captures one geometry operation and its associated meshes.
 type DebugStep struct {
 	Op      string
-	Meshes  []DebugMesh  // populated lazily by ResolveMeshes
+	Meshes  []DebugMesh // populated lazily by ResolveMeshes
 	Line    int
 	Col     int
 	File    string       // disk path of the source file
@@ -184,7 +184,7 @@ func SolidFrameStats(solid *manifold.Solid, mesh *manifold.DisplayMesh) ModelSta
 // PosEntry maps a source position (file+line+col) to the face IDs of solids
 // that were created or operated on at that position.
 type PosEntry struct {
-	File    string   `json:"file"`    // disk path of the source file
+	File    string   `json:"file"` // disk path of the source file
 	Line    int      `json:"line"`
 	Col     int      `json:"col"`
 	FaceIDs []uint32 `json:"faceIDs"`
@@ -295,27 +295,27 @@ type opFuncKey struct {
 type evaluator struct {
 	ctx          context.Context
 	prog         loader.Program
-	currentKey   string                  // which source file we're executing ("::main" or lib path)
+	currentKey   string // which source file we're executing ("::main" or lib path)
 	globals      map[string]value
-	stdGlobals   map[string]value       // the stdlib's own globals (PI, …), hermetic from user redefinition
-	inStdlib     bool                   // true while a stdlib function/method body executes
-	entryPoint   string                 // entry function name (default "Main")
+	stdGlobals   map[string]value // the stdlib's own globals (PI, …), hermetic from user redefinition
+	inStdlib     bool             // true while a stdlib function/method body executes
+	entryPoint   string           // entry function name (default "Main")
 	debug        bool
 	steps        []DebugStep
-	libEvalCache map[string]map[string]value  // import path → evaluated globals
-	libLoadStack map[string]bool         // libraries currently being loaded (cycle detection)
-	file         string                  // current file disk path
-	yieldTarget  *[]value               // non-nil when inside a for-yield body
-	foldAcc      *value                 // non-nil when inside a fold body; yield writes here
-	libSources   map[string]string      // collected library sources (debug only)
-	stdFuncs     []*parser.Function            // stdlib free functions
-	stdMethods   map[string][]*parser.Function // receiverType → method functions
-	structDecls  map[string]*parser.StructDecl // user-defined struct declarations
+	libEvalCache map[string]map[string]value    // import path → evaluated globals
+	libLoadStack map[string]bool                // libraries currently being loaded (cycle detection)
+	file         string                         // current file disk path
+	yieldTarget  *[]value                       // non-nil when inside a for-yield body
+	foldAcc      *value                         // non-nil when inside a fold body; yield writes here
+	libSources   map[string]string              // collected library sources (debug only)
+	stdFuncs     []*parser.Function             // stdlib free functions
+	stdMethods   map[string][]*parser.Function  // receiverType → method functions
+	structDecls  map[string]*parser.StructDecl  // user-defined struct declarations
 	opFuncs      map[opFuncKey]*parser.Function // operator function dispatch table
-	currentLib   *libRef                // non-nil when evaluating inside a library
-	overrides    map[string]value       // slider overrides: varName → value
-	solidTracks  *[]SolidTrack         // shared across parent/child evaluators
-	callDepth    int                   // current function call nesting depth
+	currentLib   *libRef                        // non-nil when evaluating inside a library
+	overrides    map[string]value               // slider overrides: varName → value
+	solidTracks  *[]SolidTrack                  // shared across parent/child evaluators
+	callDepth    int                            // current function call nesting depth
 }
 
 // libRef identifies a loaded library by its import path.
@@ -411,5 +411,3 @@ func (e *evaluator) recordStep(op string, pos parser.Pos, entries ...debugEntry)
 	step.entries = append(step.entries, entries...)
 	e.steps = append(e.steps, step)
 }
-
-

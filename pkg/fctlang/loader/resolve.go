@@ -239,11 +239,11 @@ type resolver struct {
 	libDir        string
 	gitCacheDir   string
 	installedLibs map[string]string
-	cache         *Cache                  // bare-clone storage backend (defaults to NativeCache)
+	cache         *Cache                                            // bare-clone storage backend (defaults to NativeCache)
 	remoteFetch   func(lp *LibPath, subPath string) ([]byte, error) // non-nil = HTTP-fetch remote libs (wasm); nil = git clone
-	prog          Program                 // output program (shared across recursion)
-	visited       map[string]*resolvedLib // within-invocation dedup (keyed by import path)
-	stack         map[string]bool         // cycle detection (keyed by import path)
+	prog          Program                                           // output program (shared across recursion)
+	visited       map[string]*resolvedLib                           // within-invocation dedup (keyed by import path)
+	stack         map[string]bool                                   // cycle detection (keyed by import path)
 }
 
 // resolveSource resolves all LibExpr nodes in a source's globals,

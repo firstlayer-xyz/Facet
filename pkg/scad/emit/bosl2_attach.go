@@ -67,9 +67,9 @@ type anchorMode int
 
 const (
 	anchorBox     anchorMode = iota // bounding box: v·size/2 (cuboid, rect, prismoid/trapezoid at a fixed level)
-	anchorSphere                     // sphere surface: r·unit(v), shift ÷ |v|
-	anchorCyl                        // cylinder: radial r·unit(xy) (÷ |xy|), axial ±h/2
-	anchorEllipse                    // 2D ellipse: where the ray along v meets the perimeter
+	anchorSphere                    // sphere surface: r·unit(v), shift ÷ |v|
+	anchorCyl                       // cylinder: radial r·unit(xy) (÷ |xy|), axial ±h/2
+	anchorEllipse                   // 2D ellipse: where the ray along v meets the perimeter
 )
 
 // anchorOffset returns the trailing .Move that shifts a centered shape so the
@@ -393,7 +393,6 @@ func tagValue(mc *ast.ModuleCall) string {
 	}
 	return ""
 }
-
 
 // attachSpec is one resolved attachment link. Every B2 placement op has a
 // `.<method>(args)` form (unions the placed child into the parent's chain) and a

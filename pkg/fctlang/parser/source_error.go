@@ -5,12 +5,12 @@ import "fmt"
 // SourceError is a source-level error with location.
 // Used by the parser, type checker, and evaluator.
 type SourceError struct {
-	File    string `json:"file"`              // "" = main file, "facet/std" or lib path for libraries
+	File    string `json:"file"` // "" = main file, "facet/std" or lib path for libraries
 	Line    int    `json:"line"`
 	Col     int    `json:"col"`
-	EndCol  int    `json:"endCol"`            // 0 = highlight to end of line (used by checker)
+	EndCol  int    `json:"endCol"` // 0 = highlight to end of line (used by checker)
 	Message string `json:"message"`
-	Source  string `json:"source,omitempty"`  // library source text (for error navigation)
+	Source  string `json:"source,omitempty"` // library source text (for error navigation)
 }
 
 func (e *SourceError) Error() string {

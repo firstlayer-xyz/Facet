@@ -272,7 +272,6 @@ fn Main() {
 	}
 }
 
-
 func TestEvalMethodOnParenBoolean(t *testing.T) {
 	src := `
 fn Main() {

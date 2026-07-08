@@ -35,7 +35,7 @@ const UserLibrary = "__user__"
 // DocEntry is a JSON-serializable documentation entry for a function, method, type, or keyword.
 type DocEntry struct {
 	Name      string `json:"name"`              // "Cube" or "Solid.Move"
-	Signature string `json:"signature"`          // "Solid Cube(Length x, Length y, Length z)"
+	Signature string `json:"signature"`         // "Solid Cube(Length x, Length y, Length z)"
 	Doc       string `json:"doc"`               // "Creates an axis-aligned box..."
 	Kind      string `json:"kind"`              // "function", "method", "type", "keyword"
 	Library   string `json:"library"`           // "facet/gears" or "" for stdlib/builtins

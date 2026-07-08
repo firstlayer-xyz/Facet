@@ -395,9 +395,9 @@ func typeDisplayName(t facetType) string {
 // typeEnv is a lexically-scoped type environment.
 type typeEnv struct {
 	types    map[string]typeInfo
-	consts   map[string]bool        // tracks const bindings
-	declPos  map[string]parser.Pos  // declaration site for each binding in this scope
-	declKind map[string]string      // semantic kind for each binding: "var", "const", "param", "fn", etc.
+	consts   map[string]bool       // tracks const bindings
+	declPos  map[string]parser.Pos // declaration site for each binding in this scope
+	declKind map[string]string     // semantic kind for each binding: "var", "const", "param", "fn", etc.
 	parent   *typeEnv
 	// comprehension marks the scope a for-yield/fold body runs in. Each
 	// iteration evaluates against its own copy of the enclosing scope, so an
@@ -523,7 +523,6 @@ func (e *typeEnv) lookup(name string) (typeInfo, bool) {
 	return unknown(), false
 }
 
-
 // builtinSig describes the parameter types and return type for a builtin function.
 type builtinSig struct {
 	params []typeInfo
@@ -531,27 +530,27 @@ type builtinSig struct {
 }
 
 var builtinSigs = map[string]builtinSig{
-	"_cube":   {params: []typeInfo{simple(typeLength), simple(typeLength), simple(typeLength)}, ret: simple(typeSolid)},
-	"_square": {params: []typeInfo{simple(typeLength), simple(typeLength)}, ret: simple(typeSketch)},
-	"_polygon": {params: []typeInfo{arrayOf(structTI("Vec2")), arrayOf(arrayOf(structTI("Vec2")))}, ret: simple(typeSketch)},
-	"_hull":         {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
-	"_union":        {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
-	"_difference":   {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
-	"_intersection": {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
-	"_sin":          {params: []typeInfo{simple(typeAngle)}, ret: simple(typeNumber)},
-	"_cos":          {params: []typeInfo{simple(typeAngle)}, ret: simple(typeNumber)},
-	"_tan":          {params: []typeInfo{simple(typeAngle)}, ret: simple(typeNumber)},
-	"_asin":         {params: []typeInfo{simple(typeNumber)}, ret: simple(typeAngle)},
-	"_acos":         {params: []typeInfo{simple(typeNumber)}, ret: simple(typeAngle)},
-	"_atan2":        {params: []typeInfo{simple(typeNumber), simple(typeNumber)}, ret: simple(typeAngle)},
-	"_sqrt":         {params: []typeInfo{simple(typeNumber)}, ret: simple(typeNumber)},
-	"_pow":          {params: []typeInfo{simple(typeNumber), simple(typeNumber)}, ret: simple(typeNumber)},
-	"_floor":        {params: []typeInfo{simple(typeNumber)}, ret: simple(typeNumber)},
-	"_ceil":         {params: []typeInfo{simple(typeNumber)}, ret: simple(typeNumber)},
-	"_round":        {params: []typeInfo{simple(typeNumber)}, ret: simple(typeNumber)},
-	"_loft":                 {params: []typeInfo{arrayOf(simple(typeSketch)), arrayOf(simple(typeLength))}, ret: simple(typeSolid)},
-	"_load_mesh":            {params: []typeInfo{simple(typeString)}, ret: simple(typeSolid)},
+	"_cube":            {params: []typeInfo{simple(typeLength), simple(typeLength), simple(typeLength)}, ret: simple(typeSolid)},
+	"_square":          {params: []typeInfo{simple(typeLength), simple(typeLength)}, ret: simple(typeSketch)},
+	"_polygon":         {params: []typeInfo{arrayOf(structTI("Vec2")), arrayOf(arrayOf(structTI("Vec2")))}, ret: simple(typeSketch)},
+	"_hull":            {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
+	"_union":           {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
+	"_difference":      {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
+	"_intersection":    {params: []typeInfo{arrayOf(simple(typeVar))}, ret: unknown()},
+	"_sin":             {params: []typeInfo{simple(typeAngle)}, ret: simple(typeNumber)},
+	"_cos":             {params: []typeInfo{simple(typeAngle)}, ret: simple(typeNumber)},
+	"_tan":             {params: []typeInfo{simple(typeAngle)}, ret: simple(typeNumber)},
+	"_asin":            {params: []typeInfo{simple(typeNumber)}, ret: simple(typeAngle)},
+	"_acos":            {params: []typeInfo{simple(typeNumber)}, ret: simple(typeAngle)},
+	"_atan2":           {params: []typeInfo{simple(typeNumber), simple(typeNumber)}, ret: simple(typeAngle)},
+	"_sqrt":            {params: []typeInfo{simple(typeNumber)}, ret: simple(typeNumber)},
+	"_pow":             {params: []typeInfo{simple(typeNumber), simple(typeNumber)}, ret: simple(typeNumber)},
+	"_floor":           {params: []typeInfo{simple(typeNumber)}, ret: simple(typeNumber)},
+	"_ceil":            {params: []typeInfo{simple(typeNumber)}, ret: simple(typeNumber)},
+	"_round":           {params: []typeInfo{simple(typeNumber)}, ret: simple(typeNumber)},
+	"_loft":            {params: []typeInfo{arrayOf(simple(typeSketch)), arrayOf(simple(typeLength))}, ret: simple(typeSolid)},
+	"_load_mesh":       {params: []typeInfo{simple(typeString)}, ret: simple(typeSolid)},
 	"_solid_from_mesh": {params: []typeInfo{arrayOf(structTI("Vec3")), arrayOf(structTI("Face"))}, ret: simple(typeSolid)},
-	"_utc_date":             {params: []typeInfo{}, ret: simple(typeString)},
-	"_utc_time":             {params: []typeInfo{}, ret: simple(typeString)},
+	"_utc_date":        {params: []typeInfo{}, ret: simple(typeString)},
+	"_utc_time":        {params: []typeInfo{}, ret: simple(typeString)},
 }

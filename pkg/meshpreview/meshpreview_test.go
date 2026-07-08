@@ -60,8 +60,8 @@ func TestMeshToPreview_NoColors(t *testing.T) {
 // decoders don't bounds-check indices and this runs over arbitrary files.
 func TestMeshToPreview_IndexOutOfRange(t *testing.T) {
 	m := &meshio.Mesh{
-		Vertices: triVerts,             // 6 vertices
-		Indices:  []uint32{0, 1, 99},   // 99 is out of range
+		Vertices: triVerts,           // 6 vertices
+		Indices:  []uint32{0, 1, 99}, // 99 is out of range
 	}
 	if _, _, err := meshToPreview(m); err == nil {
 		t.Fatal("expected an out-of-range error, got nil")
@@ -73,7 +73,7 @@ func TestMeshToPreview_IndexOutOfRange(t *testing.T) {
 func TestMeshToPreview_ColorCountMismatch(t *testing.T) {
 	m := &meshio.Mesh{
 		Vertices:   triVerts,
-		Indices:    triIdx, // 2 triangles
+		Indices:    triIdx,                               // 2 triangles
 		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}}, // only 1 color
 	}
 	if _, _, err := meshToPreview(m); err == nil {

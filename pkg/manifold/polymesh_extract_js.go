@@ -18,9 +18,9 @@ func ExtractPolyMesh(s *Solid) *PolyMesh {
 		return &PolyMesh{}
 	}
 
-	vertsBytes := typedArrayToBytes(r.Get("vertices"))    // float64
+	vertsBytes := typedArrayToBytes(r.Get("vertices"))      // float64
 	faceIdxBytes := typedArrayToBytes(r.Get("faceIndices")) // int32
-	faceSizesBytes := typedArrayToBytes(r.Get("faceSizes"))  // int32
+	faceSizesBytes := typedArrayToBytes(r.Get("faceSizes")) // int32
 
 	nV := len(vertsBytes) / 8
 	nF := len(faceSizesBytes) / 4
