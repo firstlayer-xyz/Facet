@@ -49,9 +49,13 @@ func Check(prog loader.Program) *Result {
 	c.inferReturnTypes()
 	c.validateFunctions()
 
+	// The public map is keyed by bare name and consumed only for free-function
+	// entry points (entrypoints ignore methods), so expose only recv=="" entries.
 	inferredRets := make(map[string]string, len(c.inferredReturns))
-	for name, ti := range c.inferredReturns {
-		inferredRets[name] = ti.displayName()
+	for k, ti := range c.inferredReturns {
+		if k.recv == "" {
+			inferredRets[k.name] = ti.displayName()
+		}
 	}
 	return &Result{
 		Prog:                prog,
@@ -270,12 +274,12 @@ func (c *checker) inferReturnTypes() {
 			}
 			retType := c.checkStmts(fn.Body, env)
 			if retType.ft != typeUnknown {
-				c.inferredReturns[fn.Name] = retType
+				c.inferredReturns[fnKey{fn.ReceiverType, fn.Name}] = retType
 				if retType.ft == typeStruct {
 					for _, stmt := range fn.Body {
 						if rs, ok := stmt.(*parser.ReturnStmt); ok {
 							if sn := c.resolveStructName(rs.Value, env); sn != "" {
-								c.inferredReturnStructs[fn.Name] = sn
+								c.inferredReturnStructs[fnKey{fn.ReceiverType, fn.Name}] = sn
 								break
 							}
 						}
@@ -393,8 +397,8 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, srcE
 	}
 	retType := c.checkStmts(fn.Body, env)
 	if fn.ReturnType == "" && retType.ft != typeUnknown {
-		if _, exists := c.inferredReturns[fn.Name]; !exists {
-			c.inferredReturns[fn.Name] = retType
+		if _, exists := c.inferredReturns[fnKey{fn.ReceiverType, fn.Name}]; !exists {
+			c.inferredReturns[fnKey{fn.ReceiverType, fn.Name}] = retType
 		}
 	}
 	if fn.ReturnType != "" && retType.ft != typeUnknown {
@@ -548,6 +552,14 @@ type opMapKey struct {
 	rightType string
 }
 
+// fnKey identifies a function by receiver type and name, so an unannotated
+// method and a same-named free function get distinct inferred-return slots
+// instead of the method borrowing the free function's type. recv is "" for a
+// free function.
+type fnKey struct {
+	recv, name string
+}
+
 // checker holds the state for a type-checking pass.
 type checker struct {
 	prog                  loader.Program
@@ -560,8 +572,8 @@ type checker struct {
 	references            References
 	currentSrcKey         string
 	libVarToPath          map[string]string // lib variable name → lib path in prog
-	inferredReturns       map[string]typeInfo
-	inferredReturnStructs map[string]string
+	inferredReturns       map[fnKey]typeInfo
+	inferredReturnStructs map[fnKey]string
 	// returnElemType is set when checking a function with a declared array return type.
 	// It provides top-down coercion context for untyped array literals in return position.
 	returnElemType typeInfo
@@ -594,8 +606,8 @@ func initChecker(prog loader.Program) *checker {
 		opMap:                 make(map[opMapKey]typeInfo),
 		varTypes:              make(VarTypeMap),
 		libVarToPath:          make(map[string]string),
-		inferredReturns:       make(map[string]typeInfo),
-		inferredReturnStructs: make(map[string]string),
+		inferredReturns:       make(map[fnKey]typeInfo),
+		inferredReturnStructs: make(map[fnKey]string),
 		references:            make(References),
 	}
 	// Precompute top-level declarations once. Used both for the final Result

@@ -508,8 +508,9 @@ func (c *checker) resolveParamType(fn *parser.Function, typeName string) typeInf
 // resolveReturnType resolves a function's return type to typeInfo.
 func (c *checker) resolveReturnType(fn *parser.Function) typeInfo {
 	if fn.ReturnType == "" {
-		// Fallback: use inferred return type for unannotated functions
-		if inferred, ok := c.inferredReturns[fn.Name]; ok {
+		// Use the inferred return type keyed by (receiver, name) so an unannotated
+		// method resolves to its own slot, not a same-named free function's.
+		if inferred, ok := c.inferredReturns[fnKey{fn.ReceiverType, fn.Name}]; ok {
 			return inferred
 		}
 		return unknown()

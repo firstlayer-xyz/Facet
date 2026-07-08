@@ -643,8 +643,9 @@ func (c *checker) resolveStructName(expr parser.Expr, env *typeEnv) string {
 				}
 			}
 		}
-		// Check inferred return struct names for unannotated functions
-		if sn, ok := c.inferredReturnStructs[ex.Name]; ok {
+		// Check inferred return struct names for unannotated functions. ex is a
+		// CallExpr — always a free function — so key with an empty receiver.
+		if sn, ok := c.inferredReturnStructs[fnKey{"", ex.Name}]; ok {
 			return sn
 		}
 	case *parser.MethodCallExpr:

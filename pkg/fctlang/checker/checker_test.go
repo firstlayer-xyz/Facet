@@ -1778,8 +1778,8 @@ fn Config.GetHeight() Length {
 
 	c := initChecker(prog)
 	c.currentSrcKey = testMainKey
-	c.inferredReturns = make(map[string]typeInfo)
-	c.inferredReturnStructs = make(map[string]string)
+	c.inferredReturns = make(map[fnKey]typeInfo)
+	c.inferredReturnStructs = make(map[fnKey]string)
 	c.libVarToPath["A"] = "fake/libA"
 	c.libVarToPath["B"] = "fake/libB"
 
@@ -1955,8 +1955,8 @@ fn Widget.GetSize() Length {
 
 	c := initChecker(prog)
 	c.currentSrcKey = testMainKey
-	c.inferredReturns = make(map[string]typeInfo)
-	c.inferredReturnStructs = make(map[string]string)
+	c.inferredReturns = make(map[fnKey]typeInfo)
+	c.inferredReturnStructs = make(map[fnKey]string)
 	c.libVarToPath["T"] = "fake/lib"
 
 	for _, sd := range libProg.StructDecls() {
@@ -2085,8 +2085,8 @@ func TestArrayTypeInference(t *testing.T) {
 			prog := parseTestProg(t, tt.src)
 			c := initChecker(prog)
 			c.currentSrcKey = testMainKey
-			c.inferredReturns = make(map[string]typeInfo)
-			c.inferredReturnStructs = make(map[string]string)
+			c.inferredReturns = make(map[fnKey]typeInfo)
+			c.inferredReturnStructs = make(map[fnKey]string)
 			env := c.newStdEnv()
 			for _, g := range prog.Sources[testMainKey].Globals() {
 				ti := c.inferExpr(g.Value, env)
@@ -2783,4 +2783,29 @@ func TestResolveTypeLibStructDeterministic(t *testing.T) {
 			t.Fatalf("resolveType(\"Widget\") = %q, want alib.Widget (smallest of alib/mlib/zlib)", got.structName)
 		}
 	}
+}
+
+// An unannotated method must resolve to its OWN inferred return type, not a
+// same-named free function's. Before the (receiver,name)-keyed inference map,
+// `a.M()` below borrowed free `M`'s Length return and spuriously failed Use()'s
+// Number return check.
+func TestCheckMethodNameCollisionWithFreeFunc(t *testing.T) {
+	expectNoErrors(t, `
+type A {
+    n Number
+}
+fn M() { return 5 mm; }
+fn A.M() { return self.n; }
+fn Use(a A) Number { return a.M(); }
+`)
+}
+
+// The free function's own inference still works (composite key didn't regress
+// the recv=="" path).
+func TestCheckFreeFuncInferenceStillWorks(t *testing.T) {
+	expectNoErrors(t, `
+fn M() { return 5 mm; }
+fn UseFree() Length { return M(); }
+fn Main() { return Cube(s: Vec3{x: UseFree(), y: 1 mm, z: 1 mm}); }
+`)
 }
