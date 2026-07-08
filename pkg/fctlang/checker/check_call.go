@@ -269,6 +269,13 @@ func (c *checker) checkBuiltinCall(call *parser.BuiltinCallExpr, env *typeEnv) t
 		return simple(typeSketch)
 	}
 
+	// The name matched no signature and no special case. If it isn't a registered
+	// builtin at all, it's a typo or a stale name the evaluator would reject with
+	// "unknown builtin" — flag it here so it fails at compile time. Registered but
+	// unsigned builtins fall through as unknown(), bounded by the caller's type.
+	if !KnownBuiltins[call.Name] {
+		c.addError(call.Pos, fmt.Sprintf("unknown builtin %q", call.Name))
+	}
 	return unknown()
 }
 
