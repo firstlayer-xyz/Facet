@@ -27,7 +27,8 @@ func compoundOp(t TokenType) (string, bool) {
 
 // parseForExpr → "for" forClause { "," forClause } "{" body "}"
 // forClause    → IDENT "," IDENT expr   (enumerate: index, value)
-//              | IDENT expr              (regular)
+//
+//	| IDENT expr              (regular)
 func (p *parser) parseForExpr() (Expr, error) {
 	forLine, forCol := p.cur.Line, p.cur.Col
 	if _, err := p.expect(TokenFor); err != nil {

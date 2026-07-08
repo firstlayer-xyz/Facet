@@ -156,4 +156,3 @@ func floatEqual(a, b float64) bool {
 	largest := math.Max(math.Abs(a), math.Abs(b))
 	return diff/largest < 1e-12
 }
-

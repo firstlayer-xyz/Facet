@@ -1,8 +1,8 @@
 package evaluator
 
 import (
-	"facet/pkg/fctlang/parser"
 	"errors"
+	"facet/pkg/fctlang/parser"
 	"fmt"
 )
 

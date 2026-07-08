@@ -291,7 +291,6 @@ func (e *Emitter) bosl2HalfOf(n *ast.ModuleCall) string {
 	return fmt.Sprintf("%s.Trim(x: %d, y: %d, z: %d)", child, dir[0], dir[1], dir[2])
 }
 
-
 // bosl2FlipCopy emits a BOSL2 single-axis mirror-and-keep (xflip_copy/yflip_copy/
 // zflip_copy): the child plus a copy mirrored across the plane normal to `axis`.
 // An `offset` shifts the mirror plane (reflection across axis = offset).

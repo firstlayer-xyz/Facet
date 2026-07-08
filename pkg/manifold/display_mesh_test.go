@@ -116,12 +116,24 @@ func TestDisplayMeshVertexValues(t *testing.T) {
 	maxX, maxY, maxZ := float32(-math.MaxFloat32), float32(-math.MaxFloat32), float32(-math.MaxFloat32)
 	for i := 0; i < dm.VertexCount; i++ {
 		x, y, z := verts[i*3], verts[i*3+1], verts[i*3+2]
-		if x < minX { minX = x }
-		if y < minY { minY = y }
-		if z < minZ { minZ = z }
-		if x > maxX { maxX = x }
-		if y > maxY { maxY = y }
-		if z > maxZ { maxZ = z }
+		if x < minX {
+			minX = x
+		}
+		if y < minY {
+			minY = y
+		}
+		if z < minZ {
+			minZ = z
+		}
+		if x > maxX {
+			maxX = x
+		}
+		if y > maxY {
+			maxY = y
+		}
+		if z > maxZ {
+			maxZ = z
+		}
 	}
 	if math.Abs(float64(maxX-minX)-10) > 0.01 {
 		t.Errorf("x extent: got %f, want ~10", maxX-minX)

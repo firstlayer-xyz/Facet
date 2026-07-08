@@ -136,11 +136,11 @@ type claudeAssistant struct {
 	// default is generous; tests lower it to exercise the overflow path.
 	maxLineBytes int
 
-	mu        sync.Mutex
-	proc      *claudeProc
-	sessionID string    // assigned UUID, stable across respawns of one conversation
-	sig       launchSig // signature the live proc was launched with
-	streaming bool
+	mu           sync.Mutex
+	proc         *claudeProc
+	sessionID    string    // assigned UUID, stable across respawns of one conversation
+	sig          launchSig // signature the live proc was launched with
+	streaming    bool
 	emitted      bool   // any assistant text emitted during the current turn
 	tools        int    // tool_use count during the current turn
 	streamErr    string // stream-level error captured this turn, surfaced on failure

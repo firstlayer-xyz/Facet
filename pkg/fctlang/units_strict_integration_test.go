@@ -12,7 +12,6 @@ import (
 // checkErrList is the concrete return type of checker.Result.Errors.
 type checkErrList = []parser.SourceError
 
-
 // End-to-end integration tests for the strict Length/Number type rules.
 // Exercises the full parser → checker → evaluator pipeline on .fct source.
 //

@@ -23,7 +23,7 @@ type appConfig struct {
 	ActiveTab       string            `json:"activeTab,omitempty"`       // frontend-owned active tab path
 	Appearance      json.RawMessage   `json:"appearance,omitempty"`      // frontend-owned
 	Editor          json.RawMessage   `json:"editor,omitempty"`          // frontend-owned
-	Assistant       json.RawMessage   `json:"assistant,omitempty"`      // frontend-owned
+	Assistant       json.RawMessage   `json:"assistant,omitempty"`       // frontend-owned
 	Camera          json.RawMessage   `json:"camera,omitempty"`          // frontend-owned
 	Slicer          json.RawMessage   `json:"slicer,omitempty"`          // frontend-owned
 	LibrarySettings json.RawMessage   `json:"librarySettings,omitempty"` // frontend-owned (autoPull, etc.)

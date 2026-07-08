@@ -953,7 +953,7 @@ func (m *MCPService) buildServer(ctx context.Context) *mcp.Server {
 
 	// --- Tool: get_last_run ---
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "get_last_run",
+		Name:        "get_last_run",
 		Description: "Return a summary of the most recent Facet evaluation: triangle/vertex counts, bounding box, entry point, errors, and a ranAt timestamp. Use this after edit_code / replace_code / new_file to verify what actually rendered. Note: this reports the LAST evaluation, which may reflect a user edit made after your change, or may still show the previous run if the editor has not finished re-evaluating. Check the ranAt timestamp to judge freshness. Returns null if no evaluation has completed this session.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input getLastRunInput) (*mcp.CallToolResult, any, error) {
 		summary := state.getLastRun()

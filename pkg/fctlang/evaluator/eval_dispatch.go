@@ -323,4 +323,3 @@ func (e *evaluator) dispatchMethodCall(
 		return nil, e.errAt(mc.Pos, "cannot call method %s on %s", mc.Method, typeName(receiver))
 	}
 }
-

@@ -599,7 +599,6 @@ func (c *checker) lookupFieldType(recvType typeInfo, fieldName string, pos parse
 	return unknown()
 }
 
-
 // resolveStructName tries to determine the struct type name of an expression.
 // libGlobalEnv returns the cached global type-env of the library that the
 // receiver expression refers to (e.g. `L` in `L.GRID`), or nil if the

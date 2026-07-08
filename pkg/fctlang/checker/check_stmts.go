@@ -376,4 +376,3 @@ func (c *checker) checkIfStmt(s *parser.IfStmt, env *typeEnv) {
 		c.checkStmts(s.Else, env.child())
 	}
 }
-

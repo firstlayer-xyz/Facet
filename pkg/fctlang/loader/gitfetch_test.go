@@ -333,9 +333,9 @@ func TestParseLibPathRefMutabilityClassification(t *testing.T) {
 		wantImmutable bool
 	}{
 		{"github.com/x/lib@main", false},
-		{"github.com/x/lib@v1.0", false},     // semver tags are mutable: a maintainer can re-point them
+		{"github.com/x/lib@v1.0", false}, // semver tags are mutable: a maintainer can re-point them
 		{"github.com/x/lib@release/1.0", false},
-		{"github.com/x/lib@abc1234", true},   // 7-char SHA prefix is immutable
+		{"github.com/x/lib@abc1234", true},                                  // 7-char SHA prefix is immutable
 		{"github.com/x/lib@a1b2c3d4e5f6789012345678901234567890abcd", true}, // full SHA
 	}
 	for _, tc := range cases {

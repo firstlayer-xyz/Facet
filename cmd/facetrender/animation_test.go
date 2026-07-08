@@ -39,8 +39,8 @@ func TestAnimationFrame_DiffersOverTime(t *testing.T) {
 	}
 	defer closeAnimation(h)
 
-	p0, _ := animationFrame(h, 0)    // deg 0
-	p1, _ := animationFrame(h, 500)  // deg 45 (period 4000 ms)
+	p0, _ := animationFrame(h, 0)   // deg 0
+	p1, _ := animationFrame(h, 500) // deg 45 (period 4000 ms)
 	if len(p0) == 0 || len(p1) == 0 {
 		t.Fatalf("empty frame: len(p0)=%d len(p1)=%d", len(p0), len(p1))
 	}

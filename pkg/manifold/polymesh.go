@@ -856,4 +856,3 @@ func (pm *PolyMesh) ToDisplayMesh() *DisplayMesh {
 
 	return buildDisplayMesh(verts, indices, faceGroups)
 }
-

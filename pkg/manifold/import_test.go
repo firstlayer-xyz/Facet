@@ -193,8 +193,8 @@ func TestImportMeshSTLRoundTrip(t *testing.T) {
 	// A unit cube with consistently oriented triangles (CCW for outward normals)
 	type vec3 struct{ x, y, z float32 }
 	type tri struct {
-		normal         vec3
-		v1, v2, v3     vec3
+		normal     vec3
+		v1, v2, v3 vec3
 	}
 
 	triangles := []tri{

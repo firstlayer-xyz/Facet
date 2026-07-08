@@ -12,16 +12,16 @@ func TestIsBlockedIP(t *testing.T) {
 	}{
 		{"8.8.8.8", false},
 		{"1.1.1.1", false},
-		{"127.0.0.1", true},       // loopback
-		{"10.0.0.5", true},        // RFC1918
-		{"192.168.1.1", true},     // RFC1918
-		{"172.16.0.1", true},      // RFC1918
-		{"169.254.169.254", true}, // link-local / cloud metadata
-		{"0.0.0.0", true},         // unspecified
-		{"224.0.0.1", true},       // multicast
-		{"::1", true},             // IPv6 loopback
-		{"fc00::1", true},         // IPv6 unique-local
-		{"fe80::1", true},         // IPv6 link-local
+		{"127.0.0.1", true},             // loopback
+		{"10.0.0.5", true},              // RFC1918
+		{"192.168.1.1", true},           // RFC1918
+		{"172.16.0.1", true},            // RFC1918
+		{"169.254.169.254", true},       // link-local / cloud metadata
+		{"0.0.0.0", true},               // unspecified
+		{"224.0.0.1", true},             // multicast
+		{"::1", true},                   // IPv6 loopback
+		{"fc00::1", true},               // IPv6 unique-local
+		{"fe80::1", true},               // IPv6 link-local
 		{"2606:4700:4700::1111", false}, // public IPv6
 	}
 	for _, c := range cases {

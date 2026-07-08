@@ -67,11 +67,11 @@ type stmtPolicy struct {
 //
 // Returned tuple:
 //   - done:   true when the caller should stop iterating (e.g. a return
-//             was handled).
+//     was handled).
 //   - retVal: the function-level return value, when done is true and the
-//             policy produces one.
+//     policy produces one.
 //   - err:    propagated to the caller as-is (may be a *returnSignal
-//             destined for an outer execBody).
+//     destined for an outer execBody).
 //
 // Sub-evaluation errors first pass through catchReturnSignal so that a
 // *returnSignal that escaped a nested call becomes a function return

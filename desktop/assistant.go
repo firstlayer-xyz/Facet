@@ -363,8 +363,8 @@ type assistantBridge struct {
 
 func (a *App) assistantBridge() assistantBridge { return assistantBridge{http: a.http, mcp: a.mcp} }
 
-func (b assistantBridge) Endpoint() (int, string)                 { return b.http.Endpoint() }
-func (b assistantBridge) SetContext(code, path string, ro bool)   { b.mcp.SetContext(code, path, ro) }
+func (b assistantBridge) Endpoint() (int, string)               { return b.http.Endpoint() }
+func (b assistantBridge) SetContext(code, path string, ro bool) { b.mcp.SetContext(code, path, ro) }
 
 // CancelAssistant cancels any in-flight assistant request.
 func (a *App) CancelAssistant() {
@@ -413,7 +413,6 @@ var curatedExamples = []string{
 	"Chess Pawn.fct",
 	"Shark.fct",
 }
-
 
 // buildMCPSystemPrompt returns the short system prompt for MCP-enabled CLIs.
 // Claude fetches docs on-demand via get_documentation.
@@ -715,7 +714,6 @@ func gitCacheNSToImportPath(ns string) string {
 	return fmt.Sprintf("%s/%s/%s@%s", host, user, repo, branch)
 }
 
-
 // filterEnv returns a copy of env with any entries whose key matches one of
 // the given keys removed. Keys are matched case-sensitively against the
 // portion before the first '='.
@@ -739,4 +737,3 @@ func filterEnv(env []string, keys ...string) []string {
 	}
 	return out
 }
-

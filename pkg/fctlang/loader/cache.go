@@ -11,13 +11,13 @@ import (
 // Cache bundles the storage primitives the loader uses to maintain a
 // per-origin cache of bare git clones. Three pieces:
 //
-//   FS          — the loader's own bookkeeping (READMEs, the mkdir/mktemp/
-//                 rename dance that protects in-flight clones from being seen
-//                 mid-write). See fs.go.
-//   StorerFor   — go-git object store factory, keyed by path. Native: an
-//                 osfs-backed storage. Wasm: in-memory go-git storage.
-//   WorktreeFor — billy.Filesystem factory for the working tree. Returns nil
-//                 for bare clones (which is what the lib cache always uses).
+//	FS          — the loader's own bookkeeping (READMEs, the mkdir/mktemp/
+//	              rename dance that protects in-flight clones from being seen
+//	              mid-write). See fs.go.
+//	StorerFor   — go-git object store factory, keyed by path. Native: an
+//	              osfs-backed storage. Wasm: in-memory go-git storage.
+//	WorktreeFor — billy.Filesystem factory for the working tree. Returns nil
+//	              for bare clones (which is what the lib cache always uses).
 //
 // Path arguments to the factories are opaque keys — whatever ensureSharedRepo
 // computed for a given (host, user, repo). The native impl interprets them as

@@ -34,12 +34,24 @@ func meshBounds(m *manifold.Mesh) (float32, float32, float32, float32, float32, 
 	maxX, maxY, maxZ := float32(-math.MaxFloat32), float32(-math.MaxFloat32), float32(-math.MaxFloat32)
 	for i := 0; i < len(m.Vertices); i += 3 {
 		x, y, z := m.Vertices[i], m.Vertices[i+1], m.Vertices[i+2]
-		if x < minX { minX = x }
-		if y < minY { minY = y }
-		if z < minZ { minZ = z }
-		if x > maxX { maxX = x }
-		if y > maxY { maxY = y }
-		if z > maxZ { maxZ = z }
+		if x < minX {
+			minX = x
+		}
+		if y < minY {
+			minY = y
+		}
+		if z < minZ {
+			minZ = z
+		}
+		if x > maxX {
+			maxX = x
+		}
+		if y > maxY {
+			maxY = y
+		}
+		if z > maxZ {
+			maxZ = z
+		}
 	}
 	return minX, minY, minZ, maxX, maxY, maxZ
 }
@@ -63,7 +75,9 @@ func assertMeshSize(t *testing.T, m *manifold.Mesh, wantW, wantH, wantD float32,
 }
 
 func abs32(x float32) float32 {
-	if x < 0 { return -x }
+	if x < 0 {
+		return -x
+	}
 	return x
 }
 

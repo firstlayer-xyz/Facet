@@ -48,7 +48,6 @@ func (e *evaluator) evalPositionalArgs(args []parser.Expr, locals map[string]val
 	return result, nil
 }
 
-
 func (e *evaluator) evalBuiltinCall(call *parser.BuiltinCallExpr, locals map[string]value) (value, error) {
 	if err := e.ctx.Err(); err != nil {
 		return nil, err
