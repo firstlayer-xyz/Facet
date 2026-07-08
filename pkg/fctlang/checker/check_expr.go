@@ -723,6 +723,14 @@ func (c *checker) resolveStructName(expr parser.Expr, env *typeEnv) string {
 				}
 			}
 		}
+	case *parser.IndexExpr:
+		// Indexing a struct array yields the element struct, so field/method
+		// access on `arr[i]` can be checked. Without this, resolveStructName
+		// returned "" and the whole `arr[i].field`/`.method()` chain went
+		// silently unchecked. Mirrors inferExpr's IndexExpr element typing.
+		if arrType := c.inferExpr(ex.Receiver, env); arrType.ft == typeArray && arrType.elem != nil && arrType.elem.ft == typeStruct {
+			return arrType.elem.structName
+		}
 	}
 	return ""
 }
