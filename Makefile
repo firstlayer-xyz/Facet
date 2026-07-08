@@ -1,5 +1,6 @@
 GO_TOOLCHAIN := $(CURDIR)/.go-toolchain
 GO := $(GO_TOOLCHAIN)/bin/go
+GOFMT := $(GO_TOOLCHAIN)/bin/gofmt
 export GOROOT := $(GO_TOOLCHAIN)
 export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
 
@@ -9,7 +10,7 @@ export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
 WAILS_VERSION := v2.12.0
 WAILS := $(GO_TOOLCHAIN)/bin/wails
 
-.PHONY: all manifold dev run build clean cli scad2facet wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
+.PHONY: all manifold lint dev run build clean cli scad2facet wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
 
 all: manifold build
 
@@ -86,6 +87,14 @@ serve-web: go-toolchain
 # kernel. Source scan only — fast, no build needed.
 check-shims: go-toolchain
 	$(GO) run scripts/check-shims.go
+
+# Formatting + vet gate. gofmt runs over all our Go (no compile needed); vet
+# covers the non-desktop packages (desktop needs the //go:embed frontend, so its
+# vet rides along in test-desktop-go's build).
+lint: go-toolchain manifold
+	@files=$$($(GOFMT) -l pkg cmd desktop scripts); \
+	if [ -n "$$files" ]; then echo "gofmt needed on:"; echo "$$files"; exit 1; fi
+	CGO_ENABLED=1 $(GO) vet ./pkg/... ./cmd/...
 
 # Every non-desktop Go package. The glob (rather than an explicit list) keeps new
 # packages from silently escaping CI; desktop/ is separate (test-desktop-go)
