@@ -190,12 +190,15 @@ type PosEntry struct {
 	FaceIDs []uint32 `json:"faceIDs"`
 }
 
-// SolidTrack records a source position and the Solid produced there.
+// SolidTrack records a source position and the face IDs of the solid produced
+// there. It snapshots the IDs (all buildPosMap ever reads) rather than the
+// *manifold.Solid, so an intermediate solid isn't pinned alive by its track —
+// its finalizer-driven C++ release fires as soon as the evaluator drops it.
 type SolidTrack struct {
-	File  string
-	Line  int
-	Col   int
-	Solid *manifold.Solid
+	File    string
+	Line    int
+	Col     int
+	FaceIDs []uint32
 }
 
 // EvalResult holds the evaluated solids and model statistics.
@@ -324,10 +327,19 @@ type libRef struct {
 	path string // import path of the library
 }
 
-// trackSolid records a source position and the Solid produced there.
+// trackSolid records a source position and the face IDs of the solid produced
+// there. Empty-FaceMap solids are skipped (buildPosMap ignores them anyway), so
+// a track always carries at least one ID.
 func (e *evaluator) trackSolid(pos parser.Pos, s *manifold.Solid) {
+	if len(s.FaceMap) == 0 {
+		return
+	}
+	ids := make([]uint32, 0, len(s.FaceMap))
+	for id := range s.FaceMap {
+		ids = append(ids, id)
+	}
 	*e.solidTracks = append(*e.solidTracks, SolidTrack{
-		File: e.file, Line: pos.Line, Col: pos.Col, Solid: s,
+		File: e.file, Line: pos.Line, Col: pos.Col, FaceIDs: ids,
 	})
 }
 
