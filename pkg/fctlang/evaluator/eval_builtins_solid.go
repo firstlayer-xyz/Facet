@@ -644,6 +644,17 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
+		// Channels are documented 0–1; encodeColor otherwise silently clamps, so
+		// Color(r: 255) reads as red and Color(a: -1) as "default opaque". Reject
+		// out-of-range values instead of masking them.
+		for _, ch := range []struct {
+			name string
+			v    float64
+		}{{"r", rv}, {"g", g}, {"b", b}, {"a", a}} {
+			if ch.v < 0 || ch.v > 1 {
+				return nil, fmt.Errorf("%s() %s must be in [0, 1], got %v", name, ch.name, ch.v)
+			}
+		}
 		return r.SetColor(rv, g, b, a), nil
 	})
 

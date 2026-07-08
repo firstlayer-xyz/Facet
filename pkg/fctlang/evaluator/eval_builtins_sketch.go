@@ -71,6 +71,11 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
+		// A negative taper is silently clamped to 0 by the kernel; zero is a
+		// legitimate pure cone. Reject the untranslatable negative.
+		if scaleX < 0 || scaleY < 0 {
+			return nil, fmt.Errorf("%s() taper must be non-negative (0 tapers to a point), got taperX=%v taperY=%v", name, scaleX, scaleY)
+		}
 		return pf.Extrude(height, sl, twist, scaleX, scaleY)
 	})
 
@@ -98,13 +103,13 @@ func init() {
 				return nil, err
 			}
 		}
-		// The kernel clamps only angles > 360. A NEGATIVE angle drives the
-		// slice count negative while cap triangles are still emitted —
-		// indexing with -1 into the vertex array (memory corruption); zero
-		// yields NaN vertex math and a silent empty solid. Both are domain
-		// errors here.
-		if degrees <= 0 {
-			return nil, fmt.Errorf("%s() angle must be positive (up to 360 deg), got %v deg", name, degrees)
+		// A NEGATIVE angle drives the slice count negative while cap triangles
+		// are still emitted — indexing with -1 into the vertex array (memory
+		// corruption); zero yields NaN vertex math and a silent empty solid; an
+		// angle above 360 is silently clamped to a full revolution. All are
+		// domain errors — the valid range is (0, 360].
+		if degrees <= 0 || degrees > 360 {
+			return nil, fmt.Errorf("%s() angle must be in (0, 360] deg, got %v deg", name, degrees)
 		}
 		return pf.Revolve(segments, degrees)
 	})

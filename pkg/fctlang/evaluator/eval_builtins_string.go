@@ -21,15 +21,19 @@ func init() {
 			return nil, err
 		}
 		runes := []rune(s)
+		// A negative start or length was silently clamped (start→0, length→"")
+		// rather than reported — the same class the array-index/slice operators
+		// hard-error on. Reject them; a start past the end is still an empty
+		// slice, and an over-long length still clamps to the string end.
+		if start < 0 {
+			return nil, fmt.Errorf("%s() start must be non-negative, got %v", name, start)
+		}
+		if length < 0 {
+			return nil, fmt.Errorf("%s() length must be non-negative, got %v", name, length)
+		}
 		si := int(start)
 		li := int(length)
-		if si < 0 {
-			si = 0
-		}
 		if si > len(runes) {
-			return "", nil
-		}
-		if li < 0 {
 			return "", nil
 		}
 		end := si + li
