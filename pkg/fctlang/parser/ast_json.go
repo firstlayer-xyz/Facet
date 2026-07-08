@@ -322,7 +322,7 @@ func marshalExpr(e Expr) interface{} {
 			"type":      "RangeExpr",
 			"start":     marshalExpr(e.Start),
 			"end":       marshalExpr(e.End),
-			"exclusive": e.Exclusive,
+			"exclusive": e.IsExclusive(),
 			"pos":       e.Pos,
 		}
 		if e.Step != nil {

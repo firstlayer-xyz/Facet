@@ -190,7 +190,7 @@ func (e *evaluator) validateConstraint(name string, constraint parser.Expr, val 
 			return fmt.Errorf("%s: constraint uses an unrecognized unit %q", name, c.Unit)
 		}
 
-		if c.Range.Exclusive {
+		if c.Range.IsExclusive() {
 			if valN < startN || valN >= endN {
 				return fmt.Errorf("%s: value out of range [%g:%g) %s", name, asNumber2(sv), asNumber2(ev), c.Unit)
 			}
@@ -224,7 +224,7 @@ func (e *evaluator) validateConstraint(name string, constraint parser.Expr, val 
 			} else {
 				return fmt.Errorf("%s: expected Length, got %s", name, typeName(val))
 			}
-			if c.Exclusive {
+			if c.IsExclusive() {
 				if valMM < ss.mm || valMM >= es.mm {
 					return fmt.Errorf("%s: value out of range", name)
 				}
@@ -268,7 +268,7 @@ func (e *evaluator) validateConstraint(name string, constraint parser.Expr, val 
 			}
 		}
 
-		if c.Exclusive {
+		if c.IsExclusive() {
 			if valF < startF || valF >= endF {
 				return fmt.Errorf("%s: value %g out of range [%g:%g)", name, valF, startF, endF)
 			}

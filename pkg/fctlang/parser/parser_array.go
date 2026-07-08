@@ -1,7 +1,8 @@
 package parser
 
 // parseArrayLit → "[" [ expr { "," expr } ] "]"
-//               | "[" expr ":" ["<"|">"|"<="|">="] expr [ ":" expr ] "]"
+//
+//	| "[" expr ":" ["<"|">"|"<="|">="] expr [ ":" expr ] "]"
 func (p *parser) parseArrayLit() (Expr, error) {
 	bracketLine, bracketCol := p.cur.Line, p.cur.Col
 	if _, err := p.expect(TokenLBracket); err != nil {
@@ -38,16 +39,14 @@ func (p *parser) parseArrayLit() (Expr, error) {
 		if err := p.next(); err != nil { // consume ':'
 			return nil, err
 		}
-		// Check for bound modifier: <, >, <=, >=
-		exclusive := false
-		if p.cur.Type == TokenLess || p.cur.Type == TokenGreater {
-			exclusive = true
-			if err := p.next(); err != nil { // consume '<' or '>'
-				return nil, err
-			}
-		} else if p.cur.Type == TokenLessEq || p.cur.Type == TokenGreaterEq {
-			exclusive = false // explicit inclusive
-			if err := p.next(); err != nil { // consume '<=' or '>='
+		// Check for bound modifier: <, >, <=, >=. Record the literal spelling; it
+		// is the single source of truth — the formatter reproduces it verbatim
+		// and RangeExpr.IsExclusive derives exclusivity from it.
+		bound := ""
+		if p.cur.Type == TokenLess || p.cur.Type == TokenGreater ||
+			p.cur.Type == TokenLessEq || p.cur.Type == TokenGreaterEq {
+			bound = p.cur.Text
+			if err := p.next(); err != nil { // consume the modifier
 				return nil, err
 			}
 		}
@@ -70,7 +69,7 @@ func (p *parser) parseArrayLit() (Expr, error) {
 		if _, err := p.expect(TokenRBracket); err != nil {
 			return nil, err
 		}
-		return &RangeExpr{Start: first, End: end, Step: step, Exclusive: exclusive, Pos: Pos{bracketLine, bracketCol}}, nil
+		return &RangeExpr{Start: first, End: end, Step: step, Bound: bound, Pos: Pos{bracketLine, bracketCol}}, nil
 	}
 	// Normal array literal
 	elems := []Expr{first}

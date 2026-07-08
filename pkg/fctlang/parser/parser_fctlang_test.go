@@ -681,7 +681,7 @@ func TestParseRangeExclusive(t *testing.T) {
 	if rng.Step != nil {
 		t.Errorf("expected nil step")
 	}
-	if !rng.Exclusive {
+	if !rng.IsExclusive() {
 		t.Errorf("expected Exclusive = true")
 	}
 }
@@ -697,7 +697,7 @@ func TestParseRangeInclusive(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected parser.RangeExpr, got %T", ret.Value)
 	}
-	if rng.Exclusive {
+	if rng.IsExclusive() {
 		t.Errorf("expected Exclusive = false")
 	}
 }
@@ -723,7 +723,7 @@ func TestParseRangeStep(t *testing.T) {
 	if stepNum.Value != 2 {
 		t.Errorf("step = %v, want 2", stepNum.Value)
 	}
-	if rng.Exclusive {
+	if rng.IsExclusive() {
 		t.Errorf("expected Exclusive = false")
 	}
 }
@@ -792,7 +792,6 @@ func TestParseFold(t *testing.T) {
 		t.Errorf("expected parser.RangeExpr iterator, got %T", ff.Iter)
 	}
 }
-
 
 func TestParseBoolLiterals(t *testing.T) {
 	src := `fn Main() { return true; }`
@@ -925,7 +924,6 @@ func TestParseIfAsExpressionRejected(t *testing.T) {
 		t.Fatal("expected parse error for if in expression position, got nil")
 	}
 }
-
 
 func TestParseStringLiteral(t *testing.T) {
 	src := `fn Main() { return "hello"; }`
@@ -1854,7 +1852,7 @@ fn Main() { return Cube(s: {x: 10 mm, y: 10 mm, z: 10 mm}); }`
 	if !ok {
 		t.Fatalf("constraint: expected parser.RangeExpr, got %T", g.Constraint)
 	}
-	if !rng.Exclusive {
+	if !rng.IsExclusive() {
 		t.Error("expected Exclusive = true")
 	}
 }
