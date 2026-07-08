@@ -15,6 +15,20 @@ func requireFinite(funcName string, argNum int, n float64) (float64, error) {
 	return n, nil
 }
 
+// finiteVec2 / finiteVec3 report whether every coordinate is finite (no
+// NaN/Inf). Vertex coordinates flow straight into the C++ geometry kernel,
+// which treats NaN as pass-through — a single NaN corner silently corrupts the
+// whole mesh instead of erroring — so callers reject non-finite coordinates at
+// the boundary, matching requireFinite for scalar arguments.
+func finiteVec2(x, y float64) bool {
+	return !math.IsNaN(x) && !math.IsInf(x, 0) &&
+		!math.IsNaN(y) && !math.IsInf(y, 0)
+}
+
+func finiteVec3(x, y, z float64) bool {
+	return finiteVec2(x, y) && !math.IsNaN(z) && !math.IsInf(z, 0)
+}
+
 // requireLength extracts the mm value from a length argument.
 // Also accepts bare numbers (float64), treating them as mm.
 func requireLength(funcName string, argNum int, v value) (float64, error) {

@@ -172,6 +172,9 @@ func vec2RingFromArray(arr array, ringDesc string) ([]manifold.Point2D, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s element %d must be a Vec2, got %s", ringDesc, i+1, typeName(elem))
 		}
+		if !finiteVec2(x, y) {
+			return nil, fmt.Errorf("%s element %d must have finite coordinates, got (%v, %v)", ringDesc, i+1, x, y)
+		}
 		out[i] = manifold.Point2D{X: x, Y: y}
 	}
 	return out, nil
@@ -255,6 +258,9 @@ func (e *evaluator) builtinHull(args []value) (value, error) {
 			x, y, z, ok := extractVec3(elem)
 			if !ok {
 				return nil, fmt.Errorf("_hull() element %d must be a Vec3, got %s", i+1, typeName(elem))
+			}
+			if !finiteVec3(x, y, z) {
+				return nil, fmt.Errorf("_hull() element %d must have finite coordinates, got (%v, %v, %v)", i+1, x, y, z)
 			}
 			pts[i] = manifold.Point3D{X: x, Y: y, Z: z}
 		}
@@ -511,6 +517,9 @@ func (e *evaluator) builtinSolidFromMesh(args []value) (value, error) {
 		x, y, z, ok := extractVec3(v)
 		if !ok {
 			return nil, fmt.Errorf("_solid_from_mesh() vertices[%d] must be Vec3, got %s", i, typeName(v))
+		}
+		if !finiteVec3(x, y, z) {
+			return nil, fmt.Errorf("_solid_from_mesh() vertices[%d] must have finite coordinates, got (%v, %v, %v)", i, x, y, z)
 		}
 		vertices[i*3+0] = float32(x)
 		vertices[i*3+1] = float32(y)

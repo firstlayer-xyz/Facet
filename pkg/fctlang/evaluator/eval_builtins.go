@@ -329,6 +329,9 @@ func structValToPolyMesh(sv *structVal) (*manifold.PolyMesh, error) {
 		if !ok {
 			return nil, fmt.Errorf("PolyMesh.vertices[%d] must be Vec3, got %s", i, typeName(v))
 		}
+		if !finiteVec3(px, py, pz) {
+			return nil, fmt.Errorf("PolyMesh.vertices[%d] must have finite coordinates, got (%v, %v, %v)", i, px, py, pz)
+		}
 		vertices[i*3+0] = px
 		vertices[i*3+1] = py
 		vertices[i*3+2] = pz

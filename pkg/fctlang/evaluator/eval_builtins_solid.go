@@ -615,6 +615,10 @@ func init() {
 				warpErr = fmt.Errorf("Warp callback must return Vec3, got %s", typeName(res))
 				return x, y, z
 			}
+			if !finiteVec3(rx, ry, rz) {
+				warpErr = fmt.Errorf("Warp callback must return finite coordinates, got (%v, %v, %v)", rx, ry, rz)
+				return x, y, z
+			}
 			return rx, ry, rz
 		})
 		if warpErr != nil {
