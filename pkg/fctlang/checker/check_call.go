@@ -520,7 +520,10 @@ func (c *checker) resolveReturnType(fn *parser.Function) typeInfo {
 		if inferred, ok := c.inferredReturns[fnKey{fn.ReceiverType, fn.Name}]; ok {
 			return inferred
 		}
-		return unknown()
+		// Not yet inferred — e.g. this call is in a global initializer, checked
+		// before the inferReturnTypes pass. Infer on demand (recursion-guarded) so
+		// the global gets a real type instead of unknown.
+		return c.inferReturnType(fn)
 	}
 	return c.resolveType("", fn.ReturnType)
 }
