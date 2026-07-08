@@ -10,15 +10,17 @@ desktop/frontend/package.json.md5
 frontend/dist
 frontend/node_modules
 frontend/package.json.md5
-third_party/manifold
-third_party/freetype
-third_party/.zig-wrappers*
+# Root-anchored, no trailing slash: matches third_party whether it is a real
+# build directory or a symlink into a shared checkout. A trailing-slash pattern
+# would not match a symlink, letting `git add -A` track it (a dangling symlink
+# on CI then breaks the manifold clone).
+/third_party
 pkg/manifold/cxx/build*
 desktop/build/bin/
 /facet
 /facet-wasm
 /facetdoc
-.go-toolchain/
+/.go-toolchain
 .go-cache/
 artifacts/
 .DS_Store
