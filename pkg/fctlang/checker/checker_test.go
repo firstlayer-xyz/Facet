@@ -604,6 +604,64 @@ fn Main() {
 `)
 }
 
+// A Solid field has no zero value (opaque built-in), so omitting it is a
+// compile-time error instead of the evaluator fabricating a bogus empty struct.
+func TestCheckMissingSolidFieldError(t *testing.T) {
+	expectError(t, `
+type Part {
+    body Solid
+    name String
+}
+fn Main() { var p = Part{name: "x"}; return Cube(s: 10 mm); }
+`, `missing field "body"`)
+}
+
+// A function-typed field likewise has no zero value.
+func TestCheckMissingFnFieldError(t *testing.T) {
+	expectError(t, `
+type Op {
+    maker fn() Solid
+    name String
+}
+fn Main() { var o = Op{name: "x"}; return Cube(s: 10 mm); }
+`, `missing field "maker"`)
+}
+
+// An array field has no zero value in the evaluator (an omitted []T errors at
+// instantiation), so the checker must flag it too — the checker's missing-field
+// rule mirrors the evaluator exactly.
+func TestCheckMissingArrayFieldError(t *testing.T) {
+	expectError(t, `
+type Bag {
+    items []Number
+    name String
+}
+fn Main() { var b = Bag{name: "x"}; return Cube(s: 10 mm); }
+`, `missing field "items"`)
+}
+
+// Fields whose types DO have a zero value stay omittable: scalars, an Optional,
+// a Vec3, and a nested struct whose fields are all zero-valued.
+func TestCheckMissingZeroValuedFieldsAllowed(t *testing.T) {
+	expectNoErrors(t, `
+type Inner {
+    a Length
+    b Number
+}
+type Cfg {
+    len Length
+    num Number
+    flag Bool
+    label String
+    ang Angle
+    maybe Length?
+    pos Vec3
+    inner Inner
+}
+fn Main() { var c = Cfg{num: 1}; return Cube(s: 10 mm); }
+`)
+}
+
 func TestCheckStructUnknownField(t *testing.T) {
 	expectError(t, `
 type Dims {

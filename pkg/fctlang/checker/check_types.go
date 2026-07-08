@@ -270,6 +270,58 @@ func (c *checker) resolveFuncTypeStr(parentStruct, typeName string) typeInfo {
 // This is the single type resolver. It replaced three that disagreed on which
 // forms they handled — notably the field-access path dropped `?`, so an optional
 // struct field (`x Length?`) mistyped as Any and lost its ??/?./nil guarantees.
+// typeHasZeroValue reports whether an omitted struct field of typeName can be
+// zero-filled by the evaluator. It mirrors the evaluator's zeroValue +
+// zeroStructRec capability exactly, so the checker flags precisely the omissions
+// the evaluator would reject at instantiation. parentStruct qualifies an
+// unqualified typeName against the owning struct's library. visiting guards the
+// recursion against self-referential structs (already reported elsewhere).
+//
+// Only Optionals (None), the scalar built-ins, and structs whose every field is
+// itself zero-valued have a zero value. Solid/Sketch, functions, arrays, and
+// unresolvable types do not — the evaluator errors on those, so the field is
+// required.
+func (c *checker) typeHasZeroValue(parentStruct, typeName string, visiting []string) bool {
+	if typeName == "" {
+		return false
+	}
+	if parser.IsOptionalType(typeName) {
+		return true // None
+	}
+	if strings.HasPrefix(typeName, "[]") || strings.HasPrefix(typeName, "fn(") {
+		return false // the evaluator has no zero value for arrays or functions
+	}
+	switch typeName {
+	case "Number", "Length", "Angle", "Bool", "String":
+		return true
+	case "Solid", "Sketch":
+		return false
+	}
+	ti := c.resolveType(parentStruct, typeName)
+	if ti.ft != typeStruct || ti.structName == "" {
+		return false // unknown / unresolvable
+	}
+	for _, anc := range visiting {
+		if anc == ti.structName {
+			return false
+		}
+	}
+	decl, ok := c.structDecls[ti.structName]
+	if !ok {
+		return false
+	}
+	visiting = append(visiting, ti.structName)
+	for _, f := range decl.Fields {
+		if f.Default != nil {
+			continue // the evaluator evaluates the field's default
+		}
+		if !c.typeHasZeroValue(ti.structName, f.Type, visiting) {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *checker) resolveType(parentStruct, typeName string) typeInfo {
 	if typeName == "Any" {
 		return unknown()

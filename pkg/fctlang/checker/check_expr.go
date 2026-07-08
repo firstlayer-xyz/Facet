@@ -415,9 +415,12 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 					fi.Name, ex.TypeName, declField.Type, valType.displayName()))
 			}
 		}
-		// Check for missing fields — allowed if field has a default or a typed zero value
+		// Check for missing fields — allowed only if the field has a default or a
+		// type the evaluator can zero-fill (see typeHasZeroValue). A Solid/Sketch,
+		// function, array, or unresolvable-typed field has no zero value, so
+		// omitting it is a compile-time error instead of an eval-time surprise.
 		for _, f := range decl.Fields {
-			if !provided[f.Name] && f.Default == nil && f.Type == "" {
+			if !provided[f.Name] && f.Default == nil && !c.typeHasZeroValue(ex.TypeName, f.Type, nil) {
 				c.addError(ex.Pos, fmt.Sprintf("missing field %q in %s literal", f.Name, ex.TypeName))
 			}
 		}
