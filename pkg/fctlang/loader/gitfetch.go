@@ -414,6 +414,11 @@ func RefreshRepoClone(ctx context.Context, gitCacheDir string, lp *LibPath) erro
 		return err
 	}
 	sharedDir := filepath.Join(gitCacheDir, lp.Host, lp.User, lp.Repo, sharedRepoName)
+	// Serialize the fetch under the per-repo lock, like ensureLib does — two
+	// concurrent FetchContext calls against the same on-disk clone race.
+	lock := repoLock(sharedDir)
+	lock.Lock()
+	defer lock.Unlock()
 	repo, err := openCachedRepo(c, sharedDir)
 	if err != nil {
 		return fmt.Errorf("open bare clone: %w", err)
@@ -431,6 +436,10 @@ func OpenRepoHeadTree(ctx context.Context, gitCacheDir string, lp *LibPath) (*Li
 		return nil, err
 	}
 	sharedDir := filepath.Join(gitCacheDir, lp.Host, lp.User, lp.Repo, sharedRepoName)
+	// Serialize the fetch under the per-repo lock (see RefreshRepoClone).
+	lock := repoLock(sharedDir)
+	lock.Lock()
+	defer lock.Unlock()
 	repo, err := openCachedRepo(c, sharedDir)
 	if err != nil {
 		return nil, fmt.Errorf("open bare clone: %w", err)
@@ -628,7 +637,12 @@ func ensureSharedRepo(ctx context.Context, c *Cache, sharedDir, cloneURL string)
 // commit.
 func resolveToSHA(ctx context.Context, repo *git.Repository, ref string) (plumbing.Hash, error) {
 	if isImmutableRef(ref) {
-		if h, err := resolveRef(repo, ref); err == nil {
+		// A hex-shaped ref is content-addressed — safe to serve from the local
+		// clone without a fetch — only if it actually resolved as an object hash,
+		// i.e. the resolved commit has ref as a prefix. If it matched a branch or
+		// tag whose name merely looks hex, fall through and fetch so we don't
+		// serve a stale mutable ref.
+		if h, err := resolveRef(repo, ref); err == nil && strings.HasPrefix(h.String(), strings.ToLower(ref)) {
 			return *h, nil
 		}
 	}
@@ -648,6 +662,10 @@ func fetchAll(ctx context.Context, repo *git.Repository) error {
 	err := repo.FetchContext(ctx, &git.FetchOptions{
 		Tags:  git.AllTags,
 		Force: true,
+		// Prune remote-tracking refs whose upstream branch was deleted, so a pin
+		// to a since-deleted @branch fails loudly instead of resolving the stale
+		// refs/remotes/origin/<branch> the last fetch left behind.
+		Prune: true,
 	})
 	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return err
