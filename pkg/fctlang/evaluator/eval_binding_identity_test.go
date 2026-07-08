@@ -116,3 +116,61 @@ func TestBindingReidentifiesReusedMultipartSolid(t *testing.T) {
 		}
 	}
 }
+
+// TestTopLevelBindingGivesDistinctIdentity extends the per-binding identity rule
+// to MODULE scope: `var a = proto` / `var b = proto.Rotate(...)` at the top level
+// must each get their own identity, exactly as local bindings do — otherwise a
+// top-level assembly collapses to one selectable object.
+func TestTopLevelBindingGivesDistinctIdentity(t *testing.T) {
+	s := evalSolid(t, `var proto = Cylinder(d: 20 mm, h: 60 mm)
+var a = proto
+var b = proto.Rotate(z: 90 deg).Move(x: 30 mm)
+fn Main() Solid { return a + b }`)
+	if got := len(s.FaceMap); got != 2 {
+		t.Fatalf("top-level a and b: want 2 distinct face groups, got %d", got)
+	}
+}
+
+// TestContainerBindingGivesDistinctIdentity guards that a solid reused inside an
+// ARRAY binding is re-originaled per element: `[proto, proto.Move(...)]` must
+// yield two selectable parts, not one shared identity.
+func TestContainerBindingGivesDistinctIdentity(t *testing.T) {
+	s := evalSolid(t, `fn Main() Solid {
+    var proto = Cube(s: 10 mm)
+    var parts = [proto, proto.Move(x: 20 mm)]
+    return parts[0] + parts[1]
+}`)
+	if got := len(s.FaceMap); got != 2 {
+		t.Fatalf("array-reused parts: want 2 distinct face groups, got %d", got)
+	}
+}
+
+// TestStructBindingGivesDistinctIdentity is the struct counterpart: a solid
+// reused across struct fields gets its own identity per field.
+func TestStructBindingGivesDistinctIdentity(t *testing.T) {
+	s := evalSolid(t, `type Pair {
+    l Solid
+    r Solid
+}
+fn Main() Solid {
+    var proto = Cube(s: 10 mm)
+    var p = Pair{l: proto, r: proto.Move(x: 20 mm)}
+    return p.l + p.r
+}`)
+	if got := len(s.FaceMap); got != 2 {
+		t.Fatalf("struct-reused parts: want 2 distinct face groups, got %d", got)
+	}
+}
+
+// TestContainerFreshPartsUnchanged guards the other direction: an array of
+// FRESH per-element geometry (no reuse of a scoped solid) passes through with
+// its parts intact — the recurse must not spuriously touch or flatten them.
+func TestContainerFreshPartsUnchanged(t *testing.T) {
+	s := evalSolid(t, `fn Main() Solid {
+    var parts = [Cube(s: 10 mm), Cube(s: 10 mm).Move(x: 20 mm)]
+    return parts[0] + parts[1]
+}`)
+	if got := len(s.FaceMap); got != 2 {
+		t.Fatalf("fresh array parts: want 2 distinct face groups, got %d", got)
+	}
+}

@@ -64,8 +64,10 @@ func (e *evaluator) run() (*EvalResult, error) {
 			if err != nil {
 				return nil, err
 			}
-			// Value semantics at top level too: `var b = a` binds a copy.
-			cv := copyValue(v)
+			// Value semantics at top level too: `var b = a` binds a copy, and a
+			// reused scoped solid gets its own identity — same as bindVar does for
+			// locals — so top-level parts stay selectable/colorable apart.
+			cv := reidentifyBinding(copyValue(v), e.globals)
 			if g.IsConst {
 				e.globals[g.Name] = &constVal{inner: cv}
 			} else {
@@ -87,6 +89,10 @@ func (e *evaluator) run() (*EvalResult, error) {
 				e.globals[g.Name] = &constrainedVal{inner: bare, constraint: g.Constraint, name: g.Name}
 			}
 		}
+		// Give a top-level solid binding its posMap entry for face-click
+		// navigation, matching bindVar's trackIfSolid for locals. Unwraps
+		// const/constraint so the underlying solid is recorded.
+		e.trackIfSolid(g.Pos, e.globals[g.Name])
 		// Register library struct declarations with qualified names
 		// (e.g. "T.Config") so namespace collisions are avoided.
 		if lv, ok := unwrap(e.globals[g.Name]).(*libRef); ok {
