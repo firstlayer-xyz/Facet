@@ -2867,3 +2867,15 @@ fn UseFree() Length { return M(); }
 fn Main() { return Cube(s: Vec3{x: UseFree(), y: 1 mm, z: 1 mm}); }
 `)
 }
+
+// An unregistered _-builtin name (a typo or stale name) is a compile-time error,
+// mirroring the evaluator's "unknown builtin" hard error.
+func TestCheckUnknownBuiltinError(t *testing.T) {
+	expectError(t, `fn Main() { var x = _no_such_builtin(a: 1); return Cube(s: 10 mm); }`, "unknown builtin")
+}
+
+// A registered-but-unsigned builtin (no argument signature) still type-checks
+// clean — the checker only rejects names absent from the whole registry.
+func TestCheckRegisteredUnsignedBuiltinOK(t *testing.T) {
+	expectNoErrors(t, `fn Main() { var b = _bounding_box(Cube(s: 10 mm)); return Cube(s: 10 mm); }`)
+}
