@@ -60,7 +60,40 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 		if len(argTypes) != len(varType.funcParams) {
 			c.addError(call.Pos, fmt.Sprintf("%s() expects %d arguments, got %d",
 				call.Name, len(varType.funcParams), len(argTypes)))
+		} else if len(varType.funcParamNames) == len(varType.funcParams) {
+			// Lambda value: parameter names are known, so resolve each named arg
+			// to its parameter position and type-check there. Args are named on
+			// this path (requireNamedArgs), and the runtime dispatches by name —
+			// so a positional zip would mis-check reordered args.
+			nameToIdx := make(map[string]int, len(varType.funcParamNames))
+			for i, n := range varType.funcParamNames {
+				nameToIdx[n] = i
+			}
+			seen := make([]bool, len(varType.funcParams))
+			for i, arg := range call.Args {
+				na, ok := arg.(*parser.NamedArg)
+				if !ok {
+					continue // requireNamedArgs already reported the positional arg
+				}
+				idx, ok := nameToIdx[na.Name]
+				if !ok {
+					c.addError(call.Pos, fmt.Sprintf("%s() has no parameter named %q", call.Name, na.Name))
+					continue
+				}
+				if seen[idx] {
+					c.addError(call.Pos, fmt.Sprintf("%s() parameter %q specified multiple times", call.Name, na.Name))
+					continue
+				}
+				seen[idx] = true
+				expected := varType.funcParams[idx]
+				if expected.ft != typeUnknown && argTypes[i].ft != typeUnknown && !c.typeCompatible(expected, argTypes[i]) {
+					c.addError(call.Pos, fmt.Sprintf("%s() parameter %q must be %s, got %s",
+						call.Name, na.Name, expected.displayName(), argTypes[i].displayName()))
+				}
+			}
 		} else {
+			// Function-typed parameter (fn(...) annotation): no param names in the
+			// type, so type-check positionally.
 			for i, expected := range varType.funcParams {
 				if expected.ft != typeUnknown && argTypes[i].ft != typeUnknown && !c.typeCompatible(expected, argTypes[i]) {
 					c.addError(call.Pos, fmt.Sprintf("%s() argument %d must be %s, got %s",

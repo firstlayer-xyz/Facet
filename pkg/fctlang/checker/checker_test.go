@@ -2708,6 +2708,42 @@ fn Main() {
 `)
 }
 
+// A lambda value bound to a variable is dispatched by argument NAME at runtime,
+// so the checker must map named args to parameters by name — not zip them
+// positionally. Reordered valid args must pass.
+func TestCheckLambdaVarReorderedArgs(t *testing.T) {
+	expectNoErrors(t, `
+fn Main() {
+    var f = fn(a Length, b Number) Length { return a * b };
+    var x = f(b: 2, a: 3 mm);
+    return Cube(s: Vec3{x: x, y: 1 mm, z: 1 mm});
+}
+`)
+}
+
+// Swapped-type args must be caught against the parameter they NAME, not the one
+// at their position (the positional zip made this a false negative).
+func TestCheckLambdaVarSwappedTypesCaught(t *testing.T) {
+	expectError(t, `
+fn Main() {
+    var f = fn(a Length, b Number) Length { return a * b };
+    var x = f(b: 3 mm, a: 2);
+    return Cube(s: Vec3{x: x, y: 1 mm, z: 1 mm});
+}
+`, "must be")
+}
+
+// An argument naming a nonexistent parameter is a hard error.
+func TestCheckLambdaVarUnknownParam(t *testing.T) {
+	expectError(t, `
+fn Main() {
+    var f = fn(a Length, b Number) Length { return a * b };
+    var x = f(c: 1, a: 2 mm);
+    return Cube(s: Vec3{x: x, y: 1 mm, z: 1 mm});
+}
+`, "no parameter named")
+}
+
 // TestCheckParamConstraintUnit pins the parameter range-constraint unit check
 // (shared with the variable path): a constraint unit must match the parameter's
 // type, so an angle unit on a Length parameter — or a length unit on an Angle
