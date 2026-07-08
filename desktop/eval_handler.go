@@ -249,7 +249,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 			respond(&header, nil, nil)
 			return
 		}
-		solid, posMap, ferr := evalResult.Animation.FrameWithPosMap(initialFrameTimeMs())
+		solid, posMap, ferr := evalResult.Animation.FrameWithPosMap(ctx, initialFrameTimeMs())
 		if ferr != nil {
 			header.Errors = append(header.Errors, sourceErrorFromErr(ferr))
 			respond(&header, nil, nil)
@@ -471,7 +471,7 @@ func evalSolids(ctx context.Context, req evalRequest) ([]*manifold.Solid, error)
 	}
 	// An Animation entry has no static solids; export/slice a single-frame
 	// snapshot (the current frame) rather than producing nothing.
-	return result.StaticSolids(initialFrameTimeMs())
+	return result.StaticSolids(ctx, initialFrameTimeMs())
 }
 
 // sourceErrorFromErr converts a generic error into a parser.SourceError.

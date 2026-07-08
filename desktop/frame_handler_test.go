@@ -21,7 +21,7 @@ func TestFrameSessionVariesAndReuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getOrBuild: %v", err)
 	}
-	s0, err := anim0.Frame(0)
+	s0, err := anim0.Frame(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("Frame(0): %v", err)
 	}
@@ -36,7 +36,7 @@ func TestFrameSessionVariesAndReuses(t *testing.T) {
 	if anim1 != anim0 {
 		t.Fatal("expected the same cached Animation handle on identical inputs")
 	}
-	s10, err := anim1.Frame(10)
+	s10, err := anim1.Frame(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("Frame(10): %v", err)
 	}

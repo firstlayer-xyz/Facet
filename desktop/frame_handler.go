@@ -175,7 +175,7 @@ func handleFrame(ctx context.Context, w http.ResponseWriter, req frameRequest, s
 		return
 	}
 
-	solid, posMap, err := anim.FrameWithPosMap(req.TimeMs)
+	solid, posMap, err := anim.FrameWithPosMap(ctx, req.TimeMs)
 	if err != nil {
 		if ctx.Err() != nil {
 			return

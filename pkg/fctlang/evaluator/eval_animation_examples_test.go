@@ -44,7 +44,7 @@ func TestAnimationExamplesRenderAFrame(t *testing.T) {
 				t.Fatalf("%s: expected an Animation entry", rel)
 			}
 
-			solid, err := res.Animation.Frame(1700000000000)
+			solid, err := res.Animation.Frame(context.Background(), 1700000000000)
 			if err != nil {
 				t.Fatalf("%s Frame: %v", rel, err)
 			}

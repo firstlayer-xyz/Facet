@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 )
 
 // evalAnim parses, checks, and evaluates source, returning the Animation handle.
@@ -33,11 +34,11 @@ func TestAnimationFrameTruncatesPriorFrameTracks(t *testing.T) {
     }}
 }
 `, "Main")
-	if _, err := anim.Frame(0); err != nil { // many solids
+	if _, err := anim.Frame(context.Background(), 0); err != nil { // many solids
 		t.Fatal(err)
 	}
 	manyPerFrame := len(*anim.e.solidTracks) - anim.baseTracks
-	if _, err := anim.Frame(1); err != nil { // few solids
+	if _, err := anim.Frame(context.Background(), 1); err != nil { // few solids
 		t.Fatal(err)
 	}
 	fewPerFrame := len(*anim.e.solidTracks) - anim.baseTracks
@@ -69,7 +70,7 @@ func TestAnimationFrameSurvivesBuildContextCancel(t *testing.T) {
 	}
 	cancel() // the build request ends — its context is now canceled
 
-	s, err := res.Animation.Frame(90)
+	s, err := res.Animation.Frame(context.Background(), 90)
 	if err != nil {
 		t.Fatalf("Frame after build-context cancel: %v", err)
 	}
@@ -88,11 +89,11 @@ func TestAnimationFrameVariesWithTime(t *testing.T) {
 `
 	anim := evalAnim(t, src, "Main")
 
-	s0, err := anim.Frame(0)
+	s0, err := anim.Frame(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("Frame(0): %v", err)
 	}
-	s10, err := anim.Frame(10)
+	s10, err := anim.Frame(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("Frame(10): %v", err)
 	}
@@ -118,7 +119,7 @@ func TestAnimationFrameWithPosMap(t *testing.T) {
 	anim := evalAnim(t, src, "Main")
 
 	for _, tm := range []float64{0, 10} {
-		solid, posMap, err := anim.FrameWithPosMap(tm)
+		solid, posMap, err := anim.FrameWithPosMap(context.Background(), tm)
 		if err != nil {
 			t.Fatalf("FrameWithPosMap(%v): %v", tm, err)
 		}
@@ -142,5 +143,38 @@ func TestAnimationFrameWithPosMap(t *testing.T) {
 		if !matched {
 			t.Fatalf("FrameWithPosMap(%v): no PosMap face ID matches the frame solid's FaceMap — clicks could not resolve", tm)
 		}
+	}
+}
+
+// TestAnimationFrameIsCancelable verifies a runaway frame honors its per-call
+// context: a long per-iteration loop must abort when the context is canceled
+// (the eval loop polls e.ctx.Err() each iteration), releasing the frame mutex,
+// and the handle must stay usable for a subsequent frame with a fresh context.
+func TestAnimationFrameIsCancelable(t *testing.T) {
+	anim := evalAnim(t, `fn Main() Animation {
+    return Animation{frame: fn(t Number) Solid {
+        var sink = for i [0:3000000] { yield i }
+        return Cube(s: 10 mm)
+    }}
+}
+`, "Main")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := anim.Frame(ctx, 0)
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected a cancellation error; the frame ran to completion despite cancel")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Frame did not return after cancel — the frame is not cancelable")
+	}
+	// The mutex was released and the handle is reusable: a fresh context renders.
+	if _, err := anim.Frame(context.Background(), 0); err != nil {
+		t.Fatalf("Frame after a canceled frame should still work: %v", err)
 	}
 }

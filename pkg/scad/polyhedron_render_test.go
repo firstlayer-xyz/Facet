@@ -38,7 +38,7 @@ func TestPolyhedronRendersOutward(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eval: %v\n%s", err, res.Facet)
 	}
-	solids, err := result.StaticSolids(0)
+	solids, err := result.StaticSolids(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("solids: %v", err)
 	}
