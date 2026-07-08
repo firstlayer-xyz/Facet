@@ -65,18 +65,12 @@ func (a *Animation) FrameWithPosMap(timeMs float64) (*manifold.Solid, []PosEntry
 // must hold a.mu; the per-frame solidTracks are left live for the caller to
 // read (e.g. FrameWithPosMap) until the next frame truncates them.
 func (a *Animation) frameLocked(timeMs float64) (*manifold.Solid, error) {
-	// Discard the previous frame's solidTracks so their C++ geometry is released.
-	// Invariant-setup tracks (accumulated before the Animation was built) are
-	// preserved; only per-frame tracks (indices >= baseTracks) are pruned.
-	// Zero the trailing slots before reslicing: reslicing alone leaves the
-	// per-frame *Solid pointers reachable in the backing array, so their
-	// finalizer-driven C++ release would never fire (a native-memory leak that
-	// grows whenever a later frame produces fewer tracks than an earlier one).
-	tracks := *a.e.solidTracks
-	for i := a.baseTracks; i < len(tracks); i++ {
-		tracks[i] = SolidTrack{}
-	}
-	*a.e.solidTracks = tracks[:a.baseTracks]
+	// Discard the previous frame's per-frame solidTracks (indices >= baseTracks);
+	// invariant-setup tracks accumulated before the Animation was built are kept.
+	// A plain reslice suffices: a track holds only a face-ID slice now (no
+	// *Solid), so nothing pins per-frame C++ geometry, and truncation keeps the
+	// per-frame posMap from accumulating stale entries across frames.
+	*a.e.solidTracks = (*a.e.solidTracks)[:a.baseTracks]
 
 	v, err := a.e.callFunctionVal(a.frame, map[string]value{a.argName: timeMs})
 	if err != nil {

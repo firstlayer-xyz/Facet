@@ -215,14 +215,14 @@ func buildPosMap(tracks []SolidTrack) []PosEntry {
 	}
 	posToIDs := make(map[posKey]map[uint32]bool)
 	for _, track := range tracks {
-		if len(track.Solid.FaceMap) == 0 {
+		if len(track.FaceIDs) == 0 {
 			continue
 		}
 		key := posKey{track.File, track.Line, track.Col}
 		if posToIDs[key] == nil {
 			posToIDs[key] = make(map[uint32]bool)
 		}
-		for id := range track.Solid.FaceMap {
+		for _, id := range track.FaceIDs {
 			posToIDs[key][id] = true
 		}
 	}
