@@ -2378,6 +2378,22 @@ func TestCheckOverloadMinMixed(t *testing.T) {
 	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: Min(a: 5, b: 3 mm), y: 1 mm, z: 1 mm}); }`)
 }
 
+// The raw _min/_max builtins accept a Number mixed with a Length/Angle in
+// either argument order (the evaluator coerces the bare number to the unit), and
+// the result carries the dimensional type so it can feed a Length field.
+func TestCheckBuiltinMinMixedLengthFirst(t *testing.T) {
+	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: _min(5 mm, 3), y: 1 mm, z: 1 mm}); }`)
+}
+
+func TestCheckBuiltinMinMixedNumberFirst(t *testing.T) {
+	expectNoErrors(t, `fn Main() { return Cube(s: Vec3{x: _min(3, 5 mm), y: 1 mm, z: 1 mm}); }`)
+}
+
+// Genuinely incompatible mixes (Length vs Angle) still error.
+func TestCheckBuiltinMinIncompatibleUnits(t *testing.T) {
+	expectError(t, `fn Main() { var x = _min(5 mm, 3 deg); return Cube(s: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}); }`, "same type")
+}
+
 func TestCheckOverloadAbsAngle(t *testing.T) {
 	expectNoErrors(t, `fn Main() { var a = Abs(a: -45 deg); return Cube(s: Vec3{x: Sin(a: a) * 10 mm, y: 1 mm, z: 1 mm}); }`)
 }
