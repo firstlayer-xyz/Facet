@@ -2,7 +2,7 @@ package parser
 
 import "strings"
 
-// parsePrimary → "-" postfix | "!" postfix | number [unit] | ident [ "(" [args] ")" ] | "(" expr ")" | block
+// parsePrimary → "-" postfix | "!" postfix | number [unit] | ident [ "(" [args] ")" ] | "(" expr ")" | struct-lit
 func (p *parser) parsePrimary() (Expr, error) {
 	// Unary minus: -expr (binds looser than postfix so -self.field == -(self.field))
 	// Boolean NOT: !expr
