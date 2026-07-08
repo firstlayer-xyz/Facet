@@ -2366,3 +2366,30 @@ func TestParseQualifiedStructLiteralMethodChain(t *testing.T) {
 
 // ensure math import stays used
 var _ = math.Pi
+
+// A `{...}` typed-array element that is neither a `field: value` struct literal
+// nor an empty `{}` must be rejected with a message that names the element type,
+// not routed through parseExpr to a generic "unexpected '{'".
+func TestParseTypedArrayLitRejectsNonStructBrace(t *testing.T) {
+	for _, src := range []string{
+		`fn Main() { var x = []Vec3[{1}]; }`,
+		`fn Main() { var x = []Vec3[{1, 2}]; }`,
+	} {
+		_, err := parser.Parse(src, "", parser.SourceUser)
+		if err == nil {
+			t.Fatalf("expected a parse error for %q, got nil", src)
+		}
+		if !strings.Contains(err.Error(), "struct literal") || !strings.Contains(err.Error(), "Vec3") {
+			t.Fatalf("error should name the struct-literal element type, got: %v", err)
+		}
+	}
+}
+
+// The valid typed-array forms — `field: value` struct literals and empty `{}` —
+// must still parse.
+func TestParseTypedArrayLitAcceptsStructAndEmptyBrace(t *testing.T) {
+	src := `fn Main() { var x = []Vec3[{x: 1 mm, y: 2 mm, z: 3 mm}, {}]; return Cube(s: 1 mm); }`
+	if _, err := parser.Parse(src, "", parser.SourceUser); err != nil {
+		t.Fatalf("valid typed-array literal should parse, got: %v", err)
+	}
+}

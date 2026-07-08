@@ -113,8 +113,11 @@ func (p *parser) parseTypedArrayLit(typeName string, line, col int) (Expr, error
 				if p.isStructLitStart() || p.isEmptyBrace() {
 					elem, err = p.parseStructLit(typeName, bracePos, bracePos)
 				} else {
-					// Fallback: parse as normal expression (block)
-					elem, err = p.parseExpr()
+					// A `{` here is neither a `field: value` struct literal nor an
+					// empty `{}`. parseExpr would only reach parsePrimary and reject
+					// it with a context-free "unexpected '{'" — name the element type
+					// instead of routing through a bogus expression parse.
+					return nil, p.errorf("expected 'field: value' struct literal for []%s element", typeName)
 				}
 			} else {
 				elem, err = p.parseExpr()
