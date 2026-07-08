@@ -36,6 +36,10 @@ func generateToken() (string, error) {
 // on preflight — that's the protocol).  Security still rests on the
 // bearer token on the actual request: wildcard Access-Control-Allow-Origin
 // only tells a browser it may read the response, it does not bypass auth.
+// maxRequestBodyBytes caps a single request body. Requests are small JSON eval
+// payloads; this only stops a runaway/malicious upload.
+const maxRequestBodyBytes int64 = 64 << 20 // 64 MiB
+
 func authMiddleware(token string, port int, next http.Handler) http.Handler {
 	allowedHosts := map[string]bool{
 		fmt.Sprintf("127.0.0.1:%d", port): true,
@@ -44,10 +48,20 @@ func authMiddleware(token string, port int, next http.Handler) http.Handler {
 	expected := []byte("Bearer " + token)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A panic deep in the evaluator/manifold cgo chain would otherwise crash
+		// the whole app; contain it to a 500 for this one request.
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("[http] panic handling %s %s: %v", r.Method, r.URL.Path, rec)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
 		if !allowedHosts[r.Host] {
 			http.Error(w, "forbidden host", http.StatusBadRequest)
 			return
 		}
+		// Bound the request body so a malformed/huge upload can't exhaust memory.
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -142,7 +156,12 @@ func (s *HTTPServer) bind(ctx context.Context) error {
 
 	log.Printf("[http] server listening on http://127.0.0.1:%d (eval, mcp)", port)
 
-	httpServer := &http.Server{Handler: authMiddleware(token, port, mux)}
+	httpServer := &http.Server{
+		Handler: authMiddleware(token, port, mux),
+		// Defend against a slow-header (slowloris) client holding a connection.
+		// No ReadTimeout/WriteTimeout — an eval can legitimately run for a while.
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
 		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Printf("[http] server error: %v", err)
@@ -165,7 +184,15 @@ func (s *HTTPServer) Auth() HTTPAuth { return HTTPAuth{Port: s.port, Token: s.to
 
 // Endpoint returns the port + bearer token the assistant uses to reach /mcp.
 // Satisfies the connection half of AssistantMCPBridge.
-func (s *HTTPServer) Endpoint() (int, string) { return s.port, s.token }
+func (s *HTTPServer) Endpoint() (int, string) {
+	// Gate on ready so the read happens-after Start's close(s.ready) (a data race
+	// otherwise) and a call during startup returns real values, not (0, "").
+	select {
+	case <-s.ready:
+	case <-time.After(10 * time.Second):
+	}
+	return s.port, s.token
+}
 
 // WaitReady blocks until Start has finished, returning nil once the listener is
 // bound or the error Start failed with. It returns ctx.Err() if ctx is cancelled

@@ -99,6 +99,14 @@ func newFetchClient() *http.Client {
 			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
 				return fmt.Errorf("redirect to unsupported scheme %q", req.URL.Scheme)
 			}
+			// fetch_url's permission is granted per host, but the private-IP dialer
+			// doesn't block public hosts — so an approved host could 302 to any
+			// other public host and have its content fetched under that grant.
+			// Only same-host redirects are allowed; a cross-host hop must be
+			// re-fetched (and re-approved) explicitly.
+			if req.URL.Host != via[0].URL.Host {
+				return fmt.Errorf("refusing cross-host redirect to %s (only %s was approved) — fetch the new URL directly to approve it", req.URL.Host, via[0].URL.Host)
+			}
 			return nil
 		},
 	}
