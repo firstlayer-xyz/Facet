@@ -1,6 +1,7 @@
 package evaluator
 
 import (
+	"sort"
 	"strings"
 
 	"facet/pkg/fctlang/parser"
@@ -37,6 +38,40 @@ func funcHasParam(fn *parser.Function, name string) bool {
 	return false
 }
 
+// paramMatchScore scores how specifically a runtime value of type gotType
+// satisfies a parameter declared as paramType. It mirrors the checker's
+// findOverload scoring (check_call.go): an exact match is most specific, a
+// Number→Length/Angle coercion less so, and an Any/var param least. It never
+// disqualifies — the sort in resolveOverload only orders attempts, and coerceArgs
+// is the final arbiter of a match. (Kept a small independent copy rather than
+// coupling the evaluator to the checker package across the boundary.)
+func paramMatchScore(paramType, gotType string) int {
+	switch paramType {
+	case "Any", "[]Any":
+		return 0
+	}
+	if paramType == gotType {
+		return 2
+	}
+	if (paramType == "Length" || paramType == "Angle") && gotType == "Number" {
+		return 1
+	}
+	return 0
+}
+
+// overloadSpecificity sums paramMatchScore over the parameters an overload
+// actually receives an argument for (a parameter left to its default contributes
+// nothing), so resolveOverload can try the most-specific candidate first.
+func overloadSpecificity(fn *parser.Function, args map[string]value) int {
+	score := 0
+	for _, p := range fn.Params {
+		if v, ok := args[p.Name]; ok {
+			score += paramMatchScore(p.Type, typeName(unwrap(v)))
+		}
+	}
+	return score
+}
+
 // resolveOverload performs type-based overload resolution on candidates.
 // args is a map[string]value keyed by parameter name.
 // resolver is the evaluator used for fillDefaults/coerceArgs.
@@ -52,6 +87,22 @@ func (e *evaluator) resolveOverload(
 ) (value, error, bool) {
 	if len(candidates) == 0 {
 		return nil, nil, false
+	}
+
+	// Try candidates most-specific-first so dispatch is independent of
+	// declaration order and agrees with the checker's overload resolution
+	// (findOverload, check_call.go). Without this, a looser overload (e.g. an
+	// `Any` param) declared before an exact one shadowed it at runtime but not in
+	// the editor. coerceArgs below is still the final arbiter of a match; the sort
+	// only orders the attempts. Stable so equal-specificity candidates keep
+	// declaration order. Skipped for the common single-candidate case.
+	if len(candidates) > 1 {
+		sorted := make([]*parser.Function, len(candidates))
+		copy(sorted, candidates)
+		sort.SliceStable(sorted, func(i, j int) bool {
+			return overloadSpecificity(sorted[i], args) > overloadSpecificity(sorted[j], args)
+		})
+		candidates = sorted
 	}
 
 	singleCandidate := len(candidates) == 1

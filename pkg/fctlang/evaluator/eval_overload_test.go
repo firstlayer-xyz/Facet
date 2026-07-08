@@ -457,3 +457,23 @@ fn Main() Solid {
 	}
 	assertMeshSize(t, mesh, 10, 10, 10, 0.1)
 }
+
+// Overload dispatch must be most-specific-first regardless of declaration order,
+// agreeing with the checker. F(x: 5 mm) must run the exact Length overload (→
+// String) so `+ "suffix"` concatenates; before the sort, the Any-first order ran
+// F(x Any) → Number and failed with "incompatible types Number and String".
+func TestEvalOverloadMostSpecificRegardlessOfOrder(t *testing.T) {
+	for name, src := range map[string]string{
+		"any-first": `fn F(x Any) Number { return 1 }
+fn F(x Length) String { return "hi" }
+fn Main() Solid { var s = F(x: 5 mm) + "suffix"; return Cube(s: 10 mm); }`,
+		"length-first": `fn F(x Length) String { return "hi" }
+fn F(x Any) Number { return 1 }
+fn Main() Solid { var s = F(x: 5 mm) + "suffix"; return Cube(s: 10 mm); }`,
+	} {
+		prog := parseTestProg(t, src)
+		if _, err := evalMerged(context.Background(), prog, nil); err != nil {
+			t.Fatalf("%s: both orders should dispatch F(x: 5 mm) to the Length overload, got: %v", name, err)
+		}
+	}
+}
