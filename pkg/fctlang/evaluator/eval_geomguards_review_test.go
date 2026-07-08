@@ -2,9 +2,62 @@ package evaluator
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 )
+
+// infLen is a Facet expression that evaluates to a non-finite (+Inf) Length.
+// Facet forbids non-finite number literals (the lexer rejects them) and guards
+// division/pow/sqrt/Number(from:), so overflowing Length multiplication is the
+// only way to mint a non-finite coordinate: 1e200 mm * 1e200 = 1e400 = +Inf.
+func infLen() string {
+	big := "1" + strings.Repeat("0", 200) // 1e200, parses finite
+	return fmt.Sprintf("%s mm * %s", big, big)
+}
+
+// Vertex coordinates flow straight into the C++ geometry kernel, which treats
+// NaN/Inf as pass-through and silently corrupts the whole mesh. Each Vec-taking
+// kernel boundary must reject non-finite coordinates, mirroring requireFinite
+// for scalar arguments.
+func TestEvalNonFiniteVecCoordinatesError(t *testing.T) {
+	inf := infLen()
+	cases := []struct{ name, src string }{
+		{"polygon", fmt.Sprintf(`fn Main() Solid {
+    return Polygon(points: [Vec2{x: 0 mm, y: 0 mm}, Vec2{x: %s, y: 0 mm}, Vec2{x: 1 mm, y: 1 mm}]).Extrude(z: 5 mm);
+}`, inf)},
+		{"hull", fmt.Sprintf(`fn Main() Solid {
+    return Hull(arr: [Vec3{x: 0 mm, y: 0 mm, z: 0 mm}, Vec3{x: %s, y: 0 mm, z: 0 mm}, Vec3{x: 1 mm, y: 1 mm, z: 0 mm}, Vec3{x: 0 mm, y: 0 mm, z: 5 mm}]);
+}`, inf)},
+		{"sweep", fmt.Sprintf(`fn Main() Solid {
+    return Circle(r: 5 mm).Sweep(path: [Vec3{x: 0 mm, y: 0 mm, z: 0 mm}, Vec3{x: %s, y: 0 mm, z: 10 mm}]);
+}`, inf)},
+		{"polymesh", fmt.Sprintf(`fn Main() PolyMesh {
+    return PolyMesh{
+        vertices: [Vec3{x: 0 mm, y: 0 mm, z: 0 mm}, Vec3{x: %s, y: 0 mm, z: 0 mm}, Vec3{x: 0 mm, y: 10 mm, z: 0 mm}, Vec3{x: 0 mm, y: 0 mm, z: 10 mm}],
+        faces: [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]],
+    };
+}`, inf)},
+		{"warp", fmt.Sprintf(`fn Main() Solid {
+    return Cube(s: 10 mm).Warp(f: fn(p Vec3) Vec3 { return Vec3{x: %s, y: p.y, z: p.z}; });
+}`, inf)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			geomExpectError(t, tc.src, "finite coordinates")
+		})
+	}
+}
+
+// The finite-coordinate guard must not reject legitimate finite geometry.
+func TestEvalFiniteVecCoordinatesOK(t *testing.T) {
+	s := evalSolid(t, `fn Main() Solid {
+    return Polygon(points: [Vec2{x: 0 mm, y: 0 mm}, Vec2{x: 10 mm, y: 0 mm}, Vec2{x: 5 mm, y: 10 mm}]).Extrude(z: 5 mm);
+}`)
+	if v := s.Volume(); v <= 0 {
+		t.Fatalf("finite polygon extrude: want positive volume, got %v", v)
+	}
+}
 
 // Deep-review regressions: domain guards at the geometry boundary. Each input
 // previously reached the C++ kernel unguarded — OOM/abort, memory corruption,

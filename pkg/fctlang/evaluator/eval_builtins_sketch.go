@@ -132,6 +132,9 @@ func init() {
 			if !ok {
 				return nil, fmt.Errorf("%s() path[%d] must be Vec3, got %s", name, i, typeName(elem))
 			}
+			if !finiteVec3(px, py, pz) {
+				return nil, fmt.Errorf("%s() path[%d] must have finite coordinates, got (%v, %v, %v)", name, i, px, py, pz)
+			}
 			path[i] = manifold.Point3D{X: px, Y: py, Z: pz}
 		}
 		return pf.Sweep(path)
