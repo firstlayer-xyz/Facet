@@ -299,6 +299,12 @@ func builtinNumber(_ *evaluator, args []value) (value, error) {
 		if err != nil {
 			return nil, fmt.Errorf("_number() cannot parse %q as a number", v)
 		}
+		// ParseFloat accepts "NaN"/"Inf"/"Infinity"; those slip past the
+		// codebase's finite-number boundary and silently corrupt downstream
+		// math (e.g. Min(NaN, 5) → 5). Reject them here.
+		if math.IsNaN(n) || math.IsInf(n, 0) {
+			return nil, fmt.Errorf("_number() cannot parse %q as a finite number", v)
+		}
 		return n, nil
 	default:
 		return nil, fmt.Errorf("_number() expects Length, Angle, Number, or String, got %s", typeName(args[0]))

@@ -53,13 +53,31 @@ fn Main() {
 }
 
 // Revolve with a non-positive angle drove the kernel's slice count negative
-// while cap triangles still indexed the (empty) vertex array.
+// while cap triangles still indexed the (empty) vertex array; an angle above
+// 360 is silently clamped to a full revolution. Both are out of the (0, 360] domain.
 func TestEvalRevolveNonPositiveAngleErrors(t *testing.T) {
 	geomExpectError(t, `
 fn Main() {
     return Circle(r: 5 mm).Move(x: 10 mm).Revolve(a: -90 deg);
 }
-`, "positive")
+`, "(0, 360]")
+}
+
+func TestEvalRevolveAngleAbove360Errors(t *testing.T) {
+	geomExpectError(t, `
+fn Main() {
+    return Circle(r: 5 mm).Move(x: 10 mm).Revolve(a: 400 deg);
+}
+`, "(0, 360]")
+}
+
+// A negative taper is silently clamped to 0 by the kernel; reject it.
+func TestEvalNegativeTaperErrors(t *testing.T) {
+	geomExpectError(t, `
+fn Main() {
+    return Square(x: 10 mm, y: 10 mm).Extrude(z: 5 mm, taperX: -0.5)
+}
+`, "taper must be non-negative")
 }
 
 // A zero plane normal normalized to NaN in the kernel — silent garbage.
