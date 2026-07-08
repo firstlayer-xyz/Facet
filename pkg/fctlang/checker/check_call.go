@@ -166,10 +166,20 @@ func (c *checker) checkBuiltinCall(call *parser.BuiltinCallExpr, env *typeEnv) t
 			c.addError(call.Pos, fmt.Sprintf("%s() expects 2 arguments, got %d", call.Name, len(argTypes)))
 			return unknown()
 		}
-		if argTypes[0].ft != argTypes[1].ft && argTypes[0].ft != typeUnknown && argTypes[1].ft != typeUnknown {
-			c.addError(call.Pos, fmt.Sprintf("%s() arguments must have the same type, got %s and %s", call.Name, argTypes[0].displayName(), argTypes[1].displayName()))
+		// Number mixed with Length/Angle is valid: the evaluator coerces the bare
+		// number to the dimensional type (mathMinMax → coerceNumericArgs), so the
+		// result carries the unit. Report only genuinely incompatible mixes.
+		if argTypes[0].ft == typeUnknown || argTypes[1].ft == typeUnknown {
+			return argTypes[0]
 		}
-		return argTypes[0] // return type = first arg type
+		if argTypes[0].ft == argTypes[1].ft {
+			return argTypes[0]
+		}
+		if promoted, ok := promoteVarGroupType(argTypes[0], argTypes[1]); ok {
+			return promoted // e.g. _min(0, 5 mm) is a Length
+		}
+		c.addError(call.Pos, fmt.Sprintf("%s() arguments must have the same type, got %s and %s", call.Name, argTypes[0].displayName(), argTypes[1].displayName()))
+		return argTypes[0]
 	case "_abs":
 		if len(argTypes) != 1 {
 			c.addError(call.Pos, fmt.Sprintf("%s() expects 1 argument, got %d", call.Name, len(argTypes)))
