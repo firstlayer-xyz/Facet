@@ -349,13 +349,92 @@ func (e *evaluator) trackIfSolid(pos parser.Pos, v value) {
 // they don't alias a scoped solid, so #264's most-specific-first posMap ordering
 // already resolves a click to the right sub-part. Only uniformly colored solids
 // are re-originaled — collapsing a multi-color solid would flatten its per-part
-// colors, so those pass through untouched. Non-solid values pass through, too.
+// colors, so those pass through untouched. It also descends into arrays,
+// structs, and Optionals, so a solid reused inside a container binding
+// (`[proto, proto.Move(...)]`) gets its own identity too.
 func reidentifyBinding(v value, scope map[string]value) value {
-	s, ok := v.(*manifold.Solid)
-	if !ok || !uniformlyColored(s) || !reusesScopedSolid(s, scope) {
-		return v
+	nv, _ := reidentifyValue(v, scope)
+	return nv
+}
+
+// reidentifyValue re-originals every reused scoped solid inside v, descending
+// into arrays, structs, and Optionals. It returns whether anything changed and,
+// when nothing did, the original value — so binding a container that holds no
+// reused solid allocates nothing, matching the pass-through for non-solid
+// scalars.
+func reidentifyValue(v value, scope map[string]value) (value, bool) {
+	switch tv := v.(type) {
+	case *manifold.Solid:
+		if uniformlyColored(tv) && reusesScopedSolid(tv, scope) {
+			return tv.Reidentify(), true
+		}
+		return v, false
+	case array:
+		var out []value // allocated lazily on the first changed element
+		for i, el := range tv.elems {
+			nel, ch := reidentifyValue(el, scope)
+			if ch && out == nil {
+				out = make([]value, len(tv.elems))
+				copy(out, tv.elems)
+			}
+			if out != nil {
+				out[i] = nel
+			}
+		}
+		if out == nil {
+			return v, false
+		}
+		return array{elems: out, elemType: tv.elemType}, true
+	case *structVal:
+		var fields map[string]value // allocated lazily on the first changed field
+		for k, fv := range tv.fields {
+			nfv, ch := reidentifyValue(fv, scope)
+			if ch && fields == nil {
+				fields = make(map[string]value, len(tv.fields))
+				for kk, vv := range tv.fields {
+					fields[kk] = vv
+				}
+			}
+			if fields != nil {
+				fields[k] = nfv
+			}
+		}
+		if fields == nil {
+			return v, false
+		}
+		return &structVal{typeName: tv.typeName, fields: fields, decl: tv.decl, lib: tv.lib}, true
+	case *optionalVal:
+		if tv.present {
+			if ninner, ch := reidentifyValue(tv.inner, scope); ch {
+				return &optionalVal{present: true, inner: ninner, innerType: tv.innerType}, true
+			}
+		}
+		return v, false
+	default:
+		return v, false
 	}
-	return s.Reidentify()
+}
+
+// forEachSolid calls fn for every *manifold.Solid reachable in v, descending
+// into arrays, structs, and Optionals (peeling const/constraint wrappers) so a
+// solid nested in a scoped container still counts as a reuse donor.
+func forEachSolid(v value, fn func(*manifold.Solid)) {
+	switch tv := unwrap(v).(type) {
+	case *manifold.Solid:
+		fn(tv)
+	case array:
+		for _, el := range tv.elems {
+			forEachSolid(el, fn)
+		}
+	case *structVal:
+		for _, fv := range tv.fields {
+			forEachSolid(fv, fn)
+		}
+	case *optionalVal:
+		if tv.present {
+			forEachSolid(tv.inner, fn)
+		}
+	}
 }
 
 // uniformlyColored reports whether every face of the solid shares one color and
@@ -377,30 +456,30 @@ func uniformlyColored(s *manifold.Solid) bool {
 }
 
 // reusesScopedSolid reports whether s's face IDs are a subset of some solid
-// already bound in scope — i.e. s is a copy or transform of one named solid (an
+// reachable in scope — i.e. s is a copy or transform of one named solid (an
 // alias to break), not a fresh construction or an assembly spanning several of
-// them (which is a superset of any single one).
+// them (which is a superset of any single one). Donors nested inside scoped
+// arrays/structs count too, so a solid reused out of a scoped collection is
+// still re-originaled.
 func reusesScopedSolid(s *manifold.Solid, scope map[string]value) bool {
 	if len(s.FaceMap) == 0 {
 		return false
 	}
+	reused := false
 	for _, bound := range scope {
-		other, ok := unwrap(bound).(*manifold.Solid)
-		if !ok || len(s.FaceMap) > len(other.FaceMap) {
-			continue
-		}
-		subset := true
-		for id := range s.FaceMap {
-			if _, in := other.FaceMap[id]; !in {
-				subset = false
-				break
+		forEachSolid(bound, func(other *manifold.Solid) {
+			if reused || len(s.FaceMap) > len(other.FaceMap) {
+				return
 			}
-		}
-		if subset {
-			return true
-		}
+			for id := range s.FaceMap {
+				if _, in := other.FaceMap[id]; !in {
+					return
+				}
+			}
+			reused = true
+		})
 	}
-	return false
+	return reused
 }
 
 func (e *evaluator) recordStep(op string, pos parser.Pos, entries ...debugEntry) {
