@@ -59,29 +59,27 @@ func (e *evaluator) evalLibExpr(ex *parser.LibExpr) (value, error) {
 	// Pre-create libRef so struct values created during globals eval get lib context
 	lv := &libRef{path: key}
 	libEval.currentLib = lv
-	// Seed stdlib globals (PI, TAU, E, etc.) so library code can reference them
+	// Seed stdlib globals (PI, TAU, E, etc.) so library code can reference them.
+	// Const stdlib globals stay const-wrapped inside the library body too, so a
+	// library `var PI = 3` errors as a const reassignment just like in main.
 	if stdSrc := e.prog.Std(); stdSrc != nil {
 		for _, g := range stdSrc.Globals() {
 			v, err := libEval.evalExpr(g.Value, libEval.globals)
 			if err != nil {
 				return nil, e.errAt(ex.Pos, "stdlib: %v", err)
 			}
+			if g.IsConst {
+				v = &constVal{inner: v}
+			}
 			libEval.globals[g.Name] = v
 		}
 	}
+	// Bind library globals through the same path as main-file globals, so a
+	// computed constrained global (`var x = f() where [...]`) is validated at
+	// load instead of silently accepted, and const/struct-decl handling matches.
 	for _, g := range libSrc.Globals() {
-		v, err := libEval.evalExpr(g.Value, libEval.globals)
-		if err != nil {
+		if err := libEval.bindGlobal(g, libEval.globals); err != nil {
 			return nil, e.errAt(ex.Pos, "library %q: %v", ex.Path, err)
-		}
-		libEval.globals[g.Name] = v
-		// Register imported library struct declarations with qualified names
-		if ilv, ok := v.(*libRef); ok {
-			if ilvSrc := e.prog.Sources[e.prog.Resolve(ilv.path)]; ilvSrc != nil {
-				for _, sd := range ilvSrc.StructDecls() {
-					libEval.structDecls[g.Name+"."+sd.Name] = sd
-				}
-			}
 		}
 	}
 

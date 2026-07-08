@@ -57,50 +57,14 @@ func (e *evaluator) run() (*EvalResult, error) {
 
 	currentSrc := e.prog.Sources[e.currentKey]
 	for _, g := range currentSrc.Globals() {
+		// A slider override replaces the initializer with the user's value; it is
+		// still constraint-checked and committed, just not re-evaluated.
 		if ov, ok := e.overrides[g.Name]; ok && g.Constraint != nil {
-			e.globals[g.Name] = ov
-		} else {
-			v, err := e.evalExpr(g.Value, e.globals)
-			if err != nil {
+			if err := e.commitGlobal(g, ov, e.globals); err != nil {
 				return nil, err
 			}
-			// Value semantics at top level too: `var b = a` binds a copy, and a
-			// reused scoped solid gets its own identity — same as bindVar does for
-			// locals — so top-level parts stay selectable/colorable apart.
-			cv := reidentifyBinding(copyValue(v), e.globals)
-			if g.IsConst {
-				e.globals[g.Name] = &constVal{inner: cv}
-			} else {
-				e.globals[g.Name] = cv
-			}
-		}
-		if g.Constraint != nil {
-			if err := e.validateConstraint(g.Name, g.Constraint, unwrap(e.globals[g.Name]), e.globals); err != nil {
-				return nil, err
-			}
-			// Wrap with constrainedVal so reassignment re-validates.
-			inner := e.globals[g.Name]
-			if g.IsConst {
-				// constVal wrapping constrainedVal: &constVal{inner: &constrainedVal{...}}
-				cv := unwrap(inner) // get bare value
-				e.globals[g.Name] = &constVal{inner: &constrainedVal{inner: cv, constraint: g.Constraint, name: g.Name}}
-			} else {
-				bare := unwrap(inner)
-				e.globals[g.Name] = &constrainedVal{inner: bare, constraint: g.Constraint, name: g.Name}
-			}
-		}
-		// Give a top-level solid binding its posMap entry for face-click
-		// navigation, matching bindVar's trackIfSolid for locals. Unwraps
-		// const/constraint so the underlying solid is recorded.
-		e.trackIfSolid(g.Pos, e.globals[g.Name])
-		// Register library struct declarations with qualified names
-		// (e.g. "T.Config") so namespace collisions are avoided.
-		if lv, ok := unwrap(e.globals[g.Name]).(*libRef); ok {
-			if lvSrc := e.prog.Sources[e.prog.Resolve(lv.path)]; lvSrc != nil {
-				for _, sd := range lvSrc.StructDecls() {
-					e.structDecls[g.Name+"."+sd.Name] = sd
-				}
-			}
+		} else if err := e.bindGlobal(g, e.globals); err != nil {
+			return nil, err
 		}
 	}
 
@@ -208,6 +172,56 @@ func (e *evaluator) run() (*EvalResult, error) {
 	}
 
 	return &EvalResult{Solids: solids, Stats: stats, PosMap: buildPosMap(*e.solidTracks)}, nil
+}
+
+// bindGlobal evaluates global g's initializer in scope, applies value semantics
+// (copy + reidentify of a reused scoped solid, like bindVar for locals), and
+// commits it via commitGlobal. Shared by run()'s top-level loop and evalLibExpr,
+// so a library global is bound — and constraint-checked — exactly like a
+// main-file one.
+func (e *evaluator) bindGlobal(g *parser.VarStmt, scope map[string]value) error {
+	v, err := e.evalExpr(g.Value, scope)
+	if err != nil {
+		return err
+	}
+	return e.commitGlobal(g, reidentifyBinding(copyValue(v), scope), scope)
+}
+
+// commitGlobal stores value v as global g in scope: const/constraint wrapping,
+// runtime constraint validation, solid tracking for face-click navigation, and
+// library struct-decl registration. Split from bindGlobal so the slider-override
+// path can commit a user-supplied value without re-evaluating the initializer.
+func (e *evaluator) commitGlobal(g *parser.VarStmt, v value, scope map[string]value) error {
+	if g.IsConst {
+		scope[g.Name] = &constVal{inner: v}
+	} else {
+		scope[g.Name] = v
+	}
+	if g.Constraint != nil {
+		if err := e.validateConstraint(g.Name, g.Constraint, unwrap(scope[g.Name]), scope); err != nil {
+			return err
+		}
+		// Wrap with constrainedVal so reassignment re-validates (constVal on the
+		// outside when the global is also const).
+		bare := unwrap(scope[g.Name])
+		if g.IsConst {
+			scope[g.Name] = &constVal{inner: &constrainedVal{inner: bare, constraint: g.Constraint, name: g.Name}}
+		} else {
+			scope[g.Name] = &constrainedVal{inner: bare, constraint: g.Constraint, name: g.Name}
+		}
+	}
+	// Give a solid binding its posMap entry (unwraps const/constraint first).
+	e.trackIfSolid(g.Pos, scope[g.Name])
+	// Register imported library struct declarations under qualified names
+	// (e.g. "T.Config") so namespace collisions are avoided.
+	if lv, ok := unwrap(scope[g.Name]).(*libRef); ok {
+		if lvSrc := e.prog.Sources[e.prog.Resolve(lv.path)]; lvSrc != nil {
+			for _, sd := range lvSrc.StructDecls() {
+				e.structDecls[g.Name+"."+sd.Name] = sd
+			}
+		}
+	}
+	return nil
 }
 
 // buildPosMap resolves solidTracks into a source-position → face-ID index for

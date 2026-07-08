@@ -245,3 +245,68 @@ fn Main() { return L.Widget{w: 20 mm}.Boxed(); }
 	}
 	assertMeshSize(t, mesh, 20, 20, 20, 0.1)
 }
+
+// A library global with a COMPUTED (non-const-foldable) constraint must be
+// validated at load, exactly as a main-file global is. The checker only
+// value-checks constant constraints, so `var Bad = f() where [...]` escapes the
+// static check — runtime validation is the only guard, and evalLibExpr used to
+// skip it, silently accepting an out-of-range library global.
+func TestEvalLibraryComputedConstraintValidated(t *testing.T) {
+	libDir := t.TempDir()
+	libPath := libDir + "/test/badconst"
+	if err := os.MkdirAll(libPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	libSrc := `
+fn twenty() { return 20 mm; }
+var Bad = twenty() where [0:10] mm;
+fn Box() { return Cube(s: Vec3{x: Bad, y: Bad, z: Bad}); }
+`
+	if err := os.WriteFile(libPath+"/badconst.fct", []byte(libSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+var L = lib "test/badconst";
+fn Main() { return L.Box(); }
+`
+	prog := parseTestProg(t, src)
+	resolveTestProg(t, prog, libDir, &loader.Options{})
+	_, err := evalMerged(context.Background(), prog, nil)
+	if err == nil {
+		t.Fatal("expected an out-of-range error from the library's computed constrained global, got success")
+	}
+	if !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("expected 'out of range', got: %v", err)
+	}
+}
+
+// The companion in-range case must still load and render — the guard rejects
+// only genuine violations.
+func TestEvalLibraryComputedConstraintInRange(t *testing.T) {
+	libDir := t.TempDir()
+	libPath := libDir + "/test/okconst"
+	if err := os.MkdirAll(libPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	libSrc := `
+fn twenty() { return 20 mm; }
+var Ok = twenty() where [0:100] mm;
+fn Box() { return Cube(s: Vec3{x: Ok, y: Ok, z: Ok}); }
+`
+	if err := os.WriteFile(libPath+"/okconst.fct", []byte(libSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+var L = lib "test/okconst";
+fn Main() { return L.Box(); }
+`
+	prog := parseTestProg(t, src)
+	resolveTestProg(t, prog, libDir, &loader.Options{})
+	mesh, err := evalMerged(context.Background(), prog, nil)
+	if err != nil {
+		t.Fatalf("in-range library constrained global should load: %v", err)
+	}
+	if mesh == nil || len(mesh.Vertices) == 0 {
+		t.Fatal("expected a non-empty mesh")
+	}
+}
