@@ -85,7 +85,11 @@ func (a *App) GetExample(name string) (string, error) {
 
 // App struct holds the application state and is bound to the frontend via Wails.
 type App struct {
-	ctx context.Context
+	// ctx is the Wails runtime context, published once by startup (on its own
+	// goroutine) and read by binding-dispatch goroutines. atomic.Pointer makes
+	// that publication race-free: a reader sees either nil or the fully-set ctx,
+	// never a torn two-word value.
+	ctx atomic.Pointer[context.Context]
 
 	config    *ConfigStore
 	logs      *LogCapture
@@ -94,6 +98,15 @@ type App struct {
 	eval      *EvalService
 	mcp       *MCPService
 	http      *HTTPServer
+}
+
+// runtimeCtx returns the published Wails runtime context, or nil before startup
+// has stored it.
+func (a *App) runtimeCtx() context.Context {
+	if p := a.ctx.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 // NewApp creates a new App application struct.
@@ -121,7 +134,7 @@ func NewApp() *App {
 // rather than fabricating zero auth — which the client would pin, dead-ending
 // every eval with an unexplained "Load failed" for the whole session.
 func (a *App) GetHTTPAuth() (HTTPAuth, error) {
-	if err := a.http.WaitReady(a.ctx); err != nil {
+	if err := a.http.WaitReady(); err != nil {
 		return HTTPAuth{}, fmt.Errorf("HTTP server unavailable: %w", err)
 	}
 	return a.http.Auth(), nil
@@ -161,7 +174,7 @@ func applyMemoryLimit(gb int64) {
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods.
 func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+	a.ctx.Store(&ctx)
 
 	// A corrupt or unreadable settings file must not prevent startup — the
 	// user still needs to launch the app to fix it. Log loudly so the
@@ -451,7 +464,7 @@ func (a *App) OpenRecentFile(path string) (*OpenedFile, error) {
 
 // SetWindowTitle updates the native window title.
 func (a *App) SetWindowTitle(title string) {
-	wailsRuntime.WindowSetTitle(a.ctx, title)
+	wailsRuntime.WindowSetTitle(a.runtimeCtx(), title)
 }
 
 // openFilter is the Open dialog filter: Facet source plus the importable mesh
@@ -482,7 +495,7 @@ var saveFilter = wailsRuntime.FileFilter{
 // ConfirmDiscard shows a native dialog asking about unsaved changes.
 // Returns true if the user chose to close without saving, false to cancel.
 func (a *App) ConfirmDiscard() (bool, error) {
-	result, err := wailsRuntime.MessageDialog(a.ctx, wailsRuntime.MessageDialogOptions{
+	result, err := wailsRuntime.MessageDialog(a.runtimeCtx(), wailsRuntime.MessageDialogOptions{
 		Type:          wailsRuntime.QuestionDialog,
 		Title:         "Unsaved Changes",
 		Message:       "Your changes will be lost if you close this tab without saving.",
@@ -497,7 +510,7 @@ func (a *App) ConfirmDiscard() (bool, error) {
 
 // OpenFile shows a native file dialog and returns the opened file.
 func (a *App) OpenFile() (*OpenedFile, error) {
-	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	path, err := wailsRuntime.OpenFileDialog(a.runtimeCtx(), wailsRuntime.OpenDialogOptions{
 		Filters: []wailsRuntime.FileFilter{openFilter},
 	})
 	if err != nil {
@@ -513,7 +526,7 @@ func (a *App) OpenFile() (*OpenedFile, error) {
 func (a *App) SaveFile(source string, path string) (string, error) {
 	if path == "" {
 		var err error
-		path, err = wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+		path, err = wailsRuntime.SaveFileDialog(a.runtimeCtx(), wailsRuntime.SaveDialogOptions{
 			DefaultFilename: "untitled.fct",
 			Filters:         []wailsRuntime.FileFilter{saveFilter},
 		})

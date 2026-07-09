@@ -20,14 +20,14 @@ func (a *App) buildMenu() *menu.Menu {
 	// File menu
 	fileMenu := appMenu.AddSubmenu("File")
 	fileMenu.AddText("New", keys.CmdOrCtrl("n"), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:new")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:new")
 	})
 	fileMenu.AddText("New Library...", nil, func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:new-library")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:new-library")
 	})
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Open...", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:open")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:open")
 	})
 
 	// Open Recent submenu. If the settings file is corrupt, show an empty
@@ -44,7 +44,7 @@ func (a *App) buildMenu() *menu.Menu {
 		for _, p := range recentFiles {
 			label := filepath.Base(p)
 			recentMenu.AddText(label, nil, func(_ *menu.CallbackData) {
-				wailsRuntime.EventsEmit(a.ctx, "menu:open-recent", p)
+				wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:open-recent", p)
 			})
 		}
 	}
@@ -77,7 +77,7 @@ func (a *App) buildMenu() *menu.Menu {
 				}
 				libPath := lib.Path
 				sub.AddText(label, nil, func(_ *menu.CallbackData) {
-					wailsRuntime.EventsEmit(a.ctx, "menu:open-library", libPath)
+					wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:open-library", libPath)
 				})
 			}
 		}
@@ -88,31 +88,31 @@ func (a *App) buildMenu() *menu.Menu {
 	for _, name := range a.GetExampleList() {
 		label := strings.TrimSuffix(name, ".fct")
 		demoMenu.AddText(label, nil, func(_ *menu.CallbackData) {
-			wailsRuntime.EventsEmit(a.ctx, "menu:open-demo", name)
+			wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:open-demo", name)
 		})
 	}
 
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Close Tab", keys.CmdOrCtrl("w"), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:close-tab")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:close-tab")
 	})
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Save", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:save")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:save")
 	})
 	fileMenu.AddText("Save As...", keys.Combo("s", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:save-as")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:save-as")
 	})
 	fileMenu.AddSeparator()
 	exportMenu := fileMenu.AddSubmenu("Export")
 	exportMenu.AddText("Export 3MF...", keys.CmdOrCtrl("e"), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:export", "3mf")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:export", "3mf")
 	})
 	exportMenu.AddText("Export STL...", nil, func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:export", "stl")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:export", "stl")
 	})
 	exportMenu.AddText("Export OBJ...", nil, func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:export", "obj")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:export", "obj")
 	})
 
 	// Edit menu (standard cut/copy/paste/undo/redo)
@@ -121,45 +121,45 @@ func (a *App) buildMenu() *menu.Menu {
 	// Run menu
 	runMenu := appMenu.AddSubmenu("Run")
 	runMenu.AddText("Run", keys.CmdOrCtrl("r"), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:run")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:run")
 	})
 	runMenu.AddText("Debug", keys.Combo("r", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:debug")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:debug")
 	})
 
 	// View menu
 	viewMenu := appMenu.AddSubmenu("View")
 	viewMenu.AddText("Full Code View", keys.Combo("f", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:fullcode")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:fullcode")
 	})
 	viewMenu.AddSeparator()
 	viewMenu.AddText("Toggle Grid", nil, func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:toggle-grid")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:toggle-grid")
 	})
 	viewMenu.AddText("Toggle Axes", nil, func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:toggle-axes")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:toggle-axes")
 	})
 	viewMenu.AddSeparator()
 	viewMenu.AddText("Docs", keys.Combo("d", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:docs")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:docs")
 	})
 
 	// Model menu
 	modelMenu := appMenu.AddSubmenu("Model")
 	modelMenu.AddText("AI Assistant", keys.Combo("a", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:assistant")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:assistant")
 	})
 	modelMenu.AddSeparator()
 	slicers := detectSlicers()
 	if len(slicers) == 0 {
 		modelMenu.AddText("Send to Slicer", nil, func(_ *menu.CallbackData) {
-			wailsRuntime.EventsEmit(a.ctx, "menu:slicer")
+			wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:slicer")
 		})
 	} else {
 		slicerMenu := modelMenu.AddSubmenu("Send to Slicer")
 		for _, s := range slicers {
 			slicerMenu.AddText(s.Name, nil, func(_ *menu.CallbackData) {
-				wailsRuntime.EventsEmit(a.ctx, "menu:slicer-id", s.ID)
+				wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:slicer-id", s.ID)
 			})
 		}
 	}
@@ -167,13 +167,13 @@ func (a *App) buildMenu() *menu.Menu {
 	// Window menu (macOS standard + Settings)
 	windowMenu := appMenu.AddSubmenu("Window")
 	windowMenu.AddText("Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
-		wailsRuntime.EventsEmit(a.ctx, "menu:settings")
+		wailsRuntime.EventsEmit(a.runtimeCtx(), "menu:settings")
 	})
 
 	// Help menu
 	helpMenu := appMenu.AddSubmenu("Help")
 	helpMenu.AddText("View on GitHub", nil, func(_ *menu.CallbackData) {
-		wailsRuntime.BrowserOpenURL(a.ctx, facetGitHubURL)
+		wailsRuntime.BrowserOpenURL(a.runtimeCtx(), facetGitHubURL)
 	})
 
 	return appMenu
