@@ -180,8 +180,18 @@ func (a *App) startup(ctx context.Context) {
 	a.logs.Start(ctx)
 
 	// Start the in-process HTTP server (eval/frame/check + the assistant's mcp).
+	// Unlike the settings file above, the server IS the core render path — with it
+	// dead the editor can only show a blank model, so surface a fatal dialog and
+	// quit rather than leaving a broken-looking app running (Wails startup can't
+	// return an error, so a dialog + Quit is the idiomatic fatal path).
 	if err := a.http.Start(ctx); err != nil {
-		log.Printf("[http] failed to start: %v", err)
+		wailsRuntime.MessageDialog(ctx, wailsRuntime.MessageDialogOptions{
+			Type:    wailsRuntime.ErrorDialog,
+			Title:   "Facet could not start",
+			Message: fmt.Sprintf("The internal server failed to start and the editor cannot render:\n\n%v", err),
+		})
+		wailsRuntime.Quit(ctx)
+		return
 	}
 
 	// Auto-pull libraries on startup if enabled
