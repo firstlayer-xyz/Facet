@@ -55,8 +55,13 @@ func defaultNewAssistant(cliID, binPath string, emit EventEmitter, mcp Assistant
 	return newGenericCLIAssistant(emit, cliID, binPath)
 }
 
-// SetEventContext stores the context used to emit "assistant:*" events.
+// SetEventContext stores the context used to emit "assistant:*" events. It takes
+// s.mu because eventCtx is read under the same lock in Send (from binding
+// goroutines) while startup writes it here — without the lock those two have no
+// happens-before edge.
 func (s *AssistantService) SetEventContext(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.eventCtx = ctx
 }
 

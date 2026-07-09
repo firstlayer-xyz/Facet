@@ -16,7 +16,7 @@ import (
 // OBJ) via Manifold's pure-Go writers. Shows a native save dialog to choose the
 // output path.
 func (a *App) ExportMesh(format string, sources map[string]string, key string, entry string, overrides map[string]interface{}, embedSource bool) error {
-	solids, err := evalSolids(a.ctx, evalRequest{Sources: sources, Key: key, Entry: entry, Overrides: overrides})
+	solids, err := evalSolids(a.runtimeCtx(), evalRequest{Sources: sources, Key: key, Entry: entry, Overrides: overrides})
 	if err != nil {
 		return fmt.Errorf("eval failed: %w", err)
 	}
@@ -40,7 +40,7 @@ func (a *App) ExportMesh(format string, sources map[string]string, key string, e
 		return fmt.Errorf("unsupported format: %s", format)
 	}
 
-	path, err := wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+	path, err := wailsRuntime.SaveFileDialog(a.runtimeCtx(), wailsRuntime.SaveDialogOptions{
 		DefaultFilename: defaultName,
 		Filters:         []wailsRuntime.FileFilter{filter},
 	})
@@ -94,7 +94,7 @@ func (a *App) DetectSlicers() []SlicerInfo {
 // SendToSlicer re-evaluates the current program and exports the result as .3mf
 // to a stable temp file, then opens it in the specified slicer application.
 func (a *App) SendToSlicer(slicerID string, sources map[string]string, key string, entry string, overrides map[string]interface{}) error {
-	solids, err := evalSolids(a.ctx, evalRequest{Sources: sources, Key: key, Entry: entry, Overrides: overrides})
+	solids, err := evalSolids(a.runtimeCtx(), evalRequest{Sources: sources, Key: key, Entry: entry, Overrides: overrides})
 	if err != nil {
 		return fmt.Errorf("eval failed: %w", err)
 	}

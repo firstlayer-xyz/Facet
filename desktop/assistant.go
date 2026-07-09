@@ -331,7 +331,7 @@ func (a *App) GetDefaultSystemPrompt() string {
 // PickImageFile opens a native file dialog for selecting an image file
 // and returns the chosen path (empty string if cancelled).
 func (a *App) PickImageFile() (string, error) {
-	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	path, err := wailsRuntime.OpenFileDialog(a.runtimeCtx(), wailsRuntime.OpenDialogOptions{
 		Title: "Attach Image",
 		Filters: []wailsRuntime.FileFilter{
 			{DisplayName: "Images (*.png, *.jpg, *.jpeg, *.gif, *.webp)", Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.webp"},

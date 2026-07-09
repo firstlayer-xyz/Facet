@@ -195,20 +195,16 @@ func (s *HTTPServer) Endpoint() (int, string) {
 }
 
 // WaitReady blocks until Start has finished, returning nil once the listener is
-// bound or the error Start failed with. It returns ctx.Err() if ctx is cancelled
-// and a timeout error if Start neither succeeds nor fails within 10s (it should
-// always resolve quickly, since Start closes ready on every path). GetHTTPAuth
-// calls this so a frontend eval issued during startup waits for the server and
-// surfaces a real error instead of silently reading port 0.
-func (s *HTTPServer) WaitReady(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+// bound or the error Start failed with, or a timeout error if Start neither
+// succeeds nor fails within 10s (it should always resolve quickly, since Start
+// closes ready on every path). GetHTTPAuth calls this so a frontend eval issued
+// during startup waits for the server and surfaces a real error instead of
+// silently reading port 0. No caller context is needed: the ready signal plus
+// the safety timeout bound the wait, and Start owns its own ctx-driven shutdown.
+func (s *HTTPServer) WaitReady() error {
 	select {
 	case <-s.ready:
 		return s.startErr
-	case <-ctx.Done():
-		return ctx.Err()
 	case <-time.After(10 * time.Second):
 		return fmt.Errorf("HTTP server did not become ready within 10s")
 	}

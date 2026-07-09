@@ -18,7 +18,7 @@ func TestWaitReadyBlocksUntilStart(t *testing.T) {
 
 	returned := make(chan error, 1)
 	go func() {
-		returned <- srv.WaitReady(context.Background())
+		returned <- srv.WaitReady()
 	}()
 
 	// Before Start, WaitReady must stay blocked.
@@ -58,7 +58,7 @@ func TestWaitReadyReturnsStartError(t *testing.T) {
 	close(srv.ready)
 
 	done := make(chan error, 1)
-	go func() { done <- srv.WaitReady(context.Background()) }()
+	go func() { done <- srv.WaitReady() }()
 	select {
 	case err := <-done:
 		if err == nil || !strings.Contains(err.Error(), "listen failed") {
