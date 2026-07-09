@@ -2879,3 +2879,27 @@ func TestCheckUnknownBuiltinError(t *testing.T) {
 func TestCheckRegisteredUnsignedBuiltinOK(t *testing.T) {
 	expectNoErrors(t, `fn Main() { var b = _bounding_box(Cube(s: 10 mm)); return Cube(s: 10 mm); }`)
 }
+
+// An unannotated function called from a top-level global initializer is inferred
+// on demand, so the global gets its real type and a misuse is caught at compile
+// time instead of slipping through as unknown. Before the on-demand path, `x`
+// typed unknown (inferReturnTypes runs after checkGlobals) and `x && true` was
+// silently accepted.
+func TestCheckGlobalFromUnannotatedFuncTyped(t *testing.T) {
+	expectError(t, `
+fn Twice(n Number) { return n * 2; }
+var x = Twice(n: 3);
+var bad = x && true;
+fn Main() { return Cube(s: Vec3{x: 10 mm, y: 10 mm, z: 10 mm}); }
+`, "operator &&")
+}
+
+// A recursive unannotated function called from a global must not loop forever
+// during on-demand inference (the inferringReturns guard) and must still type.
+func TestCheckRecursiveGlobalInferenceTerminates(t *testing.T) {
+	expectNoErrors(t, `
+fn Countdown(n Number) { if n <= 0 { return 0; } return Countdown(n: n - 1); }
+var x = Countdown(n: 3);
+fn Main() { return Cube(s: Vec3{x: x * 1 mm, y: 10 mm, z: 10 mm}); }
+`)
+}

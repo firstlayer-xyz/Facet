@@ -246,14 +246,8 @@ func (c *checker) checkDuplicateFunctions() {
 
 // inferReturnTypes infers return types for unannotated functions (Pass 1).
 func (c *checker) inferReturnTypes() {
-	// Pass 1 only gathers return types; Pass 2 (validateFunctions) re-checks every
-	// body and is the source of truth for diagnostics. Suppress emission here so a
-	// body error isn't reported once per pass.
-	c.suppressErrors = true
-	defer func() { c.suppressErrors = false }()
 	for srcKey, src := range c.prog.Sources {
 		c.currentSrcKey = srcKey
-		srcEnv := c.srcGlobalEnv(srcKey)
 		nameCounts := map[string]int{}
 		for _, fn := range src.Functions() {
 			if fn.ReceiverType == "" {
@@ -264,30 +258,53 @@ func (c *checker) inferReturnTypes() {
 			if fn.ReturnType != "" || fn.ReceiverType != "" {
 				continue
 			}
+			// Overloaded names have ambiguous inferred returns — skip, as before.
 			if nameCounts[fn.Name] > 1 {
 				continue
 			}
-			env := srcEnv.child()
-			for _, p := range fn.Params {
-				pt := c.resolveParamType(fn, p.Type)
-				env.set(p.Name, pt)
-			}
-			retType := c.checkStmts(fn.Body, env)
-			if retType.ft != typeUnknown {
-				c.inferredReturns[fnKey{fn.ReceiverType, fn.Name}] = retType
-				if retType.ft == typeStruct {
-					for _, stmt := range fn.Body {
-						if rs, ok := stmt.(*parser.ReturnStmt); ok {
-							if sn := c.resolveStructName(rs.Value, env); sn != "" {
-								c.inferredReturnStructs[fnKey{fn.ReceiverType, fn.Name}] = sn
-								break
-							}
-						}
+			c.inferReturnType(fn)
+		}
+	}
+}
+
+// inferReturnType infers and memoizes an unannotated function's return type by
+// type-checking its body with errors suppressed (Pass 2 / validateFunctions is
+// the source of truth for diagnostics). It is called both by the inferReturnTypes
+// pass and on demand from resolveReturnType — so a function called from a global
+// initializer, before the pass runs, still gets a real type instead of unknown.
+// The inferringReturns guard breaks recursion on a self-referential function.
+func (c *checker) inferReturnType(fn *parser.Function) typeInfo {
+	key := fnKey{fn.ReceiverType, fn.Name}
+	if c.inferringReturns[key] {
+		return unknown()
+	}
+	c.inferringReturns[key] = true
+	defer delete(c.inferringReturns, key)
+
+	env := c.srcGlobalEnv(c.currentSrcKey).child()
+	for _, p := range fn.Params {
+		env.set(p.Name, c.resolveParamType(fn, p.Type))
+	}
+
+	savedSuppress := c.suppressErrors
+	c.suppressErrors = true
+	retType := c.checkStmts(fn.Body, env)
+	c.suppressErrors = savedSuppress
+
+	if retType.ft != typeUnknown {
+		c.inferredReturns[key] = retType
+		if retType.ft == typeStruct {
+			for _, stmt := range fn.Body {
+				if rs, ok := stmt.(*parser.ReturnStmt); ok {
+					if sn := c.resolveStructName(rs.Value, env); sn != "" {
+						c.inferredReturnStructs[key] = sn
+						break
 					}
 				}
 			}
 		}
 	}
+	return retType
 }
 
 // validateFunctions performs full validation on all functions (Pass 2).
@@ -574,6 +591,10 @@ type checker struct {
 	libVarToPath          map[string]string // lib variable name → lib path in prog
 	inferredReturns       map[fnKey]typeInfo
 	inferredReturnStructs map[fnKey]string
+	// inferringReturns guards on-demand return inference against recursion — a
+	// self-referential unannotated function called from a global would otherwise
+	// infer its own type forever.
+	inferringReturns map[fnKey]bool
 	// returnElemType is set when checking a function with a declared array return type.
 	// It provides top-down coercion context for untyped array literals in return position.
 	returnElemType typeInfo
@@ -608,6 +629,7 @@ func initChecker(prog loader.Program) *checker {
 		libVarToPath:          make(map[string]string),
 		inferredReturns:       make(map[fnKey]typeInfo),
 		inferredReturnStructs: make(map[fnKey]string),
+		inferringReturns:      make(map[fnKey]bool),
 		references:            make(References),
 	}
 	// Precompute top-level declarations once. Used both for the final Result
