@@ -1010,7 +1010,10 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 			f.write(e.TypeName)
 		}
 		f.write("{")
-		if len(e.Fields) > 0 {
+		if len(e.Fields) > 0 && !f.opts.Minify && structFieldsHaveComments(e.Fields) {
+			// Interior comments force one-field-per-line so each comment stays put.
+			f.formatStructFieldsWithComments(e)
+		} else if len(e.Fields) > 0 {
 			// Measure single-line width
 			total := 0
 			for i, fi := range e.Fields {
@@ -1122,6 +1125,11 @@ func (f *formatter) formatArrayElems(e *parser.ArrayLitExpr) {
 	if len(e.Elems) == 0 {
 		return
 	}
+	if !f.opts.Minify && arrayHasComments(e) {
+		// Interior comments force one-element-per-line so each comment stays put.
+		f.formatArrayElemsWithComments(e)
+		return
+	}
 	elems := make([]elemInfo, len(e.Elems))
 	for i, elem := range e.Elems {
 		if sl, ok := elem.(*parser.StructLitExpr); ok && e.TypeName != "" && sl.TypeName == e.TypeName {
@@ -1219,6 +1227,108 @@ func argsHaveComments(args []parser.Expr) bool {
 		}
 	}
 	return false
+}
+
+// structFieldsHaveComments reports whether any struct-literal field carries a
+// preserved comment.
+func structFieldsHaveComments(fields []*parser.StructFieldInit) bool {
+	for _, fi := range fields {
+		if len(fi.Comments) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// writeCommentLines emits the standalone (leading) comments as their own indented
+// lines; writeTrailingComments appends the end-of-line ones after the current
+// text. Both match formatArgs' comment style so output stays idempotent.
+func (f *formatter) writeLeadingComments(cs []parser.Comment) {
+	for _, c := range cs {
+		if !c.IsTrailing {
+			f.writeIndent()
+			if c.IsDoc {
+				f.writeln("# " + c.Text)
+			} else {
+				f.writeln("// " + c.Text)
+			}
+		}
+	}
+}
+
+func (f *formatter) writeTrailingComments(cs []parser.Comment) {
+	for _, c := range cs {
+		if c.IsTrailing {
+			if c.IsDoc {
+				f.write(" # " + c.Text)
+			} else {
+				f.write(" // " + c.Text)
+			}
+		}
+	}
+}
+
+// formatStructFieldsWithComments emits one field per line, with each field's
+// leading comments above it and its trailing comment after it. The opening "{"
+// is already written; it closes by re-indenting for the caller's "}".
+func (f *formatter) formatStructFieldsWithComments(e *parser.StructLitExpr) {
+	f.writeln("")
+	f.depth++
+	for i, fi := range e.Fields {
+		f.writeLeadingComments(fi.Comments)
+		f.writeIndent()
+		f.write(fi.Name + ": ")
+		f.formatExpr(fi.Value)
+		if i < len(e.Fields)-1 {
+			f.write(",")
+		}
+		f.writeTrailingComments(fi.Comments)
+		f.writeln("")
+	}
+	f.depth--
+	f.writeIndent()
+}
+
+// arrayHasComments reports whether an array literal preserved any interior
+// comments.
+func arrayHasComments(e *parser.ArrayLitExpr) bool {
+	for _, cs := range e.ElemComments {
+		if len(cs) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// formatArrayElemsWithComments emits one element per line with its leading and
+// trailing comments, the array analogue of formatStructFieldsWithComments.
+func (f *formatter) formatArrayElemsWithComments(e *parser.ArrayLitExpr) {
+	f.writeln("")
+	f.depth++
+	for i, elem := range e.Elems {
+		var cs []parser.Comment
+		if i < len(e.ElemComments) {
+			cs = e.ElemComments[i]
+		}
+		f.writeLeadingComments(cs)
+		f.writeIndent()
+		// Typed-array struct elements drop the repeated element type name.
+		if sl, ok := elem.(*parser.StructLitExpr); ok && e.TypeName != "" && sl.TypeName == e.TypeName {
+			saved := sl.TypeName
+			sl.TypeName = ""
+			f.formatExpr(sl)
+			sl.TypeName = saved
+		} else {
+			f.formatExpr(elem)
+		}
+		if i < len(e.Elems)-1 {
+			f.write(",")
+		}
+		f.writeTrailingComments(cs)
+		f.writeln("")
+	}
+	f.depth--
+	f.writeIndent()
 }
 
 // formatArgs formats a call argument list. callLine is the source line of the

@@ -30,6 +30,7 @@ func (p *parser) parseArrayLit() (Expr, error) {
 		return &ArrayLitExpr{Elems: nil, Pos: Pos{bracketLine, bracketCol}}, nil
 	}
 	// Parse first element
+	firstElemLine := p.cur.Line
 	first, err := p.parseExpr()
 	if err != nil {
 		return nil, err
@@ -71,25 +72,58 @@ func (p *parser) parseArrayLit() (Expr, error) {
 		}
 		return &RangeExpr{Start: first, End: end, Step: step, Bound: bound, Pos: Pos{bracketLine, bracketCol}}, nil
 	}
-	// Normal array literal
+	// Normal array literal. Preserve interior comments: after each comma, the
+	// previous element's trailing end-of-line comment and the standalone comment
+	// lines before the next element are attached to those elements (via a parallel
+	// side-list) so the formatter keeps them in place instead of leaking them to
+	// the next statement. Mirrors parseCallArgs / parseStructLit.
 	elems := []Expr{first}
+	prevElemLine := firstElemLine
+	comments := map[int][]Comment{} // element index → its comments
+	attach := func(idx int, cs []Comment, trailing bool) {
+		if len(cs) == 0 {
+			return
+		}
+		if trailing {
+			for i := range cs {
+				cs[i].IsTrailing = true
+			}
+		}
+		comments[idx] = append(comments[idx], cs...)
+	}
 	for p.cur.Type == TokenComma {
 		if err := p.next(); err != nil { // consume ','
 			return nil, err
 		}
+		attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // prev elem trailing
+		leading := p.lex.drainComments()
 		if p.cur.Type == TokenRBracket {
-			break // trailing comma
+			// Trailing comma with dangling comments before ']'. Keep them (as
+			// trailing on the last element) rather than leaking them forward.
+			attach(len(elems)-1, leading, true)
+			break
 		}
+		elemLine := p.cur.Line
 		elem, err := p.parseExpr()
 		if err != nil {
 			return nil, err
 		}
 		elems = append(elems, elem)
+		attach(len(elems)-1, leading, false) // this elem's leading
+		prevElemLine = elemLine
 	}
+	attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // last elem trailing (before ']')
 	if _, err := p.expect(TokenRBracket); err != nil {
 		return nil, err
 	}
-	return &ArrayLitExpr{Elems: elems, Pos: Pos{bracketLine, bracketCol}}, nil
+	var elemComments [][]Comment
+	if len(comments) > 0 {
+		elemComments = make([][]Comment, len(elems))
+		for i := range elems {
+			elemComments[i] = comments[i]
+		}
+	}
+	return &ArrayLitExpr{Elems: elems, Pos: Pos{bracketLine, bracketCol}, ElemComments: elemComments}, nil
 }
 
 // parseConstraint parses the optional constraint after a var value expression.

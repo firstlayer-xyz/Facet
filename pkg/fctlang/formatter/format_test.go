@@ -807,3 +807,82 @@ func TestFormatPreservesPrecedenceParens(t *testing.T) {
 func annotate(s string) string {
 	return strings.ReplaceAll(s, "\n", "↵\n")
 }
+
+// A comment between array-literal elements must stay inside the array (next to
+// its element), not leak forward onto the following statement.
+func TestFormatArrayInteriorComment(t *testing.T) {
+	src := "var xs = [\n    1,\n    // keep me\n    2,\n]\nvar y = 3\n"
+	prog, err := parser.Parse(src, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	out := Format(prog)
+	if !strings.Contains(out, "// keep me") {
+		t.Fatalf("comment dropped:\n%s", out)
+	}
+	// The comment must appear inside the array (before ']') and before `var y`.
+	if strings.Index(out, "// keep me") > strings.Index(out, "]") {
+		t.Fatalf("comment leaked out of the array:\n%s", out)
+	}
+	// `var y = 3` must not carry the comment as its own leading comment.
+	if strings.Contains(out, "// keep me\nvar y") {
+		t.Fatalf("comment leaked onto the next statement:\n%s", out)
+	}
+	// Reparses and is idempotent.
+	prog2, err := parser.Parse(out, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("reparse formatted output: %v\n%s", err, out)
+	}
+	if got := Format(prog2); got != out {
+		t.Fatalf("not idempotent:\nfirst:\n%s\nsecond:\n%s", out, got)
+	}
+}
+
+// A comment between struct-literal fields must stay inside the literal.
+func TestFormatStructInteriorComment(t *testing.T) {
+	src := "type P {\n    a Number\n    b Number\n}\nvar p = P{\n    a: 1,\n    // keep me\n    b: 2,\n}\nvar y = 3\n"
+	prog, err := parser.Parse(src, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	out := Format(prog)
+	if !strings.Contains(out, "// keep me") {
+		t.Fatalf("comment dropped:\n%s", out)
+	}
+	if strings.Index(out, "// keep me") > strings.LastIndex(out, "}") {
+		t.Fatalf("comment leaked out of the struct literal:\n%s", out)
+	}
+	if strings.Contains(out, "// keep me\nvar y") {
+		t.Fatalf("comment leaked onto the next statement:\n%s", out)
+	}
+	prog2, err := parser.Parse(out, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("reparse formatted output: %v\n%s", err, out)
+	}
+	if got := Format(prog2); got != out {
+		t.Fatalf("not idempotent:\nfirst:\n%s\nsecond:\n%s", out, got)
+	}
+}
+
+// A comment between typed-array-literal elements is preserved too.
+func TestFormatTypedArrayInteriorComment(t *testing.T) {
+	src := "var xs = []Vec3[\n    {x: 0 mm, y: 0 mm, z: 0 mm},\n    // keep me\n    {x: 1 mm, y: 1 mm, z: 1 mm},\n]\nvar y = 3\n"
+	prog, err := parser.Parse(src, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	out := Format(prog)
+	if !strings.Contains(out, "// keep me") {
+		t.Fatalf("comment dropped:\n%s", out)
+	}
+	if strings.Index(out, "// keep me") > strings.LastIndex(out, "]") || strings.Contains(out, "// keep me\nvar y") {
+		t.Fatalf("comment leaked out of the typed array:\n%s", out)
+	}
+	prog2, err := parser.Parse(out, "", parser.SourceUser)
+	if err != nil {
+		t.Fatalf("reparse: %v\n%s", err, out)
+	}
+	if got := Format(prog2); got != out {
+		t.Fatalf("not idempotent:\nfirst:\n%s\nsecond:\n%s", out, got)
+	}
+}
