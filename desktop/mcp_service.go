@@ -408,27 +408,53 @@ func NewMCPService(eval *EvalService) *MCPService {
 	return m
 }
 
+// takeResolution atomically fetches and removes the channel parked under id, so
+// at most one caller — a single answerer, or the handler's cancel branch — ever
+// owns it. The map entry is thus the single resolution token for a parked call.
+// ok is false when the entry is already gone (someone else resolved it).
+func takeResolution[T any](mu *sync.Mutex, m map[string]chan T, id string) (chan T, bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	ch, ok := m[id]
+	if ok {
+		delete(m, id)
+	}
+	return ch, ok
+}
+
+// awaitResolution parks a tool handler on ch until an answer arrives or ctx is
+// cancelled. On cancel it take-and-removes its own entry: if it wins (the entry
+// is still present) it reports cancellation (ok=false); if an answerer already
+// removed the entry, that answerer is guaranteed to send exactly one value into
+// the cap-1 buffer, so it drains and returns that value. This makes the answerer
+// and the handler agree on exactly one resolution — an answer sent as the
+// handler cancels is honored, never dropped into a readerless buffer.
+func awaitResolution[T any](ctx context.Context, mu *sync.Mutex, m map[string]chan T, id string, ch chan T) (T, bool) {
+	select {
+	case v := <-ch:
+		return v, true
+	case <-ctx.Done():
+		if _, mine := takeResolution(mu, m, id); mine {
+			var zero T
+			return zero, false
+		}
+		return <-ch, true
+	}
+}
+
 // AnswerQuestion resolves the pending ask_user_question call identified by
 // id with the user's selections. Returns an error if no call is waiting
 // (the call may have been cancelled, already answered, or the id may be
 // bogus). Safe to call from any goroutine.
 func (m *MCPService) AnswerQuestion(id string, answers, notes map[string]string) error {
-	m.questionsMu.Lock()
-	ch, ok := m.questions[id]
-	m.questionsMu.Unlock()
+	ch, ok := takeResolution(&m.questionsMu, m.questions, id)
 	if !ok {
 		return fmt.Errorf("no pending question with id %q", id)
 	}
-	// Non-blocking send: the channel is buffered with cap 1, and the tool
-	// handler removes itself from m.questions before any second send could
-	// race. A full channel means the answer arrived twice — drop the
-	// duplicate rather than deadlock.
-	select {
-	case ch <- questionAnswer{Answers: answers, Notes: notes}:
-		return nil
-	default:
-		return fmt.Errorf("question %q already answered", id)
-	}
+	// Guaranteed non-blocking: take-and-remove makes this the sole owner of the
+	// cap-1 channel, and the handler either reads it or (on cancel) drains it.
+	ch <- questionAnswer{Answers: answers, Notes: notes}
+	return nil
 }
 
 // DeliverScreenshot resolves the pending screenshot_viewport call with
@@ -437,13 +463,9 @@ func (m *MCPService) AnswerQuestion(id string, answers, notes map[string]string)
 // non-empty (with png nil) to fail the tool when the frontend can't
 // capture.
 func (m *MCPService) DeliverScreenshot(id, dataURL, errMsg string) error {
-	m.screenshotsMu.Lock()
-	ch, ok := m.screenshots[id]
-	m.screenshotsMu.Unlock()
-	if !ok {
-		return fmt.Errorf("no pending screenshot with id %q", id)
-	}
-
+	// Build the result BEFORE taking the resolution token: a bad-base64 delivery
+	// must fail without removing the parked entry, or the handler's cancel-drain
+	// would block forever on a channel that never receives a value.
 	var res screenshotResult
 	if errMsg != "" {
 		res.Err = errMsg
@@ -462,12 +484,12 @@ func (m *MCPService) DeliverScreenshot(id, dataURL, errMsg string) error {
 		res.PNG = decoded
 	}
 
-	select {
-	case ch <- res:
-		return nil
-	default:
-		return fmt.Errorf("screenshot %q already delivered", id)
+	ch, ok := takeResolution(&m.screenshotsMu, m.screenshots, id)
+	if !ok {
+		return fmt.Errorf("no pending screenshot with id %q", id)
 	}
+	ch <- res
+	return nil
 }
 
 // requestPermission surfaces an Allow/Deny card in the assistant panel for a
@@ -514,35 +536,28 @@ func (m *MCPService) requestPermission(ctx context.Context, toolName, summary, r
 		"summary":  summary,
 	})
 
-	select {
-	case d := <-ch:
-		if d.Allow && d.Remember && rememberKey != "" {
-			m.rememberedMu.Lock()
-			m.remembered[rememberKey] = struct{}{}
-			m.rememberedMu.Unlock()
-		}
-		return d
-	case <-ctx.Done():
+	d, ok := awaitResolution(ctx, &m.permissionsMu, m.permissions, id, ch)
+	if !ok {
 		return permissionDecision{Allow: false}
 	}
+	if d.Allow && d.Remember && rememberKey != "" {
+		m.rememberedMu.Lock()
+		m.remembered[rememberKey] = struct{}{}
+		m.rememberedMu.Unlock()
+	}
+	return d
 }
 
 // AnswerPermission resolves the pending permission request identified by id
 // with the user's decision. Returns an error if no request is waiting (the
 // call may have been cancelled, already answered, or the id may be bogus).
 func (m *MCPService) AnswerPermission(id string, allow, remember bool) error {
-	m.permissionsMu.Lock()
-	ch, ok := m.permissions[id]
-	m.permissionsMu.Unlock()
+	ch, ok := takeResolution(&m.permissionsMu, m.permissions, id)
 	if !ok {
 		return fmt.Errorf("no pending permission request with id %q", id)
 	}
-	select {
-	case ch <- permissionDecision{Allow: allow, Remember: remember}:
-		return nil
-	default:
-		return fmt.Errorf("permission %q already answered", id)
-	}
+	ch <- permissionDecision{Allow: allow, Remember: remember}
+	return nil
 }
 
 // ClearRememberedPermissions drops all session-remembered approvals so a new
@@ -842,16 +857,8 @@ func (m *MCPService) buildServer(ctx context.Context) *mcp.Server {
 			"questions": input.Questions,
 		})
 
-		select {
-		case ans := <-ch:
-			body, err := json.Marshal(ans)
-			if err != nil {
-				return nil, nil, fmt.Errorf("marshal answer: %w", err)
-			}
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: string(body)}},
-			}, nil, nil
-		case <-ctx.Done():
+		ans, ok := awaitResolution(ctx, &m.questionsMu, m.questions, id, ch)
+		if !ok {
 			// Cancellation propagates up through the assistant stream;
 			// surface a brief tool error so the model knows the user
 			// didn't decide.
@@ -860,6 +867,13 @@ func (m *MCPService) buildServer(ctx context.Context) *mcp.Server {
 				Content: []mcp.Content{&mcp.TextContent{Text: "user cancelled before answering"}},
 			}, nil, nil
 		}
+		body, err := json.Marshal(ans)
+		if err != nil {
+			return nil, nil, fmt.Errorf("marshal answer: %w", err)
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(body)}},
+		}, nil, nil
 	})
 
 	// --- Tool: screenshot_viewport ---
@@ -902,25 +916,24 @@ func (m *MCPService) buildServer(ctx context.Context) *mcp.Server {
 		}
 		wailsRuntime.EventsEmit(m.eventCtx, "assistant:screenshot-request", payload)
 
-		select {
-		case res := <-ch:
-			if res.Err != "" {
-				return &mcp.CallToolResult{
-					IsError: true,
-					Content: []mcp.Content{&mcp.TextContent{Text: "viewport capture failed: " + res.Err}},
-				}, nil, nil
-			}
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.ImageContent{Data: res.PNG, MIMEType: "image/png"},
-				},
-			}, nil, nil
-		case <-ctx.Done():
+		res, ok := awaitResolution(ctx, &m.screenshotsMu, m.screenshots, id, ch)
+		if !ok {
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{&mcp.TextContent{Text: "screenshot cancelled before capture"}},
 			}, nil, nil
 		}
+		if res.Err != "" {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "viewport capture failed: " + res.Err}},
+			}, nil, nil
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.ImageContent{Data: res.PNG, MIMEType: "image/png"},
+			},
+		}, nil, nil
 	})
 
 	// --- Tool: update_task_plan ---
