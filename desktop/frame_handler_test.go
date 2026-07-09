@@ -94,3 +94,49 @@ func TestSessionPutPrimesCache(t *testing.T) {
 		t.Fatal("getOrBuild after put rebuilt the Animation instead of reusing the primed handle")
 	}
 }
+
+// TestStaleBuildDoesNotEvictFreshPut pins the compare-and-swap guard in publish:
+// a slow /frame build that finishes after a concurrent /eval put installed a
+// newer session (a different key) must NOT evict it.
+func TestStaleBuildDoesNotEvictFreshPut(t *testing.T) {
+	ctx := context.Background()
+	srcA := map[string]string{"main.fct": animSrc}
+	srcB := map[string]string{"main.fct": `fn Main() Animation {
+    return Animation{frame: fn(t Number) Solid { return Cube(s: (20 + t) * 1 mm) }}
+}`}
+
+	// Build two distinct Animations on throwaway caches.
+	animA, err := newSessionCache().getOrBuild(ctx, srcA, "main.fct", "Main", nil)
+	if err != nil {
+		t.Fatalf("build A: %v", err)
+	}
+	animB, err := newSessionCache().getOrBuild(ctx, srcB, "main.fct", "Main", nil)
+	if err != nil {
+		t.Fatalf("build B: %v", err)
+	}
+	keyA, err := sessionKey(srcA, "main.fct", "Main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyB, err := sessionKey(srcB, "main.fct", "Main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := newSessionCache()
+	// A fresh /eval put installs keyB/animB.
+	if err := c.put(srcB, "main.fct", "Main", nil, animB); err != nil {
+		t.Fatal(err)
+	}
+	// A stale build that missed on an empty cache (observedKey "") finishes and
+	// tries to publish keyA — the guard must reject it.
+	c.publish("", keyA, animA)
+	if c.key != keyB || c.anim != animB {
+		t.Fatalf("stale build evicted the fresher put: key=%q", c.key)
+	}
+	// A non-racing publish (observed the current key) still stores.
+	c.publish(keyB, keyA, animA)
+	if c.key != keyA || c.anim != animA {
+		t.Fatalf("non-racing publish did not store: key=%q", c.key)
+	}
+}

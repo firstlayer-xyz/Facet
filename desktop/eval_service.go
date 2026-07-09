@@ -8,9 +8,12 @@ import (
 )
 
 // EvalService owns the in-flight-eval cancellation state. The /eval HTTP
-// handler cancels any previous eval before starting a new one so that a
-// stale long-running evaluation cannot keep consuming CPU after the user
-// has moved on.
+// handler cancels any previous eval before starting a new one. Cancellation is
+// cooperative: the evaluator checks ctx.Err() between calls and statements, so a
+// stale eval stops at the next evaluator step. A C++ kernel op already in flight
+// (a facet_* boolean / offset / level_set call) is uninterruptible and runs to
+// completion, so a stale eval can still finish one in-progress operation — which
+// can briefly overlap the replacement eval — before it stops.
 type EvalService struct {
 	mu        sync.Mutex
 	cancel    context.CancelFunc

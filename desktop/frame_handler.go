@@ -121,11 +121,14 @@ func (c *sessionCache) getOrBuild(ctx context.Context, sources map[string]string
 		c.mu.Unlock()
 		return anim, nil
 	}
+	observedKey := c.key
 	c.mu.Unlock()
 
 	// Cache miss — build outside the lock so concurrent callers don't pile up
-	// behind a slow geometry evaluation. The last writer wins; that is
-	// acceptable because identical inputs always produce equivalent Animations.
+	// behind a slow geometry evaluation. Publish only if no other writer changed
+	// the cache since our miss: a concurrent /eval put or a competing build may
+	// have installed a newer session under a DIFFERENT key, and this now-stale
+	// build must not evict it.
 	libDir, opts := loaderOpts()
 	prog, err := loader.LoadMulti(ctx, sources, key, libDir, opts)
 	if err != nil {
@@ -147,12 +150,22 @@ func (c *sessionCache) getOrBuild(ctx context.Context, sources map[string]string
 
 	anim := result.Animation
 
-	c.mu.Lock()
-	c.key = k
-	c.anim = anim
-	c.mu.Unlock()
+	c.publish(observedKey, k, anim)
 
 	return anim, nil
+}
+
+// publish stores a freshly built Animation under key k, but only if no other
+// writer changed the cache since the caller observed observedKey at its miss. A
+// slow, now-stale build thus can't evict a fresher session that a concurrent
+// /eval put or competing build installed under a different key in the meantime.
+func (c *sessionCache) publish(observedKey, k string, anim *evaluator.Animation) {
+	c.mu.Lock()
+	if c.key == observedKey {
+		c.key = k
+		c.anim = anim
+	}
+	c.mu.Unlock()
 }
 
 // initialFrameTimeMs is the current UTC time in ms, used for an animation's
