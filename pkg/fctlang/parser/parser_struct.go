@@ -51,8 +51,24 @@ func (p *parser) parseStructLit(typeName string, exprStart, typeNamePos Pos) (Ex
 		return nil, err
 	}
 	var fields []*StructFieldInit
+	prevFieldLine := 0
 	if p.cur.Type != TokenRBrace {
 		for {
+			// Attach the previous field's trailing end-of-line comment (scanned
+			// past when peeking the next token after its comma), then the standalone
+			// comment lines that lead this field. Mirrors parseCallArgs so interior
+			// comments stay with their field instead of leaking to the next
+			// statement. drainCommentsOnLine removes the trailing ones, so the
+			// following drainComments (leading) can't double-count them.
+			if prevFieldLine > 0 && len(fields) > 0 {
+				trailing := p.lex.drainCommentsOnLine(prevFieldLine)
+				for i := range trailing {
+					trailing[i].IsTrailing = true
+				}
+				fields[len(fields)-1].Comments = append(fields[len(fields)-1].Comments, trailing...)
+			}
+			leading := p.lex.drainComments()
+
 			fieldName, err := p.expect(TokenIdent)
 			if err != nil {
 				return nil, err
@@ -65,10 +81,12 @@ func (p *parser) parseStructLit(typeName string, exprStart, typeNamePos Pos) (Ex
 				return nil, err
 			}
 			fields = append(fields, &StructFieldInit{
-				Name:  fieldName.Text,
-				Value: val,
-				Pos:   Pos{fieldName.Line, fieldName.Col},
+				Name:     fieldName.Text,
+				Value:    val,
+				Pos:      Pos{fieldName.Line, fieldName.Col},
+				Comments: leading,
 			})
+			prevFieldLine = fieldName.Line
 			// Consume an optional semicolon (ASI may have inserted one on a
 			// newline before ',' or '}' in a multi-line struct literal).
 			if p.cur.Type == TokenSemicolon {
@@ -87,6 +105,14 @@ func (p *parser) parseStructLit(typeName string, exprStart, typeNamePos Pos) (Ex
 			}
 		}
 	}
+	// The last field's trailing comment is scanned when peeking '}'.
+	if prevFieldLine > 0 && len(fields) > 0 {
+		trailing := p.lex.drainCommentsOnLine(prevFieldLine)
+		for i := range trailing {
+			trailing[i].IsTrailing = true
+		}
+		fields[len(fields)-1].Comments = append(fields[len(fields)-1].Comments, trailing...)
+	}
 	if _, err := p.expect(TokenRBrace); err != nil {
 		return nil, err
 	}
@@ -101,8 +127,33 @@ func (p *parser) parseTypedArrayLit(typeName string, line, col int) (Expr, error
 		return nil, err
 	}
 	var elems []Expr
+	// Preserve interior comments, as parseArrayLit does — the internal comments of
+	// each struct element are already kept by parseStructLit; this covers comments
+	// BETWEEN elements.
+	comments := map[int][]Comment{}
+	attach := func(idx int, cs []Comment, trailing bool) {
+		if len(cs) == 0 {
+			return
+		}
+		if trailing {
+			for i := range cs {
+				cs[i].IsTrailing = true
+			}
+		}
+		comments[idx] = append(comments[idx], cs...)
+	}
+	prevElemLine := 0
 	if p.cur.Type != TokenRBracket {
 		for {
+			if prevElemLine > 0 {
+				attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // prev elem trailing
+			}
+			leading := p.lex.drainComments()
+			if p.cur.Type == TokenRBracket {
+				attach(len(elems)-1, leading, true) // dangling before ']' after trailing comma
+				break
+			}
+			elemLine := p.cur.Line
 			var elem Expr
 			var err error
 			if p.cur.Type == TokenLBrace {
@@ -126,19 +177,28 @@ func (p *parser) parseTypedArrayLit(typeName string, line, col int) (Expr, error
 				return nil, err
 			}
 			elems = append(elems, elem)
+			attach(len(elems)-1, leading, false) // this elem's leading
+			prevElemLine = elemLine
 			if p.cur.Type != TokenComma {
 				break
 			}
 			if err := p.next(); err != nil { // consume ','
 				return nil, err
 			}
-			if p.cur.Type == TokenRBracket {
-				break // trailing comma
-			}
 		}
+	}
+	if prevElemLine > 0 {
+		attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // last elem trailing
 	}
 	if _, err := p.expect(TokenRBracket); err != nil {
 		return nil, err
 	}
-	return &ArrayLitExpr{TypeName: typeName, Elems: elems, Pos: Pos{line, col}}, nil
+	var elemComments [][]Comment
+	if len(comments) > 0 {
+		elemComments = make([][]Comment, len(elems))
+		for i := range elems {
+			elemComments[i] = comments[i]
+		}
+	}
+	return &ArrayLitExpr{TypeName: typeName, Elems: elems, Pos: Pos{line, col}, ElemComments: elemComments}, nil
 }

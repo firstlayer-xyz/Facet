@@ -368,6 +368,13 @@ type ArrayLitExpr struct {
 	TypeName string // "" for untyped, "Foo" for Foo[...]
 	Elems    []Expr
 	Pos      Pos
+	// ElemComments is a parallel side-list: ElemComments[i] holds the comments
+	// for Elems[i] (standalone lines before it, and its end-of-line comment
+	// marked IsTrailing). nil when the literal has no interior comments — the
+	// common case, so element-less arrays and comment-free ones cost nothing. A
+	// side-list rather than a per-element wrapper keeps checker/evaluator, which
+	// iterate .Elems, unchanged.
+	ElemComments [][]Comment
 }
 
 func (*ArrayLitExpr) exprNode() {}
@@ -604,6 +611,10 @@ type StructFieldInit struct {
 	Name  string
 	Value Expr
 	Pos   Pos // position of the field-name token
+	// Comments are the standalone lines before this field (IsTrailing false) and
+	// the end-of-line comment after its value (IsTrailing true). Preserved so the
+	// formatter keeps them next to the field instead of leaking them forward.
+	Comments []Comment
 }
 
 // FieldAccessExpr represents `receiver.field`. Optional is true for the
