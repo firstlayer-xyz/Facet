@@ -3,6 +3,8 @@
 #include "manifold/manifold.h"
 #include "manifold/cross_section.h"
 
+#include <limits>
+
 using namespace manifold;
 using namespace facet_cxx_internal;  // as_cpp, as_cpp_cs, solid_size, sketch_size
 
@@ -26,7 +28,10 @@ int facet_genus(ManifoldPtr* m) try {
 
 double facet_min_gap(ManifoldPtr* a, ManifoldPtr* b, double search_length) try {
   return as_cpp(a)->MinGap(*as_cpp(b), search_length);
-} catch (...) { return 0.0; }
+  // NaN, not 0.0: a genuine 0.0 means the solids touch, so returning it on a
+  // kernel exception would report a real measurement for a failed query. NaN is
+  // an out-of-band failure signal.
+} catch (...) { return std::numeric_limits<double>::quiet_NaN(); }
 
 void facet_bounding_box(ManifoldPtr* m,
                         double* min_x, double* min_y, double* min_z,
@@ -75,6 +80,9 @@ void facet_cs_bounds(ManifoldCrossSection* cs,
 
 int facet_original_id(ManifoldPtr* m) try {
   return as_cpp(m)->OriginalID();
-} catch (...) { return 0; }
+  // -1, not 0: honors the header contract ("-1 if not marked as original") and
+  // matches facetClear; the face-color path skips ids < 0, so a bogus key 0 is
+  // never seeded on failure.
+} catch (...) { return -1; }
 
 }  // extern "C"
