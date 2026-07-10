@@ -4,18 +4,19 @@
 #include "manifold/cross_section.h"
 
 #ifdef FACET_WASM
-// Under wasm, the warp/levelset callback bridges are provided by the JS
-// host. We declare them as imported functions here; the JS-side glue (see
-// webspike/) supplies a concrete implementation. For the initial spike a
-// minimal identity-warp / zero-density-levelset is enough; real callback
-// dispatch will land alongside the syscall/js manifold bridge.
+// Under wasm the warp/levelset callback bridges are EM_JS imports that dispatch
+// to the Module["facet*Bridge"] hooks installed unconditionally in web/index.html,
+// which route into the syscall/js Go dispatchers (manifold_warp_js.go /
+// manifold_levelset_js.go). The hooks are always present by the time an op runs,
+// so the calls are unguarded: a missing hook throws a JS TypeError (a loud failed
+// eval) rather than silently warping with an identity / zero-density fallback —
+// matching the native extern-C bridges and the Go-side loud panics.
 #include <emscripten/emscripten.h>
 EM_JS(void, facetWarpBridge, (int callback_id, double* x, double* y, double* z), {
-  if (Module["facetWarpBridge"]) Module["facetWarpBridge"](callback_id, x, y, z);
+  Module["facetWarpBridge"](callback_id, x, y, z);
 });
 EM_JS(double, facetLevelSetBridge, (int callback_id, double x, double y, double z), {
-  if (Module["facetLevelSetBridge"]) return Module["facetLevelSetBridge"](callback_id, x, y, z);
-  return 0.0;
+  return Module["facetLevelSetBridge"](callback_id, x, y, z);
 });
 #else
 extern "C" {
