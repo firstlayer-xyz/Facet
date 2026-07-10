@@ -65,7 +65,26 @@ func evalMerged(ctx context.Context, prog loader.Program, overrides map[string]i
 	for i, s := range result.Solids {
 		meshes[i] = s.ToMesh()
 	}
-	return manifold.MergeMeshes(meshes), nil
+	return mergeMeshes(meshes), nil
+}
+
+// mergeMeshes concatenates render meshes into one, offsetting each mesh's indices
+// by the running vertex count. Test-only helper (was manifold.MergeMeshes, which
+// had no production callers).
+func mergeMeshes(meshes []*manifold.Mesh) *manifold.Mesh {
+	if len(meshes) == 1 {
+		return meshes[0]
+	}
+	merged := &manifold.Mesh{}
+	var vertOffset uint32
+	for _, m := range meshes {
+		merged.Vertices = append(merged.Vertices, m.Vertices...)
+		for _, idx := range m.Indices {
+			merged.Indices = append(merged.Indices, idx+vertOffset)
+		}
+		vertOffset += uint32(len(m.Vertices) / 3)
+	}
+	return merged
 }
 
 // exampleOverrides pins parameters for examples whose Main defaults depend on

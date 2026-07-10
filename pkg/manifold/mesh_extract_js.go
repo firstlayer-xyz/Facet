@@ -4,6 +4,7 @@ package manifold
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"syscall/js"
 )
@@ -29,7 +30,7 @@ func (s *Solid) ToMesh() *Mesh {
 func (p *Sketch) ToMesh() *Mesh {
 	solid, err := p.Extrude(0.001, 0, 0, 1, 1)
 	if err != nil {
-		return nil
+		panic(fmt.Errorf("Sketch.ToMesh: identity-scale extrude failed: %w", err))
 	}
 	return solid.ToMesh()
 }
@@ -41,37 +42,13 @@ func (s *Solid) ToDisplayMesh() *DisplayMesh {
 func (p *Sketch) ToDisplayMesh() *DisplayMesh {
 	solid, err := p.Extrude(0.001, 0, 0, 1, 1)
 	if err != nil {
-		return nil
+		panic(fmt.Errorf("Sketch.ToDisplayMesh: identity-scale extrude failed: %w", err))
 	}
 	return solid.ToDisplayMesh()
 }
 
 func ExtractMeshShared(s *Solid) *Mesh {
 	return s.ToMesh()
-}
-
-func MergeMeshes(meshes []*Mesh) *Mesh {
-	if len(meshes) == 1 {
-		return meshes[0]
-	}
-	var totalVerts, totalIndices int
-	for _, m := range meshes {
-		totalVerts += len(m.Vertices)
-		totalIndices += len(m.Indices)
-	}
-	merged := &Mesh{
-		Vertices: make([]float32, 0, totalVerts),
-		Indices:  make([]uint32, 0, totalIndices),
-	}
-	var vertOffset uint32
-	for _, m := range meshes {
-		merged.Vertices = append(merged.Vertices, m.Vertices...)
-		for _, idx := range m.Indices {
-			merged.Indices = append(merged.Indices, idx+vertOffset)
-		}
-		vertOffset += uint32(len(m.Vertices) / 3)
-	}
-	return merged
 }
 
 func extractDisplayMeshJS(s *Solid) *DisplayMesh {

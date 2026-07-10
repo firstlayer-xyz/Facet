@@ -8,6 +8,7 @@ package manifold
 */
 import "C"
 import (
+	"fmt"
 	"runtime"
 	"unsafe"
 )
@@ -27,7 +28,10 @@ func (s *Solid) ToMesh() *Mesh {
 func (p *Sketch) ToMesh() *Mesh {
 	solid, err := p.Extrude(0.001, 0, 0, 1, 1)
 	if err != nil {
-		return nil
+		// A 0.001 identity-scale extrude of a valid sketch can only fail on a C++
+		// kernel exception — an internal invariant break, not user input. Panic
+		// loudly rather than silently rendering an empty mesh.
+		panic(fmt.Errorf("Sketch.ToMesh: identity-scale extrude failed: %w", err))
 	}
 	m := extractMesh(solid.ptr)
 	runtime.KeepAlive(solid)
@@ -46,7 +50,7 @@ func (s *Solid) ToDisplayMesh() *DisplayMesh {
 func (p *Sketch) ToDisplayMesh() *DisplayMesh {
 	solid, err := p.Extrude(0.001, 0, 0, 1, 1)
 	if err != nil {
-		return nil
+		panic(fmt.Errorf("Sketch.ToDisplayMesh: identity-scale extrude failed: %w", err))
 	}
 	m := extractDisplayMesh(solid.ptr, nil)
 	appendExpandedData(m, solid.ptr, 40)
@@ -64,31 +68,6 @@ func ExtractMeshShared(s *Solid) *Mesh {
 	m := extractMesh(s.ptr)
 	runtime.KeepAlive(s)
 	return m
-}
-
-// MergeMeshes combines multiple meshes into one for viewport rendering.
-func MergeMeshes(meshes []*Mesh) *Mesh {
-	if len(meshes) == 1 {
-		return meshes[0]
-	}
-	var totalVerts, totalIndices int
-	for _, m := range meshes {
-		totalVerts += len(m.Vertices)
-		totalIndices += len(m.Indices)
-	}
-	merged := &Mesh{
-		Vertices: make([]float32, 0, totalVerts),
-		Indices:  make([]uint32, 0, totalIndices),
-	}
-	var vertOffset uint32
-	for _, m := range meshes {
-		merged.Vertices = append(merged.Vertices, m.Vertices...)
-		for _, idx := range m.Indices {
-			merged.Indices = append(merged.Indices, idx+vertOffset)
-		}
-		vertOffset += uint32(len(m.Vertices) / 3)
-	}
-	return merged
 }
 
 // extractMesh converts a ManifoldPtr into a Go Mesh with shared vertices and indices.
