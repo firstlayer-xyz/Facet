@@ -185,26 +185,27 @@ func (p *parser) parseCallArgs() ([]Expr, error) {
 		return args, nil
 	}
 	prevArgLine := 0
-	for {
-		// Drain the trailing end-of-line comment from the previous arg. After
-		// consuming the comma, skipWhitespaceAndComments has already scanned past
-		// the comment into pendingComments. We retroactively attach it.
-		if prevArgLine > 0 && len(args) > 0 {
-			trailing := p.lex.drainCommentsOnLine(prevArgLine)
-			for i := range trailing {
-				trailing[i].IsTrailing = true
-			}
-			if na, ok := args[len(args)-1].(*NamedArg); ok {
-				na.Comments = append(na.Comments, trailing...)
-			}
+	// attachTrailing drains the trailing end-of-line comment from the previous
+	// arg and attaches it. After consuming the comma (or when scanning to ')'),
+	// skipWhitespaceAndComments has already scanned past the comment into
+	// pendingComments; we retroactively attach it.
+	attachTrailing := func() {
+		if prevArgLine == 0 || len(args) == 0 {
+			return
 		}
+		trailing := p.drainTrailingComments(prevArgLine)
+		if na, ok := args[len(args)-1].(*NamedArg); ok {
+			na.Comments = append(na.Comments, trailing...)
+		}
+	}
+	for {
+		attachTrailing()
 
 		// Try to parse named argument: IDENT ":"
 		if p.cur.Type == TokenIdent {
 			// Snapshot before lookahead so leading comments remain in pendingComments
 			// and are available after we confirm this is a named arg.
-			snap := p.lex.snapshot()
-			savedCur := p.cur
+			snap := p.snapshot()
 			nameTok := p.cur
 			if err := p.next(); err != nil {
 				return nil, err
@@ -236,8 +237,7 @@ func (p *parser) parseCallArgs() ([]Expr, error) {
 				continue
 			}
 			// Not a named arg — restore (leading comments stay in pendingComments).
-			p.lex.restore(snap)
-			p.cur = savedCur
+			p.restore(snap)
 		}
 		// Bare argument (internal builtins). Leading comments are not attached
 		// because bare Expr nodes have no Comments field.
@@ -255,14 +255,6 @@ func (p *parser) parseCallArgs() ([]Expr, error) {
 		}
 	}
 	// Drain trailing comment for the last arg (collected when scanning to ')').
-	if prevArgLine > 0 && len(args) > 0 {
-		trailing := p.lex.drainCommentsOnLine(prevArgLine)
-		for i := range trailing {
-			trailing[i].IsTrailing = true
-		}
-		if na, ok := args[len(args)-1].(*NamedArg); ok {
-			na.Comments = append(na.Comments, trailing...)
-		}
-	}
+	attachTrailing()
 	return args, nil
 }

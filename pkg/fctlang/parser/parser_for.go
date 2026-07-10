@@ -152,7 +152,8 @@ func (p *parser) parseFoldExpr() (Expr, error) {
 	return &FoldExpr{AccVar: accVar.Text, ElemVar: elemVar.Text, Iter: iter, Body: body, Pos: Pos{foldLine, foldCol}}, nil
 }
 
-// parseForStatement handles statements inside for-yield bodies: var, yield, assert
+// parseForStatement handles statements inside for-yield bodies: yield, plus
+// everything parseStatement accepts (var/const, assert).
 func (p *parser) parseForStatement(comments []Comment) (Stmt, error) {
 	if p.cur.Type == TokenYield {
 		yieldLine, yieldCol := p.cur.Line, p.cur.Col
@@ -175,45 +176,7 @@ func (p *parser) parseForStatement(comments []Comment) (Stmt, error) {
 		return &YieldStmt{Value: expr, Pos: Pos{yieldLine, yieldCol}, Comments: comments}, nil
 	}
 
-	if p.cur.Type == TokenVar || p.cur.Type == TokenConst {
-		isConst := p.cur.Type == TokenConst
-		if err := p.next(); err != nil {
-			return nil, err
-		}
-		name, err := p.expect(TokenIdent)
-		if err != nil {
-			return nil, err
-		}
-		if err := p.rejectUnderscoreIdent(name, "variable"); err != nil {
-			return nil, err
-		}
-		if _, err := p.expect(TokenEquals); err != nil {
-			return nil, err
-		}
-		expr, err := p.parseExpr()
-		if err != nil {
-			return nil, err
-		}
-		constraint, err := p.parseWhereConstraint()
-		if err != nil {
-			return nil, err
-		}
-		if err := p.consumeOptionalSemi(); err != nil {
-			return nil, err
-		}
-		return &VarStmt{Name: name.Text, Value: expr, IsConst: isConst, Constraint: constraint, Pos: Pos{name.Line, name.Col}, Comments: comments}, nil
-	}
-
-	if p.cur.Type == TokenAssert {
-		stmt, err := p.parseAssertStmt()
-		if err != nil {
-			return nil, err
-		}
-		stmt.(*AssertStmt).Comments = comments
-		return stmt, nil
-	}
-
-	return nil, p.errorf("expected 'yield' or 'var' in for-yield body, got %q", p.cur.Text)
+	return p.parseStatement(comments)
 }
 
 // parseBodyStmts parses statements inside a block body. Bare expressions

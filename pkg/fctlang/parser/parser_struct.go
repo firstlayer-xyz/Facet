@@ -3,12 +3,8 @@ package parser
 // isEmptyBrace peeks ahead (without consuming) to check if the current
 // position is an empty brace pair: { }
 func (p *parser) isEmptyBrace() bool {
-	snap := p.lex.snapshot()
-	savedCur := p.cur
-	defer func() {
-		p.lex.restore(snap)
-		p.cur = savedCur
-	}()
+	snap := p.snapshot()
+	defer p.restore(snap)
 	// Consume {
 	if err := p.next(); err != nil {
 		return false
@@ -19,12 +15,8 @@ func (p *parser) isEmptyBrace() bool {
 // isStructLitStart peeks ahead (without consuming) to check if the current
 // position begins a struct literal: { IDENT : ... }
 func (p *parser) isStructLitStart() bool {
-	snap := p.lex.snapshot()
-	savedCur := p.cur
-	defer func() {
-		p.lex.restore(snap)
-		p.cur = savedCur
-	}()
+	snap := p.snapshot()
+	defer p.restore(snap)
 	// Consume {
 	if err := p.next(); err != nil {
 		return false

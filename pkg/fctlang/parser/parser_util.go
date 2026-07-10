@@ -15,123 +15,31 @@ func (p *parser) parseWhereConstraint() (Expr, error) {
 	return p.parseConstraint()
 }
 
+// tokenNames maps each token type to its display string for expect() errors.
+var tokenNames = map[TokenType]string{
+	TokenIdent: "identifier", TokenNumber: "number",
+	TokenString: "string", TokenRawString: "raw string",
+	TokenLParen: "(", TokenRParen: ")", TokenLBrace: "{", TokenRBrace: "}",
+	TokenLBracket: "[", TokenRBracket: "]", TokenComma: ",", TokenSemicolon: ";",
+	TokenColon: ":", TokenDot: ".", TokenEquals: "=",
+	TokenPlus: "+", TokenMinus: "-", TokenStar: "*", TokenSlash: "/",
+	TokenMod: "%", TokenCaret: "^", TokenBang: "!",
+	TokenLess: "<", TokenGreater: ">", TokenLessEq: "<=", TokenGreaterEq: ">=",
+	TokenEqEq: "==", TokenBangEq: "!=",
+	TokenAmp: "&", TokenAmpEq: "&=", TokenAmpAmp: "&&",
+	TokenPipe: "|", TokenPipeEq: "|=", TokenPipePipe: "||",
+	TokenPlusEq: "+=", TokenMinusEq: "-=", TokenStarEq: "*=",
+	TokenSlashEq: "/=", TokenModEq: "%=", TokenCaretEq: "^=",
+	TokenReturn: "return", TokenVar: "var", TokenFor: "for", TokenYield: "yield",
+	TokenFold: "fold", TokenAssert: "assert", TokenIf: "if", TokenElse: "else",
+	TokenTrue: "true", TokenFalse: "false", TokenLib: "lib", TokenTypeKw: "type",
+	TokenFn: "fn", TokenConst: "const", TokenWhere: "where",
+	TokenEOF: "EOF",
+}
+
 func tokenName(t TokenType) string {
-	switch t {
-	case TokenIdent:
-		return "identifier"
-	case TokenNumber:
-		return "number"
-	case TokenLParen:
-		return "("
-	case TokenRParen:
-		return ")"
-	case TokenLBrace:
-		return "{"
-	case TokenRBrace:
-		return "}"
-	case TokenComma:
-		return ","
-	case TokenSemicolon:
-		return ";"
-	case TokenEquals:
-		return "="
-	case TokenPlus:
-		return "+"
-	case TokenMinus:
-		return "-"
-	case TokenStar:
-		return "*"
-	case TokenSlash:
-		return "/"
-	case TokenMod:
-		return "%"
-	case TokenCaret:
-		return "^"
-	case TokenDot:
-		return "."
-	case TokenLBracket:
-		return "["
-	case TokenRBracket:
-		return "]"
-	case TokenLess:
-		return "<"
-	case TokenGreater:
-		return ">"
-	case TokenLessEq:
-		return "<="
-	case TokenGreaterEq:
-		return ">="
-	case TokenEqEq:
-		return "=="
-	case TokenBangEq:
-		return "!="
-	case TokenAmp:
-		return "&"
-	case TokenAmpEq:
-		return "&="
-	case TokenAmpAmp:
-		return "&&"
-	case TokenPipe:
-		return "|"
-	case TokenPipeEq:
-		return "|="
-	case TokenPipePipe:
-		return "||"
-	case TokenReserved:
-		return "reserved keyword"
-	case TokenReturn:
-		return "return"
-	case TokenVar:
-		return "var"
-	case TokenFor:
-		return "for"
-	case TokenYield:
-		return "yield"
-	case TokenFold:
-		return "fold"
-	case TokenAssert:
-		return "assert"
-	case TokenIf:
-		return "if"
-	case TokenElse:
-		return "else"
-	case TokenTrue:
-		return "true"
-	case TokenFalse:
-		return "false"
-	case TokenLib:
-		return "lib"
-	case TokenTypeKw:
-		return "type"
-	case TokenString:
-		return "string"
-	case TokenRawString:
-		return "raw string"
-	case TokenBang:
-		return "!"
-	case TokenFn:
-		return "fn"
-	case TokenConst:
-		return "const"
-	case TokenWhere:
-		return "where"
-	case TokenColon:
-		return ":"
-	case TokenPlusEq:
-		return "+="
-	case TokenMinusEq:
-		return "-="
-	case TokenStarEq:
-		return "*="
-	case TokenSlashEq:
-		return "/="
-	case TokenModEq:
-		return "%="
-	case TokenCaretEq:
-		return "^="
-	case TokenEOF:
-		return "EOF"
-	default:
-		return "unknown"
+	if n, ok := tokenNames[t]; ok {
+		return n
 	}
+	return "unknown"
 }

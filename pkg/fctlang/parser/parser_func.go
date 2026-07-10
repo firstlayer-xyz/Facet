@@ -341,15 +341,13 @@ func (p *parser) parseParams() ([]*Param, error) {
 		// Stop when: no comma, or after consuming comma the next token is not an ident
 		// (meaning it's a type token like fn, [, var, or a syntax error).
 		for p.cur.Type == TokenComma {
-			snap := p.lex.snapshot()
-			savedCur := p.cur
+			snap := p.snapshot()
 			if err := p.next(); err != nil { // tentatively consume ','
 				return nil, err
 			}
 			if p.cur.Type != TokenIdent {
 				// Not an ident after comma — this comma is a group separator.
-				p.lex.restore(snap)
-				p.cur = savedCur
+				p.restore(snap)
 				break
 			}
 			nameTok, err := p.expect(TokenIdent)

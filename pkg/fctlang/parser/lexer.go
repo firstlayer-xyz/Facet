@@ -69,7 +69,6 @@ const (
 	TokenModEq                             // %=
 	TokenCaretEq                           // ^=
 	TokenEOF
-	TokenReserved // reserved keyword (cannot be used as identifier)
 )
 
 // Token is a single lexical token with position information.
@@ -248,6 +247,35 @@ func (l *lexer) Next() (Token, error) {
 	return tok, err
 }
 
+// singleTok maps each operator/punctuation rune to its single-character token type.
+var singleTok = map[rune]TokenType{
+	'(': TokenLParen, ')': TokenRParen, '{': TokenLBrace, '}': TokenRBrace,
+	',': TokenComma, ';': TokenSemicolon, ':': TokenColon, '.': TokenDot,
+	'[': TokenLBracket, ']': TokenRBracket, '?': TokenQuestion, '=': TokenEquals,
+	'<': TokenLess, '>': TokenGreater, '!': TokenBang, '&': TokenAmp,
+	'|': TokenPipe, '+': TokenPlus, '-': TokenMinus, '*': TokenStar,
+	'/': TokenSlash, '%': TokenMod, '^': TokenCaret,
+}
+
+// pairTok maps a first rune to the two-character tokens it can begin, keyed by
+// the second rune. `//` never reaches the operator scan: skipWhitespaceAndComments
+// consumes line comments first.
+var pairTok = map[rune]map[rune]TokenType{
+	'?': {'?': TokenQuestionQuestion, '.': TokenQuestionDot},
+	'=': {'=': TokenEqEq},
+	'<': {'=': TokenLessEq},
+	'>': {'=': TokenGreaterEq},
+	'!': {'=': TokenBangEq},
+	'&': {'&': TokenAmpAmp, '=': TokenAmpEq},
+	'|': {'|': TokenPipePipe, '=': TokenPipeEq},
+	'+': {'=': TokenPlusEq},
+	'-': {'=': TokenMinusEq},
+	'*': {'=': TokenStarEq},
+	'/': {'=': TokenSlashEq},
+	'%': {'=': TokenModEq},
+	'^': {'=': TokenCaretEq},
+}
+
 // nextRaw is the inner lexer, returning real tokens plus synthetic semicolons.
 func (l *lexer) nextRaw() (Token, error) {
 	l.skipWhitespaceAndComments()
@@ -289,140 +317,15 @@ func (l *lexer) nextRaw() (Token, error) {
 	line, col := l.line, l.col
 	ch := l.peek()
 
-	switch ch {
-	case '(':
+	if typ, ok := singleTok[ch]; ok {
 		l.advance()
-		return Token{Type: TokenLParen, Text: "(", Line: line, Col: col}, nil
-	case ')':
-		l.advance()
-		return Token{Type: TokenRParen, Text: ")", Line: line, Col: col}, nil
-	case '{':
-		l.advance()
-		return Token{Type: TokenLBrace, Text: "{", Line: line, Col: col}, nil
-	case '}':
-		l.advance()
-		return Token{Type: TokenRBrace, Text: "}", Line: line, Col: col}, nil
-	case ',':
-		l.advance()
-		return Token{Type: TokenComma, Text: ",", Line: line, Col: col}, nil
-	case ';':
-		l.advance()
-		return Token{Type: TokenSemicolon, Text: ";", Line: line, Col: col}, nil
-	case ':':
-		l.advance()
-		return Token{Type: TokenColon, Text: ":", Line: line, Col: col}, nil
-	case '?':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '?' {
-			l.advance()
-			return Token{Type: TokenQuestionQuestion, Text: "??", Line: line, Col: col}, nil
+		if seconds, ok := pairTok[ch]; ok && l.pos < len(l.src) {
+			if typ2, ok := seconds[l.peek()]; ok {
+				second := l.advance()
+				return Token{Type: typ2, Text: string([]rune{ch, second}), Line: line, Col: col}, nil
+			}
 		}
-		if l.pos < len(l.src) && l.peek() == '.' {
-			l.advance()
-			return Token{Type: TokenQuestionDot, Text: "?.", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenQuestion, Text: "?", Line: line, Col: col}, nil
-	case '=':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenEqEq, Text: "==", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenEquals, Text: "=", Line: line, Col: col}, nil
-	case '<':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenLessEq, Text: "<=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenLess, Text: "<", Line: line, Col: col}, nil
-	case '>':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenGreaterEq, Text: ">=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenGreater, Text: ">", Line: line, Col: col}, nil
-	case '!':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenBangEq, Text: "!=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenBang, Text: "!", Line: line, Col: col}, nil
-	case '&':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '&' {
-			l.advance()
-			return Token{Type: TokenAmpAmp, Text: "&&", Line: line, Col: col}, nil
-		}
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenAmpEq, Text: "&=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenAmp, Text: "&", Line: line, Col: col}, nil
-	case '|':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '|' {
-			l.advance()
-			return Token{Type: TokenPipePipe, Text: "||", Line: line, Col: col}, nil
-		}
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenPipeEq, Text: "|=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenPipe, Text: "|", Line: line, Col: col}, nil
-	case '+':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenPlusEq, Text: "+=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenPlus, Text: "+", Line: line, Col: col}, nil
-	case '-':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenMinusEq, Text: "-=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenMinus, Text: "-", Line: line, Col: col}, nil
-	case '*':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenStarEq, Text: "*=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenStar, Text: "*", Line: line, Col: col}, nil
-	case '/':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenSlashEq, Text: "/=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenSlash, Text: "/", Line: line, Col: col}, nil
-	case '%':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenModEq, Text: "%=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenMod, Text: "%", Line: line, Col: col}, nil
-	case '^':
-		l.advance()
-		if l.pos < len(l.src) && l.peek() == '=' {
-			l.advance()
-			return Token{Type: TokenCaretEq, Text: "^=", Line: line, Col: col}, nil
-		}
-		return Token{Type: TokenCaret, Text: "^", Line: line, Col: col}, nil
-	case '.':
-		l.advance()
-		return Token{Type: TokenDot, Text: ".", Line: line, Col: col}, nil
-	case '[':
-		l.advance()
-		return Token{Type: TokenLBracket, Text: "[", Line: line, Col: col}, nil
-	case ']':
-		l.advance()
-		return Token{Type: TokenRBracket, Text: "]", Line: line, Col: col}, nil
+		return Token{Type: typ, Text: string(ch), Line: line, Col: col}, nil
 	}
 
 	// String literal: "..." with escape sequences
@@ -590,8 +493,7 @@ func (l *lexer) nextRaw() (Token, error) {
 		case "where":
 			typ = TokenWhere
 		case "while", "break", "continue", "match", "case", "import", "export", "map":
-			return Token{Type: TokenReserved, Text: text, Line: line, Col: col},
-				&SourceError{Line: line, Col: col, Message: fmt.Sprintf("%q is a reserved keyword and cannot be used as an identifier", text)}
+			return Token{}, &SourceError{Line: line, Col: col, Message: fmt.Sprintf("%q is a reserved keyword and cannot be used as an identifier", text)}
 		}
 		return Token{Type: typ, Text: text, Line: line, Col: col}, nil
 	}

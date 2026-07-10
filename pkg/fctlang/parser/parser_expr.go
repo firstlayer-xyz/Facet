@@ -1,5 +1,7 @@
 package parser
 
+import "slices"
+
 // parseExpr → ternaryExpr
 func (p *parser) parseExpr() (Expr, error) {
 	p.depth++
@@ -10,13 +12,13 @@ func (p *parser) parseExpr() (Expr, error) {
 	return p.parseTernaryExpr()
 }
 
-// parseTernaryExpr → orExpr [ "?" expr ":" expr ]
+// parseTernaryExpr → binaryExpr [ "?" expr ":" expr ]
 // The conditional expression `cond ? a : b`. cond must be Bool, both arms
 // must produce compatible types. Right-associative: `a ? b : c ? d : e`
 // parses as `a ? b : (c ? d : e)`. Each arm is parsed via parseTernaryExpr
 // so a nested ternary can re-enter on the right.
 func (p *parser) parseTernaryExpr() (Expr, error) {
-	cond, err := p.parseOrExpr()
+	cond, err := p.parseBinaryExpr(0)
 	if err != nil {
 		return nil, err
 	}
@@ -41,194 +43,51 @@ func (p *parser) parseTernaryExpr() (Expr, error) {
 	return &TernaryExpr{Cond: cond, Then: thenExpr, Else: elseExpr, Pos: Pos{line, col}}, nil
 }
 
-// parseOrExpr → nullCoalesceExpr { "||" nullCoalesceExpr }
-func (p *parser) parseOrExpr() (Expr, error) {
-	left, err := p.parseNullCoalesceExpr()
-	if err != nil {
-		return nil, err
-	}
-	for p.cur.Type == TokenPipePipe {
-		line, col := p.cur.Line, p.cur.Col
-		if err := p.next(); err != nil {
-			return nil, err
-		}
-		right, err := p.parseNullCoalesceExpr()
-		if err != nil {
-			return nil, err
-		}
-		left = &BinaryExpr{Op: "||", Left: left, Right: right, Pos: Pos{line, col}}
-	}
-	return left, nil
-}
-
-// parseNullCoalesceExpr → andExpr { "??" andExpr }
-// Precedence sits between `||` (looser) and `&&` (tighter): `cond || opt ?? def`
+// binLevels is the binary-operator precedence ladder, loosest level first.
+// Each level is left-associative except the comparison level, which is
+// non-associative (parses at most one comparison operator).
+// `??` sits between `||` (looser) and `&&` (tighter): `cond || opt ?? def`
 // parses as `cond || (opt ?? def)`, while `a && b ?? c` parses as `(a && b) ?? c`.
 // Mixing `??` with `&&` on an optional therefore needs explicit parens —
 // `a && (b ?? c)`.
-func (p *parser) parseNullCoalesceExpr() (Expr, error) {
-	left, err := p.parseAndExpr()
-	if err != nil {
-		return nil, err
-	}
-	for p.cur.Type == TokenQuestionQuestion {
-		line, col := p.cur.Line, p.cur.Col
-		if err := p.next(); err != nil {
-			return nil, err
-		}
-		right, err := p.parseAndExpr()
-		if err != nil {
-			return nil, err
-		}
-		left = &BinaryExpr{Op: "??", Left: left, Right: right, Pos: Pos{line, col}}
-	}
-	return left, nil
+var binLevels = []struct {
+	tokens   []TokenType
+	nonAssoc bool
+}{
+	{[]TokenType{TokenPipePipe}, false},
+	{[]TokenType{TokenQuestionQuestion}, false},
+	{[]TokenType{TokenAmpAmp}, false},
+	{[]TokenType{TokenLess, TokenGreater, TokenLessEq, TokenGreaterEq, TokenEqEq, TokenBangEq}, true},
+	{[]TokenType{TokenPipe}, false},
+	{[]TokenType{TokenCaret}, false},
+	{[]TokenType{TokenAmp}, false},
+	{[]TokenType{TokenPlus, TokenMinus}, false},
+	{[]TokenType{TokenStar, TokenSlash, TokenMod}, false},
 }
 
-// parseAndExpr → compareExpr { "&&" compareExpr }
-func (p *parser) parseAndExpr() (Expr, error) {
-	left, err := p.parseCompareExpr()
+// parseBinaryExpr parses the precedence level at the given binLevels index;
+// past the last level it falls through to parsePostfix.
+func (p *parser) parseBinaryExpr(level int) (Expr, error) {
+	if level == len(binLevels) {
+		return p.parsePostfix()
+	}
+	left, err := p.parseBinaryExpr(level + 1)
 	if err != nil {
 		return nil, err
 	}
-	for p.cur.Type == TokenAmpAmp {
-		line, col := p.cur.Line, p.cur.Col
+	for slices.Contains(binLevels[level].tokens, p.cur.Type) {
+		op, line, col := p.cur.Text, p.cur.Line, p.cur.Col
 		if err := p.next(); err != nil {
 			return nil, err
 		}
-		right, err := p.parseCompareExpr()
-		if err != nil {
-			return nil, err
-		}
-		left = &BinaryExpr{Op: "&&", Left: left, Right: right, Pos: Pos{line, col}}
-	}
-	return left, nil
-}
-
-// parseCompareExpr → bitwiseOrExpr [ cmpOp bitwiseOrExpr ]
-func (p *parser) parseCompareExpr() (Expr, error) {
-	left, err := p.parseBitwiseOrExpr()
-	if err != nil {
-		return nil, err
-	}
-	if p.cur.Type == TokenLess || p.cur.Type == TokenGreater ||
-		p.cur.Type == TokenLessEq || p.cur.Type == TokenGreaterEq ||
-		p.cur.Type == TokenEqEq || p.cur.Type == TokenBangEq {
-		op := p.cur.Text
-		line, col := p.cur.Line, p.cur.Col
-		if err := p.next(); err != nil {
-			return nil, err
-		}
-		right, err := p.parseBitwiseOrExpr()
-		if err != nil {
-			return nil, err
-		}
-		return &BinaryExpr{Op: op, Left: left, Right: right, Pos: Pos{line, col}}, nil
-	}
-	return left, nil
-}
-
-// parseBitwiseOrExpr → bitwiseXorExpr { "|" bitwiseXorExpr }
-func (p *parser) parseBitwiseOrExpr() (Expr, error) {
-	left, err := p.parseBitwiseXorExpr()
-	if err != nil {
-		return nil, err
-	}
-	for p.cur.Type == TokenPipe {
-		op := p.cur.Text
-		line, col := p.cur.Line, p.cur.Col
-		if err := p.next(); err != nil {
-			return nil, err
-		}
-		right, err := p.parseBitwiseXorExpr()
+		right, err := p.parseBinaryExpr(level + 1)
 		if err != nil {
 			return nil, err
 		}
 		left = &BinaryExpr{Op: op, Left: left, Right: right, Pos: Pos{line, col}}
-	}
-	return left, nil
-}
-
-// parseBitwiseXorExpr → bitwiseAndExpr { "^" bitwiseAndExpr }
-func (p *parser) parseBitwiseXorExpr() (Expr, error) {
-	left, err := p.parseBitwiseAndExpr()
-	if err != nil {
-		return nil, err
-	}
-	for p.cur.Type == TokenCaret {
-		op := p.cur.Text
-		line, col := p.cur.Line, p.cur.Col
-		if err := p.next(); err != nil {
-			return nil, err
+		if binLevels[level].nonAssoc {
+			break
 		}
-		right, err := p.parseBitwiseAndExpr()
-		if err != nil {
-			return nil, err
-		}
-		left = &BinaryExpr{Op: op, Left: left, Right: right, Pos: Pos{line, col}}
-	}
-	return left, nil
-}
-
-// parseBitwiseAndExpr → addExpr { "&" addExpr }
-func (p *parser) parseBitwiseAndExpr() (Expr, error) {
-	left, err := p.parseAddExpr()
-	if err != nil {
-		return nil, err
-	}
-	for p.cur.Type == TokenAmp {
-		op := p.cur.Text
-		line, col := p.cur.Line, p.cur.Col
-		if err := p.next(); err != nil {
-			return nil, err
-		}
-		right, err := p.parseAddExpr()
-		if err != nil {
-			return nil, err
-		}
-		left = &BinaryExpr{Op: op, Left: left, Right: right, Pos: Pos{line, col}}
-	}
-	return left, nil
-}
-
-// parseAddExpr → parseMulExpr { ("+" | "-") parseMulExpr }
-func (p *parser) parseAddExpr() (Expr, error) {
-	left, err := p.parseMulExpr()
-	if err != nil {
-		return nil, err
-	}
-	for p.cur.Type == TokenPlus || p.cur.Type == TokenMinus {
-		op := p.cur.Text
-		line, col := p.cur.Line, p.cur.Col
-		if err := p.next(); err != nil {
-			return nil, err
-		}
-		right, err := p.parseMulExpr()
-		if err != nil {
-			return nil, err
-		}
-		left = &BinaryExpr{Op: op, Left: left, Right: right, Pos: Pos{line, col}}
-	}
-	return left, nil
-}
-
-// parseMulExpr → parsePostfix { ("*" | "/" | "%") parsePostfix }
-func (p *parser) parseMulExpr() (Expr, error) {
-	left, err := p.parsePostfix()
-	if err != nil {
-		return nil, err
-	}
-	for p.cur.Type == TokenStar || p.cur.Type == TokenSlash || p.cur.Type == TokenMod {
-		op := p.cur.Text
-		line, col := p.cur.Line, p.cur.Col
-		if err := p.next(); err != nil {
-			return nil, err
-		}
-		right, err := p.parsePostfix()
-		if err != nil {
-			return nil, err
-		}
-		left = &BinaryExpr{Op: op, Left: left, Right: right, Pos: Pos{line, col}}
 	}
 	return left, nil
 }
@@ -263,20 +122,15 @@ func (p *parser) parsePostfixOn(expr Expr) (Expr, error) {
 		if p.isUnitSuffix() {
 			line, col := p.cur.Line, p.cur.Col
 			unit := p.cur.Text
-			if factor, ok := AngleFactors[unit]; ok {
-				if err := p.next(); err != nil {
-					return nil, err
-				}
-				expr = &UnitExpr{Expr: expr, Unit: unit, Factor: factor, IsAngle: true, Pos: Pos{line, col}}
-				continue
+			factor, isAngle := AngleFactors[unit]
+			if !isAngle {
+				factor = UnitFactors[unit]
 			}
-			if factor, ok := UnitFactors[unit]; ok {
-				if err := p.next(); err != nil {
-					return nil, err
-				}
-				expr = &UnitExpr{Expr: expr, Unit: unit, Factor: factor, IsAngle: false, Pos: Pos{line, col}}
-				continue
+			if err := p.next(); err != nil {
+				return nil, err
 			}
+			expr = &UnitExpr{Expr: expr, Unit: unit, Factor: factor, IsAngle: isAngle, Pos: Pos{line, col}}
+			continue
 		}
 		if p.cur.Type == TokenLBracket {
 			line, col := p.cur.Line, p.cur.Col
