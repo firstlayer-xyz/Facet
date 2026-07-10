@@ -193,16 +193,29 @@ void facet_refine_to_length(ManifoldPtr* m, double length, FacetSolidRet* out) t
   wrap(new Manifold(as_cpp(m)->RefineToLength(length)), out);
 } catch (...) { facetClear(out); }
 
+// Both halves are held in unique_ptr until BOTH wraps succeed, then released to
+// Go. wrap() sets out->ptr before forcing lazy evaluation (solid_size), which
+// can itself throw, so owning both halves to the end means any throw — from
+// `new Manifold` or from either wrap — unwinds with the heap objects still owned
+// and deleted, instead of leaking the first half when the second throws.
 void facet_split(ManifoldPtr* m, ManifoldPtr* cutter, FacetSolidPair* out) try {
   auto [first, second] = as_cpp(m)->Split(*as_cpp(cutter));
-  wrap(new Manifold(std::move(first)),  &out->first);
-  wrap(new Manifold(std::move(second)), &out->second);
+  auto a = std::make_unique<Manifold>(std::move(first));
+  auto b = std::make_unique<Manifold>(std::move(second));
+  wrap(a.get(), &out->first);
+  wrap(b.get(), &out->second);
+  a.release();
+  b.release();
 } catch (...) { facetClear(out); }
 
 void facet_split_by_plane(ManifoldPtr* m, double nx, double ny, double nz, double offset, FacetSolidPair* out) try {
   auto [first, second] = as_cpp(m)->SplitByPlane({nx, ny, nz}, offset);
-  wrap(new Manifold(std::move(first)),  &out->first);
-  wrap(new Manifold(std::move(second)), &out->second);
+  auto a = std::make_unique<Manifold>(std::move(first));
+  auto b = std::make_unique<Manifold>(std::move(second));
+  wrap(a.get(), &out->first);
+  wrap(b.get(), &out->second);
+  a.release();
+  b.release();
 } catch (...) { facetClear(out); }
 
 // ---------------------------------------------------------------------------
