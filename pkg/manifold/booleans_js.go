@@ -65,7 +65,9 @@ func DecomposeSolid(s *Solid) []*Solid {
 	for i := 0; i < n; i++ {
 		id := arr.Index(i).Int()
 		result[i] = newSolid(id)
-		result[i].FaceMap = s.withFaceMap()
+		if result[i] != nil {
+			result[i].FaceMap = s.withFaceMap()
+		}
 	}
 	return result
 }

@@ -66,6 +66,9 @@ func (s *Solid) Warp(fn func(x, y, z float64) (float64, float64, float64)) *Soli
 	defer unregisterWarp(id)
 	newID := js.Global().Call("_mf_warp", s.id, id).Int()
 	r := newSolid(newID)
+	if r == nil {
+		return nil
+	}
 	r.FaceMap = s.withFaceMap()
 	return r
 }

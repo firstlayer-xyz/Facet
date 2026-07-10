@@ -3,6 +3,7 @@
 package manifold
 
 import (
+	"fmt"
 	"syscall/js"
 )
 
@@ -11,7 +12,11 @@ func CreateCube(x, y, z float64) (*Solid, error) {
 		return nil, err
 	}
 	id := js.Global().Call("_mf_cube", x, y, z).Int()
-	return newSolidWithOrigin(id), nil
+	s := newSolidWithOrigin(id)
+	if s == nil {
+		return nil, fmt.Errorf("manifold: failed to create cube")
+	}
+	return s, nil
 }
 
 func CreateSphere(radius float64, segments int) (*Solid, error) {
@@ -19,7 +24,11 @@ func CreateSphere(radius float64, segments int) (*Solid, error) {
 		return nil, err
 	}
 	id := js.Global().Call("_mf_sphere", radius, segments).Int()
-	return newSolidWithOrigin(id), nil
+	s := newSolidWithOrigin(id)
+	if s == nil {
+		return nil, fmt.Errorf("manifold: failed to create sphere")
+	}
+	return s, nil
 }
 
 func CreateCylinder(height, radiusLow, radiusHigh float64, segments int) (*Solid, error) {
@@ -27,7 +36,11 @@ func CreateCylinder(height, radiusLow, radiusHigh float64, segments int) (*Solid
 		return nil, err
 	}
 	id := js.Global().Call("_mf_cylinder", height, radiusLow, radiusHigh, segments).Int()
-	return newSolidWithOrigin(id), nil
+	s := newSolidWithOrigin(id)
+	if s == nil {
+		return nil, fmt.Errorf("manifold: failed to create cylinder")
+	}
+	return s, nil
 }
 
 func CreateSquare(x, y float64) (*Sketch, error) {

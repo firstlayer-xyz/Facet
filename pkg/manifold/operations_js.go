@@ -11,6 +11,9 @@ func (s *Solid) Hull() *Solid {
 	requireSolids("Hull", s)
 	id := js.Global().Call("_mf_hull", s.id).Int()
 	r := newSolid(id)
+	if r == nil {
+		return nil
+	}
 	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(s))
 	return r
 }
@@ -19,6 +22,9 @@ func (s *Solid) Reidentify() *Solid {
 	requireSolids("Reidentify", s)
 	id := js.Global().Call("_mf_as_original", s.id).Int()
 	r := newSolid(id)
+	if r == nil {
+		return nil
+	}
 	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(s))
 	return r
 }
@@ -34,6 +40,9 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 	}
 	id := js.Global().Call("_mf_batch_hull", arr).Int()
 	r := newSolid(id)
+	if r == nil {
+		return nil, nil
+	}
 	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(solids...))
 	return r, nil
 }
@@ -82,6 +91,9 @@ func (s *Solid) Offset(delta, edgeLen float64) *Solid {
 	requireSolids("Offset", s)
 	id := js.Global().Call("_mf_offset", s.id, delta, edgeLen).Int()
 	r := newSolid(id)
+	if r == nil {
+		return nil
+	}
 	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(s))
 	return r
 }
@@ -95,9 +107,13 @@ func SplitSolid(m, cutter *Solid) [2]*Solid {
 	// sharing one instance (as before) let a later mutation of one half's map
 	// bleed into the other, unlike native (operations.go).
 	first := newSolid(arr.Index(0).Int())
-	first.FaceMap = m.withFaceMap()
+	if first != nil {
+		first.FaceMap = m.withFaceMap()
+	}
 	second := newSolid(arr.Index(1).Int())
-	second.FaceMap = m.withFaceMap()
+	if second != nil {
+		second.FaceMap = m.withFaceMap()
+	}
 	return [2]*Solid{first, second}
 }
 
@@ -105,9 +121,13 @@ func SplitSolidByPlane(s *Solid, nx, ny, nz, offset float64) [2]*Solid {
 	requireSolids("SplitSolidByPlane", s)
 	arr := js.Global().Call("_mf_split_by_plane", s.id, nx, ny, nz, offset)
 	first := newSolid(arr.Index(0).Int())
-	first.FaceMap = s.withFaceMap()
+	if first != nil {
+		first.FaceMap = s.withFaceMap()
+	}
 	second := newSolid(arr.Index(1).Int())
-	second.FaceMap = s.withFaceMap()
+	if second != nil {
+		second.FaceMap = s.withFaceMap()
+	}
 	return [2]*Solid{first, second}
 }
 

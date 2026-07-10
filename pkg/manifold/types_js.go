@@ -36,11 +36,16 @@ func (s *Solid) ExternalMemSize() int { return int(s.memSize) }
 func (sk *Sketch) ExternalMemSize() int { return int(sk.memSize) }
 
 func newSolid(id int) *Solid {
-	s := &Solid{id: id}
-	if id != 0 { // id 0 is a null handle (e.g. an empty boolean result)
-		s.memSize = uint64(js.Global().Call("_mf_solid_size", id).Float())
-		runtime.ExternalAlloc(s.memSize)
+	// id 0 is a null handle: every C++ op ends catch(...){ facetClear } which
+	// nulls the pointer, and web/index.html reports that as id 0. Return nil like
+	// native newSolid, so a failed op yields nil rather than a live wrapper whose
+	// later js→C++ calls would dereference a null ManifoldPtr.
+	if id == 0 {
+		return nil
 	}
+	s := &Solid{id: id}
+	s.memSize = uint64(js.Global().Call("_mf_solid_size", id).Float())
+	runtime.ExternalAlloc(s.memSize)
 	runtime.SetFinalizer(s, func(s *Solid) {
 		runtime.ExternalFree(s.memSize)
 		js.Global().Call("_mf_solid_free", s.id)
@@ -49,11 +54,12 @@ func newSolid(id int) *Solid {
 }
 
 func newSketch(id int) *Sketch {
-	sk := &Sketch{id: id}
-	if id != 0 {
-		sk.memSize = uint64(js.Global().Call("_mf_sketch_size", id).Float())
-		runtime.ExternalAlloc(sk.memSize)
+	if id == 0 {
+		return nil
 	}
+	sk := &Sketch{id: id}
+	sk.memSize = uint64(js.Global().Call("_mf_sketch_size", id).Float())
+	runtime.ExternalAlloc(sk.memSize)
 	runtime.SetFinalizer(sk, func(sk *Sketch) {
 		runtime.ExternalFree(sk.memSize)
 		js.Global().Call("_mf_sketch_free", sk.id)
@@ -63,6 +69,11 @@ func newSketch(id int) *Sketch {
 
 func newSolidWithOrigin(id int) *Solid {
 	s := newSolid(id)
+	if s == nil {
+		return nil
+	}
+	// The nil check must precede _mf_original_id: on a null handle that would be a
+	// js→C++ call on a null ManifoldPtr (an untrapped near-0 memory read).
 	seedOriginFaceMap(s, js.Global().Call("_mf_original_id", id).Int())
 	return s
 }
