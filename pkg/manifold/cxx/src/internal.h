@@ -6,10 +6,12 @@
 #include "manifold/manifold.h"
 #include "manifold/cross_section.h"
 
+#include <climits>   // INT_MAX
 #include <cstddef>
-#include <cstdlib>  // malloc/free
-#include <memory>   // unique_ptr
-#include <new>      // std::bad_alloc
+#include <cstdlib>   // malloc/free
+#include <memory>    // unique_ptr
+#include <new>       // std::bad_alloc
+#include <stdexcept> // std::length_error
 
 namespace facet_cxx_internal {
 
@@ -33,6 +35,17 @@ static inline MallocPtr xmalloc(std::size_t n) {
   void* p = std::malloc(n);
   if (!p && n != 0) throw std::bad_alloc();
   return MallocPtr(p);
+}
+
+// int_count narrows a size_t count to the int the C ABI out-params use, throwing
+// (routed through each extractor's catch(...) to a null result) if it exceeds
+// INT_MAX rather than wrapping negative. The kernel's int-indexed Halfedge keeps
+// real meshes far below this, so it is a defensive tripwire, not a live path.
+static inline int int_count(std::size_t n) {
+  if (n > static_cast<std::size_t>(INT_MAX)) {
+    throw std::length_error("mesh count exceeds INT_MAX");
+  }
+  return static_cast<int>(n);
 }
 
 static inline manifold::Manifold* as_cpp(ManifoldPtr* m) {
