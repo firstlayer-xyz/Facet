@@ -206,3 +206,45 @@ func TestToDisplayMesh(t *testing.T) {
 		t.Error("ToDisplayMesh: no face groups")
 	}
 }
+
+// TestPolyMeshRoundTripHoledFace pins the multi-loop-face fix: a boolean solid
+// with a holed face (a cube with a through-hole) must extract to a PolyMesh that
+// round-trips back to a valid, same-volume solid. Before the fix the extractor
+// kept only the first boundary loop of the annular face, dropping the inner
+// loop's vertices, so ToSolid failed with "not a valid closed manifold".
+func TestPolyMeshRoundTripHoledFace(t *testing.T) {
+	cube, err := CreateCube(10, 10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cyl, err := CreateCylinder(12, 2, 2, 48)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holed := cube.Difference(cyl.Translate(3, 3, -1)) // through-hole along Z, centered on (5,5)
+	wantVol := holed.Volume()
+	if wantVol <= 0 {
+		t.Fatalf("holed solid has non-positive volume %v", wantVol)
+	}
+
+	pm := ExtractPolyMesh(holed)
+	round, err := pm.ToSolid()
+	if err != nil {
+		t.Fatalf("holed-face PolyMesh should round-trip to a valid solid: %v", err)
+	}
+	if got := round.Volume(); math.Abs(got-wantVol) > wantVol*0.02 {
+		t.Fatalf("round-trip volume %v, want ~%v — geometry dropped", got, wantVol)
+	}
+	// Every extracted vertex must be referenced by some face; a dropped inner
+	// loop would leave its vertices orphaned.
+	referenced := map[int]bool{}
+	for _, f := range pm.Faces {
+		for _, v := range f {
+			referenced[v] = true
+		}
+	}
+	if len(referenced) != pm.numVerts() {
+		t.Fatalf("%d of %d vertices unreferenced — a boundary loop was dropped",
+			pm.numVerts()-len(referenced), pm.numVerts())
+	}
+}

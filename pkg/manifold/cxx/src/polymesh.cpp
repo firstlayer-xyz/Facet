@@ -176,7 +176,13 @@ void facet_extract_polymesh(
       cur = it->second;
     }
 
-    if (loop.size() >= 3) {
+    // Accept the boundary as a single face only when the walk closed ONE loop
+    // that consumed the entire boundary (cur returned to start after visiting
+    // every boundary vertex). A holed/split face has several disjoint loops; the
+    // walk closes only the first, so the rest would be silently dropped. Fall
+    // back to emitting the group's triangles — correct, round-trippable geometry
+    // — since PolyMesh.faces has no multi-loop representation.
+    if (loop.size() == boundary.size() && cur == start) {
       faces.push_back(loop);
     } else {
       for (auto& t : tris) {
