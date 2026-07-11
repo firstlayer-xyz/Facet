@@ -16,15 +16,15 @@ extern "C" {
 // ---------------------------------------------------------------------------
 
 void facet_union(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out) try {
-  wrap(new Manifold(*as_cpp(a) + *as_cpp(b)), out);
+  wrap_checked(new Manifold(*as_cpp(a) + *as_cpp(b)), out);
 } catch (...) { facetClear(out); }
 
 void facet_difference(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out) try {
-  wrap(new Manifold(*as_cpp(a) - *as_cpp(b)), out);
+  wrap_checked(new Manifold(*as_cpp(a) - *as_cpp(b)), out);
 } catch (...) { facetClear(out); }
 
 void facet_intersection(ManifoldPtr* a, ManifoldPtr* b, FacetSolidRet* out) try {
-  wrap(new Manifold(*as_cpp(a) ^ *as_cpp(b)), out);
+  wrap_checked(new Manifold(*as_cpp(a) ^ *as_cpp(b)), out);
 } catch (...) { facetClear(out); }
 
 // facet_batch_boolean unions/subtracts/intersects N solids at once via the
@@ -37,7 +37,7 @@ void facet_batch_boolean(ManifoldPtr** solids, size_t count, int op, FacetSolidR
   for (size_t i = 0; i < count; i++) {
     vec[i] = *as_cpp(solids[i]);
   }
-  wrap(new Manifold(Manifold::BatchBoolean(vec, static_cast<OpType>(op))), out);
+  wrap_checked(new Manifold(Manifold::BatchBoolean(vec, static_cast<OpType>(op))), out);
 } catch (...) { facetClear(out); }
 
 // facet_cs_batch_boolean is the 2D (CrossSection) counterpart.

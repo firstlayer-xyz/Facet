@@ -173,7 +173,14 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		case "&":
 			result, opName = lsf.Intersection(rsf), "Intersection"
 		}
-		if result != nil {
+		if opName != "" {
+			// A boolean was attempted. A nil result means the kernel failed (an
+			// exception nulled the handle, or the C++ boolean bindings rejected a
+			// status-errored result). Report that specifically instead of falling
+			// through to the generic "operator not supported" message.
+			if result == nil {
+				return nil, e.wrapErr(ex.Pos, errBoolFailed(opName))
+			}
 			e.trackSolid(ex.Pos, result)
 			e.recordStep(opName, ex.Pos, debugEntry{"lhs", lsf}, debugEntry{"rhs", rsf}, debugEntry{"result", result})
 			return result, nil
@@ -197,7 +204,12 @@ func (e *evaluator) evalBinary(ex *parser.BinaryExpr, locals map[string]value) (
 		case "&":
 			result, opName = lpf.Intersection(rpf), "Intersection"
 		}
-		if result != nil {
+		if opName != "" {
+			// Symmetric with the Solid path: a nil result is a kernel failure, not
+			// an unsupported operator.
+			if result == nil {
+				return nil, e.wrapErr(ex.Pos, errBoolFailed(opName))
+			}
 			e.recordStep(opName, ex.Pos, debugEntry{"lhs", lpf}, debugEntry{"rhs", rpf}, debugEntry{"result", result})
 			return result, nil
 		}
