@@ -26,23 +26,21 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// libraryDir returns the OS-specific library directory for user-installed libraries.
-func libraryDir() (string, error) {
+// facetConfigSubdir returns the named subdirectory under the OS-specific Facet
+// config directory.
+func facetConfigSubdir(name string) (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine config directory: %w", err)
 	}
-	return filepath.Join(base, "Facet", "libraries"), nil
+	return filepath.Join(base, "Facet", name), nil
 }
 
+// libraryDir returns the OS-specific library directory for user-installed libraries.
+func libraryDir() (string, error) { return facetConfigSubdir("libraries") }
+
 // scratchDir returns the directory for unsaved scratch files.
-func scratchDir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("cannot determine config directory: %w", err)
-	}
-	return filepath.Join(base, "Facet", "scratch"), nil
-}
+func scratchDir() (string, error) { return facetConfigSubdir("scratch") }
 
 func (a *App) GetDefaultSource() string {
 	return examples.DefaultSource
@@ -589,18 +587,26 @@ type DocGuide struct {
 // resolved, not by walking the cache, so it cannot drift from the
 // checker's view of which libraries are in scope.
 func (a *App) GetDocCatalog() []doc.DocEntry {
-	entries := doc.BuildDocIndex("", nil)
+	return appendDocEntries(doc.BuildDocIndex("", nil), collectLibDocEntries())
+}
+
+// appendDocEntries returns entries followed by each batch entry whose
+// Name+"|"+Library key has not already been seen. entries is kept verbatim
+// (duplicates within it are preserved) and seeds the dedup set.
+func appendDocEntries(entries []doc.DocEntry, batches ...[]doc.DocEntry) []doc.DocEntry {
 	seen := make(map[string]bool, len(entries))
 	for _, e := range entries {
 		seen[e.Name+"|"+e.Library] = true
 	}
-	for _, e := range collectLibDocEntries() {
-		key := e.Name + "|" + e.Library
-		if seen[key] {
-			continue
+	for _, batch := range batches {
+		for _, e := range batch {
+			key := e.Name + "|" + e.Library
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			entries = append(entries, e)
 		}
-		seen[key] = true
-		entries = append(entries, e)
 	}
 	return entries
 }
@@ -611,21 +617,7 @@ func (a *App) GetDocCatalog() []doc.DocEntry {
 // the Docs panel's "browse everything" view.
 func collectLibDocEntries() []doc.DocEntry {
 	libDir, _ := libraryDir()
-	var entries []doc.DocEntry
-	seen := map[string]bool{}
-	collect := func(batch []doc.DocEntry) {
-		for _, e := range batch {
-			key := e.Name + "|" + e.Library
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			entries = append(entries, e)
-		}
-	}
-	collect(doc.BuildLibDocEntries(libDir))
-	collect(doc.BuildCachedLibDocEntries(loader.DefaultGitCacheDir()))
-	return entries
+	return appendDocEntries(nil, doc.BuildLibDocEntries(libDir), doc.BuildCachedLibDocEntries(loader.DefaultGitCacheDir()))
 }
 
 // ListLibraryModules returns the names of top-level library modules

@@ -62,7 +62,7 @@ func (a *App) OpenLibraryDir(dir string) (map[string]string, error) {
 
 // GetLibraryDir returns the path to the local libraries root directory.
 func (a *App) GetLibraryDir() (string, error) {
-	return a.libraries.GetLibraryDir()
+	return libraryDir()
 }
 
 // ClearLibCache removes all cached (git-cloned) libraries.
