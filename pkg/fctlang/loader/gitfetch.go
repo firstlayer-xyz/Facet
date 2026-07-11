@@ -206,8 +206,8 @@ func (t *LibTree) Origin() string { return t.origin }
 // physical trees it is an absolute filesystem path.
 func (t *LibTree) SourceKey(subPath string) string {
 	if t.IsHTTP() {
-		// Same git+ scheme as virtual trees (so IsVirtualSourceKey holds and
-		// keys are stable), keyed on the pinned ref rather than a resolved SHA.
+		// Same git+ scheme as virtual trees (so keys stay stable), keyed on
+		// the pinned ref rather than a resolved SHA.
 		if subPath == "" {
 			return fmt.Sprintf("%s%s@%s", LibSourceScheme, t.origin, t.httpRef)
 		}
@@ -223,13 +223,6 @@ func (t *LibTree) SourceKey(subPath string) string {
 		return t.diskDir
 	}
 	return filepath.Join(t.diskDir, filepath.FromSlash(subPath))
-}
-
-// IsVirtualSourceKey reports whether key is a virtualized library URI (as
-// produced by LibTree.SourceKey on a virtual tree). Non-virtual keys are real
-// filesystem paths or well-known pseudo-paths like StdlibPath.
-func IsVirtualSourceKey(key string) bool {
-	return strings.HasPrefix(key, LibSourceScheme)
 }
 
 // ReadFile returns the contents of the file at subPath within the tree.
@@ -386,6 +379,14 @@ func ensureRepoClone(ctx context.Context, c *Cache, gitCacheDir string, lp *LibP
 	if lp.IsLocal || lp.Host == "" {
 		return fmt.Errorf("EnsureRepoClone: not a remote repo: %q", lp.Raw)
 	}
+	return withSharedRepo(ctx, c, gitCacheDir, lp, func(*git.Repository) error { return nil })
+}
+
+// withSharedRepo opens the shared bare clone for the repo lp points at —
+// creating it if missing — and invokes fn on it while still holding the
+// per-repo lock, so fn can fetch or resolve refs without racing another
+// goroutine on the same clone.
+func withSharedRepo(ctx context.Context, c *Cache, gitCacheDir string, lp *LibPath, fn func(repo *git.Repository) error) error {
 	if gitCacheDir == "" {
 		gitCacheDir = DefaultGitCacheDir()
 	}
@@ -399,11 +400,11 @@ func ensureRepoClone(ctx context.Context, c *Cache, gitCacheDir string, lp *LibP
 	writeCacheReadme(c.FS, gitCacheDir)
 	writeRepoReadme(c.FS, repoDir, lp)
 
-	_, err := ensureSharedRepo(ctx, c, sharedDir, lp.CloneURL())
+	repo, err := ensureSharedRepo(ctx, c, sharedDir, lp.CloneURL())
 	if err != nil {
 		return fmt.Errorf("shared clone %s: %w", lp.CloneURL(), err)
 	}
-	return nil
+	return fn(repo)
 }
 
 // RefreshRepoClone is EnsureRepoClone plus a git fetch to pull every new ref
@@ -457,11 +458,11 @@ func OpenRepoHeadTree(ctx context.Context, gitCacheDir string, lp *LibPath) (*Li
 }
 
 // openCachedRepo opens the existing bare clone at path through Cache's
-// configured storer/worktree. It is the Cache-aware counterpart to
-// git.PlainOpen — native opens via osfs+filesystem storage; wasm opens via
-// the in-memory storage that previously cached the same path key.
+// configured storer. It is the Cache-aware counterpart to git.PlainOpen —
+// native opens via osfs+filesystem storage; wasm opens via the in-memory
+// storage that previously cached the same path key.
 func openCachedRepo(c *Cache, path string) (*git.Repository, error) {
-	return git.Open(c.StorerFor(path), c.WorktreeFor(path))
+	return git.Open(c.StorerFor(path), nil)
 }
 
 // resolveRepoHead returns the commit SHA of the remote's default branch —
@@ -494,35 +495,23 @@ func ensureLib(ctx context.Context, c *Cache, gitCacheDir string, lp *LibPath) (
 	if lp.Ref == "" {
 		return nil, fmt.Errorf("ensureLib: ref required: %q", lp.Raw)
 	}
-	if gitCacheDir == "" {
-		gitCacheDir = DefaultGitCacheDir()
-	}
-
-	repoDir := filepath.Join(gitCacheDir, lp.Host, lp.User, lp.Repo)
-	sharedDir := filepath.Join(repoDir, sharedRepoName)
-
-	lock := repoLock(sharedDir)
-	lock.Lock()
-	defer lock.Unlock()
-
-	writeCacheReadme(c.FS, gitCacheDir)
-	writeRepoReadme(c.FS, repoDir, lp)
-
-	repo, err := ensureSharedRepo(ctx, c, sharedDir, lp.CloneURL())
+	var tree *LibTree
+	err := withSharedRepo(ctx, c, gitCacheDir, lp, func(repo *git.Repository) error {
+		sha, err := resolveToSHA(ctx, repo, lp.Ref)
+		if err != nil {
+			return fmt.Errorf("resolve %s@%s: %w", lp.CloneURL(), lp.Ref, err)
+		}
+		tree = &LibTree{
+			repo:   repo,
+			sha:    sha,
+			origin: lp.RepoID(),
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("shared clone %s: %w", lp.CloneURL(), err)
+		return nil, err
 	}
-
-	sha, err := resolveToSHA(ctx, repo, lp.Ref)
-	if err != nil {
-		return nil, fmt.Errorf("resolve %s@%s: %w", lp.CloneURL(), lp.Ref, err)
-	}
-
-	return &LibTree{
-		repo:   repo,
-		sha:    sha,
-		origin: lp.RepoID(),
-	}, nil
+	return tree, nil
 }
 
 // Text written to README.txt at the cache root so a user browsing
@@ -587,8 +576,8 @@ func writeReadmeIfMissing(cfs FS, path, content string) {
 // ensureSharedRepo opens the shared bare clone, creating it if missing. The
 // Cache.FS handles the on-disk dance (mkdir parent, mktemp, rename) so a
 // half-cloned repo is never visible to other readers; the actual git objects
-// go through Cache.StorerFor / Cache.WorktreeFor so the same code path works
-// against either disk or in-memory storage.
+// go through Cache.StorerFor so the same code path works against either disk
+// or in-memory storage.
 func ensureSharedRepo(ctx context.Context, c *Cache, sharedDir, cloneURL string) (*git.Repository, error) {
 	if repo, err := openCachedRepo(c, sharedDir); err == nil {
 		return repo, nil
@@ -609,7 +598,7 @@ func ensureSharedRepo(ctx context.Context, c *Cache, sharedDir, cloneURL string)
 		}
 	}()
 
-	if _, err := git.CloneContext(ctx, c.StorerFor(tmpDir), c.WorktreeFor(tmpDir), &git.CloneOptions{
+	if _, err := git.CloneContext(ctx, c.StorerFor(tmpDir), nil, &git.CloneOptions{
 		URL:  cloneURL,
 		Tags: git.AllTags,
 	}); err != nil {

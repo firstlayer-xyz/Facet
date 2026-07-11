@@ -177,37 +177,13 @@ func (c *checker) collectReturnTypes(stmts []parser.Stmt, env *typeEnv) []typeIn
 	return types
 }
 
-// stmtPos returns the source position of a statement node.
-func stmtPos(s parser.Stmt) parser.Pos {
-	switch s := s.(type) {
-	case *parser.ReturnStmt:
-		return s.Pos
-	case *parser.YieldStmt:
-		return s.Pos
-	case *parser.VarStmt:
-		return s.Pos
-	case *parser.AssignStmt:
-		return s.Pos
-	case *parser.FieldAssignStmt:
-		return s.Pos
-	case *parser.IfStmt:
-		return s.Pos
-	case *parser.AssertStmt:
-		return s.Pos
-	case *parser.ExprStmt:
-		return s.Pos
-	default:
-		return parser.Pos{}
-	}
-}
-
 // checkStmts walks a statement list and returns the type of the return statement.
 func (c *checker) checkStmts(stmts []parser.Stmt, env *typeEnv) typeInfo {
 	var retType typeInfo
 	returned := false
 	for _, stmt := range stmts {
 		if returned {
-			c.addError(stmtPos(stmt), "unreachable code after return")
+			c.addError(stmt.StmtPos(), "unreachable code after return")
 			break
 		}
 		switch s := stmt.(type) {

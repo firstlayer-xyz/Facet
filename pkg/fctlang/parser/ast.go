@@ -70,7 +70,26 @@ type Param struct {
 // Stmt is the interface implemented by all statement nodes.
 type Stmt interface {
 	stmtNode()
+	StmtPos() Pos
+	StmtComments() []Comment
 }
+
+func (s *ReturnStmt) StmtPos() Pos                 { return s.Pos }
+func (s *ReturnStmt) StmtComments() []Comment      { return s.Comments }
+func (s *VarStmt) StmtPos() Pos                    { return s.Pos }
+func (s *VarStmt) StmtComments() []Comment         { return s.Comments }
+func (s *YieldStmt) StmtPos() Pos                  { return s.Pos }
+func (s *YieldStmt) StmtComments() []Comment       { return s.Comments }
+func (s *AssignStmt) StmtPos() Pos                 { return s.Pos }
+func (s *AssignStmt) StmtComments() []Comment      { return s.Comments }
+func (s *FieldAssignStmt) StmtPos() Pos            { return s.Pos }
+func (s *FieldAssignStmt) StmtComments() []Comment { return s.Comments }
+func (s *ExprStmt) StmtPos() Pos                   { return s.Pos }
+func (s *ExprStmt) StmtComments() []Comment        { return s.Comments }
+func (s *IfStmt) StmtPos() Pos                     { return s.Pos }
+func (s *IfStmt) StmtComments() []Comment          { return s.Comments }
+func (s *AssertStmt) StmtPos() Pos                 { return s.Pos }
+func (s *AssertStmt) StmtComments() []Comment      { return s.Comments }
 
 // Decl is a top-level declaration: variable, function, or struct type.
 type Decl interface {

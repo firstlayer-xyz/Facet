@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"facet/share/stdlib"
 )
@@ -151,8 +150,7 @@ type resolvedLib struct {
 	// means relative imports are disallowed.
 	root string
 
-	fctFile string    // canonical key of this lib's .fct — disk path OR URI
-	modTime time.Time // mtime for disk files; zero for virtual/embedded
+	fctFile string // canonical key of this lib's .fct — disk path OR URI
 }
 
 // parentCtx describes the importing source's context for relative-import
@@ -284,7 +282,6 @@ func (r *resolver) resolveSource(src *parser.Source, pctx parentCtx) error {
 
 	// Resolve in parallel for direct deps
 	type result struct {
-		idx int
 		rl  *resolvedLib
 		err error
 	}
@@ -294,7 +291,7 @@ func (r *resolver) resolveSource(src *parser.Source, pctx parentCtx) error {
 		key := e.le.Key()
 		// Check if already resolved within this invocation (dedup)
 		if rl, ok := r.visited[key]; ok {
-			results[i] = result{idx: i, rl: rl}
+			results[i] = result{rl: rl}
 			continue
 		}
 
@@ -302,11 +299,11 @@ func (r *resolver) resolveSource(src *parser.Source, pctx parentCtx) error {
 		go func(idx int, le *parser.LibExpr) {
 			defer wg.Done()
 			if err := r.ctx.Err(); err != nil {
-				results[idx] = result{idx: idx, err: err}
+				results[idx] = result{err: err}
 				return
 			}
 			rl, err := r.loadLib(le, pctx)
-			results[idx] = result{idx: idx, rl: rl, err: err}
+			results[idx] = result{rl: rl, err: err}
 		}(i, e.le)
 	}
 	wg.Wait()
@@ -522,8 +519,7 @@ func (r *resolver) loadRelativeLib(le *parser.LibExpr, lp *LibPath, pctx parentC
 
 	// Physical parent — read from disk.
 	fctFile := le.Resolved
-	info, err := os.Stat(fctFile)
-	if err != nil {
+	if _, err := os.Stat(fctFile); err != nil {
 		return nil, fmt.Errorf("relative import %q: %w", le.Path, err)
 	}
 	data, err := os.ReadFile(fctFile)
@@ -540,7 +536,6 @@ func (r *resolver) loadRelativeLib(le *parser.LibExpr, lp *LibPath, pctx parentC
 		tree:    PhysicalTree(filepath.Dir(fctFile)),
 		root:    pctx.root, // inherit parent's containment root
 		fctFile: fctFile,
-		modTime: info.ModTime(),
 	}, nil
 }
 
@@ -551,7 +546,7 @@ func (r *resolver) loadLocalLib(rawPath string) (*resolvedLib, error) {
 	// Check filesystem library dir first (concrete path for navigation)
 	fsDir := filepath.Join(r.libDir, rawPath)
 	fsPath := filepath.Join(fsDir, base+".fct")
-	if info, statErr := os.Stat(fsPath); statErr == nil {
+	if _, statErr := os.Stat(fsPath); statErr == nil {
 		data, err := os.ReadFile(fsPath)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", fsPath, err)
@@ -566,7 +561,6 @@ func (r *resolver) loadLocalLib(rawPath string) (*resolvedLib, error) {
 			src:     src,
 			tree:    PhysicalTree(fsDir),
 			fctFile: fsPath,
-			modTime: info.ModTime(),
 		}, nil
 	}
 
@@ -744,8 +738,7 @@ func (r *resolver) loadFromOverride(rawPath string, lp *LibPath, overrideDir str
 	}
 	base := filepath.Base(dir)
 	fctFile := filepath.Join(dir, base+".fct")
-	info, err := os.Stat(fctFile)
-	if err != nil {
+	if _, err := os.Stat(fctFile); err != nil {
 		return nil, fmt.Errorf("installed override %q: %w", rawPath, err)
 	}
 	data, err := os.ReadFile(fctFile)
@@ -765,7 +758,6 @@ func (r *resolver) loadFromOverride(rawPath string, lp *LibPath, overrideDir str
 		subDir:  subDir,
 		root:    overrideDir,
 		fctFile: fctFile,
-		modTime: info.ModTime(),
 	}, nil
 }
 
