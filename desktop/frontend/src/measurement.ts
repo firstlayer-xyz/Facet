@@ -25,7 +25,6 @@ const ANGLE_LOCK_CAPTURE_DEG = 5;
 export interface Snap {
   kind: SnapKind;
   point: Vec3;
-  faceID?: number;   // faceCentroid
   normal?: Vec3;     // faceCentroid (unit)
   radius?: number;   // circleCenter, circleEdge
   axis?: Vec3;       // circleCenter, circleEdge (circle plane normal, unit)
@@ -86,29 +85,12 @@ const normalize = (v: Vec3): Vec3 => {
 const midpoint = (a: Vec3, b: Vec3): Vec3 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
 
 // ---------------------------------------------------------------------------
-// Weld-by-quantised-position — shared by facePlanes + circularEdges detection.
-// Mirrors the scheme in buildFaceGroupWireframe so indexing is consistent.
+// Weld-by-quantised-position for circular-edge detection. Mirrors the scheme in
+// buildFaceGroupWireframe so indexing is consistent.
 // ---------------------------------------------------------------------------
 
 function weldKey(x: number, y: number, z: number): string {
   return `${Math.round(x * 1e4)}:${Math.round(y * 1e4)}:${Math.round(z * 1e4)}`;
-}
-
-/** Build vi → canonical vi map, welding split vertices at the same position. */
-function buildWeld(vertices: Float32Array): Uint32Array {
-  const canon = new Uint32Array(vertices.length / 3);
-  const map = new Map<string, number>();
-  for (let i = 0; i < canon.length; i++) {
-    const k = weldKey(vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]);
-    const existing = map.get(k);
-    if (existing === undefined) {
-      map.set(k, i);
-      canon[i] = i;
-    } else {
-      canon[i] = existing;
-    }
-  }
-  return canon;
 }
 
 // ---------------------------------------------------------------------------
@@ -733,7 +715,6 @@ export function resolveSnap(args: {
       return {
         kind: 'faceCentroid',
         point: toWorld(fp.centroid),
-        faceID,
         normal: fp.normal,
       };
     }
