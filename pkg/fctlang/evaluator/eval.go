@@ -310,7 +310,7 @@ type evaluator struct {
 	file         string                         // current file disk path
 	yieldTarget  *[]value                       // non-nil when inside a for-yield body
 	foldAcc      *value                         // non-nil when inside a fold body; yield writes here
-	libSources   map[string]string              // collected library sources (debug only)
+	libSources   map[string]string              // source text per file (error snippets, debug tabs); always allocated
 	stdFuncs     []*parser.Function             // stdlib free functions
 	stdMethods   map[string][]*parser.Function  // receiverType → method functions
 	structDecls  map[string]*parser.StructDecl  // user-defined struct declarations

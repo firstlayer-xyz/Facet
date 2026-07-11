@@ -22,9 +22,7 @@ func (e *evaluator) run() (*EvalResult, error) {
 			}
 		}
 		// Make stdlib source available for error navigation and debug tabs
-		if e.libSources != nil {
-			e.libSources[stdSrc.Path] = stdSrc.Text
-		}
+		e.libSources[stdSrc.Path] = stdSrc.Text
 	}
 
 	// Populate struct declarations (stdlib + user program)

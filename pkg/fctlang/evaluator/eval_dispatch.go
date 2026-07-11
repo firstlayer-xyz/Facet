@@ -170,19 +170,21 @@ func (e *evaluator) resolveOverload(
 		method, strings.Join(argTypeNames, ", ")), true
 }
 
-// newLibEval creates a sub-evaluator scoped to a library's program and globals.
-// opFuncs is rebuilt for the library's source (stdlib + the lib's own operator
-// functions) so a lib body that uses Vec3 + Vec3 or its own custom operators
-// dispatches correctly. libLoadStack is inherited so circular-import detection
-// survives nested method-triggered lib loads.
-func (e *evaluator) newLibEval(lib *libRef) *evaluator {
+// newLibEval creates a sub-evaluator scoped to a library's program, with the
+// given globals and stdlib-globals maps (method dispatch passes the lib's cached
+// globals; evalLibExpr passes a fresh map it is about to populate). opFuncs is
+// rebuilt for the library's source (stdlib + the lib's own operator functions)
+// so a lib body that uses Vec3 + Vec3 or its own custom operators dispatches
+// correctly. libLoadStack is inherited so circular-import detection survives
+// nested method-triggered lib loads.
+func (e *evaluator) newLibEval(lib *libRef, globals, stdGlobals map[string]value) *evaluator {
 	diskPath := e.prog.Resolve(lib.path)
 	return &evaluator{
 		ctx:          e.ctx,
 		prog:         e.prog,
 		currentKey:   diskPath,
-		globals:      e.libEvalCache[lib.path],
-		stdGlobals:   e.stdGlobals,
+		globals:      globals,
+		stdGlobals:   stdGlobals,
 		debug:        e.debug,
 		libEvalCache: e.libEvalCache,
 		libLoadStack: e.libLoadStack,
@@ -305,7 +307,7 @@ func (e *evaluator) dispatchMethodCall(
 		if len(candidates) == 0 {
 			return nil, e.errAt(mc.Pos, "library has no function %q", mc.Method)
 		}
-		libEval := e.newLibEval(r)
+		libEval := e.newLibEval(r, e.libEvalCache[r.path], e.stdGlobals)
 		result, err, _ := e.resolveOverload(mc.Pos, mc.Method, candidates, argMap, libEval,
 			func(fn *parser.Function, args map[string]value) (value, error) {
 				return libEval.evalFunction(fn, args)
@@ -336,7 +338,7 @@ func (e *evaluator) dispatchMethodCall(
 		if r.lib != nil {
 			libCandidates := findMethods(e.prog.Sources[e.prog.Resolve(r.lib.path)].Functions(), mc.Method, r.typeName, len(argMap))
 			if len(libCandidates) > 0 {
-				libEval := e.newLibEval(r.lib)
+				libEval := e.newLibEval(r.lib, e.libEvalCache[r.lib.path], e.stdGlobals)
 				result, err, _ := e.resolveOverload(mc.Pos, mc.Method, libCandidates, argMap, libEval,
 					func(fn *parser.Function, args map[string]value) (value, error) {
 						return libEval.evalMethodFunction(fn, r, args)

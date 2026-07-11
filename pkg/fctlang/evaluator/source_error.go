@@ -9,7 +9,7 @@ import (
 // errAt creates a SourceError at the given source location using e.file.
 func (e *evaluator) errAt(pos parser.Pos, format string, a ...any) *parser.SourceError {
 	se := &parser.SourceError{File: e.file, Line: pos.Line, Col: pos.Col, Message: fmt.Sprintf(format, a...)}
-	if e.file != "" && e.libSources != nil {
+	if e.file != "" {
 		se.Source = e.libSources[e.file]
 	}
 	return se
@@ -26,7 +26,7 @@ func (e *evaluator) wrapErr(pos parser.Pos, err error) error {
 		return err
 	}
 	se = &parser.SourceError{File: e.file, Line: pos.Line, Col: pos.Col, Message: err.Error()}
-	if e.file != "" && e.libSources != nil {
+	if e.file != "" {
 		se.Source = e.libSources[e.file]
 	}
 	return se
