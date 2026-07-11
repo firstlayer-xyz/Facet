@@ -42,7 +42,7 @@ import type { EntryPoint } from './function-preview';
 import type { DrawingViewpoint } from './viewer';
 
 import {
-  initApp, setEditor, setInitialFile, setEditorWordWrap, setFormatOnSave, setHighlightMode,
+  initApp, setEditor, setInitialFile, setFormatOnSave, setHighlightMode,
   run, autoRun, toggleRun,
   showDebugStep, showDebugStepPrev, showDebugStepNext, continueDebug,
   openExample, openFile, openRecentFile, saveFile, saveFileAs, newFile, exportMesh, sendToSlicer, shareToWeb,
@@ -218,7 +218,6 @@ async function init() {
   // Initialize app module with all dependencies
   initApp({
     viewer,
-    editor: null!, // set below after async creation
     docsPanel,
     errorDiv,
     debugBar,
@@ -367,7 +366,7 @@ async function init() {
   });
 
   // Register all loaded tabs
-  setInitialFile(first.path, undefined, first.readOnly);
+  setInitialFile(first.path, first.readOnly);
   if (first.cursor) {
     editor.revealLine(first.cursor.lineNumber, first.cursor.column);
   }
@@ -589,7 +588,7 @@ settingsBtn.addEventListener('click', () => {
     settings = updated;
     saveSettings(settings);
     applyCurrentTheme();
-    setEditorWordWrap(settings.editor.wordWrap);
+    editorRef?.setWordWrap(settings.editor.wordWrap);
     setFormatOnSave(settings.editor.formatOnSave);
     setHighlightMode(settings.editor.highlight);
     SetAssistantConfig(settings.assistant);
@@ -840,17 +839,28 @@ debugContinueBtn.addEventListener('click', continueDebug);
 debugRestartBtn.addEventListener('click', () => run());
 debugStopBtn.addEventListener('click', handleDebugToggle);
 
-// Divider drag logic (editor ↔ viewport)
-let dragging = false;
+// Shared drag lifecycle for the divider and drawer resizers: a mousedown on the
+// handle starts the drag (col-resize cursor, text selection suppressed), window
+// mousemove forwards to onMove while dragging, and mouseup ends it.
+function makeDragResizer(handle: HTMLElement, onMove: (e: MouseEvent) => void) {
+  let dragging = false;
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (dragging) onMove(e);
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+}
 
-divider.addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  dragging = true;
-  document.body.style.cursor = 'col-resize';
-  document.body.style.userSelect = 'none';
-});
-
-// Panel resizer drag logic (canvas ↔ right panel)
 // The main stage must always keep at least this many pixels so the user
 // can't drag a drawer over the entire content area.
 const MIN_VP = 150;
@@ -859,70 +869,28 @@ const MIN_VP = 150;
 // and the editor is the flex:1 stage; otherwise it's the viewport panel.
 const stageWidth = () =>
   (isFullCode() ? editorPanel : viewportPanel).getBoundingClientRect().width;
-let panelDragging = false;
-let docsDragging = false;
 
-panelResizer.addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  panelDragging = true;
-  document.body.style.cursor = 'col-resize';
-  document.body.style.userSelect = 'none';
-});
+// Drawer resize (canvas ↔ right panel): grow/shrink the drawer between min/max,
+// but never past the point that would starve the main stage below MIN_VP.
+const resizeDrawer = (id: string, min: number, max: number) => (e: MouseEvent) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const maxAllowed = r.width + Math.max(0, stageWidth() - MIN_VP);
+  el.style.width = `${Math.min(Math.max(r.right - e.clientX, min), Math.min(max, maxAllowed))}px`;
+};
 
-docsResizer.addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  docsDragging = true;
-  document.body.style.cursor = 'col-resize';
-  document.body.style.userSelect = 'none';
+// Divider drag (editor ↔ viewport): 10% min for the editor; the right side must
+// leave at least MIN_VP px for the viewport (drawer-stack is a flex sibling so
+// its width counts against available space).
+makeDragResizer(divider, (e) => {
+  const appRect = app.getBoundingClientRect();
+  const x = e.clientX - appRect.left;
+  const pct = (x / appRect.width) * 100;
+  const drawerW = drawerStack.getBoundingClientRect().width;
+  const maxPct = ((appRect.width - drawerW - MIN_VP) / appRect.width) * 100;
+  const clamped = Math.min(Math.max(pct, 10), Math.max(10, maxPct));
+  editorPanel.style.flexBasis = `${clamped}%`;
 });
-
-window.addEventListener('mousemove', (e) => {
-  if (dragging) {
-    const appRect = app.getBoundingClientRect();
-    const x = e.clientX - appRect.left;
-    const pct = (x / appRect.width) * 100;
-    // 10% min for editor; right side: leave at least MIN_VP px for the viewport
-    // (drawer-stack is now a flex sibling so its width counts against available space).
-    const drawerW = drawerStack.getBoundingClientRect().width;
-    const maxPct = ((appRect.width - drawerW - MIN_VP) / appRect.width) * 100;
-    const clamped = Math.min(Math.max(pct, 10), Math.max(10, maxPct));
-    editorPanel.style.flexBasis = `${clamped}%`;
-  }
-  if (panelDragging) {
-    const assistantEl = document.getElementById('assistant-panel');
-    if (assistantEl) {
-      const curW = assistantEl.getBoundingClientRect().width;
-      const newWidth = assistantEl.getBoundingClientRect().right - e.clientX;
-      // The main stage must keep at least MIN_VP pixels.
-      const maxAllowed = curW + Math.max(0, stageWidth() - MIN_VP);
-      assistantEl.style.width = `${Math.min(Math.max(newWidth, 200), Math.min(700, maxAllowed))}px`;
-    }
-  }
-  if (docsDragging) {
-    const docsEl = document.getElementById('docs-panel');
-    if (docsEl) {
-      const curW = docsEl.getBoundingClientRect().width;
-      const newWidth = docsEl.getBoundingClientRect().right - e.clientX;
-      const maxAllowed = curW + Math.max(0, stageWidth() - MIN_VP);
-      docsEl.style.width = `${Math.min(Math.max(newWidth, 240), Math.min(900, maxAllowed))}px`;
-    }
-  }
-});
-
-window.addEventListener('mouseup', () => {
-  if (dragging) {
-    dragging = false;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  }
-  if (panelDragging) {
-    panelDragging = false;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  }
-  if (docsDragging) {
-    docsDragging = false;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  }
-});
+makeDragResizer(panelResizer, resizeDrawer('assistant-panel', 200, 700));
+makeDragResizer(docsResizer, resizeDrawer('docs-panel', 240, 900));
