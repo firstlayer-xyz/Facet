@@ -196,7 +196,7 @@ func (e *Emitter) linearExtrudeMethod(n *ast.ModuleCall) string {
 		out += ", slices: " + s
 	}
 	if sc, found := arg(n, "scale", -1); found {
-		sx, sy := e.scaleFactors(sc)
+		sx, sy := e.pair2(sc, kNumber)
 		out += ", taperX: " + sx + ", taperY: " + sy
 	}
 	out += ")"
@@ -224,16 +224,6 @@ func (e *Emitter) extrudeSlices(n *ast.ModuleCall, twist ast.Expr, hasTwist bool
 		return ""
 	}
 	return "Max(a: 1, b: Ceil(n: " + fn + " * Abs(a: " + e.expr(twist, kNumber) + ") / 360))"
-}
-
-// scaleFactors renders an OpenSCAD linear_extrude `scale` as Facet taperX/taperY
-// values: a scalar applies to both axes; a 2-vector gives per-axis factors.
-func (e *Emitter) scaleFactors(sc ast.Expr) (sx, sy string) {
-	if v, isVec := sc.(*ast.Vector); isVec && len(v.Elems) >= 2 {
-		return e.expr(v.Elems[0], kNumber), e.expr(v.Elems[1], kNumber)
-	}
-	s := e.expr(sc, kNumber)
-	return s, s
 }
 
 // rotateExtrudeMethod builds `.Revolve(a: A deg[, segments: N])`. OpenSCAD's

@@ -629,7 +629,7 @@ func (e *Emitter) bosl2PrimitiveB2(mc *ast.ModuleCall) (string, bool) {
 		return "b2_cuboid(" + args + ")", true
 	case "cyl":
 		e.rejectExtraArgs(mc, 2, "h", "l", "height", "r", "d", "$fn", "$fa", "$fs")
-		h, ok := cylHeightArg(mc)
+		h, ok := cylHeightArg(mc, 0)
 		if !ok {
 			return e.errf(mc.Pos(), "cyl without height"), true
 		}
