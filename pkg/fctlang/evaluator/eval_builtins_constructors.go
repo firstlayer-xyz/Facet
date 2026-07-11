@@ -305,20 +305,32 @@ func (e *evaluator) builtinBatchBool(name string, args []value) (value, error) {
 			}
 			solids[i] = s
 		}
-		// Fast path for the dominant 2-operand case (every binary +/-/&): the
-		// direct pairwise boolean avoids the slice + array-of-pointers + vector
-		// allocation that the batch entry point requires.
+		var result *manifold.Solid
 		if len(solids) == 2 {
+			// Fast path for the dominant 2-operand case (every binary +/-/&):
+			// the direct pairwise boolean avoids the slice + array-of-pointers +
+			// vector allocation that the batch entry point requires.
 			switch op {
 			case manifold.OpUnion:
-				return solids[0].Union(solids[1]), nil
+				result = solids[0].Union(solids[1])
 			case manifold.OpDifference:
-				return solids[0].Difference(solids[1]), nil
+				result = solids[0].Difference(solids[1])
 			default:
-				return solids[0].Intersection(solids[1]), nil
+				result = solids[0].Intersection(solids[1])
+			}
+		} else {
+			// BatchBoolean reports a nil kernel result with its own internal
+			// sentinel; drop through to errBoolFailed below so every operand
+			// count shares one user-facing message.
+			var err error
+			if result, err = manifold.BatchBoolean(solids, op); err != nil {
+				return nil, errBoolFailed(boolOpName(op))
 			}
 		}
-		return manifold.BatchBoolean(solids, op)
+		if result == nil {
+			return nil, errBoolFailed(boolOpName(op))
+		}
+		return result, nil
 	case *manifold.Sketch:
 		sketches := make([]*manifold.Sketch, len(arr.elems))
 		for i, elem := range arr.elems {
@@ -328,17 +340,26 @@ func (e *evaluator) builtinBatchBool(name string, args []value) (value, error) {
 			}
 			sketches[i] = p
 		}
+		var result *manifold.Sketch
 		if len(sketches) == 2 {
 			switch op {
 			case manifold.OpUnion:
-				return sketches[0].Union(sketches[1]), nil
+				result = sketches[0].Union(sketches[1])
 			case manifold.OpDifference:
-				return sketches[0].Difference(sketches[1]), nil
+				result = sketches[0].Difference(sketches[1])
 			default:
-				return sketches[0].Intersection(sketches[1]), nil
+				result = sketches[0].Intersection(sketches[1])
+			}
+		} else {
+			var err error
+			if result, err = manifold.SketchBatchBoolean(sketches, op); err != nil {
+				return nil, errBoolFailed(boolOpName(op))
 			}
 		}
-		return manifold.SketchBatchBoolean(sketches, op)
+		if result == nil {
+			return nil, errBoolFailed(boolOpName(op))
+		}
+		return result, nil
 	default:
 		return nil, fmt.Errorf("%s() elements must be Solids or Sketches, got %s", name, typeName(arr.elems[0]))
 	}
@@ -355,6 +376,29 @@ func batchBoolOp(name string) (manifold.BoolOp, error) {
 		return manifold.OpIntersection, nil
 	}
 	return 0, fmt.Errorf("%s: not a batch boolean operation", name)
+}
+
+// boolOpName gives a boolean op the user-facing name used in error messages.
+func boolOpName(op manifold.BoolOp) string {
+	switch op {
+	case manifold.OpUnion:
+		return "Union"
+	case manifold.OpDifference:
+		return "Difference"
+	default:
+		return "Intersection"
+	}
+}
+
+// errBoolFailed reports a Solid or Sketch boolean whose kernel result was nil:
+// the operation failed — an exception nulled the handle, or the C++ boolean
+// bindings rejected a status-errored result (see wrap_checked in internal.h).
+// Every boolean path (the binary +/-/& operators in evalBinary and the batch
+// builtins here) routes nil through this so the user gets one specific,
+// actionable error instead of a silently-empty result or a misleading
+// "operator not supported".
+func errBoolFailed(opName string) error {
+	return fmt.Errorf("%s failed: the geometry kernel produced no valid result (the operands may be too large or degenerate)", opName)
 }
 
 // ---------------------------------------------------------------------------

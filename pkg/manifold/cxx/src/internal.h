@@ -90,6 +90,23 @@ static inline void facetClear(FacetSolidRet* out)  { if (out) { out->ptr = nullp
 static inline void facetClear(FacetSketchRet* out) { if (out) { out->ptr = nullptr; out->size = 0; } }
 static inline void facetClear(FacetSolidPair* out) { if (out) { facetClear(&out->first); facetClear(&out->second); } }
 
+// wrap_checked wraps m like wrap(), but a status-errored manifold (a kernel op
+// that failed WITHOUT throwing — e.g. a boolean whose result exceeds the kernel's
+// index limits sets a non-NoError Status instead of throwing) is treated as a
+// failure: the invalid geometry is dropped and out nulled, so the Go layer
+// reports it as a failed op rather than wrapping a silently-empty solid. The
+// unique_ptr owns m until it is either dropped (on failure) or handed to Go via
+// wrap(), so a throw from the Status() check — which forces the lazy boolean —
+// frees m instead of leaking it.
+static inline void wrap_checked(manifold::Manifold* m, FacetSolidRet* out) {
+  std::unique_ptr<manifold::Manifold> owned(m);
+  if (m->Status() != manifold::Manifold::Error::NoError) {
+    facetClear(out);
+    return;
+  }
+  wrap(owned.release(), out);
+}
+
 // Construct a Solid from a triangle mesh, welding coincident vertices first.
 // MeshGL::Merge() fills the merge vectors for vertices that coincide within
 // tolerance along open edges, so a mesh assembled from independent per-face
