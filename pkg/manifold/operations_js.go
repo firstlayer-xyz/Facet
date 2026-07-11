@@ -34,11 +34,7 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 		return nil, fmt.Errorf("BatchHull: solids is empty")
 	}
 	requireSolids("BatchHull", solids...)
-	arr := js.Global().Get("Array").New()
-	for _, s := range solids {
-		arr.Call("push", s.id)
-	}
-	id := js.Global().Call("_mf_batch_hull", arr).Int()
+	id := js.Global().Call("_mf_batch_hull", solidIDArray(solids)).Int()
 	r := newSolid(id)
 	if r == nil {
 		return nil, nil
@@ -140,11 +136,7 @@ func SketchBatchHull(sketches []*Sketch) (*Sketch, error) {
 	if len(sketches) == 0 {
 		return nil, fmt.Errorf("SketchBatchHull: sketches is empty")
 	}
-	arr := js.Global().Get("Array").New()
-	for _, p := range sketches {
-		arr.Call("push", p.id)
-	}
-	id := js.Global().Call("_mf_cs_batch_hull", arr).Int()
+	id := js.Global().Call("_mf_cs_batch_hull", sketchIDArray(sketches)).Int()
 	return newSketch(id), nil
 }
 

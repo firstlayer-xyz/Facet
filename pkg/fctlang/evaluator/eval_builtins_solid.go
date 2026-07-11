@@ -687,7 +687,7 @@ func init() {
 		if len(args) != 0 {
 			return nil, fmt.Errorf("%s() expects 0 arguments, got %d", name, len(args))
 		}
-		m := manifold.ExtractMeshShared(r)
+		m := r.ToMesh()
 		// Build vertices array of Vec3
 		numVerts := len(m.Vertices) / 3
 		verts := make([]value, numVerts)

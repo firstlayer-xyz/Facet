@@ -44,6 +44,130 @@ func checkEuler(t *testing.T, name string, pm *PolyMesh) {
 	}
 }
 
+// ---------- Platonic solid constructors (unit circumradius, test-only) ----------
+
+// newTetrahedron returns a regular tetrahedron with unit circumradius.
+func newTetrahedron() *PolyMesh {
+	// Vertices of a regular tetrahedron inscribed in unit sphere
+	s := 1.0 / math.Sqrt(3.0)
+	return &PolyMesh{
+		Vertices: []float64{
+			s, s, s,
+			s, -s, -s,
+			-s, s, -s,
+			-s, -s, s,
+		},
+		Faces: [][]int{
+			{0, 1, 2},
+			{0, 3, 1},
+			{0, 2, 3},
+			{1, 3, 2},
+		},
+	}
+}
+
+// newOctahedron returns a regular octahedron with unit circumradius.
+func newOctahedron() *PolyMesh {
+	return &PolyMesh{
+		Vertices: []float64{
+			1, 0, 0,
+			-1, 0, 0,
+			0, 1, 0,
+			0, -1, 0,
+			0, 0, 1,
+			0, 0, -1,
+		},
+		Faces: [][]int{
+			{0, 2, 4},
+			{2, 1, 4},
+			{1, 3, 4},
+			{3, 0, 4},
+			{0, 3, 5},
+			{3, 1, 5},
+			{1, 2, 5},
+			{2, 0, 5},
+		},
+	}
+}
+
+// newPlatoCube returns a regular cube with unit circumradius.
+func newPlatoCube() *PolyMesh {
+	s := 1.0 / math.Sqrt(3.0)
+	return &PolyMesh{
+		Vertices: []float64{
+			-s, -s, -s,
+			s, -s, -s,
+			s, s, -s,
+			-s, s, -s,
+			-s, -s, s,
+			s, -s, s,
+			s, s, s,
+			-s, s, s,
+		},
+		Faces: [][]int{
+			{0, 3, 2, 1}, // bottom
+			{4, 5, 6, 7}, // top
+			{0, 1, 5, 4}, // front
+			{2, 3, 7, 6}, // back
+			{0, 4, 7, 3}, // left
+			{1, 2, 6, 5}, // right
+		},
+	}
+}
+
+// newIcosahedron returns a regular icosahedron with unit circumradius.
+func newIcosahedron() *PolyMesh {
+	phi := (1.0 + math.Sqrt(5.0)) / 2.0
+	r := math.Sqrt(1.0 + phi*phi)
+	a := 1.0 / r
+	b := phi / r
+
+	return &PolyMesh{
+		Vertices: []float64{
+			-a, b, 0,
+			a, b, 0,
+			-a, -b, 0,
+			a, -b, 0,
+			0, -a, b,
+			0, a, b,
+			0, -a, -b,
+			0, a, -b,
+			b, 0, -a,
+			b, 0, a,
+			-b, 0, -a,
+			-b, 0, a,
+		},
+		Faces: [][]int{
+			{0, 11, 5},
+			{0, 5, 1},
+			{0, 1, 7},
+			{0, 7, 10},
+			{0, 10, 11},
+			{1, 5, 9},
+			{5, 11, 4},
+			{11, 10, 2},
+			{10, 7, 6},
+			{7, 1, 8},
+			{3, 9, 4},
+			{3, 4, 2},
+			{3, 2, 6},
+			{3, 6, 8},
+			{3, 8, 9},
+			{4, 9, 5},
+			{2, 4, 11},
+			{6, 2, 10},
+			{8, 6, 7},
+			{9, 8, 1},
+		},
+	}
+}
+
+// newDodecahedron returns a regular dodecahedron with unit circumradius.
+// Computed as the dual of an icosahedron.
+func newDodecahedron() *PolyMesh {
+	return newIcosahedron().Dual()
+}
+
 func TestPlatonicSolids(t *testing.T) {
 	tests := []struct {
 		name       string

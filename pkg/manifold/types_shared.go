@@ -9,7 +9,6 @@ package manifold
 // Mesh is an indexed triangle mesh in Go-owned slices.
 type Mesh struct {
 	Vertices []float32 // flat xyz positions
-	Normals  []float32 // flat xyz normals (per-vertex)
 	Indices  []uint32  // triangle indices
 }
 
@@ -31,7 +30,7 @@ type DisplayMesh struct {
 	VertRaw        []byte            // float32 LE vertex positions (xyz, 12 bytes per vertex)
 	IdxRaw         []byte            // uint32 LE triangle indices (4 bytes each)
 	FaceGroupRaw   []byte            // uint32 LE per-triangle face group IDs (optional)
-	FaceColorMap   map[string]string // faceGroupID → hex color (optional)
+	FaceColorMap   map[uint32]string // faceGroupID → hex color (optional)
 	VertexCount    int
 	IndexCount     int
 	FaceGroupCount int // number of face group entries (= IndexCount/3)
@@ -53,31 +52,12 @@ type Point3D struct {
 	X, Y, Z float64
 }
 
-// ExternalMemory reports the external (C/C++ heap) memory footprint in bytes.
-type ExternalMemory interface {
-	ExternalMemSize() int
-}
-
 // mergeFaceMaps returns a new map containing entries from both inputs. On a
 // duplicate key, a's full FaceInfo wins (struct overwrite — not a per-field
 // merge).
 func mergeFaceMaps(a, b map[uint32]FaceInfo) map[uint32]FaceInfo {
 	if len(a) == 0 && len(b) == 0 {
 		return nil
-	}
-	if len(a) == 0 {
-		m := make(map[uint32]FaceInfo, len(b))
-		for k, v := range b {
-			m[k] = v
-		}
-		return m
-	}
-	if len(b) == 0 {
-		m := make(map[uint32]FaceInfo, len(a))
-		for k, v := range a {
-			m[k] = v
-		}
-		return m
 	}
 	m := make(map[uint32]FaceInfo, len(a)+len(b))
 	for k, v := range b {
