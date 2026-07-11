@@ -546,15 +546,8 @@ fn Solid.AlignCenter(
     nudgeY Length = 0 mm,
     nudgeZ Length = 0 mm,
 ) Solid {
-    var a = self.Bounds().Center()
-    var b = with.Bounds().Center()
-    var dx = 0 mm
-    var dy = 0 mm
-    var dz = 0 mm
-    if x { dx = b.x - a.x + nudgeX }
-    if y { dy = b.y - a.y + nudgeY }
-    if z { dz = b.z - a.z + nudgeZ }
-    return self.Move(x: dx, y: dy, z: dz)
+    return self.AlignCenter(pos: with.Bounds().Center(), x: x, y: y, z: z,
+        nudgeX: nudgeX, nudgeY: nudgeY, nudgeZ: nudgeZ)
 }
 
 # Aligns this solid's bounding-box center to a fixed point. Pass `Vec3{}`

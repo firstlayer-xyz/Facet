@@ -185,19 +185,17 @@ fn Solid.CircularPattern(
     span Angle = 0 deg,
     center Vec3 = Vec3{},
 ) Solid {
+    var step = 0 deg
     if span == 0 deg {
         assert count >= 1, "CircularPattern requires count >= 1"
-        var step = 360 / count * 1 deg
-        return Union(arr: for i [0:<count] {
-            yield self.Rotate(z: i * step, around: center)
-        })
+        step = 360 / count * 1 deg
     } else {
         assert count >= 2, "CircularPattern with span requires count >= 2"
-        var step = span / (count - 1)
-        return Union(arr: for i [0:<count] {
-            yield self.Rotate(z: i * step, around: center)
-        })
+        step = span / (count - 1)
     }
+    return Union(arr: for i [0:<count] {
+        yield self.Rotate(z: i * step, around: center)
+    })
 }
 
 # Tiles a solid across a `countX × countY` grid in the XY plane. `rowOffset` is a
@@ -307,21 +305,17 @@ fn Sketch.CircularPattern(
     span Angle = 0 deg,
     center Vec2 = Vec2{},
 ) Sketch {
+    var step = 0 deg
     if span == 0 deg {
         assert count >= 1, "CircularPattern requires count >= 1"
-        var step = 360 / count * 1 deg
-        return Union(arr: for i [0:<count] {
-            yield _rotate_origin(self.Move(x: -center.x, y: -center.y), i * step)
-                .Move(x: center.x, y: center.y)
-        })
+        step = 360 / count * 1 deg
     } else {
         assert count >= 2, "CircularPattern with span requires count >= 2"
-        var step = span / (count - 1)
-        return Union(arr: for i [0:<count] {
-            yield _rotate_origin(self.Move(x: -center.x, y: -center.y), i * step)
-                .Move(x: center.x, y: center.y)
-        })
+        step = span / (count - 1)
     }
+    return Union(arr: for i [0:<count] {
+        yield self.Rotate(a: i * step, around: center)
+    })
 }
 
 # Same as Solid.GridPattern (count form) but for Sketch.
