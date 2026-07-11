@@ -72,6 +72,16 @@ func requireCount(funcName string, argNum int, n float64, max int) (int, error) 
 	return int(n), nil
 }
 
+// requireCountArg extracts a Number argument and converts it to a bounded
+// count via requireCount.
+func requireCountArg(funcName string, argNum int, v value, max int) (int, error) {
+	n, err := requireNumber(funcName, argNum, v)
+	if err != nil {
+		return 0, err
+	}
+	return requireCount(funcName, argNum, n, max)
+}
+
 // requireAngle extracts the degree value from an angle argument.
 func requireAngle(funcName string, argNum int, v value) (float64, error) {
 	v = unwrap(v)

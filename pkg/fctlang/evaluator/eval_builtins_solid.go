@@ -364,11 +364,7 @@ func init() {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args))
 		}
-		n, err := requireNumber(name, 1, args[0])
-		if err != nil {
-			return nil, err
-		}
-		count, err := requireCount(name, 1, n, maxRefine)
+		count, err := requireCountArg(name, 1, args[0], maxRefine)
 		if err != nil {
 			return nil, err
 		}

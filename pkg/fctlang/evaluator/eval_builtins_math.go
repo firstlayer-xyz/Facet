@@ -8,6 +8,9 @@ import (
 )
 
 func mathMinMax(name string, args []value, isMax bool) (value, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("%s() expects 2 arguments, got %d", name, len(args))
+	}
 	// Coerce Number → Length/Angle so mixed calls like Min(5 mm, 0) work.
 	coerceNumericArgs(args)
 	switch a := args[0].(type) {
@@ -61,8 +64,11 @@ func mathMinMax(name string, args []value, isMax bool) (value, error) {
 	}
 }
 
-func mathAbs(v value) (value, error) {
-	switch a := v.(type) {
+func mathAbs(_ *evaluator, args []value) (value, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("_abs() expects 1 argument, got %d", len(args))
+	}
+	switch a := args[0].(type) {
 	case length:
 		return length{mm: math.Abs(a.mm)}, nil
 	case float64:
@@ -70,7 +76,7 @@ func mathAbs(v value) (value, error) {
 	case angle:
 		return angle{deg: math.Abs(a.deg)}, nil
 	default:
-		return nil, fmt.Errorf("Abs() argument must be numeric, got %s", typeName(v))
+		return nil, fmt.Errorf("Abs() argument must be numeric, got %s", typeName(args[0]))
 	}
 }
 
@@ -78,65 +84,36 @@ func mathAbs(v value) (value, error) {
 // Trig builtins
 // ---------------------------------------------------------------------------
 
-func builtinSin(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_sin() expects 1 argument, got %d", len(args))
+// degTrig returns a builtin computing f over an Angle argument in radians.
+func degTrig(name string, f func(float64) float64) builtinFn {
+	return func(_ *evaluator, args []value) (value, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args))
+		}
+		deg, err := requireAngle(name, 1, args[0])
+		if err != nil {
+			return nil, err
+		}
+		return f(deg * math.Pi / 180), nil
 	}
-	deg, err := requireAngle("_sin", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Sin(deg * math.Pi / 180), nil
 }
 
-func builtinCos(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_cos() expects 1 argument, got %d", len(args))
+// arcTrig returns a builtin computing the inverse trig function f over a
+// Number in [-1, 1], yielding an Angle.
+func arcTrig(name string, f func(float64) float64) builtinFn {
+	return func(_ *evaluator, args []value) (value, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args))
+		}
+		n, err := requireNumber(name, 1, args[0])
+		if err != nil {
+			return nil, err
+		}
+		if n < -1 || n > 1 {
+			return nil, fmt.Errorf("%s() argument out of range [-1, 1]: %g", name, n)
+		}
+		return angle{deg: f(n) * 180 / math.Pi}, nil
 	}
-	deg, err := requireAngle("_cos", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Cos(deg * math.Pi / 180), nil
-}
-
-func builtinTan(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_tan() expects 1 argument, got %d", len(args))
-	}
-	deg, err := requireAngle("_tan", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Tan(deg * math.Pi / 180), nil
-}
-
-func builtinAsin(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_asin() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_asin", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	if n < -1 || n > 1 {
-		return nil, fmt.Errorf("_asin() argument out of range [-1, 1]: %g", n)
-	}
-	return angle{deg: math.Asin(n) * 180 / math.Pi}, nil
-}
-
-func builtinAcos(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_acos() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_acos", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	if n < -1 || n > 1 {
-		return nil, fmt.Errorf("_acos() argument out of range [-1, 1]: %g", n)
-	}
-	return angle{deg: math.Acos(n) * 180 / math.Pi}, nil
 }
 
 func builtinAtan2(_ *evaluator, args []value) (value, error) {
@@ -155,28 +132,21 @@ func builtinAtan2(_ *evaluator, args []value) (value, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Math builtins (wrapped for registry)
+// Math builtins
 // ---------------------------------------------------------------------------
 
-func builtinMin(args []value) (value, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("_min() expects 2 arguments, got %d", len(args))
+// numUnary returns a builtin computing f over a single Number argument.
+func numUnary(name string, f func(float64) float64) builtinFn {
+	return func(_ *evaluator, args []value) (value, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() expects 1 argument, got %d", name, len(args))
+		}
+		n, err := requireNumber(name, 1, args[0])
+		if err != nil {
+			return nil, err
+		}
+		return f(n), nil
 	}
-	return mathMinMax("_min", args, false)
-}
-
-func builtinMax(args []value) (value, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("_max() expects 2 arguments, got %d", len(args))
-	}
-	return mathMinMax("_max", args, true)
-}
-
-func builtinAbs(args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_abs() expects 1 argument, got %d", len(args))
-	}
-	return mathAbs(args[0])
 }
 
 func builtinSqrt(_ *evaluator, args []value) (value, error) {
@@ -214,46 +184,6 @@ func builtinPow(_ *evaluator, args []value) (value, error) {
 		return nil, fmt.Errorf("Pow(base: %v, exp: %v) has no finite result", base, exp)
 	}
 	return r, nil
-}
-
-func builtinFloor(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_floor() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_floor", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Floor(n), nil
-}
-
-func builtinCeil(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_ceil() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_ceil", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Ceil(n), nil
-}
-
-func builtinRound(_ *evaluator, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("_round() expects 1 argument, got %d", len(args))
-	}
-	n, err := requireNumber("_round", 1, args[0])
-	if err != nil {
-		return nil, err
-	}
-	return math.Round(n), nil
-}
-
-func builtinLerp(args []value) (value, error) {
-	if len(args) != 3 {
-		return nil, fmt.Errorf("_lerp() expects 3 arguments, got %d", len(args))
-	}
-	return mathLerp(args)
 }
 
 // ---------------------------------------------------------------------------

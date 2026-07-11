@@ -94,11 +94,8 @@ func init() {
 			}
 		}
 		if len(args) == 2 {
-			n, err := requireNumber(name, 2, args[1])
-			if err != nil {
-				return nil, err
-			}
-			segments, err = requireCount(name, 2, n, maxSegments)
+			var err error
+			segments, err = requireCountArg(name, 2, args[1], maxSegments)
 			if err != nil {
 				return nil, err
 			}
