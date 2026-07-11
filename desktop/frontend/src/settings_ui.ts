@@ -83,6 +83,33 @@ export function settingsCheckboxRow(
 }
 
 /**
+ * Segmented control: a row of mutually-exclusive buttons. The button whose
+ * value equals `current` starts active; clicking one moves the active class
+ * to it and reports the new value via `onSelect`.
+ */
+export function segmentedControl<T extends string>(
+  options: { value: T; label: string }[],
+  current: T,
+  onSelect: (v: T) => void,
+): HTMLDivElement {
+  const group = document.createElement('div');
+  group.className = 'segmented-control';
+  for (const opt of options) {
+    const btn = document.createElement('button');
+    btn.className = 'segmented-btn';
+    btn.textContent = opt.label;
+    if (opt.value === current) btn.classList.add('active');
+    btn.addEventListener('click', () => {
+      group.querySelectorAll('.segmented-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      onSelect(opt.value);
+    });
+    group.appendChild(btn);
+  }
+  return group;
+}
+
+/**
  * Help text below or above a control.
  * - `description`: 13px intro text shown at the top of a page (marginBottom 16px).
  * - `hint`:        11px trailing note shown below a control (marginTop 4px).
@@ -118,10 +145,10 @@ export function settingsSectionHeader(title: string): HTMLHeadingElement {
  * "Failed to load libraries", "No items"). For transient failures that the
  * user should notice, use `reportError` instead.
  */
-export function settingsMessage(text: string, tone: 'muted' | 'error' = 'muted'): HTMLDivElement {
+export function settingsMessage(text: string): HTMLDivElement {
   const el = document.createElement('div');
   el.textContent = text;
-  el.style.color = tone === 'error' ? '#f85149' : '#888';
+  el.style.color = '#888';
   el.style.fontSize = '13px';
   return el;
 }

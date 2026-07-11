@@ -265,16 +265,26 @@ export function createSettingsPanel(
     return btn;
   }
 
-  const appearanceBtn = sidebarButton(paletteIcon, 'Appearance');
-  const editorBtn = sidebarButton(editorIcon, 'Editor');
-  const librariesBtn = sidebarButton(packageIcon, 'Libraries');
-  const assistantSettingsBtn = sidebarButton(assistantIcon, 'Assistant');
-  const slicerSettingsBtn = sidebarButton(slicerIcon, 'Slicer');
-  const exportSettingsBtn = sidebarButton(exportIcon, 'Export');
-  const cameraBtn = sidebarButton(cameraIcon, 'Camera');
-  const memoryBtn = sidebarButton(memoryIcon, 'Memory');
-  const debugSettingsBtn = sidebarButton(debugIcon, 'Log');
-  const aboutBtn = sidebarButton(aboutIcon, 'About');
+  // Sidebar pages: [name, title, icon, page builder]. One table drives the
+  // sidebar buttons, the page registry, and the click handlers below.
+  const pageDefs: [string, string, string, (ctx: SettingsPageContext) => PageResult][] = [
+    ['appearance', 'Appearance', paletteIcon, buildAppearancePage],
+    ['editor', 'Editor', editorIcon, buildEditorPage],
+    ['libraries', 'Libraries', packageIcon, buildLibrariesPage],
+    ['assistant', 'Assistant', assistantIcon, buildAssistantPage],
+    ['slicer', 'Slicer', slicerIcon, buildSlicerPage],
+    ['export', 'Export', exportIcon, buildExportSettingsPage],
+    ['camera', 'Camera', cameraIcon, buildCameraPage],
+    ['memory', 'Memory', memoryIcon, buildMemoryPage],
+    ['debug', 'Log', debugIcon, buildDebugPage],
+    ['about', 'About', aboutIcon, buildAboutPage],
+  ];
+  const pages: Record<string, { title: string; btn: HTMLButtonElement; build: (ctx: SettingsPageContext) => PageResult }> = {};
+  for (const [name, title, icon, build] of pageDefs) {
+    const btn = sidebarButton(icon, title);
+    btn.addEventListener('click', () => showPage(name));
+    pages[name] = { title, btn, build };
+  }
 
   // Content area
   const content = document.createElement('div');
@@ -382,19 +392,6 @@ export function createSettingsPanel(
   closeBtn.addEventListener('click', close);
 
   // Page switching
-  const pages: Record<string, { title: string; btn: HTMLButtonElement; build: (ctx: SettingsPageContext) => PageResult }> = {
-    appearance: { title: 'Appearance', btn: appearanceBtn, build: buildAppearancePage },
-    editor: { title: 'Editor', btn: editorBtn, build: buildEditorPage },
-    libraries: { title: 'Libraries', btn: librariesBtn, build: buildLibrariesPage },
-    assistant: { title: 'Assistant', btn: assistantSettingsBtn, build: buildAssistantPage },
-    slicer: { title: 'Slicer', btn: slicerSettingsBtn, build: buildSlicerPage },
-    export: { title: 'Export', btn: exportSettingsBtn, build: buildExportSettingsPage },
-    camera: { title: 'Camera', btn: cameraBtn, build: buildCameraPage },
-    memory: { title: 'Memory', btn: memoryBtn, build: buildMemoryPage },
-    debug: { title: 'Log', btn: debugSettingsBtn, build: buildDebugPage },
-    about: { title: 'About', btn: aboutBtn, build: buildAboutPage },
-  };
-
   function showPage(name: string) {
     const page = pages[name];
     if (!page) return;
@@ -409,10 +406,6 @@ export function createSettingsPanel(
     const result = page.build(ctx);
     content.appendChild(result.el);
     pageCleanup = result.cleanup || null;
-  }
-
-  for (const [name, page] of Object.entries(pages)) {
-    page.btn.addEventListener('click', () => showPage(name));
   }
 
   // Default to appearance
