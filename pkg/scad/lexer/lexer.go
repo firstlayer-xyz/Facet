@@ -25,6 +25,12 @@ var singleKind = map[byte]token.Kind{
 	'+': token.Plus, '-': token.Minus, '/': token.Slash, '<': token.Lt, '>': token.Gt,
 }
 
+// twoKind maps two-byte operators to their token kinds.
+var twoKind = map[string]token.Kind{
+	"==": token.EqEq, "!=": token.NeEq, "<=": token.Le,
+	">=": token.Ge, "&&": token.And, "||": token.Or,
+}
+
 // Lex scans the whole source and returns tokens terminated by an EOF token.
 func Lex(src string) []token.Token {
 	l := &lexer{src: src, line: 1, col: 1}
@@ -128,20 +134,16 @@ func (l *lexer) next() token.Token {
 		switch {
 		case isIdentStart(c):
 			start := l.pos
-			special := c == '$'
 			l.advance() // consume the start byte (may be '$')
 			for l.pos < len(l.src) && isIdentPart(l.peek()) {
 				l.advance()
 			}
 			text := l.src[start:l.pos]
 			k := token.Lookup(text)
-			if special {
-				k = token.Ident // $-vars are never keywords
-			}
 			if k == token.Use || k == token.Include {
 				l.pathNext = true
 			}
-			return token.Token{Kind: k, Text: text, Line: line, Col: col, SpecialVar: special}
+			return token.Token{Kind: k, Text: text, Line: line, Col: col}
 
 		case isDigit(c) || (c == '.' && isDigit(l.peek2())):
 			start := l.pos
@@ -178,35 +180,12 @@ func (l *lexer) next() token.Token {
 		}
 
 		// operators / punctuation — match two-char before single-char
-		two := ""
 		if l.pos+1 < len(l.src) {
-			two = l.src[l.pos : l.pos+2]
-		}
-		switch two {
-		case "==":
-			l.advance()
-			l.advance()
-			return token.Token{Kind: token.EqEq, Line: line, Col: col}
-		case "!=":
-			l.advance()
-			l.advance()
-			return token.Token{Kind: token.NeEq, Line: line, Col: col}
-		case "<=":
-			l.advance()
-			l.advance()
-			return token.Token{Kind: token.Le, Line: line, Col: col}
-		case ">=":
-			l.advance()
-			l.advance()
-			return token.Token{Kind: token.Ge, Line: line, Col: col}
-		case "&&":
-			l.advance()
-			l.advance()
-			return token.Token{Kind: token.And, Line: line, Col: col}
-		case "||":
-			l.advance()
-			l.advance()
-			return token.Token{Kind: token.Or, Line: line, Col: col}
+			if k, ok := twoKind[l.src[l.pos:l.pos+2]]; ok {
+				l.advance()
+				l.advance()
+				return token.Token{Kind: k, Line: line, Col: col}
+			}
 		}
 
 		l.advance()
