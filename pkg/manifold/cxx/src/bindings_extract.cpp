@@ -56,7 +56,7 @@ void extract_expanded_from_meshgl(
   MallocPtr pFids;
   int nfids = 0;
   if (!faceIDs.empty()) {
-    nfids = (int)numTri;
+    nfids = int_count(numTri);
     pFids = xmalloc(nfids * sizeof(uint32_t));
     memcpy(pFids.get(), faceIDs.data(), nfids * sizeof(uint32_t));
   }
@@ -152,7 +152,7 @@ void extract_expanded_from_meshgl(
 
   // All allocations succeeded — hand ownership to Go.
   *out_positions = static_cast<float*>(pPositions.release());
-  *out_num_positions = (int)numVerts;
+  *out_num_positions = int_count(numVerts);
   *out_face_ids = static_cast<uint32_t*>(pFids.release());
   *out_num_face_ids = nfids;
   *out_edge_lines = static_cast<float*>(pEdges.release());
@@ -218,9 +218,9 @@ void facet_extract_mesh(ManifoldPtr* m,
 
   // Hand ownership to Go (release the guards) only once both succeeded.
   *out_vertices = static_cast<float*>(pVerts.release());
-  *out_num_verts = (int)numVert;
+  *out_num_verts = int_count(numVert);
   *out_indices = static_cast<uint32_t*>(pIdxs.release());
-  *out_num_tris = (int)numTri;
+  *out_num_tris = int_count(numTri);
 } catch (...) {
   *out_vertices = nullptr;
   *out_num_verts = 0;
@@ -262,16 +262,16 @@ void facet_extract_display_mesh(ManifoldPtr* m,
   int nfids = 0;
   auto faceIDs = buildFaceIDs(mesh);
   if (!faceIDs.empty()) {
-    nfids = (int)numTri;
+    nfids = int_count(numTri);
     pFids = xmalloc(nfids * sizeof(uint32_t));
     memcpy(pFids.get(), faceIDs.data(), nfids * sizeof(uint32_t));
   }
 
   *out_vertices = static_cast<float*>(pProps.release());
-  *out_num_verts = (int)numVert;
-  *out_num_prop = (int)numProp;
+  *out_num_verts = int_count(numVert);
+  *out_num_prop = int_count(numProp);
   *out_indices = static_cast<uint32_t*>(pIdxs.release());
-  *out_num_tris = (int)numTri;
+  *out_num_tris = int_count(numTri);
   *out_face_ids = static_cast<uint32_t*>(pFids.release());
   *out_num_face_ids = nfids;
 } catch (...) {
@@ -478,9 +478,11 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
 
   MeshGL mesh = as_cpp(m)->GetMeshGL();
 
-  int nv = mesh.NumVert();
-  int nt = mesh.NumTri();
-  int np = mesh.numProp;
+  // size_t so nv*3 / nt*3 below are size_t arithmetic (int*int would be signed
+  // overflow UB past ~715M tris); narrowed to the int out-params via int_count.
+  size_t nv = mesh.NumVert();
+  size_t nt = mesh.NumTri();
+  size_t np = mesh.numProp;
 
   // Empty mesh: allocate nothing and null every out-pointer, so the Go caller's
   // early-return frees nothing (mirrors facet_extract_mesh and the other
@@ -501,7 +503,7 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
   // Extract positions (first 3 props per vertex)
   MallocPtr pVerts = xmalloc(nv * 3 * sizeof(float));
   float* verts = static_cast<float*>(pVerts.get());
-  for (int i = 0; i < nv; i++) {
+  for (size_t i = 0; i < nv; i++) {
     verts[i*3+0] = mesh.vertProperties[i*np+0];
     verts[i*3+1] = mesh.vertProperties[i*np+1];
     verts[i*3+2] = mesh.vertProperties[i*np+2];
@@ -513,26 +515,26 @@ void facet_extract_mesh_with_runs(ManifoldPtr* m,
 
   // Copy run info. runIndex normally has numRuns+1 entries (last entry = total
   // triVerts size); report its actual size so the caller never assumes the length.
-  int numRuns = (int)mesh.runOriginalID.size();
+  size_t numRuns = mesh.runOriginalID.size();
   MallocPtr pRunOrig, pRunIdx;
-  int riLen = 0;
+  size_t riLen = 0;
   if (numRuns > 0) {
     pRunOrig = xmalloc(numRuns * sizeof(uint32_t));
     memcpy(pRunOrig.get(), mesh.runOriginalID.data(), numRuns * sizeof(uint32_t));
-    riLen = (int)mesh.runIndex.size();
+    riLen = mesh.runIndex.size();
     pRunIdx = xmalloc(riLen * sizeof(uint32_t));
     memcpy(pRunIdx.get(), mesh.runIndex.data(), riLen * sizeof(uint32_t));
   }
 
   // All allocations succeeded — hand ownership to Go.
-  *out_num_verts = nv;
-  *out_num_tris = nt;
+  *out_num_verts = int_count(nv);
+  *out_num_tris = int_count(nt);
   *out_vertices = static_cast<float*>(pVerts.release());
   *out_indices = static_cast<uint32_t*>(pIdxs.release());
-  *out_num_runs = numRuns;
+  *out_num_runs = int_count(numRuns);
   *out_run_original_id = static_cast<uint32_t*>(pRunOrig.release());
   *out_run_index = static_cast<uint32_t*>(pRunIdx.release());
-  *out_num_run_index = riLen;
+  *out_num_run_index = int_count(riLen);
 } catch (...) {
   *out_vertices = nullptr;
   *out_num_verts = 0;
