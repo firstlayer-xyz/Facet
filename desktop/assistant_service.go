@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"sync"
+
+	"facet/share/docs"
 )
 
 // AssistantMCPBridge exposes what AssistantService needs from the MCP layer:
@@ -208,7 +210,7 @@ func (s *AssistantService) resolveSystemPromptLocked(cliID string, mcp Assistant
 		mcpPort, _ = mcp.Endpoint()
 	}
 	if cliID == "claude" && mcpPort > 0 {
-		return buildMCPSystemPrompt()
+		return docs.AIPrompt
 	}
 	if s.cachedSystemPrompt != "" {
 		return s.cachedSystemPrompt

@@ -146,10 +146,8 @@ type DebugStep struct {
 }
 
 // DebugResult holds the evaluated solids plus the step-by-step debug trace.
-// Final is populated by callers (not the evaluator) with render meshes for display.
 type DebugResult struct {
 	Solids []*manifold.Solid
-	Final  []*manifold.DisplayMesh // render meshes — populated by caller
 	Steps  []DebugStep
 	Files  map[string]string // path → source text (for editor display)
 }
