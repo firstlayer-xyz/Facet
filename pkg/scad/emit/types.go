@@ -89,27 +89,18 @@ type scopeBind struct {
 func (e *Emitter) buildScope(defName string, params []ast.Param, binds []scopeBind) {
 	s := make(map[string]string, len(params)+len(binds))
 	for _, p := range params {
-		switch {
-		case e.nested.has(defName, p.Name):
-			s[p.Name] = "Any"
-		case e.vecParams.has(defName, p.Name):
-			s[p.Name] = "[]Number"
-		case isBoolLit(p.Default):
-			s[p.Name] = "Bool"
-		default:
-			s[p.Name] = "Number"
+		// A String-typed (color) parameter is scalar for condition purposes; the
+		// scope only distinguishes Number/[]Number/Bool/Any.
+		t := e.paramType(defName, p)
+		if t == "String" {
+			t = "Number"
 		}
+		s[p.Name] = t
 	}
 	e.scope = s
 	for _, b := range binds {
 		s[b.name] = e.inferType(b.value)
 	}
-}
-
-// isBoolLit reports whether x is a boolean literal.
-func isBoolLit(x ast.Expr) bool {
-	_, ok := x.(*ast.Bool)
-	return ok
 }
 
 // assignBinds collects the top-level `name = value` assignments of a body as

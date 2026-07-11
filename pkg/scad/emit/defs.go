@@ -48,8 +48,8 @@ func (e *Emitter) emitModuleDef(m *ast.ModuleDef) string {
 		params = append(params, decl)
 	}
 
-	cu := e.childUse[m.Name]
-	if cu.uses {
+	cu, usesChildren := e.childUse[m.Name]
+	if usesChildren {
 		params = append(params, "children []"+cu.childElemType())
 	}
 
@@ -322,7 +322,7 @@ func (e *Emitter) userModuleCall(n *ast.ModuleCall, sym *symbol) string {
 		}
 		add(p.Name + ": " + e.expr(p.Default, kNumber))
 	}
-	if cu := e.childUse[n.Name]; cu.uses {
+	if cu, ok := e.childUse[n.Name]; ok {
 		add("children: " + e.childrenArray(n.Children, cu))
 	} else if len(n.Children) > 0 {
 		return e.errf(n.Pos(), "%s: passing children to a module that does not use children()", n.Name)
