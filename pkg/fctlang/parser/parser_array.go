@@ -26,8 +26,8 @@ func (p *parser) parseArrayLit() (Expr, error) {
 			// Not followed by [ — syntax error
 			return nil, p.errorf("expected '[' after type name in typed array literal")
 		}
-		// Bare [] — empty untyped array
-		return &ArrayLitExpr{Elems: nil, Pos: Pos{bracketLine, bracketCol}}, nil
+		// Bare [] — empty untyped array (always single-line, so EndLine = start)
+		return &ArrayLitExpr{Elems: nil, Pos: Pos{bracketLine, bracketCol}, EndLine: bracketLine}, nil
 	}
 	// Parse first element
 	firstElemLine := p.cur.Line
@@ -102,10 +102,11 @@ func (p *parser) parseArrayLit() (Expr, error) {
 		prevElemLine = elemLine
 	}
 	ec.attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // last elem trailing (before ']')
-	if _, err := p.expect(TokenRBracket); err != nil {
+	rbracket, err := p.expect(TokenRBracket)
+	if err != nil {
 		return nil, err
 	}
-	return &ArrayLitExpr{Elems: elems, Pos: Pos{bracketLine, bracketCol}, ElemComments: ec.list(len(elems))}, nil
+	return &ArrayLitExpr{Elems: elems, Pos: Pos{bracketLine, bracketCol}, ElemComments: ec.list(len(elems)), EndLine: rbracket.Line}, nil
 }
 
 // parseConstraint parses the optional constraint after a var value expression.
