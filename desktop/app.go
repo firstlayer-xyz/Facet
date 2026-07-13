@@ -93,10 +93,11 @@ type App struct {
 	logs      *LogCapture
 	assistant *AssistantService
 	libraries *LibraryManager
-	eval       *EvalService
-	mcp        *MCPService
-	http       *HTTPServer
-	automation *AutomationController
+	eval          *EvalService
+	mcp           *MCPService
+	http          *HTTPServer
+	automation    *AutomationController
+	automationCfg AutomationConfig
 }
 
 // runtimeCtx returns the published Wails runtime context, or nil before startup
@@ -199,6 +200,7 @@ func (a *App) startup(ctx context.Context) {
 	// dead the editor can only show a blank model, so surface a fatal dialog and
 	// quit rather than leaving a broken-looking app running (Wails startup can't
 	// return an error, so a dialog + Quit is the idiomatic fatal path).
+	a.http.SetAutomationConfig(a.automationCfg)
 	if err := a.http.Start(ctx); err != nil {
 		wailsRuntime.MessageDialog(ctx, wailsRuntime.MessageDialogOptions{
 			Type:    wailsRuntime.ErrorDialog,

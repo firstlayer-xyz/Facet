@@ -40,7 +40,7 @@ func generateToken() (string, error) {
 // payloads; this only stops a runaway/malicious upload.
 const maxRequestBodyBytes int64 = 64 << 20 // 64 MiB
 
-func authMiddleware(token string, port int, next http.Handler) http.Handler {
+func authMiddleware(token string, port int, authDisabled bool, next http.Handler) http.Handler {
 	allowedHosts := map[string]bool{
 		fmt.Sprintf("127.0.0.1:%d", port): true,
 		fmt.Sprintf("localhost:%d", port): true,
@@ -73,10 +73,15 @@ func authMiddleware(token string, port int, next http.Handler) http.Handler {
 			return
 		}
 
-		got := r.Header.Get("Authorization")
-		if subtle.ConstantTimeCompare([]byte(got), expected) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
+		// Automation mode drops the bearer-token check so an external driver
+		// connects without discovering a token. The Host check above still
+		// applies, keeping the server localhost-only and DNS-rebind-safe.
+		if !authDisabled {
+			got := r.Header.Get("Authorization")
+			if subtle.ConstantTimeCompare([]byte(got), expected) != 1 {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -92,11 +97,16 @@ type HTTPServer struct {
 	eval       *EvalService
 	mcp        *MCPService
 	automation *AutomationController
+	autoCfg    AutomationConfig
 	port       int
 	token      string
 	startErr   error         // non-nil if Start failed; read after <-ready
 	ready      chan struct{} // closed once Start has finished — success or failure
 }
+
+// SetAutomationConfig configures fixed-port binding + bearer-token skip for
+// remote GUI automation. Must be called before Start.
+func (s *HTTPServer) SetAutomationConfig(cfg AutomationConfig) { s.autoCfg = cfg }
 
 // NewHTTPServer wires the core eval service, the MCP handler provider, and the
 // automation controller (for the /control route). The listener is not bound
@@ -125,8 +135,14 @@ func (s *HTTPServer) bind(ctx context.Context) error {
 		return err
 	}
 
-	// Bind first so the port is known before wiring middleware.
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	// Bind first so the port is known before wiring middleware. Automation mode
+	// binds a fixed, known port so an external driver reaches a constant URL;
+	// otherwise the OS assigns an ephemeral port (:0).
+	addr := "127.0.0.1:0"
+	if s.autoCfg.Enabled {
+		addr = fmt.Sprintf("127.0.0.1:%d", s.autoCfg.Port)
+	}
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to start HTTP server: %w", err)
 	}
@@ -160,7 +176,7 @@ func (s *HTTPServer) bind(ctx context.Context) error {
 	log.Printf("[http] server listening on http://127.0.0.1:%d (eval, mcp)", port)
 
 	httpServer := &http.Server{
-		Handler: authMiddleware(token, port, mux),
+		Handler: authMiddleware(token, port, s.autoCfg.Enabled, mux),
 		// Defend against a slow-header (slowloris) client holding a connection.
 		// No ReadTimeout/WriteTimeout — an eval can legitimately run for a while.
 		ReadHeaderTimeout: 10 * time.Second,
