@@ -16,12 +16,15 @@ import {
 import { WindowSetSize } from '../wailsjs/runtime/runtime';
 import { on, type AutomationInvokePayload } from './events';
 import type { Viewer } from './viewer';
+import { evalStore } from './eval-store';
 import { Recorder, blobToDataURL } from './recorder';
 
 type RecordMode = 'canvas' | 'page';
 
 export interface AutomationDeps {
   viewer: Viewer;
+  /** Replace the active editor's source and trigger a build. */
+  loadCode: (code: string) => void;
 }
 
 type CommandFn = (params: any) => Promise<unknown>;
@@ -36,6 +39,7 @@ export function registerCommand(name: string, run: CommandFn): void {
 
 export function initAutomation(deps: AutomationDeps): void {
   registerWindowCommands();
+  registerEditorCommands(deps.loadCode);
   registerViewerCommands(deps.viewer);
   registerRecordCommands(deps.viewer.getCanvas());
 
@@ -63,6 +67,28 @@ function registerWindowCommands(): void {
     const h = Math.round(Number(p.height));
     if (!(w > 0 && h > 0)) throw new Error('window.setSize needs positive width and height');
     WindowSetSize(w, h);
+    return null;
+  });
+}
+
+function registerEditorCommands(loadCode: (code: string) => void): void {
+  // Load source into the editor and resolve only once the resulting build has
+  // rendered — the next evalStore update. run() supersedes any in-flight eval,
+  // so the update we wake on is this code's, letting demo scripts avoid sleeps.
+  registerCommand('editor.loadCode', async (p) => {
+    const code = String(p.code ?? '');
+    await new Promise<void>((resolve, reject) => {
+      const unsub = evalStore.subscribe(() => {
+        unsub();
+        resolve();
+      });
+      try {
+        loadCode(code);
+      } catch (e) {
+        unsub();
+        reject(e);
+      }
+    });
     return null;
   });
 }

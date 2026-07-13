@@ -208,7 +208,14 @@ async function init() {
   // Remote GUI automation: listen for automation:invoke commands (only emitted
   // when the app runs with --automation). Registering the listener always is
   // harmless — no events arrive without the flag.
-  initAutomation({ viewer });
+  initAutomation({
+    viewer,
+    loadCode: (code: string) => {
+      if (!editorRef) throw new Error('editor not ready');
+      editorRef.setContentSilent(code);
+      run();
+    },
+  });
 
   // Gnomon — always-visible axis indicator bottom-left of viewport, drag to orbit
   const gnomon = new Gnomon(canvasContainer, (dTheta, dPhi) => viewer.orbitBy(dTheta, dPhi));

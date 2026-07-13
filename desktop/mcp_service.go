@@ -238,6 +238,10 @@ type guiSetWindowSizeInput struct {
 	Height int `json:"height" jsonschema:"App window height in points."`
 }
 
+type guiLoadCodeInput struct {
+	Code string `json:"code" jsonschema:"Facet source to load into the active editor tab; the build runs and the result renders before this returns."`
+}
+
 // requestPermissionInput is the payload the Claude CLI sends to the tool named
 // by --permission-prompt-tool whenever a tool use is not pre-approved.
 // CONTRACT (verified against claude 2.1.x): the CLI sends the proposed tool
@@ -1101,6 +1105,13 @@ func (m *MCPService) buildServer(ctx context.Context) *mcp.Server {
 		Description: "Rotate the 3D viewer camera to an azimuth/elevation (degrees).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input guiSetCameraInput) (*mcp.CallToolResult, any, error) {
 		return m.invokeGUI(ctx, "viewer.setCamera", input)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "gui_load_code",
+		Description: "Load Facet source into the editor and build it; returns once the result has rendered.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input guiLoadCodeInput) (*mcp.CallToolResult, any, error) {
+		return m.invokeGUI(ctx, "editor.loadCode", input)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
