@@ -88,6 +88,18 @@ func (s *Solid) SetColor(r, g, b, a float64) *Solid {
 	return out
 }
 
+// seedHullResult wraps a kernel op whose FaceMap collapses to a single original,
+// carrying face onto it. A null handle yields nil (like newSolidWithOrigin); the
+// nil check must precede _mf_original_id so it is never called on a null handle.
+func seedHullResult(id int, face FaceInfo) *Solid {
+	r := newSolid(id)
+	if r == nil {
+		return nil
+	}
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), face)
+	return r
+}
+
 // transformSolid wraps the result of a unary solid transform, carrying over the FaceMap.
 func transformSolid(s *Solid, id int) *Solid {
 	if id == 0 {
