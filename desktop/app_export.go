@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"facet/pkg/facet3mf"
 	"facet/pkg/manifold"
@@ -24,21 +25,13 @@ func (a *App) ExportMesh(format string, sources map[string]string, key string, e
 		return fmt.Errorf("no mesh to export — model produced no solids")
 	}
 
-	var filter wailsRuntime.FileFilter
-	var defaultName string
 	switch format {
-	case "3mf":
-		filter = wailsRuntime.FileFilter{DisplayName: "3MF Files (*.3mf)", Pattern: "*.3mf"}
-		defaultName = "export.3mf"
-	case "stl":
-		filter = wailsRuntime.FileFilter{DisplayName: "STL Files (*.stl)", Pattern: "*.stl"}
-		defaultName = "export.stl"
-	case "obj":
-		filter = wailsRuntime.FileFilter{DisplayName: "OBJ Files (*.obj)", Pattern: "*.obj"}
-		defaultName = "export.obj"
+	case "3mf", "stl", "obj":
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
 	}
+	filter := wailsRuntime.FileFilter{DisplayName: strings.ToUpper(format) + " Files (*." + format + ")", Pattern: "*." + format}
+	defaultName := "export." + format
 
 	path, err := wailsRuntime.SaveFileDialog(a.runtimeCtx(), wailsRuntime.SaveDialogOptions{
 		DefaultFilename: defaultName,

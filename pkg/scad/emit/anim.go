@@ -25,63 +25,71 @@ import "facet/pkg/scad/ast"
 // sensible loop; the emitted frame body is easy to retune.
 const scadAnimPeriodMs = 4000
 
-// eachExprIdent calls visit for every variable identifier referenced in x
-// (including special vars like $t). It deliberately skips call names and member
-// field names, which are not variable references. It is the single expression
-// walker the animation analysis builds on.
-func eachExprIdent(x ast.Expr, visit func(name string)) {
+// eachExprName walks x, calling ident for every variable identifier referenced
+// (including special vars like $t) and bind for every name a Let or
+// comprehension introduces, with the binding node's position. Call names and
+// member field names are skipped — they are not variable references. It is the
+// single expression walker the animation analysis and reserved-name check build
+// on.
+func eachExprName(x ast.Expr, ident func(name string), bind func(name string, pos ast.Pos)) {
 	switch n := x.(type) {
 	case *ast.Ident:
-		visit(n.Name)
+		ident(n.Name)
 	case *ast.Vector:
 		for _, el := range n.Elems {
-			eachExprIdent(el, visit)
+			eachExprName(el, ident, bind)
 		}
 	case *ast.ListComp:
 		for _, el := range n.Elems {
-			walkCompElem(el, func(string) {}, func(x ast.Expr) { eachExprIdent(x, visit) })
+			walkCompElem(el, func(nm string) { bind(nm, n.Pos()) }, func(x ast.Expr) { eachExprName(x, ident, bind) })
 		}
 	case *ast.Range:
-		eachExprIdent(n.Start, visit)
-		eachExprIdent(n.End, visit)
+		eachExprName(n.Start, ident, bind)
+		eachExprName(n.End, ident, bind)
 		if n.Step != nil {
-			eachExprIdent(n.Step, visit)
+			eachExprName(n.Step, ident, bind)
 		}
 	case *ast.Binary:
-		eachExprIdent(n.L, visit)
-		eachExprIdent(n.R, visit)
+		eachExprName(n.L, ident, bind)
+		eachExprName(n.R, ident, bind)
 	case *ast.Unary:
-		eachExprIdent(n.X, visit)
+		eachExprName(n.X, ident, bind)
 	case *ast.Ternary:
-		eachExprIdent(n.Cond, visit)
-		eachExprIdent(n.Then, visit)
-		eachExprIdent(n.Else, visit)
+		eachExprName(n.Cond, ident, bind)
+		eachExprName(n.Then, ident, bind)
+		eachExprName(n.Else, ident, bind)
 	case *ast.Call:
 		for _, a := range n.Args {
-			eachExprIdent(a.Value, visit)
+			eachExprName(a.Value, ident, bind)
 		}
 	case *ast.Index:
-		eachExprIdent(n.X, visit)
-		eachExprIdent(n.Index, visit)
+		eachExprName(n.X, ident, bind)
+		eachExprName(n.Index, ident, bind)
 	case *ast.Member:
-		eachExprIdent(n.X, visit)
+		eachExprName(n.X, ident, bind)
 	case *ast.Let:
-		eachExprIdent(n.Body, visit)
 		for _, b := range n.Binds {
-			eachExprIdent(b.Value, visit)
+			bind(b.Name, n.Pos())
+			eachExprName(b.Value, ident, bind)
 		}
+		eachExprName(n.Body, ident, bind)
 	}
 }
 
+// eachExprIdent calls visit for every variable identifier referenced in x
+// (including special vars like $t), ignoring names introduced by Let and
+// comprehension bindings. It is the walker the animation analysis builds on.
+func eachExprIdent(x ast.Expr, visit func(name string)) {
+	eachExprName(x, visit, func(string, ast.Pos) {})
+}
+
+// animTimeName is the identifier set matching OpenSCAD's $t clock, tested
+// against an expression via exprRefsAny.
+var animTimeName = map[string]bool{"$t": true}
+
 // exprHasAnimTime reports whether an expression references $t.
 func exprHasAnimTime(x ast.Expr) bool {
-	found := false
-	eachExprIdent(x, func(name string) {
-		if name == "$t" {
-			found = true
-		}
-	})
-	return found
+	return exprRefsAny(x, animTimeName)
 }
 
 // exprRefsAny reports whether an expression references any identifier in names.

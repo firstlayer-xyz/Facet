@@ -87,12 +87,7 @@ func (e *evaluator) execBody(stmts []parser.Stmt, retType string, locals map[str
 	// both at the function boundary so a function called from inside a
 	// comprehension can never inject values into the caller's loop (e.g. a
 	// lambda body smuggling a yield).
-	prevYield, prevFold := e.yieldTarget, e.foldAcc
-	e.yieldTarget, e.foldAcc = nil, nil
-	defer func() {
-		e.yieldTarget = prevYield
-		e.foldAcc = prevFold
-	}()
+	defer e.setYieldContext(nil, nil)()
 	policy := &stmtPolicy{
 		context:           "body",
 		catchReturnSignal: true,
@@ -138,16 +133,25 @@ const maxRangeSize = 10_000_000
 const maxSegments = 10000
 const maxRefine = 1000
 
-func (e *evaluator) evalFunction(fn *parser.Function, args map[string]value) (value, error) {
+// invoke evaluates a call to fn with a fully-resolved argument map (callers run
+// fillDefaults/coerceArgs first). self is the method receiver, nil for plain
+// functions.
+func (e *evaluator) invoke(fn *parser.Function, args map[string]value, self value) (value, error) {
 	e.callDepth++
 	if e.callDepth > maxCallDepth {
 		e.callDepth--
 		return nil, e.errAt(fn.Pos, "maximum call depth exceeded (%d) — possible infinite recursion", maxCallDepth)
 	}
 	defer func() { e.callDepth-- }()
-	locals := make(map[string]value, len(e.globals)+len(fn.Params))
+	locals := make(map[string]value, len(e.globals)+len(fn.Params)+1)
 	for k, v := range e.globals {
 		locals[k] = v
+	}
+	if self != nil {
+		// self deliberately binds without a copy — a method mutating self is
+		// the language's one in-place mutation channel, and the mutation
+		// persists to the receiver variable.
+		locals["self"] = self
 	}
 	for _, param := range fn.Params {
 		bound, ok := args[param.Name]
@@ -179,46 +183,13 @@ func (e *evaluator) evalFunction(fn *parser.Function, args map[string]value) (va
 	return result, err
 }
 
+func (e *evaluator) evalFunction(fn *parser.Function, args map[string]value) (value, error) {
+	return e.invoke(fn, args, nil)
+}
+
 // evalMethodFunction evaluates a stdlib method definition, injecting `self` into the local scope.
 func (e *evaluator) evalMethodFunction(fn *parser.Function, self value, args map[string]value) (value, error) {
-	e.callDepth++
-	if e.callDepth > maxCallDepth {
-		e.callDepth--
-		return nil, e.errAt(fn.Pos, "maximum call depth exceeded (%d) — possible infinite recursion", maxCallDepth)
-	}
-	defer func() { e.callDepth-- }()
-	if err := e.fillDefaults(fn, args, e.globals); err != nil {
-		return nil, err
-	}
-	if err := e.coerceArgs(fn.Name, fn.Params, args, e.globals); err != nil {
-		return nil, err
-	}
-	locals := make(map[string]value, len(e.globals)+len(fn.Params)+1)
-	for k, v := range e.globals {
-		locals[k] = v
-	}
-	locals["self"] = self
-	for _, param := range fn.Params {
-		// Params copy (value semantics); self deliberately does NOT — a method
-		// mutating self is the language's one in-place mutation channel, and
-		// the mutation persists to the receiver variable.
-		v := copyValue(args[param.Name])
-		if param.Constraint != nil {
-			if err := e.validateConstraint(param.Name, param.Constraint, v, locals); err != nil {
-				return nil, err
-			}
-			locals[param.Name] = &constrainedVal{inner: v, constraint: param.Constraint, name: param.Name}
-		} else {
-			locals[param.Name] = v
-		}
-	}
-	result, err := e.execBody(fn.Body, fn.ReturnType, locals)
-	if err == nil {
-		if rs, ok := result.(*manifold.Solid); ok {
-			e.trackSolid(fn.Pos, rs)
-		}
-	}
-	return result, err
+	return e.invoke(fn, args, self)
 }
 
 // callFunctionVal evaluates a first-class function (lambda) call.

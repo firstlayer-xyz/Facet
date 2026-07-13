@@ -35,35 +35,21 @@ func (e *Emitter) paramIsString(defName, name string) bool {
 }
 
 func stmtsUseAsStringColor(name string, stmts []ast.Stmt) bool {
-	for _, s := range stmts {
-		if stmtUsesAsStringColor(name, s) {
-			return true
+	found := false
+	eachStmt(stmts, func(s ast.Stmt) {
+		mc, ok := s.(*ast.ModuleCall)
+		if !ok || mc.Name != "color" {
+			return
 		}
-	}
-	return false
-}
-
-func stmtUsesAsStringColor(name string, s ast.Stmt) bool {
-	switch n := s.(type) {
-	case *ast.ModuleCall:
-		if n.Name == "color" {
-			for i, a := range n.Args {
-				if a.Name == "c" || (a.Name == "" && i == 0) {
-					if id, ok := a.Value.(*ast.Ident); ok && id.Name == name {
-						return true
-					}
+		for i, a := range mc.Args {
+			if a.Name == "c" || (a.Name == "" && i == 0) {
+				if id, ok := a.Value.(*ast.Ident); ok && id.Name == name {
+					found = true
 				}
 			}
 		}
-		if stmtsUseAsStringColor(name, n.Children) {
-			return true
-		}
-	case *ast.For:
-		return stmtsUseAsStringColor(name, n.Children)
-	case *ast.If:
-		return stmtsUseAsStringColor(name, n.Then) || stmtsUseAsStringColor(name, n.Else)
-	}
-	return false
+	})
+	return found
 }
 
 // isBoolDefault reports whether a parameter's default is a Bool literal —
@@ -166,32 +152,6 @@ func callPositional(n *ast.Call, idx int) (ast.Expr, bool) {
 	return nil, false
 }
 
-// stmtUsesAsVector is the statement-level companion to exprUsesAsVector.
-func stmtUsesAsVector(name string, s ast.Stmt) bool {
-	switch n := s.(type) {
-	case *ast.ModuleCall:
-		if argsUseAsVector(name, n.Args) {
-			return true
-		}
-		return childrenUseAsVector(name, n.Children)
-	case *ast.Assign:
-		return exprUsesAsVector(name, n.Value)
-	case *ast.For:
-		for _, it := range n.Iters {
-			if exprUsesAsVector(name, it.Range) {
-				return true
-			}
-		}
-		return childrenUseAsVector(name, n.Children)
-	case *ast.If:
-		if exprUsesAsVector(name, n.Cond) {
-			return true
-		}
-		return childrenUseAsVector(name, n.Then) || childrenUseAsVector(name, n.Else)
-	}
-	return false
-}
-
 func argsUseAsVector(name string, args []ast.Arg) bool {
 	for _, a := range args {
 		if exprUsesAsVector(name, a.Value) {
@@ -201,13 +161,26 @@ func argsUseAsVector(name string, args []ast.Arg) bool {
 	return false
 }
 
+// childrenUseAsVector reports whether `name` is used as a vector anywhere in a
+// statement body — as a call argument, an assignment value, a for-iterator
+// range, or an if condition — recursing into nested bodies via eachStmt.
 func childrenUseAsVector(name string, stmts []ast.Stmt) bool {
-	for _, s := range stmts {
-		if stmtUsesAsVector(name, s) {
-			return true
+	found := false
+	eachStmt(stmts, func(s ast.Stmt) {
+		switch n := s.(type) {
+		case *ast.ModuleCall:
+			found = found || argsUseAsVector(name, n.Args)
+		case *ast.Assign:
+			found = found || exprUsesAsVector(name, n.Value)
+		case *ast.For:
+			for _, it := range n.Iters {
+				found = found || exprUsesAsVector(name, it.Range)
+			}
+		case *ast.If:
+			found = found || exprUsesAsVector(name, n.Cond)
 		}
-	}
-	return false
+	})
+	return found
 }
 
 // classifyFuncReturn infers a value function's Facet return type from the shape

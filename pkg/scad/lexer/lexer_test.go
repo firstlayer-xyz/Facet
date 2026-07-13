@@ -30,7 +30,7 @@ func TestLex_SpecialVarAndComments(t *testing.T) {
 	toks := Lex("sphere(r=2,$fn=6); // trailing\n/* block */ x=1;")
 	var sawFn bool
 	for _, tk := range toks {
-		if tk.Kind == token.Ident && tk.Text == "$fn" && tk.SpecialVar {
+		if tk.Kind == token.Ident && tk.Text == "$fn" {
 			sawFn = true
 		}
 	}

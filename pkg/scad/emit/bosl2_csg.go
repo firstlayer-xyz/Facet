@@ -303,30 +303,19 @@ func (e *Emitter) csgTag(n *ast.ModuleCall, name string, idx int, def string) st
 	return s.Value
 }
 
-// bosl2Diff emits BOSL2's diff(remove="remove", keep="keep"): the remove-tagged
-// geometry is subtracted from the untagged geometry, then keep-tagged geometry is
-// unioned back. Custom remove/keep tag names are supported (positional or named).
-func (e *Emitter) bosl2Diff(n *ast.ModuleCall) string {
-	remove := e.csgTag(n, "remove", 0, "remove")
+// bosl2CSGOp emits a BOSL2 diff()/intersect() scope: the primary-tagged geometry
+// (remove for diff, intersect for intersect) is combined with the untagged
+// geometry via op ("-" or "&"), then keep-tagged geometry is unioned back. The
+// primary and keep tag names default to primary/"keep" but accept a caller
+// override (positional or named); role is the primary tag's CSG role.
+func (e *Emitter) bosl2CSGOp(n *ast.ModuleCall, primary string, role tagRole, op string) string {
+	p := e.csgTag(n, primary, 0, primary)
 	keep := e.csgTag(n, "keep", 1, "keep")
-	e.rejectExtraArgs(n, 2, "remove", "keep")
-	if remove == keep {
-		return e.errf(n.Pos(), "diff(): the remove and keep tags must differ")
+	e.rejectExtraArgs(n, 2, primary, "keep")
+	if p == keep {
+		return e.errf(n.Pos(), "%s(): the %s and keep tags must differ", n.Name, primary)
 	}
-	return e.csgPartition(n, map[string]tagRole{remove: roleRemove, keep: roleKeep}, "-")
-}
-
-// bosl2Intersect emits BOSL2's intersect(intersect="intersect", keep="keep"): the
-// intersect-tagged geometry is intersected with the untagged geometry, then
-// keep-tagged geometry is unioned back. Custom tag names are supported.
-func (e *Emitter) bosl2Intersect(n *ast.ModuleCall) string {
-	isect := e.csgTag(n, "intersect", 0, "intersect")
-	keep := e.csgTag(n, "keep", 1, "keep")
-	e.rejectExtraArgs(n, 2, "intersect", "keep")
-	if isect == keep {
-		return e.errf(n.Pos(), "intersect(): the intersect and keep tags must differ")
-	}
-	return e.csgPartition(n, map[string]tagRole{isect: roleIntersect, keep: roleKeep}, "&")
+	return e.csgPartition(n, map[string]tagRole{p: role, keep: roleKeep}, op)
 }
 
 // csgTagSet reads a hide()/show_only() tag list — a single string of

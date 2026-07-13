@@ -3,12 +3,8 @@ package parser
 // isEmptyBrace peeks ahead (without consuming) to check if the current
 // position is an empty brace pair: { }
 func (p *parser) isEmptyBrace() bool {
-	snap := p.lex.snapshot()
-	savedCur := p.cur
-	defer func() {
-		p.lex.restore(snap)
-		p.cur = savedCur
-	}()
+	snap := p.snapshot()
+	defer p.restore(snap)
 	// Consume {
 	if err := p.next(); err != nil {
 		return false
@@ -19,12 +15,8 @@ func (p *parser) isEmptyBrace() bool {
 // isStructLitStart peeks ahead (without consuming) to check if the current
 // position begins a struct literal: { IDENT : ... }
 func (p *parser) isStructLitStart() bool {
-	snap := p.lex.snapshot()
-	savedCur := p.cur
-	defer func() {
-		p.lex.restore(snap)
-		p.cur = savedCur
-	}()
+	snap := p.snapshot()
+	defer p.restore(snap)
 	// Consume {
 	if err := p.next(); err != nil {
 		return false
@@ -52,6 +44,13 @@ func (p *parser) parseStructLit(typeName string, exprStart, typeNamePos Pos) (Ex
 	}
 	var fields []*StructFieldInit
 	prevFieldLine := 0
+	attachTrailing := func() {
+		if prevFieldLine == 0 || len(fields) == 0 {
+			return
+		}
+		last := fields[len(fields)-1]
+		last.Comments = append(last.Comments, p.drainTrailingComments(prevFieldLine)...)
+	}
 	if p.cur.Type != TokenRBrace {
 		for {
 			// Attach the previous field's trailing end-of-line comment (scanned
@@ -60,13 +59,7 @@ func (p *parser) parseStructLit(typeName string, exprStart, typeNamePos Pos) (Ex
 			// comments stay with their field instead of leaking to the next
 			// statement. drainCommentsOnLine removes the trailing ones, so the
 			// following drainComments (leading) can't double-count them.
-			if prevFieldLine > 0 && len(fields) > 0 {
-				trailing := p.lex.drainCommentsOnLine(prevFieldLine)
-				for i := range trailing {
-					trailing[i].IsTrailing = true
-				}
-				fields[len(fields)-1].Comments = append(fields[len(fields)-1].Comments, trailing...)
-			}
+			attachTrailing()
 			leading := p.lex.drainComments()
 
 			fieldName, err := p.expect(TokenIdent)
@@ -106,13 +99,7 @@ func (p *parser) parseStructLit(typeName string, exprStart, typeNamePos Pos) (Ex
 		}
 	}
 	// The last field's trailing comment is scanned when peeking '}'.
-	if prevFieldLine > 0 && len(fields) > 0 {
-		trailing := p.lex.drainCommentsOnLine(prevFieldLine)
-		for i := range trailing {
-			trailing[i].IsTrailing = true
-		}
-		fields[len(fields)-1].Comments = append(fields[len(fields)-1].Comments, trailing...)
-	}
+	attachTrailing()
 	if _, err := p.expect(TokenRBrace); err != nil {
 		return nil, err
 	}
@@ -130,27 +117,16 @@ func (p *parser) parseTypedArrayLit(typeName string, line, col int) (Expr, error
 	// Preserve interior comments, as parseArrayLit does — the internal comments of
 	// each struct element are already kept by parseStructLit; this covers comments
 	// BETWEEN elements.
-	comments := map[int][]Comment{}
-	attach := func(idx int, cs []Comment, trailing bool) {
-		if len(cs) == 0 {
-			return
-		}
-		if trailing {
-			for i := range cs {
-				cs[i].IsTrailing = true
-			}
-		}
-		comments[idx] = append(comments[idx], cs...)
-	}
+	ec := newElemComments()
 	prevElemLine := 0
 	if p.cur.Type != TokenRBracket {
 		for {
 			if prevElemLine > 0 {
-				attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // prev elem trailing
+				ec.attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // prev elem trailing
 			}
 			leading := p.lex.drainComments()
 			if p.cur.Type == TokenRBracket {
-				attach(len(elems)-1, leading, true) // dangling before ']' after trailing comma
+				ec.attach(len(elems)-1, leading, true) // dangling before ']' after trailing comma
 				break
 			}
 			elemLine := p.cur.Line
@@ -177,7 +153,7 @@ func (p *parser) parseTypedArrayLit(typeName string, line, col int) (Expr, error
 				return nil, err
 			}
 			elems = append(elems, elem)
-			attach(len(elems)-1, leading, false) // this elem's leading
+			ec.attach(len(elems)-1, leading, false) // this elem's leading
 			prevElemLine = elemLine
 			if p.cur.Type != TokenComma {
 				break
@@ -188,17 +164,10 @@ func (p *parser) parseTypedArrayLit(typeName string, line, col int) (Expr, error
 		}
 	}
 	if prevElemLine > 0 {
-		attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // last elem trailing
+		ec.attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // last elem trailing
 	}
 	if _, err := p.expect(TokenRBracket); err != nil {
 		return nil, err
 	}
-	var elemComments [][]Comment
-	if len(comments) > 0 {
-		elemComments = make([][]Comment, len(elems))
-		for i := range elems {
-			elemComments[i] = comments[i]
-		}
-	}
-	return &ArrayLitExpr{TypeName: typeName, Elems: elems, Pos: Pos{line, col}, ElemComments: elemComments}, nil
+	return &ArrayLitExpr{TypeName: typeName, Elems: elems, Pos: Pos{line, col}, ElemComments: ec.list(len(elems))}, nil
 }

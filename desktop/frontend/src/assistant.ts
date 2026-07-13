@@ -23,9 +23,7 @@ export class AssistantPanel {
   private attachBtn: HTMLButtonElement;
   private attachedImages: string[] = [];
   private attachBadge: HTMLSpanElement;
-  private visible = false;
   private streaming = false;
-  private receivedFirstToken = false;
   private currentStreamDiv: HTMLElement | null = null;
   private currentStreamText = '';
   private thinkingDiv: HTMLElement | null = null;
@@ -38,17 +36,7 @@ export class AssistantPanel {
   private onApplyCode: (newCode: string, searchFor?: string) => void;
   private onSetEditorSilent: (newCode: string) => void;
   private onNewFile: (name: string, code: string) => void;
-  private offToken: (() => void) | null = null;
-  private offDone: (() => void) | null = null;
-  private offError: (() => void) | null = null;
-  private offToolUse: (() => void) | null = null;
-  private offReplaceCode: (() => void) | null = null;
-  private offNewFile: (() => void) | null = null;
-  private offThinking: (() => void) | null = null;
-  private offQuestion: (() => void) | null = null;
-  private offScreenshot: (() => void) | null = null;
-  private offTaskPlan: (() => void) | null = null;
-  private offPermission: (() => void) | null = null;
+  private offs: (() => void)[] = [];
   private taskPlanDiv: HTMLElement | null = null;
   private captureScreenshot: ((opts?: AssistantScreenshotRequest) => string | null) | null = null;
   private getAssistantConfig: () => AssistantConfig;
@@ -265,7 +253,6 @@ export class AssistantPanel {
   }
 
   show(): void {
-    this.visible = true;
     this.panel.classList.add('open');
     this.registerEvents();
     this.input.focus();
@@ -307,7 +294,6 @@ export class AssistantPanel {
   }
 
   hide(): void {
-    this.visible = false;
     this.panel.classList.remove('open');
     if (this.streaming) {
       CancelAssistant();
@@ -317,110 +303,103 @@ export class AssistantPanel {
   }
 
   toggle(): void {
-    if (this.visible) this.hide();
+    if (this.isVisible()) this.hide();
     else this.show();
   }
 
   isVisible(): boolean {
-    return this.visible;
+    return this.panel.classList.contains('open');
   }
 
   private registerEvents(): void {
-    if (this.offToken) return;
-    this.offToken = on('assistant:token', (token: string) => {
-      this.appendToken(token);
-    });
-    this.offDone = on('assistant:done', () => {
-      this.finishStream();
-    });
-    this.offError = on('assistant:error', (msg: string) => {
-      this.showError(msg);
-    });
-    // MCP tool-use indicator. Some tools have their own UI affordances
-    // (question card, task plan, screenshot flash) — suppress the
-    // generic indicator for those so we don't show a spurious
-    // "<tool_name>..." line before the real UI lands.
-    this.offToolUse = on('assistant:tool-use', (toolName: string, callNum: number) => {
-      if (toolName === 'ask_user_question' || toolName === 'update_task_plan' || toolName === 'screenshot_viewport' || toolName === 'request_permission') return;
-      this.showToolUseIndicator(toolName, callNum);
-    });
-    // ask_user_question MCP tool — render an interactive multiple-choice
-    // card. The backend blocks the model on a channel until the user
-    // submits, at which point AnswerAssistantQuestion routes the answer
-    // back as the tool's JSON result.
-    this.offQuestion = on('assistant:question', (payload: AssistantQuestionPayload) => {
-      this.showQuestion(payload);
-    });
-    // request_permission / fetch_url self-gate — render an Allow/Deny card.
-    // The backend blocks the tool on a channel until AnswerToolPermission
-    // routes the decision back.
-    this.offPermission = on('assistant:permission-request', (payload: AssistantPermissionRequest) => {
-      this.showPermission(payload);
-    });
-    // screenshot_viewport MCP tool — capture the live viewport and hand
-    // the PNG back to the blocked tool handler. captureScreenshot is
-    // optional (the test harness wires no viewer); fail explicitly so
-    // the model gets a clear tool error instead of hanging.
-    this.offScreenshot = on('assistant:screenshot-request', async (payload: AssistantScreenshotRequest) => {
-      if (!payload?.id) return;
-      if (!this.captureScreenshot) {
+    if (this.offs.length > 0) return;
+    this.offs = [
+      on('assistant:token', (token: string) => {
+        this.appendToken(token);
+      }),
+      on('assistant:done', () => {
+        this.finishStream();
+      }),
+      on('assistant:error', (msg: string) => {
+        this.showError(msg);
+      }),
+      // MCP tool-use indicator. Some tools have their own UI affordances
+      // (question card, task plan, screenshot flash) — suppress the
+      // generic indicator for those so we don't show a spurious
+      // "<tool_name>..." line before the real UI lands.
+      on('assistant:tool-use', (toolName: string, callNum: number) => {
+        if (toolName === 'ask_user_question' || toolName === 'update_task_plan' || toolName === 'screenshot_viewport' || toolName === 'request_permission') return;
+        this.showToolUseIndicator(toolName, callNum);
+      }),
+      // ask_user_question MCP tool — render an interactive multiple-choice
+      // card. The backend blocks the model on a channel until the user
+      // submits, at which point AnswerAssistantQuestion routes the answer
+      // back as the tool's JSON result.
+      on('assistant:question', (payload: AssistantQuestionPayload) => {
+        this.showQuestion(payload);
+      }),
+      // request_permission / fetch_url self-gate — render an Allow/Deny card.
+      // The backend blocks the tool on a channel until AnswerToolPermission
+      // routes the decision back.
+      on('assistant:permission-request', (payload: AssistantPermissionRequest) => {
+        this.showPermission(payload);
+      }),
+      // screenshot_viewport MCP tool — capture the live viewport and hand
+      // the PNG back to the blocked tool handler. captureScreenshot is
+      // optional (the test harness wires no viewer); fail explicitly so
+      // the model gets a clear tool error instead of hanging.
+      on('assistant:screenshot-request', async (payload: AssistantScreenshotRequest) => {
+        if (!payload?.id) return;
+        if (!this.captureScreenshot) {
+          try {
+            await DeliverViewportScreenshot(payload.id, '', 'no viewport available');
+          } catch (e) {
+            console.warn('DeliverViewportScreenshot failed:', e);
+          }
+          return;
+        }
+        let dataURL: string | null = null;
+        let err = '';
         try {
-          await DeliverViewportScreenshot(payload.id, '', 'no viewport available');
+          dataURL = this.captureScreenshot(payload);
+        } catch (e: any) {
+          err = e?.message || String(e);
+        }
+        try {
+          await DeliverViewportScreenshot(payload.id, dataURL ?? '', err || (dataURL ? '' : 'capture returned no data'));
         } catch (e) {
           console.warn('DeliverViewportScreenshot failed:', e);
         }
-        return;
-      }
-      let dataURL: string | null = null;
-      let err = '';
-      try {
-        dataURL = this.captureScreenshot(payload);
-      } catch (e: any) {
-        err = e?.message || String(e);
-      }
-      try {
-        await DeliverViewportScreenshot(payload.id, dataURL ?? '', err || (dataURL ? '' : 'capture returned no data'));
-      } catch (e) {
-        console.warn('DeliverViewportScreenshot failed:', e);
-      }
-    });
-    // update_task_plan MCP tool — render or update the task list. One-way;
-    // each call REPLACES the rendered list (the model sends full state).
-    this.offTaskPlan = on('assistant:task-plan', (payload: AssistantTaskPlanPayload) => {
-      this.renderTaskPlan(payload?.tasks ?? []);
-    });
-    // MCP-driven code changes — update editor only, Go handles the build.
-    // Reject if the active tab is read-only: the backend guards already
-    // refuse read-only edits, but the event could be delivered out-of-band
-    // (e.g. user switched to a read-only tab mid-run). Silent-overwrite of
-    // a read-only file would corrupt its in-memory view.
-    this.offReplaceCode = on('assistant:replace-code', (code: string) => {
-      if (this.getActiveTab().readOnly) return;
-      this.onSetEditorSilent(code);
-    });
-    // MCP new_file tool — create a fresh editable tab with the given source.
-    this.offNewFile = on('assistant:new-file', (payload: { name: string; code: string }) => {
-      if (!payload) return;
-      this.onNewFile(payload.name ?? 'Untitled', payload.code ?? '');
-    });
-    // Thinking indicator — shown after tool results, before next assistant message
-    this.offThinking = on('assistant:thinking', (callNum: number) => {
-      this.showThinkingIndicator(callNum);
-    });
+      }),
+      // update_task_plan MCP tool — render or update the task list. One-way;
+      // each call REPLACES the rendered list (the model sends full state).
+      on('assistant:task-plan', (payload: AssistantTaskPlanPayload) => {
+        this.renderTaskPlan(payload?.tasks ?? []);
+      }),
+      // MCP-driven code changes — update editor only, Go handles the build.
+      // Reject if the active tab is read-only: the backend guards already
+      // refuse read-only edits, but the event could be delivered out-of-band
+      // (e.g. user switched to a read-only tab mid-run). Silent-overwrite of
+      // a read-only file would corrupt its in-memory view.
+      on('assistant:replace-code', (code: string) => {
+        if (this.getActiveTab().readOnly) return;
+        this.onSetEditorSilent(code);
+      }),
+      // MCP new_file tool — create a fresh editable tab with the given source.
+      on('assistant:new-file', (payload: { name: string; code: string }) => {
+        if (!payload) return;
+        this.onNewFile(payload.name ?? 'Untitled', payload.code ?? '');
+      }),
+      // Thinking indicator — shown after tool results, before next assistant message
+      on('assistant:thinking', (callNum: number) => {
+        this.showThinkingIndicator(callNum);
+      }),
+    ];
   }
 
   private unregisterEvents(): void {
-    if (this.offToken) { this.offToken(); this.offToken = null; }
-    if (this.offDone) { this.offDone(); this.offDone = null; }
-    if (this.offError) { this.offError(); this.offError = null; }
-    if (this.offToolUse) { this.offToolUse(); this.offToolUse = null; }
-    if (this.offReplaceCode) { this.offReplaceCode(); this.offReplaceCode = null; }
-    if (this.offNewFile) { this.offNewFile(); this.offNewFile = null; }
-    if (this.offThinking) { this.offThinking(); this.offThinking = null; }
-    if (this.offQuestion) { this.offQuestion(); this.offQuestion = null; }
-    if (this.offScreenshot) { this.offScreenshot(); this.offScreenshot = null; }
-    if (this.offTaskPlan) { this.offTaskPlan(); this.offTaskPlan = null; }
-    if (this.offPermission) { this.offPermission(); this.offPermission = null; }
+    for (const off of this.offs) off();
+    this.offs = [];
   }
 
   private async pickImage(): Promise<void> {
@@ -467,7 +446,6 @@ export class AssistantPanel {
     this.scrollToBottom();
 
     this.streaming = true;
-    this.receivedFirstToken = false;
     this.streamStartTime = Date.now();
     this.sendBtn.textContent = 'Stop';
     this.sendBtn.classList.add('assistant-send-btn-stop');
@@ -516,6 +494,29 @@ export class AssistantPanel {
     }
   }
 
+  // showIndicator renders the single-line "<prefix><action>... (Ns)" status
+  // bubble used for both tool-use and thinking states. It finalizes any
+  // in-progress text so it becomes its own bubble, replaces any previous
+  // indicator, and ticks the elapsed counter once a second.
+  private showIndicator(prefix: string, action: string, startTime: number): void {
+    this.finalizeCurrentMessage();
+    this.removeToolUseIndicator();
+    this.removeThinking();
+
+    this.toolUseDiv = document.createElement('div');
+    this.toolUseDiv.className = 'assistant-tool-use';
+    this.messagesDiv.appendChild(this.toolUseDiv);
+
+    const updateText = () => {
+      if (!this.toolUseDiv) return;
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      this.toolUseDiv.textContent = `${prefix}${action}... (${elapsed}s)`;
+    };
+    updateText();
+    this.toolUseTimer = setInterval(updateText, 1000);
+    this.scrollToBottom();
+  }
+
   private showToolUseIndicator(toolName: string, callNum?: number): void {
     const labels: Record<string, string> = {
       'get_editor_code': 'Reading code',
@@ -526,50 +527,11 @@ export class AssistantPanel {
       'get_documentation': 'Looking up docs',
     };
     const action = labels[toolName] || toolName;
-
-    // Finalize any in-progress text so it becomes its own bubble
-    this.finalizeCurrentMessage();
-    // Remove previous indicator and timer
-    this.removeToolUseIndicator();
-    // Also remove thinking dots — we have a real status now
-    this.removeThinking();
-
-    this.toolUseDiv = document.createElement('div');
-    this.toolUseDiv.className = 'assistant-tool-use';
-    this.messagesDiv.appendChild(this.toolUseDiv);
-
-    const updateText = () => {
-      if (!this.toolUseDiv) return;
-      const elapsed = Math.floor((Date.now() - this.streamStartTime) / 1000);
-      const prefix = callNum ? `[${callNum}] ` : '';
-      this.toolUseDiv.textContent = `${prefix}${action}... (${elapsed}s)`;
-    };
-    updateText();
-    this.toolUseTimer = setInterval(() => {
-      updateText();
-    }, 1000);
-
-    this.scrollToBottom();
+    this.showIndicator(callNum ? `[${callNum}] ` : '', action, this.streamStartTime);
   }
 
   private showThinkingIndicator(callNum: number): void {
-    this.finalizeCurrentMessage();
-    this.removeToolUseIndicator();
-    this.removeThinking();
-
-    this.toolUseDiv = document.createElement('div');
-    this.toolUseDiv.className = 'assistant-tool-use';
-    this.messagesDiv.appendChild(this.toolUseDiv);
-
-    const startTime = Date.now();
-    const updateText = () => {
-      if (!this.toolUseDiv) return;
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      this.toolUseDiv.textContent = `[${callNum}] Thinking... (${elapsed}s)`;
-    };
-    updateText();
-    this.toolUseTimer = setInterval(updateText, 1000);
-    this.scrollToBottom();
+    this.showIndicator(`[${callNum}] `, 'Thinking', Date.now());
   }
 
   private removeToolUseIndicator(): void {
@@ -904,16 +866,13 @@ export class AssistantPanel {
     // When we get text tokens, remove any tool-use indicator
     this.removeToolUseIndicator();
 
-    if (!this.receivedFirstToken) {
-      this.receivedFirstToken = true;
+    if (!this.currentStreamDiv) {
       this.removeThinking();
       this.currentStreamDiv = this.addMessageDiv('assistant', '');
     }
     this.currentStreamText += token;
-    if (this.currentStreamDiv) {
-      this.currentStreamDiv.innerHTML = this.renderMarkdown(this.currentStreamText) + '<span class="streaming-cursor"></span>';
-      this.scrollToBottom();
-    }
+    this.currentStreamDiv.innerHTML = this.renderMarkdown(this.currentStreamText) + '<span class="streaming-cursor"></span>';
+    this.scrollToBottom();
   }
 
   /** Finalize the current assistant message bubble so the next text starts a new one. */
@@ -924,7 +883,6 @@ export class AssistantPanel {
     }
     this.currentStreamDiv = null;
     this.currentStreamText = '';
-    this.receivedFirstToken = false;
   }
 
   private finishStream(): void {
@@ -947,6 +905,35 @@ export class AssistantPanel {
   }
 
   private addApplyButtons(div: HTMLElement): void {
+    const makeCopyBtn = (text: string, failLabel: string): HTMLButtonElement => {
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'assistant-copy-btn';
+      copyBtn.textContent = 'Copy';
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(text).then(() => {
+          copyBtn.textContent = 'Copied';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+        }).catch(() => {
+          copyBtn.textContent = failLabel;
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+        });
+      });
+      return copyBtn;
+    };
+
+    const makeApplyBtn = (apply: () => void): HTMLButtonElement => {
+      const applyBtn = document.createElement('button');
+      applyBtn.className = 'assistant-apply-btn';
+      applyBtn.textContent = 'Apply';
+      applyBtn.addEventListener('click', () => {
+        apply();
+        applyBtn.textContent = 'Applied';
+        applyBtn.disabled = true;
+        setTimeout(() => { applyBtn.textContent = 'Apply'; applyBtn.disabled = false; }, 1500);
+      });
+      return applyBtn;
+    };
+
     // Handle regular fenced code blocks
     const codeBlocks = div.querySelectorAll('pre code');
     codeBlocks.forEach((block) => {
@@ -957,32 +944,11 @@ export class AssistantPanel {
       const btnGroup = document.createElement('div');
       btnGroup.className = 'assistant-code-btns';
 
-      const copyBtn = document.createElement('button');
-      copyBtn.className = 'assistant-copy-btn';
-      copyBtn.textContent = 'Copy';
-      copyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(code).then(() => {
-          copyBtn.textContent = 'Copied';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-        }).catch(() => {
-          copyBtn.textContent = 'Error';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-        });
-      });
-      btnGroup.appendChild(copyBtn);
+      btnGroup.appendChild(makeCopyBtn(code, 'Error'));
 
       // Only show "Apply" for complete programs (contains Main function)
       if (/\bMain\s*\(/.test(code)) {
-        const applyBtn = document.createElement('button');
-        applyBtn.className = 'assistant-apply-btn';
-        applyBtn.textContent = 'Apply';
-        applyBtn.addEventListener('click', () => {
-          this.onApplyCode(code);
-          applyBtn.textContent = 'Applied';
-          applyBtn.disabled = true;
-          setTimeout(() => { applyBtn.textContent = 'Apply'; applyBtn.disabled = false; }, 1500);
-        });
-        btnGroup.appendChild(applyBtn);
+        btnGroup.appendChild(makeApplyBtn(() => this.onApplyCode(code)));
       }
 
       pre.appendChild(btnGroup);
@@ -998,30 +964,8 @@ export class AssistantPanel {
       const btnGroup = document.createElement('div');
       btnGroup.className = 'assistant-code-btns';
 
-      const copyBtn = document.createElement('button');
-      copyBtn.className = 'assistant-copy-btn';
-      copyBtn.textContent = 'Copy';
-      copyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(replaceWith).then(() => {
-          copyBtn.textContent = 'Copied';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-        }).catch(() => {
-          copyBtn.textContent = 'Failed';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-        });
-      });
-      btnGroup.appendChild(copyBtn);
-
-      const applyBtn = document.createElement('button');
-      applyBtn.className = 'assistant-apply-btn';
-      applyBtn.textContent = 'Apply';
-      applyBtn.addEventListener('click', () => {
-        this.onApplyCode(replaceWith, searchFor);
-        applyBtn.textContent = 'Applied';
-        applyBtn.disabled = true;
-        setTimeout(() => { applyBtn.textContent = 'Apply'; applyBtn.disabled = false; }, 1500);
-      });
-      btnGroup.appendChild(applyBtn);
+      btnGroup.appendChild(makeCopyBtn(replaceWith, 'Failed'));
+      btnGroup.appendChild(makeApplyBtn(() => this.onApplyCode(replaceWith, searchFor)));
 
       htmlBlock.appendChild(btnGroup);
     });

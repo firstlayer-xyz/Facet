@@ -21,54 +21,35 @@ const hudTools = document.createElement('div');
 hudTools.id = 'hud-tools';
 hudTools.className = 'hud';
 
-export const centerBtn = document.createElement('button');
-centerBtn.id = 'center-btn';
-centerBtn.className = 'hud-btn';
-centerBtn.title = 'Center model';
-centerBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>`;
-hudTools.appendChild(centerBtn);
+/** Create a HUD button (16×16 icon) and append it to the HUD cluster. */
+function makeHudBtn(id: string, title: string, svgInner: string): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.id = id;
+  btn.className = 'hud-btn';
+  btn.title = title;
+  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svgInner}</svg>`;
+  hudTools.appendChild(btn);
+  return btn;
+}
 
-export const autoRotateBtn = document.createElement('button');
-autoRotateBtn.id = 'auto-rotate-btn';
-autoRotateBtn.className = 'hud-btn';
-autoRotateBtn.title = 'Auto-center & rotate';
-autoRotateBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 11-.57-8.38L21.5 8"/></svg>`;
-hudTools.appendChild(autoRotateBtn);
+export const centerBtn = makeHudBtn('center-btn', 'Center model', '<circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>');
 
-export const headTrackBtn = document.createElement('button');
-headTrackBtn.id = 'head-track-btn';
-headTrackBtn.className = 'hud-btn';
-headTrackBtn.title = 'Head tracking parallax';
-headTrackBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 00-2 2v4"/><path d="M15 3h4a2 2 0 012 2v4"/><path d="M9 21H5a2 2 0 01-2-2v-4"/><path d="M15 21h4a2 2 0 002-2v-4"/><circle cx="12" cy="10" r="3"/><path d="M12 13c-2.5 0-4 1.5-4 3"/></svg>`;
-hudTools.appendChild(headTrackBtn);
+export const autoRotateBtn = makeHudBtn('auto-rotate-btn', 'Auto-center & rotate', '<path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 11-.57-8.38L21.5 8"/>');
+
+export const headTrackBtn = makeHudBtn('head-track-btn', 'Head tracking parallax', '<path d="M9 3H5a2 2 0 00-2 2v4"/><path d="M15 3h4a2 2 0 012 2v4"/><path d="M9 21H5a2 2 0 01-2-2v-4"/><path d="M15 21h4a2 2 0 002-2v-4"/><circle cx="12" cy="10" r="3"/><path d="M12 13c-2.5 0-4 1.5-4 3"/>');
 
 const hudDivider = document.createElement('div');
 hudDivider.className = 'hud-divider';
 hudTools.appendChild(hudDivider);
 
 // Measure tool — toggle click-to-place dimension mode (M).
-export const measureBtn = document.createElement('button');
-measureBtn.id = 'measure-btn';
-measureBtn.className = 'hud-btn';
-measureBtn.title = 'Measure (M) — click two points to place a dimension';
-measureBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16l13-13 5 5-13 13z"/><path d="M7 12l2 2"/><path d="M10 9l2 2"/><path d="M13 6l2 2"/></svg>`;
-hudTools.appendChild(measureBtn);
+export const measureBtn = makeHudBtn('measure-btn', 'Measure (M) — click two points to place a dimension', '<path d="M3 16l13-13 5 5-13 13z"/><path d="M7 12l2 2"/><path d="M10 9l2 2"/><path d="M13 6l2 2"/>');
 
 // Extents — place an overall bounding-box dimension.
-export const extentsBtn = document.createElement('button');
-extentsBtn.id = 'extents-btn';
-extentsBtn.className = 'hud-btn';
-extentsBtn.title = 'Show extents — overall size of the model';
-extentsBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 8h18"/><path d="M3 16h18"/><path d="M8 3v18"/><path d="M16 3v18"/></svg>`;
-hudTools.appendChild(extentsBtn);
+export const extentsBtn = makeHudBtn('extents-btn', 'Show extents — overall size of the model', '<rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 8h18"/><path d="M3 16h18"/><path d="M8 3v18"/><path d="M16 3v18"/>');
 
 // Clear dimensions — discard all placed measurements.
-export const clearDimsBtn = document.createElement('button');
-clearDimsBtn.id = 'clear-dims-btn';
-clearDimsBtn.className = 'hud-btn';
-clearDimsBtn.title = 'Clear all dimensions';
-clearDimsBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>`;
-hudTools.appendChild(clearDimsBtn);
+export const clearDimsBtn = makeHudBtn('clear-dims-btn', 'Clear all dimensions', '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>');
 
 canvasContainer.appendChild(hudTools);
 
@@ -180,35 +161,25 @@ debugBar.appendChild(dbgBadge);
 const dbgControls = document.createElement('div');
 dbgControls.className = 'dbg-controls';
 
-export const debugRestartBtn = document.createElement('button');
-debugRestartBtn.className = 'dbg-ctrl-btn';
-debugRestartBtn.title = 'Restart debug session (⇧⌘R)';
-debugRestartBtn.textContent = '↺';
-dbgControls.appendChild(debugRestartBtn);
+/** Create a debug-strip control button and append it to the debug controls. */
+function makeDbgBtn(cls: string, title: string, text: string): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = cls;
+  btn.title = title;
+  btn.textContent = text;
+  dbgControls.appendChild(btn);
+  return btn;
+}
 
-export const debugPrevBtn = document.createElement('button');
-debugPrevBtn.className = 'dbg-ctrl-btn';
-debugPrevBtn.title = 'Step back (⇧F10)';
-debugPrevBtn.textContent = '‹';
-dbgControls.appendChild(debugPrevBtn);
+export const debugRestartBtn = makeDbgBtn('dbg-ctrl-btn', 'Restart debug session (⇧⌘R)', '↺');
 
-export const debugContinueBtn = document.createElement('button');
-debugContinueBtn.className = 'dbg-ctrl-btn primary';
-debugContinueBtn.title = 'Continue to next breakpoint, or end (F5)';
-debugContinueBtn.textContent = '▶';
-dbgControls.appendChild(debugContinueBtn);
+export const debugPrevBtn = makeDbgBtn('dbg-ctrl-btn', 'Step back (⇧F10)', '‹');
 
-export const debugNextBtn = document.createElement('button');
-debugNextBtn.className = 'dbg-ctrl-btn';
-debugNextBtn.title = 'Step forward (F10)';
-debugNextBtn.textContent = '›';
-dbgControls.appendChild(debugNextBtn);
+export const debugContinueBtn = makeDbgBtn('dbg-ctrl-btn primary', 'Continue to next breakpoint, or end (F5)', '▶');
 
-export const debugStopBtn = document.createElement('button');
-debugStopBtn.className = 'dbg-ctrl-btn stop';
-debugStopBtn.title = 'Stop debug (⇧F5)';
-debugStopBtn.textContent = '■';
-dbgControls.appendChild(debugStopBtn);
+export const debugNextBtn = makeDbgBtn('dbg-ctrl-btn', 'Step forward (F10)', '›');
+
+export const debugStopBtn = makeDbgBtn('dbg-ctrl-btn stop', 'Stop debug (⇧F5)', '■');
 
 debugBar.appendChild(dbgControls);
 

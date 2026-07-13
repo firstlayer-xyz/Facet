@@ -4,6 +4,7 @@ import {
   styleButton,
   styleInput,
   settingsRow,
+  segmentedControl,
   type SettingsPageContext,
   type PageResult,
 } from './settings_ui';
@@ -14,30 +15,17 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
   page.className = 'settings-page';
 
   // Dark mode 3-way toggle
-  const dmGroup = document.createElement('div');
-  dmGroup.className = 'segmented-control';
-
   const dmOptions: { value: 'light' | 'auto' | 'dark'; label: string }[] = [
     { value: 'light', label: 'Light' },
     { value: 'auto', label: 'Auto' },
     { value: 'dark', label: 'Dark' },
   ];
-
-  for (const opt of dmOptions) {
-    const btn = document.createElement('button');
-    btn.className = 'segmented-btn';
-    btn.textContent = opt.label;
-    if (draft.appearance.darkMode === opt.value) btn.classList.add('active');
-    btn.addEventListener('click', () => {
-      draft.appearance.darkMode = opt.value;
-      dmGroup.querySelectorAll('.segmented-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      onSave(structuredClone(draft));
-      rebuildPaletteEditors();
-      updateDeleteBtn();
-    });
-    dmGroup.appendChild(btn);
-  }
+  const dmGroup = segmentedControl(dmOptions, draft.appearance.darkMode, v => {
+    draft.appearance.darkMode = v;
+    onSave(structuredClone(draft));
+    rebuildPaletteEditors();
+    updateDeleteBtn();
+  });
 
   page.appendChild(settingsRow('Appearance', dmGroup));
 
@@ -66,20 +54,7 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
       sep.textContent = '────────────';
       themeSelect.appendChild(sep);
     }
-    // Built-in Facet options (light/dark follows the switch)
-    const facetVariants = [
-      { id: 'facet-orange', label: 'Facet - Orange' },
-      { id: 'facet-green', label: 'Facet - Green' },
-      { id: 'facet-digital-blue', label: 'Facet - Digital Blue' },
-    ];
-    for (const v of facetVariants) {
-      const opt = document.createElement('option');
-      opt.value = v.id;
-      opt.textContent = v.label;
-      if (draft.appearance.uiTheme === v.id) opt.selected = true;
-      themeSelect.appendChild(opt);
-    }
-    // Other built-in themes
+    // Built-in themes (Facet variants first; light/dark follows the switch)
     for (const t of UI_THEMES) {
       const opt = document.createElement('option');
       opt.value = t.id;
@@ -230,6 +205,18 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
     const resolved = resolveThemePalette(effective, draft.appearance.themeOverrides, draft.appearance.customThemes);
     const isCustom = draft.appearance.customThemes.some((t: CustomTheme) => t.id === effective);
 
+    // Write a palette field back to either the active custom theme or the
+    // built-in-theme overrides, then persist.
+    const setPaletteValue = (key: string, v: string | number) => {
+      if (isCustom) {
+        const ct = draft.appearance.customThemes.find((t: CustomTheme) => t.id === effective);
+        if (ct) ct.palette[key] = v;
+      } else {
+        draft.appearance.themeOverrides[key] = v;
+      }
+      onSave(structuredClone(draft));
+    };
+
     let grid: HTMLDivElement | null = null;
     let currentSection = '';
 
@@ -259,13 +246,7 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
         input.type = 'color';
         input.value = String(value);
         input.addEventListener('input', () => {
-          if (isCustom) {
-            const ct = draft.appearance.customThemes.find((t: CustomTheme) => t.id === effective);
-            if (ct) ct.palette[field.key] = input.value;
-          } else {
-            draft.appearance.themeOverrides[field.key] = input.value;
-          }
-          onSave(structuredClone(draft));
+          setPaletteValue(field.key, input.value);
         });
         cell.appendChild(input);
       } else if (field.type === 'color-alpha') {
@@ -303,13 +284,7 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
           const b = parseInt(h.slice(5, 7), 16);
           const a = parseFloat(alphaInput.value);
           const rgba = `rgba(${r}, ${g}, ${b}, ${a})`;
-          if (isCustom) {
-            const ct = draft.appearance.customThemes.find((t: CustomTheme) => t.id === effective);
-            if (ct) ct.palette[field.key] = rgba;
-          } else {
-            draft.appearance.themeOverrides[field.key] = rgba;
-          }
-          onSave(structuredClone(draft));
+          setPaletteValue(field.key, rgba);
         }
 
         colorInput.addEventListener('input', updateColorAlpha);
@@ -329,13 +304,7 @@ export function buildAppearancePage(ctx: SettingsPageContext): PageResult {
         input.addEventListener('change', () => {
           const num = parseFloat(input.value);
           if (isNaN(num)) return;
-          if (isCustom) {
-            const ct = draft.appearance.customThemes.find((t: CustomTheme) => t.id === effective);
-            if (ct) ct.palette[field.key] = num;
-          } else {
-            draft.appearance.themeOverrides[field.key] = num;
-          }
-          onSave(structuredClone(draft));
+          setPaletteValue(field.key, num);
         });
         cell.appendChild(input);
       }

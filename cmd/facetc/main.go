@@ -65,54 +65,38 @@ func main() {
 	overrides := map[string]interface{}{}
 
 	args := os.Args[1:]
-	for i := 0; i < len(args); i++ {
+	i := 0
+	next := func() string {
+		i++
+		if i >= len(args) {
+			usage()
+		}
+		return args[i]
+	}
+	for ; i < len(args); i++ {
 		switch args[i] {
 		case "-o":
-			if i+1 >= len(args) {
-				usage()
-			}
-			i++
-			output = args[i]
+			output = next()
 		case "-entry":
-			if i+1 >= len(args) {
-				usage()
-			}
-			i++
-			entry = args[i]
+			entry = next()
 		case "-set":
-			if i+1 >= len(args) {
-				usage()
-			}
-			i++
-			k, v, ok := strings.Cut(args[i], "=")
+			k, v, ok := strings.Cut(next(), "=")
 			if !ok {
 				fmt.Fprintf(os.Stderr, "error: -set requires key=value, got %q\n", args[i])
 				os.Exit(1)
 			}
 			overrides[k] = parseValue(v)
 		case "-libdir":
-			if i+1 >= len(args) {
-				usage()
-			}
-			i++
-			libDir = args[i]
+			libDir = next()
 		case "-size":
-			if i+1 >= len(args) {
-				usage()
-			}
-			i++
-			n, err := strconv.Atoi(args[i])
+			n, err := strconv.Atoi(next())
 			if err != nil || n <= 0 {
 				fmt.Fprintf(os.Stderr, "error: -size requires a positive integer, got %q\n", args[i])
 				os.Exit(1)
 			}
 			size = n
 		case "-format":
-			if i+1 >= len(args) {
-				usage()
-			}
-			i++
-			format = args[i]
+			format = next()
 		case "-ast":
 			dumpAST = true
 		case "-fmt":
@@ -221,12 +205,7 @@ func main() {
 		entry = "Main"
 	}
 
-	var overridesMap map[string]interface{}
-	if len(overrides) > 0 {
-		overridesMap = overrides
-	}
-
-	result, err := evaluator.Eval(ctx, prog, input, overridesMap, entry)
+	result, err := evaluator.Eval(ctx, prog, input, overrides, entry)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "eval error: %v\n", err)
 		os.Exit(1)

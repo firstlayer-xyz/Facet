@@ -9,6 +9,24 @@ import (
 	"syscall/js"
 )
 
+// jsFloat32Array copies vals into a new JS Float32Array.
+func jsFloat32Array(vals []float32) js.Value {
+	arr := js.Global().Get("Float32Array").New(len(vals))
+	for i, v := range vals {
+		arr.SetIndex(i, float64(v))
+	}
+	return arr
+}
+
+// jsUint32Array copies vals into a new JS Uint32Array.
+func jsUint32Array(vals []uint32) js.Value {
+	arr := js.Global().Get("Uint32Array").New(len(vals))
+	for i, v := range vals {
+		arr.SetIndex(i, v)
+	}
+	return arr
+}
+
 // createSolidFromMeshWithFaceIDs creates a Manifold Solid from raw vertex, index,
 // and per-triangle faceID data. Called by PolyMesh.ToSolid().
 func createSolidFromMeshWithFaceIDs(verts []float32, indices, faceIDs []uint32) (*Solid, error) {
@@ -19,20 +37,9 @@ func createSolidFromMeshWithFaceIDs(verts []float32, indices, faceIDs []uint32) 
 	nTris := len(indices) / 3
 	nFaceIDs := len(faceIDs)
 
-	vertArr := js.Global().Get("Float32Array").New(len(verts))
-	for i, v := range verts {
-		vertArr.SetIndex(i, float64(v))
-	}
-
-	idxArr := js.Global().Get("Uint32Array").New(len(indices))
-	for i, v := range indices {
-		idxArr.SetIndex(i, v)
-	}
-
-	faceIDArr := js.Global().Get("Uint32Array").New(nFaceIDs)
-	for i, v := range faceIDs {
-		faceIDArr.SetIndex(i, v)
-	}
+	vertArr := jsFloat32Array(verts)
+	idxArr := jsUint32Array(indices)
+	faceIDArr := jsUint32Array(faceIDs)
 
 	id := js.Global().Call("_mf_solid_from_mesh_with_face_ids", vertArr, nVerts, idxArr, nTris, faceIDArr, nFaceIDs).Int()
 	if id == 0 {
@@ -105,14 +112,8 @@ func CreateSolidFromMesh(vertices []float32, indices []uint32) (*Solid, error) {
 	nVerts := len(vertices) / 3
 	nTris := len(indices) / 3
 
-	vertArr := js.Global().Get("Float32Array").New(len(vertices))
-	for i, v := range vertices {
-		vertArr.SetIndex(i, float64(v))
-	}
-	idxArr := js.Global().Get("Uint32Array").New(len(indices))
-	for i, v := range indices {
-		idxArr.SetIndex(i, v)
-	}
+	vertArr := jsFloat32Array(vertices)
+	idxArr := jsUint32Array(indices)
 	id := js.Global().Call("_mf_solid_from_mesh", vertArr, nVerts, idxArr, nTris).Int()
 	if id == 0 {
 		return nil, fmt.Errorf("CreateSolidFromMesh: manifold creation failed")

@@ -3016,66 +3016,6 @@ mark.search-highlight {
   color: #fff;
 }
 
-/* ── File tree panel ──────────────────────────────────────────────────────── */
-
-#file-tree-panel {
-  display: flex;
-  flex-direction: column;
-  background: var(--ui-bg-dark);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  padding: 4px 0;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  overflow-y: auto;
-  max-height: 160px;
-  flex-shrink: 0;
-}
-
-.ft-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 12px;
-  color: var(--ui-text-muted);
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: background 0.1s, color 0.1s;
-}
-
-.ft-row:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--ui-text);
-}
-
-.ft-row.ft-active {
-  color: var(--ui-text-bright);
-  background: var(--ui-accent-subtle-8);
-}
-
-.ft-row.ft-unavailable {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.ft-connector {
-  color: var(--ui-text-dim);
-  letter-spacing: -0.02em;
-}
-
-.ft-icon {
-  flex-shrink: 0;
-  color: var(--ui-text-muted);
-  opacity: 0.7;
-}
-
-.ft-row.ft-active .ft-icon {
-  color: var(--ui-accent);
-  opacity: 1;
-}
-
 /* ── Preview selector ─────────────────────────────────────────────────────── */
 
 /* Preview selector — top-left */

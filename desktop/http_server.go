@@ -185,12 +185,7 @@ func (s *HTTPServer) Auth() HTTPAuth { return HTTPAuth{Port: s.port, Token: s.to
 // Endpoint returns the port + bearer token the assistant uses to reach /mcp.
 // Satisfies the connection half of AssistantMCPBridge.
 func (s *HTTPServer) Endpoint() (int, string) {
-	// Gate on ready so the read happens-after Start's close(s.ready) (a data race
-	// otherwise) and a call during startup returns real values, not (0, "").
-	select {
-	case <-s.ready:
-	case <-time.After(10 * time.Second):
-	}
+	_ = s.WaitReady() // same ready-or-10s gate; Endpoint just ignores the start error
 	return s.port, s.token
 }
 

@@ -15,7 +15,6 @@ import { reportError } from './toast';
 import { evalRequest, cancelEval, formatSourceErrors } from './eval-client';
 import type { EvalResponse, EvalResult, SourceEntry, SourceError } from './eval-client';
 import { decodeBinaryMesh } from './mesh-decode';
-import type { BinaryMeshMeta } from './mesh-decode';
 import { initPlayback, onRenderTick, isPlaying, setPlaying } from './playback';
 
 // Source kind constants (mirrors parser.SourceKind in Go)
@@ -92,20 +91,16 @@ import { tabStore } from './tabs';
 import type { TabState } from './tabs';
 import { evalStore } from './eval-store';
 
-/** Get a tab, creating an empty one if absent. */
-function getTab(key: string): TabState {
-  const existing = tabStore.get(key);
-  if (existing) return existing;
-  const t: TabState = { path: key, dirty: false, cursor: null, label: tabLabel(key), pickedEntry: null, entryOverrides: {} };
+/** Create and register a fresh tab, returning its state. */
+function addTab(path: string, label = tabLabel(path), cursor: TabState['cursor'] = null): TabState {
+  const t: TabState = { path, dirty: false, cursor, label, pickedEntry: null, entryOverrides: {} };
   tabStore.add(t);
   return t;
 }
-function addTab(state: TabState) {
-  tabStore.add(state);
-}
 
-function removeTab(key: string) {
-  tabStore.remove(key);
+/** Get a tab, creating an empty one if absent. */
+function getTab(key: string): TabState {
+  return tabStore.get(key) ?? addTab(key);
 }
 
 function isReadOnly(path: string): boolean {
@@ -153,8 +148,8 @@ let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } |
 // below routes writes to the active tab; reads pull from
 // tabStore.activeState() at eval time.
 /** Set the file path on startup (no discard prompt, no re-persist). */
-export function setInitialFile(path: string, label?: string, readOnly?: boolean) {
-  addTab({ path, dirty: false, cursor: null, label: label || tabLabel(path), pickedEntry: null, entryOverrides: {} });
+export function setInitialFile(path: string, readOnly?: boolean) {
+  addTab(path);
   tabStore.setActive(path);
   editor.setCurrentSource(path);
   editor.setReadOnly(readOnly ?? isReadOnly(path));
@@ -165,11 +160,7 @@ export function setInitialFile(path: string, label?: string, readOnly?: boolean)
 /** Register a tab restored from saved state without switching the editor or triggering a run.
  *  The Monaco model should already be pre-created via editor.switchModel(). */
 export function addRestoredTab(path: string, cursor: { lineNumber: number; column: number } | null) {
-  addTab({ path, dirty: false, cursor, label: tabLabel(path), pickedEntry: null, entryOverrides: {} });
-}
-
-function anyDirty(): boolean {
-  return tabStore.anyDirty();
+  addTab(path, tabLabel(path), cursor);
 }
 
 function markDirty() {
@@ -183,7 +174,7 @@ function markClean() {
   const active = tabStore.active();
   if (active && tabStore.markClean(active)) {
     updateWindowTitle();
-    SetDirtyState(anyDirty());
+    SetDirtyState(tabStore.anyDirty());
   }
 }
 function persistOpenTabs() {
@@ -256,7 +247,6 @@ function setRunState(state: RunState) {
 
 export interface AppDeps {
   viewer: Viewer;
-  editor: EditorHandle;
   docsPanel: DocsPanel;
   errorDiv: HTMLElement;
   debugBar: HTMLElement;
@@ -273,7 +263,6 @@ let onEvalStatusCb: AppDeps['onEvalStatus'];
 
 export function initApp(deps: AppDeps) {
   viewer = deps.viewer;
-  editor = deps.editor;
   docsPanel = deps.docsPanel;
   errorDiv = deps.errorDiv;
   debugBar = deps.debugBar;
@@ -370,11 +359,6 @@ export function setEditor(ed: EditorHandle) {
   });
 }
 
-/** Forward word-wrap setting to the editor (if initialized) */
-export function setEditorWordWrap(on: boolean) {
-  if (editor) editor.setWordWrap(on);
-}
-
 let highlightMode: 'mouse' | 'cursor' | 'off' = 'cursor';
 
 export function setHighlightMode(mode: 'mouse' | 'cursor' | 'off') {
@@ -398,11 +382,6 @@ function formatArea(mm2: number): string {
   if (mm2 >= 1e6) return (mm2 / 1e6).toFixed(2) + ' m\u00B2';
   if (mm2 >= 1e2) return (mm2 / 1e2).toFixed(2) + ' cm\u00B2';
   return mm2.toFixed(2) + ' mm\u00B2';
-}
-
-function formatTime(seconds: number): string {
-  if (seconds >= 1) return seconds.toFixed(2) + 's';
-  return (seconds * 1000).toFixed(0) + 'ms';
 }
 
 function statsRow(label: string, value: string): string {
@@ -437,7 +416,7 @@ function syncTabsWithSources(data: EvalResult) {
     if (tabStore.isActive(path)) continue;
     if (!data.sources[path]) {
       editor.disposeModel(path);
-      removeTab(path);
+      tabStore.remove(path);
       tabsClosed = true;
     }
   }
@@ -467,20 +446,16 @@ function handleCheckOnly(errors: SourceError[], fns: EntryPoint[]) {
       const sel = window.getSelection();
       return !!sel && sel.toString().length > 0 && errorDiv.contains(sel.anchorNode);
     };
-    if (e.line > 0 && !e.file) {
+    if (e.line > 0) {
       errorDiv.style.cursor = 'pointer';
-      editor.highlightError(e.line);
+      if (!e.file) editor.highlightError(e.line);
       errorDiv.onclick = () => {
         if (hasErrorSelection()) return;
-        editor.revealLine(e.line, e.col || 1);
-      };
-    } else if (e.line > 0 && e.file) {
-      errorDiv.style.cursor = 'pointer';
-      errorDiv.onclick = () => {
-        if (hasErrorSelection()) return;
-        getTab(e.file);
-        switchToTab(e.file);
-        editor.highlightError(e.line);
+        if (e.file) {
+          getTab(e.file);
+          switchToTab(e.file);
+          editor.highlightError(e.line);
+        }
         editor.revealLine(e.line, e.col || 1);
       };
     }
@@ -668,7 +643,7 @@ async function closeTab(file: string) {
       // path we're closing — otherwise switchToTab would treat it as already
       // active and disposeModel below would throw on the still-displayed model.
       const scratch = await CreateScratchFile('Untitled-' + Date.now());
-      addTab({ path: scratch, dirty: false, cursor: null, label: 'Untitled', pickedEntry: null, entryOverrides: {} });
+      addTab(scratch, 'Untitled');
       switchToTab(scratch, true);
     }
   }
@@ -676,7 +651,7 @@ async function closeTab(file: string) {
   if (wasActive) cancelEval();
 
   editor.disposeModel(file);
-  removeTab(file);
+  tabStore.remove(file);
 
   // Exit debug mode if the entry-point tab was closed
   if (debugMode && file === debugEntryTab) {
@@ -758,7 +733,7 @@ export function switchToTab(file: string, force = false) {
   }
 
   // tabStore.setActive above wakes tabStore.onActiveChange listeners
-  // — file tree / preview selector subscribe from main.ts.
+  // — the preview selector subscribes from main.ts.
 }
 
 export function showDebugStepPrev() {
@@ -1035,7 +1010,7 @@ function openTab(key: string, source: string, label?: string, readOnly?: boolean
     switchToTab(key);
     return;
   }
-  addTab({ path: key, dirty: false, cursor: null, label: label || tabLabel(key), pickedEntry: null, entryOverrides: {} });
+  addTab(key, label || tabLabel(key));
   tabStore.setActive(key);
   editor.setCurrentSource(key);
   editor.switchModel(key, source);
@@ -1136,8 +1111,8 @@ async function doSaveInner(forceDialog: boolean) {
     editor.switchModel(path, source);
     editor.setCurrentSource(path);
     editor.disposeModel(oldKey);
-    removeTab(oldKey);
-    addTab({ path, dirty: false, cursor: tab.cursor, label: tabLabel(path), pickedEntry: null, entryOverrides: {} });
+    tabStore.remove(oldKey);
+    addTab(path, tabLabel(path), tab.cursor);
     tabStore.setActive(path);
   }
   // Patch the cached source text so subsequent reads see the saved
@@ -1288,7 +1263,7 @@ export async function openDocsToEntry(name: string, library?: string): Promise<v
   docsPanel.focusEntry(name, library);
 }
 
-// ── State accessors for external UI (file tree, preview selector) ──────────
+// ── State accessors for external UI (preview selector) ──────────
 
 export function getSources(): Record<string, SourceEntry> { return evalStore.current()?.sources ?? {}; }
 export function getActiveTabValue(): string { return tabStore.active(); }

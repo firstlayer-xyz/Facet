@@ -163,52 +163,44 @@ func extractTitle(md string) string {
 func groupByLibrary(entries []doc.DocEntry) []APIGroup {
 	type sectionKey struct{ library, section string }
 
-	sectionEntries := make(map[sectionKey][]doc.DocEntry)
-	var libOrder []string
-	libSeen := make(map[string]bool)
-	sectionOrder := make(map[string][]string) // library → ordered section names
-	sectionSeen := make(map[sectionKey]bool)
+	var groups []APIGroup
+	libIdx := make(map[string]int)
+	secIdx := make(map[sectionKey]int)
 
 	for _, e := range entries {
 		lib := e.Library
 		if lib == "" {
 			lib = "Standard Library"
 		}
-		if !libSeen[lib] {
-			libOrder = append(libOrder, lib)
-			libSeen[lib] = true
+		gi, ok := libIdx[lib]
+		if !ok {
+			gi = len(groups)
+			libIdx[lib] = gi
+			groups = append(groups, APIGroup{Name: lib})
 		}
 		key := sectionKey{lib, e.Section}
-		if !sectionSeen[key] {
-			sectionOrder[lib] = append(sectionOrder[lib], e.Section)
-			sectionSeen[key] = true
+		si, ok := secIdx[key]
+		if !ok {
+			si = len(groups[gi].Sections)
+			secIdx[key] = si
+			groups[gi].Sections = append(groups[gi].Sections, APISection{
+				Name: e.Section,
+				Slug: slugify(e.Section),
+			})
 		}
-		sectionEntries[key] = append(sectionEntries[key], e)
+		groups[gi].Sections[si].Entries = append(groups[gi].Sections[si].Entries, e)
 	}
 
 	// Standard Library first, then alphabetical.
-	sort.SliceStable(libOrder, func(i, j int) bool {
-		if libOrder[i] == "Standard Library" {
+	sort.SliceStable(groups, func(i, j int) bool {
+		if groups[i].Name == "Standard Library" {
 			return true
 		}
-		if libOrder[j] == "Standard Library" {
+		if groups[j].Name == "Standard Library" {
 			return false
 		}
-		return libOrder[i] < libOrder[j]
+		return groups[i].Name < groups[j].Name
 	})
 
-	var result []APIGroup
-	for _, lib := range libOrder {
-		var sections []APISection
-		for _, sec := range sectionOrder[lib] {
-			key := sectionKey{lib, sec}
-			sections = append(sections, APISection{
-				Name:    sec,
-				Slug:    slugify(sec),
-				Entries: sectionEntries[key],
-			})
-		}
-		result = append(result, APIGroup{Name: lib, Sections: sections})
-	}
-	return result
+	return groups
 }

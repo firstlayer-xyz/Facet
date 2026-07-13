@@ -293,11 +293,7 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 				if clause.Index != "" {
 					childEnv.bind(clause.Index, simple(typeNumber), clause.Pos, "var")
 				}
-				if iterType.inner != nil {
-					childEnv.bind(clause.Var, *iterType.inner, clause.Pos, "var")
-				} else {
-					childEnv.bind(clause.Var, unknown(), clause.Pos, "var")
-				}
+				childEnv.bind(clause.Var, optionalInnerOr(iterType), clause.Pos, "var")
 				continue
 			}
 			if iterType.ft != typeUnknown && iterType.ft != typeArray {
@@ -484,13 +480,9 @@ func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 				c.addError(ex.Pos, fmt.Sprintf("?. operator requires an Optional receiver, got %s", recvType.displayName()))
 				return unknown()
 			}
-			inner := unknown()
-			if recvType.inner != nil {
-				inner = *recvType.inner
-			}
 			// Re-run field lookup with the inner type by recursing through
 			// a synthetic FieldAccess on the inner type.
-			fieldType := c.lookupFieldType(inner, ex.Field, ex.Pos)
+			fieldType := c.lookupFieldType(optionalInnerOr(recvType), ex.Field, ex.Pos)
 			if fieldType.ft == typeUnknown {
 				return unknown()
 			}

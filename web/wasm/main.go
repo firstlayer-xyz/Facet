@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall/js"
 	"time"
@@ -35,7 +34,7 @@ type meshMeta struct {
 	VertexCount    int               `json:"vertexCount"`
 	IndexCount     int               `json:"indexCount"`
 	FaceGroupCount int               `json:"faceGroupCount"`
-	FaceColors     map[string]string `json:"faceColors,omitempty"`
+	FaceColors     map[uint32]string `json:"faceColors,omitempty"`
 	Expanded       *blobRef          `json:"expanded,omitempty"`
 	ExpandedCount  int               `json:"expandedCount,omitempty"`
 	Colors         *blobRef          `json:"colors,omitempty"` // uint8 RGB per expanded vertex
@@ -439,7 +438,7 @@ func displayMeshForExport(dm *manifold.DisplayMesh) ([]float32, []uint32, []stri
 	faceHex := make([]string, numTris)
 	for t := 0; t < numTris; t++ {
 		if id, ok := dm.FaceIDForVertex(t * 3); ok {
-			if hex, ok := dm.FaceColorMap[strconv.FormatUint(uint64(id), 10)]; ok {
+			if hex, ok := dm.FaceColorMap[id]; ok {
 				faceHex[t] = hex
 			}
 		}

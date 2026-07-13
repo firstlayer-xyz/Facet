@@ -1,9 +1,28 @@
 import {
   settingsRow,
   settingsCheckboxRow,
+  segmentedControl,
   type SettingsPageContext,
   type PageResult,
 } from './settings_ui';
+
+/** Build a <select> from options, marking `current` selected and wiring change. */
+function makeSelect(
+  options: { value: string; label: string }[],
+  current: string,
+  onChange: (v: string) => void,
+): HTMLSelectElement {
+  const select = document.createElement('select');
+  for (const opt of options) {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    if (opt.value === current) o.selected = true;
+    select.appendChild(o);
+  }
+  select.addEventListener('change', () => onChange(select.value));
+  return select;
+}
 
 export function buildEditorPage(ctx: SettingsPageContext): PageResult {
   const { draft, onSave } = ctx;
@@ -25,27 +44,14 @@ export function buildEditorPage(ctx: SettingsPageContext): PageResult {
   ));
 
   // Highlight mode segmented control
-  const highlightGroup = document.createElement('div');
-  highlightGroup.className = 'segmented-control';
-
   const highlightOptions: { value: 'mouse' | 'cursor' | 'off'; label: string }[] = [
     { value: 'mouse', label: 'Mouse' },
     { value: 'cursor', label: 'Cursor' },
     { value: 'off', label: 'Off' },
   ];
-
-  for (const opt of highlightOptions) {
-    const btn = document.createElement('button');
-    btn.className = 'segmented-btn';
-    btn.textContent = opt.label;
-    if (draft.editor.highlight === opt.value) btn.classList.add('active');
-    btn.addEventListener('click', () => {
-      draft.editor.highlight = opt.value;
-      highlightGroup.querySelectorAll('.segmented-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    });
-    highlightGroup.appendChild(btn);
-  }
+  const highlightGroup = segmentedControl(highlightOptions, draft.editor.highlight, v => {
+    draft.editor.highlight = v;
+  });
 
   page.appendChild(settingsRow('Highlight', highlightGroup));
 
@@ -55,18 +61,14 @@ export function buildEditorPage(ctx: SettingsPageContext): PageResult {
   page.appendChild(divider);
 
   // Bed plane selector
-  const planeSelect = document.createElement('select');
-  for (const plane of ['XZ', 'XY', 'YZ']) {
-    const opt = document.createElement('option');
-    opt.value = plane;
-    opt.textContent = plane;
-    if (plane === draft.appearance.bed) opt.selected = true;
-    planeSelect.appendChild(opt);
-  }
-  planeSelect.addEventListener('change', () => {
-    draft.appearance.bed = planeSelect.value;
-    onSave(structuredClone(draft));
-  });
+  const planeSelect = makeSelect(
+    ['XZ', 'XY', 'YZ'].map(p => ({ value: p, label: p })),
+    draft.appearance.bed,
+    v => {
+      draft.appearance.bed = v;
+      onSave(structuredClone(draft));
+    },
+  );
   page.appendChild(settingsRow('Bed', planeSelect));
 
   // Bed size input
@@ -101,60 +103,39 @@ export function buildEditorPage(ctx: SettingsPageContext): PageResult {
   page.appendChild(measureDivider);
 
   // Units selector: metric (mm) or imperial (inches).
-  const unitsSelect = document.createElement('select');
   const unitsOptions: { value: 'metric' | 'imperial'; label: string }[] = [
     { value: 'metric',   label: 'Metric (mm)' },
     { value: 'imperial', label: 'Imperial (inches)' },
   ];
-  for (const opt of unitsOptions) {
-    const o = document.createElement('option');
-    o.value = opt.value;
-    o.textContent = opt.label;
-    if (opt.value === draft.measurement.units) o.selected = true;
-    unitsSelect.appendChild(o);
-  }
-  unitsSelect.addEventListener('change', () => {
-    draft.measurement.units = unitsSelect.value as 'metric' | 'imperial';
+  const unitsSelect = makeSelect(unitsOptions, draft.measurement.units, v => {
+    draft.measurement.units = v as 'metric' | 'imperial';
     updateImperialControlsEnabled();
     onSave(structuredClone(draft));
   });
   page.appendChild(settingsRow('Measurement Units', unitsSelect));
 
   // Imperial display format: reduced fraction or decimal inches.
-  const imperialFormatSelect = document.createElement('select');
   const imperialFormatOptions: { value: 'fraction' | 'decimal'; label: string }[] = [
     { value: 'fraction', label: 'Fraction' },
     { value: 'decimal',  label: 'Decimal' },
   ];
-  for (const opt of imperialFormatOptions) {
-    const o = document.createElement('option');
-    o.value = opt.value;
-    o.textContent = opt.label;
-    if (opt.value === draft.measurement.imperialFormat) o.selected = true;
-    imperialFormatSelect.appendChild(o);
-  }
-  imperialFormatSelect.addEventListener('change', () => {
-    draft.measurement.imperialFormat = imperialFormatSelect.value as 'fraction' | 'decimal';
+  const imperialFormatSelect = makeSelect(imperialFormatOptions, draft.measurement.imperialFormat, v => {
+    draft.measurement.imperialFormat = v as 'fraction' | 'decimal';
     updateImperialControlsEnabled();
     onSave(structuredClone(draft));
   });
   page.appendChild(settingsRow('Imperial Format', imperialFormatSelect));
 
   // Imperial fraction denominator: powers of 2 from 4 through 128.
-  const denominatorSelect = document.createElement('select');
   const denominatorOptions: (4 | 8 | 16 | 32 | 64 | 128)[] = [4, 8, 16, 32, 64, 128];
-  for (const d of denominatorOptions) {
-    const o = document.createElement('option');
-    o.value = String(d);
-    o.textContent = `1/${d}"`;
-    if (d === draft.measurement.imperialDenominator) o.selected = true;
-    denominatorSelect.appendChild(o);
-  }
-  denominatorSelect.addEventListener('change', () => {
-    const v = parseInt(denominatorSelect.value, 10) as 4 | 8 | 16 | 32 | 64 | 128;
-    draft.measurement.imperialDenominator = v;
-    onSave(structuredClone(draft));
-  });
+  const denominatorSelect = makeSelect(
+    denominatorOptions.map(d => ({ value: String(d), label: `1/${d}"` })),
+    String(draft.measurement.imperialDenominator),
+    v => {
+      draft.measurement.imperialDenominator = parseInt(v, 10) as 4 | 8 | 16 | 32 | 64 | 128;
+      onSave(structuredClone(draft));
+    },
+  );
   page.appendChild(settingsRow('Fraction Denominator', denominatorSelect));
 
   // Grey out imperial-specific controls when they don't apply — denominator

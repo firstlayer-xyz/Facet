@@ -9,12 +9,10 @@ import { formatMeasurementLabel, formatAngle } from './measurement';
 
 /** Visual + formatting settings for measurement rendering, sourced from the active theme + user prefs. */
 export interface MeasurementStyle {
-  /** Line color for dimension lines, arcs, extension stubs (as 0xrrggbb). */
-  lineColor: number;
+  /** Line color for dimension lines, arcs, extension stubs, and snap glyphs (as "#rrggbb"). */
+  lineColor: string;
   /** Label text color for on-model sprite labels (as "#rrggbb"). */
   labelColor: string;
-  /** Glyph color for snap markers (as "#rrggbb"). */
-  glyphColor: string;
   /** Number formatting for label values. */
   format: MeasurementFormat;
 }
@@ -59,7 +57,7 @@ export function createLabelSprite(text: string, opts: { color: string; fontPx?: 
 }
 
 /** LineSegments geometry from a flat array of (x,y,z) pairs. */
-function makeSegments(points: Vec3[], color: number, opts?: { dashed?: boolean }): THREE.LineSegments {
+function makeSegments(points: Vec3[], color: string, opts?: { dashed?: boolean; renderOrder?: number }): THREE.LineSegments {
   const verts: number[] = [];
   for (const p of points) verts.push(p[0], p[1], p[2]);
   const geo = new THREE.BufferGeometry();
@@ -69,7 +67,7 @@ function makeSegments(points: Vec3[], color: number, opts?: { dashed?: boolean }
     : new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true });
   const seg = new THREE.LineSegments(geo, mat);
   if (opts?.dashed) seg.computeLineDistances();
-  seg.renderOrder = 9;
+  seg.renderOrder = opts?.renderOrder ?? 9;
   return seg;
 }
 
@@ -374,11 +372,6 @@ function drawGlyph(ctx: CanvasRenderingContext2D, size: number, glyph: GlyphKind
   paintGlyphShape(ctx, size, glyph);
 }
 
-/** Parse a "#rrggbb" string into a Three.js hex number. */
-function parseHexColor(css: string): number {
-  return parseInt(css.replace('#', ''), 16);
-}
-
 /**
  * CSS `cursor:` value that renders the snap glyph under the mouse, centred on
  * the hotspot. Caller assigns it to `canvas.style.cursor`. Pass `null` to get
@@ -415,16 +408,14 @@ export function buildPendingMarker(
   group.renderOrder = 11;
 
   // 1. Feature highlight — thick line over the source edge or loop.
-  const lineColor = parseHexColor(opts.color);
+  const lineColor = opts.color;
   if (s.edge) {
     // edgeEnd / edgeMid / edgePerp: highlight the specific edge segment.
-    group.add(makeHighlightLine([s.edge.a, s.edge.b], lineColor));
+    group.add(makeSegments([s.edge.a, s.edge.b], lineColor, { renderOrder: 11 }));
   } else if (s.loop && s.loop.length >= 2) {
     // circleCenter: highlight the full closed loop.
     const closed = s.loop.concat([s.loop[0]]);
-    const segs: Vec3[] = [];
-    for (let i = 0; i < closed.length - 1; i++) segs.push(closed[i], closed[i + 1]);
-    group.add(makeHighlightLine(segs, lineColor));
+    group.add(makeSegments(polylineToSegments(closed), lineColor, { renderOrder: 11 }));
   }
 
   // 2. A small dot at the actual snap point. Always drawn — the cursor-carried
@@ -505,16 +496,7 @@ export function buildHoverEdgeAngle(
 
   const group = new THREE.Group();
   const arcPts = arcPoints(anchor.point, edgeFrom, dimDir, arcR, 16);
-  const segs: Vec3[] = [];
-  for (let i = 0; i < arcPts.length - 1; i++) segs.push(arcPts[i], arcPts[i + 1]);
-  const geo = new THREE.BufferGeometry();
-  const flat: number[] = [];
-  for (const p of segs) flat.push(p[0], p[1], p[2]);
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(flat), 3));
-  const lineMat = new THREE.LineBasicMaterial({ color: style.lineColor, depthTest: false, transparent: true });
-  const arcLine = new THREE.LineSegments(geo, lineMat);
-  arcLine.renderOrder = 11;
-  group.add(arcLine);
+  group.add(makeSegments(polylineToSegments(arcPts), style.lineColor, { renderOrder: 11 }));
 
   const lblPos = arcPts[Math.floor(arcPts.length / 2)];
   const lbl = createLabelSprite(formatAngle(deg), { color: style.labelColor, worldHeight: labelH * 0.75 });
@@ -549,21 +531,6 @@ function makeDotSprite(pos: Vec3, color: string, worldSize: number): THREE.Sprit
   sprite.position.set(pos[0], pos[1], pos[2]);
   sprite.renderOrder = 12;
   return sprite;
-}
-
-/** Bright overlay line drawn on top of geometry. Unlike dimension lines, it
- *  uses a thicker visual and slightly higher render order so it reads clearly
- *  as a transient hover highlight. */
-function makeHighlightLine(points: Vec3[], color: number): THREE.LineSegments {
-  // Segment list expected: pairs of endpoints. Caller passes already-paired.
-  const verts: number[] = [];
-  for (const p of points) verts.push(p[0], p[1], p[2]);
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
-  const mat = new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true });
-  const seg = new THREE.LineSegments(geo, mat);
-  seg.renderOrder = 11;
-  return seg;
 }
 
 /** Dispose all geometries and materials under a Group. Use before removing. */

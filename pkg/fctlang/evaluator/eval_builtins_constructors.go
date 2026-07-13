@@ -13,7 +13,7 @@ import (
 // 3D Primitive builtins
 // ---------------------------------------------------------------------------
 
-func (e *evaluator) builtinCube(args []value) (value, error) {
+func builtinCube(_ *evaluator, args []value) (value, error) {
 	if len(args) != 3 {
 		return nil, fmt.Errorf("_cube() expects 3 arguments, got %d", len(args))
 	}
@@ -29,14 +29,10 @@ func (e *evaluator) builtinCube(args []value) (value, error) {
 	if err != nil {
 		return nil, err
 	}
-	result, err := manifold.CreateCube(x, y, z)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
+	return manifold.CreateCube(x, y, z)
 }
 
-func (e *evaluator) builtinSphere(args []value) (value, error) {
+func builtinSphere(_ *evaluator, args []value) (value, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return nil, fmt.Errorf("_sphere() expects 1 or 2 arguments, got %d", len(args))
 	}
@@ -46,23 +42,15 @@ func (e *evaluator) builtinSphere(args []value) (value, error) {
 	}
 	segments := 0
 	if len(args) == 2 {
-		n, err := requireNumber("_sphere", 2, args[1])
-		if err != nil {
-			return nil, err
-		}
-		segments, err = requireCount("_sphere", 2, n, maxSegments)
+		segments, err = requireCountArg("_sphere", 2, args[1], maxSegments)
 		if err != nil {
 			return nil, err
 		}
 	}
-	result, err := manifold.CreateSphere(radius, segments)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
+	return manifold.CreateSphere(radius, segments)
 }
 
-func (e *evaluator) builtinCylinder(args []value) (value, error) {
+func builtinCylinder(_ *evaluator, args []value) (value, error) {
 	if len(args) < 3 || len(args) > 4 {
 		return nil, fmt.Errorf("_cylinder() expects 3 or 4 arguments, got %d", len(args))
 	}
@@ -80,27 +68,19 @@ func (e *evaluator) builtinCylinder(args []value) (value, error) {
 	}
 	segments := 0
 	if len(args) == 4 {
-		n, err := requireNumber("_cylinder", 4, args[3])
-		if err != nil {
-			return nil, err
-		}
-		segments, err = requireCount("_cylinder", 4, n, maxSegments)
+		segments, err = requireCountArg("_cylinder", 4, args[3], maxSegments)
 		if err != nil {
 			return nil, err
 		}
 	}
-	result, err := manifold.CreateCylinder(height, radiusLow, radiusHigh, segments)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
+	return manifold.CreateCylinder(height, radiusLow, radiusHigh, segments)
 }
 
 // ---------------------------------------------------------------------------
 // 2D Primitive builtins
 // ---------------------------------------------------------------------------
 
-func (e *evaluator) builtinSquare(args []value) (value, error) {
+func builtinSquare(_ *evaluator, args []value) (value, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("_square() expects 2 arguments, got %d", len(args))
 	}
@@ -115,7 +95,7 @@ func (e *evaluator) builtinSquare(args []value) (value, error) {
 	return manifold.CreateSquare(x, y)
 }
 
-func (e *evaluator) builtinCircle(args []value) (value, error) {
+func builtinCircle(_ *evaluator, args []value) (value, error) {
 	if len(args) < 1 || len(args) > 2 {
 		return nil, fmt.Errorf("_circle() expects 1 or 2 arguments, got %d", len(args))
 	}
@@ -125,27 +105,12 @@ func (e *evaluator) builtinCircle(args []value) (value, error) {
 	}
 	segments := 0
 	if len(args) == 2 {
-		n, err := requireNumber("_circle", 2, args[1])
-		if err != nil {
-			return nil, err
-		}
-		segments, err = requireCount("_circle", 2, n, maxSegments)
+		segments, err = requireCountArg("_circle", 2, args[1], maxSegments)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return manifold.CreateCircle(radius, segments)
-}
-
-// makePtVecStruct creates a 2-component Vec structVal with Length fields.
-func makePtVecStruct(typeName string, x, y float64) *structVal {
-	return &structVal{
-		typeName: typeName,
-		fields: map[string]value{
-			"x": length{mm: x},
-			"y": length{mm: y},
-		},
-	}
 }
 
 // makePtVecStruct3 creates a 3-component Vec structVal with Length fields.
@@ -180,7 +145,7 @@ func vec2RingFromArray(arr array, ringDesc string) ([]manifold.Point2D, error) {
 	return out, nil
 }
 
-func (e *evaluator) builtinNewPolygon(args []value) (value, error) {
+func builtinNewPolygon(_ *evaluator, args []value) (value, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("_polygon() expects 2 arguments (points, holes), got %d", len(args))
 	}
@@ -208,14 +173,23 @@ func (e *evaluator) builtinNewPolygon(args []value) (value, error) {
 		}
 		holes[i] = ring
 	}
-	result, err := manifold.CreatePolygon(outer, holes)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
+	return manifold.CreatePolygon(outer, holes)
 }
 
-func (e *evaluator) builtinHull(args []value) (value, error) {
+// elemsAs asserts every element of arr to T, returning a typed slice.
+func elemsAs[T value](name, want string, arr array) ([]T, error) {
+	out := make([]T, len(arr.elems))
+	for i, elem := range arr.elems {
+		v, ok := elem.(T)
+		if !ok {
+			return nil, fmt.Errorf("%s() element %d must be a %s, got %s", name, i+1, want, typeName(elem))
+		}
+		out[i] = v
+	}
+	return out, nil
+}
+
+func builtinHull(_ *evaluator, args []value) (value, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("_hull() expects 1 argument (an Array), got %d", len(args))
 	}
@@ -230,23 +204,15 @@ func (e *evaluator) builtinHull(args []value) (value, error) {
 	// Determine type from first element
 	switch arr.elems[0].(type) {
 	case *manifold.Solid:
-		solids := make([]*manifold.Solid, len(arr.elems))
-		for i, elem := range arr.elems {
-			s, ok := elem.(*manifold.Solid)
-			if !ok {
-				return nil, fmt.Errorf("_hull() element %d must be a Solid, got %s", i+1, typeName(elem))
-			}
-			solids[i] = s
+		solids, err := elemsAs[*manifold.Solid]("_hull", "Solid", arr)
+		if err != nil {
+			return nil, err
 		}
 		return manifold.BatchHull(solids)
 	case *manifold.Sketch:
-		sketches := make([]*manifold.Sketch, len(arr.elems))
-		for i, elem := range arr.elems {
-			p, ok := elem.(*manifold.Sketch)
-			if !ok {
-				return nil, fmt.Errorf("_hull() element %d must be a Sketch, got %s", i+1, typeName(elem))
-			}
-			sketches[i] = p
+		sketches, err := elemsAs[*manifold.Sketch]("_hull", "Sketch", arr)
+		if err != nil {
+			return nil, err
 		}
 		return manifold.SketchBatchHull(sketches)
 	case *structVal:
@@ -274,94 +240,88 @@ func (e *evaluator) builtinHull(args []value) (value, error) {
 // Batch boolean builtins (Union, Difference, Intersection)
 // ---------------------------------------------------------------------------
 
-func (e *evaluator) builtinBatchBool(name string, args []value) (value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("%s() expects 1 argument (an Array), got %d", name, len(args))
-	}
-	arr, ok := args[0].(array)
-	if !ok {
-		return nil, fmt.Errorf("%s() argument must be an Array, got %s", name, typeName(args[0]))
-	}
-	if len(arr.elems) == 0 {
-		return nil, fmt.Errorf("%s() requires at least 1 element, got 0", name)
-	}
-	// A single element is itself — no boolean to perform. The binary +/-/&
-	// operators and the pattern helpers rely on this for the count==1 case.
-	if len(arr.elems) == 1 {
-		return arr.elems[0], nil
-	}
-	op, opErr := batchBoolOp(name)
-	if opErr != nil {
-		return nil, opErr
-	}
+func batchBool(name string) builtinFn {
+	return func(_ *evaluator, args []value) (value, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s() expects 1 argument (an Array), got %d", name, len(args))
+		}
+		arr, ok := args[0].(array)
+		if !ok {
+			return nil, fmt.Errorf("%s() argument must be an Array, got %s", name, typeName(args[0]))
+		}
+		if len(arr.elems) == 0 {
+			return nil, fmt.Errorf("%s() requires at least 1 element, got 0", name)
+		}
+		// A single element is itself — no boolean to perform. The binary +/-/&
+		// operators and the pattern helpers rely on this for the count==1 case.
+		if len(arr.elems) == 1 {
+			return arr.elems[0], nil
+		}
+		op, opErr := batchBoolOp(name)
+		if opErr != nil {
+			return nil, opErr
+		}
 
-	switch arr.elems[0].(type) {
-	case *manifold.Solid:
-		solids := make([]*manifold.Solid, len(arr.elems))
-		for i, elem := range arr.elems {
-			s, sOk := elem.(*manifold.Solid)
-			if !sOk {
-				return nil, fmt.Errorf("%s() element %d must be a Solid, got %s", name, i+1, typeName(elem))
+		switch arr.elems[0].(type) {
+		case *manifold.Solid:
+			solids, err := elemsAs[*manifold.Solid](name, "Solid", arr)
+			if err != nil {
+				return nil, err
 			}
-			solids[i] = s
-		}
-		var result *manifold.Solid
-		if len(solids) == 2 {
-			// Fast path for the dominant 2-operand case (every binary +/-/&):
-			// the direct pairwise boolean avoids the slice + array-of-pointers +
-			// vector allocation that the batch entry point requires.
-			switch op {
-			case manifold.OpUnion:
-				result = solids[0].Union(solids[1])
-			case manifold.OpDifference:
-				result = solids[0].Difference(solids[1])
-			default:
-				result = solids[0].Intersection(solids[1])
+			var result *manifold.Solid
+			if len(solids) == 2 {
+				// Fast path for the dominant 2-operand case (every binary +/-/&):
+				// the direct pairwise boolean avoids the slice + array-of-pointers +
+				// vector allocation that the batch entry point requires.
+				switch op {
+				case manifold.OpUnion:
+					result = solids[0].Union(solids[1])
+				case manifold.OpDifference:
+					result = solids[0].Difference(solids[1])
+				default:
+					result = solids[0].Intersection(solids[1])
+				}
+			} else {
+				// BatchBoolean reports a nil kernel result with its own internal
+				// sentinel; drop through to errBoolFailed below so every operand
+				// count shares one user-facing message.
+				var err error
+				if result, err = manifold.BatchBoolean(solids, op); err != nil {
+					return nil, errBoolFailed(boolOpName(op))
+				}
 			}
-		} else {
-			// BatchBoolean reports a nil kernel result with its own internal
-			// sentinel; drop through to errBoolFailed below so every operand
-			// count shares one user-facing message.
-			var err error
-			if result, err = manifold.BatchBoolean(solids, op); err != nil {
+			if result == nil {
 				return nil, errBoolFailed(boolOpName(op))
 			}
-		}
-		if result == nil {
-			return nil, errBoolFailed(boolOpName(op))
-		}
-		return result, nil
-	case *manifold.Sketch:
-		sketches := make([]*manifold.Sketch, len(arr.elems))
-		for i, elem := range arr.elems {
-			p, pOk := elem.(*manifold.Sketch)
-			if !pOk {
-				return nil, fmt.Errorf("%s() element %d must be a Sketch, got %s", name, i+1, typeName(elem))
+			return result, nil
+		case *manifold.Sketch:
+			sketches, err := elemsAs[*manifold.Sketch](name, "Sketch", arr)
+			if err != nil {
+				return nil, err
 			}
-			sketches[i] = p
-		}
-		var result *manifold.Sketch
-		if len(sketches) == 2 {
-			switch op {
-			case manifold.OpUnion:
-				result = sketches[0].Union(sketches[1])
-			case manifold.OpDifference:
-				result = sketches[0].Difference(sketches[1])
-			default:
-				result = sketches[0].Intersection(sketches[1])
+			var result *manifold.Sketch
+			if len(sketches) == 2 {
+				switch op {
+				case manifold.OpUnion:
+					result = sketches[0].Union(sketches[1])
+				case manifold.OpDifference:
+					result = sketches[0].Difference(sketches[1])
+				default:
+					result = sketches[0].Intersection(sketches[1])
+				}
+			} else {
+				var err error
+				if result, err = manifold.SketchBatchBoolean(sketches, op); err != nil {
+					return nil, errBoolFailed(boolOpName(op))
+				}
 			}
-		} else {
-			var err error
-			if result, err = manifold.SketchBatchBoolean(sketches, op); err != nil {
+			if result == nil {
 				return nil, errBoolFailed(boolOpName(op))
 			}
+			return result, nil
+		default:
+			return nil, fmt.Errorf("%s() elements must be Solids or Sketches, got %s", name, typeName(arr.elems[0]))
 		}
-		if result == nil {
-			return nil, errBoolFailed(boolOpName(op))
-		}
-		return result, nil
-	default:
-		return nil, fmt.Errorf("%s() elements must be Solids or Sketches, got %s", name, typeName(arr.elems[0]))
 	}
 }
 
@@ -405,7 +365,7 @@ func errBoolFailed(opName string) error {
 // Loft builtin
 // ---------------------------------------------------------------------------
 
-func (e *evaluator) builtinLoft(args []value) (value, error) {
+func builtinLoft(_ *evaluator, args []value) (value, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("_loft() expects 2 arguments, got %d", len(args))
 	}
@@ -446,7 +406,7 @@ func (e *evaluator) builtinLoft(args []value) (value, error) {
 // Mesh import builtin
 // ---------------------------------------------------------------------------
 
-func (e *evaluator) builtinLoadMesh(args []value) (value, error) {
+func builtinLoadMesh(_ *evaluator, args []value) (value, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("_load_mesh() expects 1 argument, got %d", len(args))
 	}
@@ -464,18 +424,14 @@ func (e *evaluator) builtinLoadMesh(args []value) (value, error) {
 		path = filepath.Join(cwd, path)
 	}
 
-	result, err := manifold.ImportMesh(path)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
+	return manifold.ImportMesh(path)
 }
 
 // ---------------------------------------------------------------------------
 // Text builtin
 // ---------------------------------------------------------------------------
 
-func (e *evaluator) builtinNewText(args []value) (value, error) {
+func builtinNewText(_ *evaluator, args []value) (value, error) {
 	if len(args) != 5 {
 		return nil, fmt.Errorf("_text() expects 5 arguments (text, size, font, halign, valign), got %d", len(args))
 	}
@@ -544,7 +500,7 @@ func coerceNumericArgs(args []value) {
 // SolidFromMesh builtin
 // ---------------------------------------------------------------------------
 
-func (e *evaluator) builtinSolidFromMesh(args []value) (value, error) {
+func builtinSolidFromMesh(_ *evaluator, args []value) (value, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("_solid_from_mesh() expects 2 arguments, got %d", len(args))
 	}

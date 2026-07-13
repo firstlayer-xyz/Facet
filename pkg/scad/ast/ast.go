@@ -138,11 +138,10 @@ type Str struct {
 	P     Pos
 }
 
-// Ident is an identifier reference; SpecialVar marks $-prefixed names.
+// Ident is an identifier reference ($-prefixed names keep their '$').
 type Ident struct {
-	Name       string
-	SpecialVar bool
-	P          Pos
+	Name string
+	P    Pos
 }
 
 // Bool is a boolean literal.

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -62,26 +63,19 @@ func extraSearchDirs() []string {
 	var dirs []string
 
 	switch runtime.GOOS {
-	case "darwin":
+	case "darwin", "linux":
+		osDir := "/opt/homebrew/bin"
+		if runtime.GOOS == "linux" {
+			osDir = "/snap/bin"
+		}
 		dirs = []string{
 			"/usr/local/bin",
-			"/opt/homebrew/bin",
+			osDir,
 			filepath.Join(home, ".local", "bin"),
 			filepath.Join(home, ".cargo", "bin"),
 			filepath.Join(home, "go", "bin"),
 		}
 		// npm global — check common locations
-		if npmPrefix, err := exec.Command("npm", "prefix", "-g").Output(); err == nil {
-			dirs = append(dirs, filepath.Join(strings.TrimSpace(string(npmPrefix)), "bin"))
-		}
-	case "linux":
-		dirs = []string{
-			"/usr/local/bin",
-			"/snap/bin",
-			filepath.Join(home, ".local", "bin"),
-			filepath.Join(home, ".cargo", "bin"),
-			filepath.Join(home, "go", "bin"),
-		}
 		if npmPrefix, err := exec.Command("npm", "prefix", "-g").Output(); err == nil {
 			dirs = append(dirs, filepath.Join(strings.TrimSpace(string(npmPrefix)), "bin"))
 		}
@@ -414,12 +408,6 @@ var curatedExamples = []string{
 	"Shark.fct",
 }
 
-// buildMCPSystemPrompt returns the short system prompt for MCP-enabled CLIs.
-// Claude fetches docs on-demand via get_documentation.
-func buildMCPSystemPrompt() string {
-	return docs.AIPrompt
-}
-
 // buildFullSystemPrompt returns the full system prompt with all docs inlined,
 // for generic CLIs that don't have MCP tool access.
 func buildFullSystemPrompt(libEntries []doc.DocEntry) string {
@@ -720,18 +708,8 @@ func gitCacheNSToImportPath(ns string) string {
 func filterEnv(env []string, keys ...string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
-		key := e
-		if i := strings.IndexByte(e, '='); i >= 0 {
-			key = e[:i]
-		}
-		skip := false
-		for _, k := range keys {
-			if key == k {
-				skip = true
-				break
-			}
-		}
-		if !skip {
+		key, _, _ := strings.Cut(e, "=")
+		if !slices.Contains(keys, key) {
 			out = append(out, e)
 		}
 	}

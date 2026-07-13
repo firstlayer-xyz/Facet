@@ -103,6 +103,20 @@ func (e *evaluator) blockYield(s *parser.YieldStmt, locals map[string]value) err
 	}
 }
 
+// setYieldContext points yield routing at the given collectors (a for-yield's
+// results slice, a fold's accumulator, or nil to cut a channel) and returns the
+// restore func for defer. Restoring via defer is load-bearing: a panic inside
+// the body (CGo invariant, ctx cancel via runtime panic, etc.) must not leave
+// the evaluator-global pointers aimed at a stack-local slot that is about to be
+// freed — a later, unrelated yield would otherwise write there.
+func (e *evaluator) setYieldContext(target *[]value, fold *value) func() {
+	prevYield, prevFold := e.yieldTarget, e.foldAcc
+	e.yieldTarget, e.foldAcc = target, fold
+	return func() {
+		e.yieldTarget, e.foldAcc = prevYield, prevFold
+	}
+}
+
 func (e *evaluator) evalForYield(ex *parser.ForYieldExpr, locals map[string]value) (value, error) {
 	// The first clause's iterable is evaluated exactly once, here: it decides
 	// between the Optional path (a single-clause loop over an Optional is
@@ -123,21 +137,10 @@ func (e *evaluator) evalForYield(ex *parser.ForYieldExpr, locals map[string]valu
 
 func (e *evaluator) evalForYieldArray(ex *parser.ForYieldExpr, locals map[string]value, first value) (value, error) {
 	var results []value
-	prevYield := e.yieldTarget
-	e.yieldTarget = &results
 	// A yield in this loop's body must collect here, not into an enclosing
 	// fold's accumulator — clear foldAcc for the loop's extent (mirroring
 	// evalFold, which clears yieldTarget).
-	prevFold := e.foldAcc
-	e.foldAcc = nil
-	// defer the restores so a panic inside the body (CGo invariant, ctx cancel
-	// via runtime panic, etc.) doesn't leave the global yieldTarget pointing
-	// at this stack-local slice — a later, unrelated yield would otherwise
-	// write to a freed slot.
-	defer func() {
-		e.yieldTarget = prevYield
-		e.foldAcc = prevFold
-	}()
+	defer e.setYieldContext(&results, nil)()
 	if err := e.evalForClauses(ex.Clauses, 0, first, ex.Body, locals, &results); err != nil {
 		return nil, err
 	}
@@ -162,19 +165,12 @@ func (e *evaluator) evalForYieldOptional(ex *parser.ForYieldExpr, opt *optionalV
 		iterLocals[clause.Index] = float64(0)
 	}
 	var results []value
-	prev := e.yieldTarget
-	e.yieldTarget = &results
 	// A yield in this loop's body must collect here, not into an enclosing fold's
 	// accumulator — clear foldAcc for the loop's extent (mirroring evalForYieldArray).
 	// blockYield checks foldAcc before yieldTarget, so leaving an enclosing fold's
 	// foldAcc live would send these yields to the wrong place and leave results
 	// empty, silently turning the result into None.
-	prevFold := e.foldAcc
-	e.foldAcc = nil
-	defer func() {
-		e.yieldTarget = prev
-		e.foldAcc = prevFold
-	}()
+	defer e.setYieldContext(&results, nil)()
 	if err := e.evalForBody(ex.Body, iterLocals, &results); err != nil {
 		return nil, err
 	}
@@ -330,17 +326,9 @@ func (e *evaluator) evalFold(ex *parser.FoldExpr, locals map[string]value) (valu
 	// First element is the initial accumulator
 	acc := copyValue(arr.elems[0])
 
-	// Save and set foldAcc so yield writes to the accumulator. defer the
-	// restores so a panic inside the body (CGo invariant, runtime panic)
-	// doesn't leave the globals pointing at this stack-local accumulator.
-	prevFoldAcc := e.foldAcc
-	e.foldAcc = &acc
-	prevYield := e.yieldTarget
-	e.yieldTarget = nil // prevent for-yield yield from firing inside fold
-	defer func() {
-		e.foldAcc = prevFoldAcc
-		e.yieldTarget = prevYield
-	}()
+	// Route yield to the accumulator; clear yieldTarget so an enclosing
+	// for-yield's collector can't fire inside the fold.
+	defer e.setYieldContext(nil, &acc)()
 
 	for _, elem := range arr.elems[1:] {
 		if err := e.ctx.Err(); err != nil {

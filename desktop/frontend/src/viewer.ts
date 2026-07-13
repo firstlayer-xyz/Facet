@@ -79,17 +79,11 @@ const STEP_STYLES: Record<string, Record<string, StyleDef>> = {
     rhs: { color: 0x44bb44, opacity: 0.25 },
     result: { color: 0xddaa22, opacity: 1.0 },
   },
-  _transform: {
-    input: { color: 0x888888, opacity: 0.2 },
-    result: { color: 0x4488ff, opacity: 1.0 },
-  },
   _default: {
     result: { color: 0x4488ff, opacity: 1.0 },
     input: { color: 0x888888, opacity: 0.2 },
   },
 };
-
-const TRANSFORM_OPS = new Set(['Move', 'Rotate', 'Scale', 'Mirror']);
 
 export class Viewer {
   private renderer: THREE.WebGLRenderer;
@@ -113,7 +107,7 @@ export class Viewer {
 
   // Pixels at the right edge of the canvas that are covered by overlay
   // drawers (docs panel, assistant panel, their resizers). Used by
-  // onResize to setViewOffset on both cameras so the lookAt target
+  // resize to setViewOffset on both cameras so the lookAt target
   // projects to the centre of the VISIBLE portion of the canvas
   // instead of the centre of the full canvas — which would put the
   // model behind the drawer. Updated by main.ts via setRightInset.
@@ -138,7 +132,6 @@ export class Viewer {
 
   // Head tracking parallax
   private headTracker: HeadTracker | null = null;
-  private parallaxEnabled = false;
 
   // Drawing mode state
   private drawingMode = false;
@@ -180,21 +173,11 @@ export class Viewer {
   private measurementGroup = new THREE.Group();
   private hoverMeasurementGroup = new THREE.Group();
   private measurementStyle: MeasurementStyle = {
-    lineColor: 0xffcc33,
+    lineColor: '#ffcc33',
     labelColor: '#ffcc33',
-    glyphColor: '#ffcc33',
     format: DEFAULT_MEASUREMENT_FORMAT,
   };
   private onMeasureModeChangeCb: ((mode: 'off' | 'placing', hoverOn: boolean) => void) | null = null;
-
-  // Bound event handlers, stored so addEventListener uses a stable reference.
-  private onMouseDown: (e: MouseEvent) => void;
-  private onMouseUp: (e: MouseEvent) => void;
-  private onMouseMove: (e: MouseEvent) => void;
-  private onFocus: () => void;
-  private onBlur: () => void;
-  private onKeyDown: (e: KeyboardEvent) => void;
-  private onKeyUp: (e: KeyboardEvent) => void;
 
   constructor(container: HTMLElement, appearance?: ViewerAppearance) {
     this.container = container;
@@ -294,21 +277,21 @@ export class Viewer {
     this.scene.add(this.hoverMeasurementGroup);
 
     // Initial size
-    this.onResize();
+    this.resize();
 
     // Resize handling via ResizeObserver
-    this.resizeObserver = new ResizeObserver(() => this.onResize());
+    this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
 
     // Face-click detection (distinguish click from drag) + keyboard orbital controls
     container.setAttribute('tabindex', '0');
     container.style.outline = 'none';
 
-    this.onMouseDown = (e: MouseEvent) => {
+    const onMouseDown = (e: MouseEvent) => {
       this.pickMouseDown = { x: e.clientX, y: e.clientY, time: Date.now() };
       container.focus();
     };
-    this.onMouseUp = (e: MouseEvent) => {
+    const onMouseUp = (e: MouseEvent) => {
       if (!this.pickMouseDown) return;
       const dx = e.clientX - this.pickMouseDown.x;
       const dy = e.clientY - this.pickMouseDown.y;
@@ -323,21 +306,21 @@ export class Viewer {
         }
       }
     };
-    this.onMouseMove = (e: MouseEvent) => {
+    const onMouseMove = (e: MouseEvent) => {
       if (this.measureMode === 'placing' || this.hoverReadout) {
         this.updateMeasurementHover(e);
       }
     };
-    this.onFocus = () => {
+    const onFocus = () => {
       this.viewportFocused = true;
       this.showControlsOverlay();
     };
-    this.onBlur = () => {
+    const onBlur = () => {
       this.viewportFocused = false;
       this.keysDown.clear();
       this.hideControlsOverlay();
     };
-    this.onKeyDown = (e: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (!this.viewportFocused) return;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract'].includes(e.code)) {
         e.preventDefault();
@@ -351,7 +334,7 @@ export class Viewer {
         this.cancelMeasureStep();
       }
     };
-    this.onKeyUp = (e: KeyboardEvent) => {
+    const onKeyUp = (e: KeyboardEvent) => {
       this.keysDown.delete(e.code);
     };
 
@@ -364,14 +347,14 @@ export class Viewer {
       this.cancelMeasureStep();
     };
 
-    container.addEventListener('mousedown', this.onMouseDown);
-    container.addEventListener('mouseup', this.onMouseUp);
-    container.addEventListener('mousemove', this.onMouseMove);
+    container.addEventListener('mousedown', onMouseDown);
+    container.addEventListener('mouseup', onMouseUp);
+    container.addEventListener('mousemove', onMouseMove);
     container.addEventListener('contextmenu', onContextMenu);
-    container.addEventListener('focus', this.onFocus);
-    container.addEventListener('blur', this.onBlur);
-    container.addEventListener('keydown', this.onKeyDown);
-    container.addEventListener('keyup', this.onKeyUp);
+    container.addEventListener('focus', onFocus);
+    container.addEventListener('blur', onBlur);
+    container.addEventListener('keydown', onKeyDown);
+    container.addEventListener('keyup', onKeyUp);
 
     // Start render loop
     this.animate();
@@ -455,19 +438,18 @@ export class Viewer {
         mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(nonIndexed, material);
         geometry.dispose();
       }
-    } else if (decoded.expanded) {
-      // Pre-expanded but no face groups — simple material
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.BufferAttribute(decoded.expanded, 3));
-      mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry,
-        this.createMeshMaterial({ color: this.meshColor }));
     } else {
-      // Indexed-geometry branch with no face groups — used for debug
-      // step meshes and anything the backend hasn't pre-expanded.
+      // No face groups — simple material. Either pre-expanded positions, or
+      // indexed geometry (debug step meshes and anything the backend hasn't
+      // pre-expanded).
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.BufferAttribute(decoded.vertices, 3));
-      if (decoded.indices && decoded.indices.length > 0) {
-        geometry.setIndex(new THREE.BufferAttribute(decoded.indices, 1));
+      if (decoded.expanded) {
+        geometry.setAttribute('position', new THREE.BufferAttribute(decoded.expanded, 3));
+      } else {
+        geometry.setAttribute('position', new THREE.BufferAttribute(decoded.vertices, 3));
+        if (decoded.indices && decoded.indices.length > 0) {
+          geometry.setIndex(new THREE.BufferAttribute(decoded.indices, 1));
+        }
       }
       mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(geometry,
         this.createMeshMaterial({ color: this.meshColor }));
@@ -513,15 +495,7 @@ export class Viewer {
 
     // In drawing mode, replace material and add patent-style overlays immediately
     if (this.drawingMode) {
-      this.drawingOriginalMaterials.set(mesh, mesh.material);
-      (mesh.material as any) = new THREE.MeshBasicMaterial({
-        colorWrite: false,
-        side: THREE.FrontSide,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1,
-      });
-      this._addDrawingOverlaysForMesh(mesh);
+      this._applyDrawingMaterial(mesh);
     }
 
     // In wireframe mode, apply wireframe material to newly added meshes
@@ -647,29 +621,18 @@ export class Viewer {
     // Clear previous highlight before raycasting so material state is clean
     this.clearHighlight();
 
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    this.raycaster.setFromCamera(mouse, this.activeCamera);
-    const meshOnly = this.userMeshes.filter(o => o instanceof THREE.Mesh);
-    const intersects = this.raycaster.intersectObjects(meshOnly, false);
-
-
-    if (intersects.length === 0) {
+    const rc = this.raycastMeshes(e);
+    if (!rc) {
       this.onFaceClickCb?.('', 0, 0);
       return;
     }
-
-    const hit = intersects[0];
-    const mesh = hit.object as THREE.Mesh<THREE.BufferGeometry, THREE.Material>;
+    const mesh = rc.mesh as THREE.Mesh<THREE.BufferGeometry, THREE.Material>;
     const faceGroups = mesh.userData.faceGroups as Uint32Array | undefined;
-    if (!faceGroups || hit.faceIndex == null) {
+    if (!faceGroups || rc.hit.faceIndex == null) {
       return;
     }
 
-    const faceGroupID = faceGroups[hit.faceIndex];
+    const faceGroupID = faceGroups[rc.hit.faceIndex];
     const entries = this.reversePosMap.get(faceGroupID);
 
     if (!entries || entries.length === 0) {
@@ -746,14 +709,19 @@ export class Viewer {
     this.measurementGroup.add(g);
   }
 
+  /** Remove and dispose every child of a measurement overlay group. */
+  private static emptyGroup(g: THREE.Group): void {
+    while (g.children.length > 0) {
+      const c = g.children[0];
+      g.remove(c);
+      disposeMeasurementGroup(c);
+    }
+  }
+
   /** Public: discard all placed dimensions. */
   clearMeasurements(): void {
     this.measurements = [];
-    while (this.measurementGroup.children.length > 0) {
-      const c = this.measurementGroup.children[0];
-      this.measurementGroup.remove(c);
-      disposeMeasurementGroup(c);
-    }
+    Viewer.emptyGroup(this.measurementGroup);
     this.clearPending();
     this.clearHoverMeasurement();
   }
@@ -776,18 +744,14 @@ export class Viewer {
       this.pendingMarker = null;
     }
     this.pendingMarker = buildPendingMarker(s, {
-      color: this.measurementStyle.glyphColor,
+      color: this.measurementStyle.lineColor,
       worldSize: this.measurementLabelHeight() * 0.15,
     });
     this.measurementGroup.add(this.pendingMarker);
   }
 
   private clearHoverMeasurement(): void {
-    while (this.hoverMeasurementGroup.children.length > 0) {
-      const c = this.hoverMeasurementGroup.children[0];
-      this.hoverMeasurementGroup.remove(c);
-      disposeMeasurementGroup(c);
-    }
+    Viewer.emptyGroup(this.hoverMeasurementGroup);
   }
 
   /** Scale sprite labels so they stay readable across bed sizes. */
@@ -904,15 +868,13 @@ export class Viewer {
 
     // Highlight the geometry feature under the cursor (edge/loop). The glyph
     // is carried by the cursor, so no sprite is added here.
-    if (this.measureMode === 'placing' || this.hoverReadout) {
-      this.hoverMeasurementGroup.add(
-        buildPendingMarker(snap, {
-          color: this.measurementStyle.glyphColor,
-          worldSize: this.measurementLabelHeight() * 0.12,
-          sprite: false,
-        }),
-      );
-    }
+    this.hoverMeasurementGroup.add(
+      buildPendingMarker(snap, {
+        color: this.measurementStyle.lineColor,
+        worldSize: this.measurementLabelHeight() * 0.12,
+        sprite: false,
+      }),
+    );
 
     if (this.pendingSnap) {
       // Show the pending → hover preview dimension.
@@ -960,7 +922,7 @@ export class Viewer {
    *  measuring. Only touches the DOM when the value would change. */
   private setMeasureCursor(kind: Snap['kind'] | null): void {
     const el = this.renderer.domElement;
-    const css = snapCursorCSS(kind, this.measurementStyle.glyphColor);
+    const css = snapCursorCSS(kind, this.measurementStyle.lineColor);
     if (el.style.cursor !== css) el.style.cursor = css;
   }
 
@@ -1016,8 +978,7 @@ export class Viewer {
   loadDebugStep(step: DebugStepData, binary: ArrayBuffer): void {
     this.clearMeshes();
 
-    const styleMap = STEP_STYLES[step.op]
-      ?? (TRANSFORM_OPS.has(step.op) ? STEP_STYLES._transform : STEP_STYLES._default);
+    const styleMap = STEP_STYLES[step.op] ?? STEP_STYLES._default;
 
     for (const dm of step.meshes ?? []) {
       if (!dm.mesh) continue;
@@ -1161,6 +1122,8 @@ export class Viewer {
             if (faceGroups && colorAttr) {
               const newColor = new THREE.Color(this.meshColor);
               const colors = colorAttr.array as Float32Array;
+              // Highlight cache, kept in sync in the same pass when a highlight is active.
+              const origColors = obj.userData.originalColors as Float32Array | undefined;
               const nTris = faceGroups.length;
               for (let t = 0; t < nTris; t++) {
                 if (!faceColors?.[String(faceGroups[t])]) {
@@ -1169,17 +1132,7 @@ export class Viewer {
                     colors[base]     = newColor.r;
                     colors[base + 1] = newColor.g;
                     colors[base + 2] = newColor.b;
-                  }
-                }
-              }
-              colorAttr.needsUpdate = true;
-              // Keep the highlight cache in sync if a highlight is active
-              if (obj.userData.originalColors) {
-                const origColors = obj.userData.originalColors as Float32Array;
-                for (let t = 0; t < nTris; t++) {
-                  if (!faceColors?.[String(faceGroups[t])]) {
-                    for (let v = 0; v < 3; v++) {
-                      const base = t * 12 + v * 4;
+                    if (origColors) {
                       origColors[base]     = newColor.r;
                       origColors[base + 1] = newColor.g;
                       origColors[base + 2] = newColor.b;
@@ -1187,6 +1140,7 @@ export class Viewer {
                   }
                 }
               }
+              colorAttr.needsUpdate = true;
             }
           }
           mat.metalness = this.meshMetalness;
@@ -1210,12 +1164,11 @@ export class Viewer {
     this._setSceneDecorVisible(!this.drawingMode);
     this.scene.add(this.grid);
 
-    // Theme-derived measurement colors. Glyph color follows the line color so
-    // snap markers read against the same background as the dimension lines.
+    // Theme-derived measurement colors. Snap glyphs share the line color so
+    // they read against the same background as the dimension lines.
     this.measurementStyle = {
-      lineColor: hexToInt(appearance.measurementLineColor),
+      lineColor: appearance.measurementLineColor,
       labelColor: appearance.measurementLabelColor,
-      glyphColor: appearance.measurementLineColor,
       format: appearance.measurementFormat,
     };
     this.rebuildMeasurementVisuals();
@@ -1223,16 +1176,12 @@ export class Viewer {
 
   /** Rebuild placed measurement visuals from the current style + measurement list. */
   private rebuildMeasurementVisuals(): void {
-    while (this.measurementGroup.children.length > 0) {
-      const c = this.measurementGroup.children[0];
-      this.measurementGroup.remove(c);
-      disposeMeasurementGroup(c);
-    }
+    Viewer.emptyGroup(this.measurementGroup);
     for (const m of this.measurements) {
       this.measurementGroup.add(buildMeasurementGroup(m, this.measurementStyle, { labelWorldHeight: this.measurementLabelHeight() }));
     }
     if (this.pendingSnap) {
-      this.pendingMarker = buildPendingMarker(this.pendingSnap, { color: this.measurementStyle.glyphColor, worldSize: this.measurementLabelHeight() * 0.15 });
+      this.pendingMarker = buildPendingMarker(this.pendingSnap, { color: this.measurementStyle.lineColor, worldSize: this.measurementLabelHeight() * 0.15 });
       this.measurementGroup.add(this.pendingMarker);
     } else {
       this.pendingMarker = null;
@@ -1266,26 +1215,18 @@ export class Viewer {
   }
 
   async toggleHeadTracking(deviceId?: string, yOffset?: number): Promise<boolean> {
-    if (this.parallaxEnabled) {
-      this.parallaxEnabled = false;
-      if (this.headTracker) {
-        this.headTracker.stop();
-        this.headTracker = null;
-      }
+    if (this.headTracker) {
+      this.headTracker.stop();
+      this.headTracker = null;
       return false;
     }
-    this.headTracker = new HeadTracker();
-    try {
-      await this.headTracker.start(this.container, deviceId, yOffset);
-    } catch (err) {
-      // start() already stopped the half-initialized tracker; drop it and let
-      // the failure propagate so parallaxEnabled stays false and the caller can
-      // surface the error (camera denied, no device, …) instead of the button
-      // showing "on" over dead tracking.
-      this.headTracker = null;
-      throw err;
-    }
-    this.parallaxEnabled = true;
+    // Assign the field only after start() succeeds. start() self-stops and
+    // rethrows on failure, so a thrown error leaves headTracker null and the
+    // caller can surface it (camera denied, no device, …) rather than the
+    // button showing "on" over dead tracking.
+    const tracker = new HeadTracker();
+    await tracker.start(this.container, deviceId, yOffset);
+    this.headTracker = tracker;
     return true;
   }
 
@@ -1293,16 +1234,20 @@ export class Viewer {
     this.frameCallbacks.push(cb);
   }
 
+  /** Orbit `cam` around `target` by mutating the camera→target spherical
+   *  coordinates, then re-derive the camera position and re-aim it. */
+  private static orbitSpherical(cam: THREE.Camera, target: THREE.Vector3, mutate: (s: THREE.Spherical) => void): void {
+    const s = new THREE.Spherical().setFromVector3(new THREE.Vector3().subVectors(cam.position, target));
+    mutate(s);
+    cam.position.setFromSpherical(s).add(target);
+    cam.lookAt(target);
+  }
+
   orbitBy(deltaTheta: number, deltaPhi: number): void {
-    const target = this.perspControls.target;
-    const offset = new THREE.Vector3().subVectors(this.perspCamera.position, target);
-    const spherical = new THREE.Spherical().setFromVector3(offset);
-    spherical.theta += deltaTheta;
-    spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi + deltaPhi));
-    this.perspCamera.position.copy(
-      new THREE.Vector3().setFromSpherical(spherical).add(target)
-    );
-    this.perspCamera.lookAt(target);
+    Viewer.orbitSpherical(this.perspCamera, this.perspControls.target, (s) => {
+      s.theta += deltaTheta;
+      s.phi = Math.max(0.01, Math.min(Math.PI - 0.01, s.phi + deltaPhi));
+    });
     this.perspControls.update();
   }
 
@@ -1338,11 +1283,6 @@ export class Viewer {
     this.renderer.domElement.style.display = visible ? 'block' : 'none';
   }
 
-  /** Force-resize the renderer to the current container dimensions. Call after moving the container in the DOM. */
-  resize(): void {
-    this.onResize();
-  }
-
   /**
    * Test hook: number of user meshes currently attached to the scene.
    * Wails-mocked integration tests assert this becomes non-zero after
@@ -1361,7 +1301,7 @@ export class Viewer {
     const clamped = Math.max(0, Math.floor(px));
     if (this.rightInset === clamped) return;
     this.rightInset = clamped;
-    this.onResize();
+    this.resize();
   }
 
   /** Switch between 3D perspective mode and CAD drawing (orthographic) mode. */
@@ -1380,15 +1320,7 @@ export class Viewer {
       // Apply patent-style drawing material to existing meshes
       for (const obj of this.userMeshes) {
         if (obj instanceof THREE.Mesh) {
-          this.drawingOriginalMaterials.set(obj, obj.material);
-          obj.material = new THREE.MeshBasicMaterial({
-            colorWrite: false,
-            side: THREE.FrontSide,
-            polygonOffset: true,
-            polygonOffsetFactor: 1,
-            polygonOffsetUnits: 1,
-          });
-          this._addDrawingOverlaysForMesh(obj);
+          this._applyDrawingMaterial(obj);
         }
       }
 
@@ -1831,6 +1763,20 @@ export class Viewer {
     return [x, y, z];
   }
 
+  /** Swap a mesh to the patent-style drawing material (stashing the original
+   *  for later restore) and attach its drawing overlays. */
+  private _applyDrawingMaterial(mesh: THREE.Mesh): void {
+    this.drawingOriginalMaterials.set(mesh, mesh.material);
+    mesh.material = new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      side: THREE.FrontSide,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    });
+    this._addDrawingOverlaysForMesh(mesh);
+  }
+
   private _restoreDrawingMaterials(): void {
     for (const [mesh, mat] of this.drawingOriginalMaterials) {
       // Dispose the drawing-mode material we temporarily applied
@@ -1842,7 +1788,8 @@ export class Viewer {
     this.drawingOriginalMaterials.clear();
   }
 
-  private onResize(): void {
+  /** Force-resize the renderer to the current container dimensions. Call after moving the container in the DOM. */
+  resize(): void {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     if (w === 0 || h === 0) return;
@@ -1886,24 +1833,18 @@ export class Viewer {
 
   private applyKeyboardOrbit(): void {
     if (this.keysDown.size === 0) return;
-    const target = this.activeControls.target;
-    const cam = this.activeCamera;
-    const delta = new THREE.Vector3().subVectors(cam.position, target);
-    const spherical = new THREE.Spherical().setFromVector3(delta);
     const rotSpeed = 0.03;
     const zoomSpeed = 0.97;
-
-    if (this.keysDown.has('ArrowLeft'))  spherical.theta -= rotSpeed;
-    if (this.keysDown.has('ArrowRight')) spherical.theta += rotSpeed;
-    if (this.keysDown.has('ArrowUp'))    spherical.phi = Math.max(0.01, spherical.phi - rotSpeed);
-    if (this.keysDown.has('ArrowDown'))  spherical.phi = Math.min(Math.PI - 0.01, spherical.phi + rotSpeed);
-    if (this.keysDown.has('Equal') || this.keysDown.has('NumpadAdd'))
-      spherical.radius *= zoomSpeed;
-    if (this.keysDown.has('Minus') || this.keysDown.has('NumpadSubtract'))
-      spherical.radius /= zoomSpeed;
-
-    cam.position.setFromSpherical(spherical).add(target);
-    cam.lookAt(target);
+    Viewer.orbitSpherical(this.activeCamera, this.activeControls.target, (s) => {
+      if (this.keysDown.has('ArrowLeft'))  s.theta -= rotSpeed;
+      if (this.keysDown.has('ArrowRight')) s.theta += rotSpeed;
+      if (this.keysDown.has('ArrowUp'))    s.phi = Math.max(0.01, s.phi - rotSpeed);
+      if (this.keysDown.has('ArrowDown'))  s.phi = Math.min(Math.PI - 0.01, s.phi + rotSpeed);
+      if (this.keysDown.has('Equal') || this.keysDown.has('NumpadAdd'))
+        s.radius *= zoomSpeed;
+      if (this.keysDown.has('Minus') || this.keysDown.has('NumpadSubtract'))
+        s.radius /= zoomSpeed;
+    });
   }
 
   private showControlsOverlay(): void {
@@ -2035,21 +1976,18 @@ export class Viewer {
     this.activeControls.update();
     for (const cb of this.frameCallbacks) cb(this.activeCamera);
 
-    if (this.parallaxEnabled && this.headTracker && this.activeCamera === this.perspCamera) {
+    if (this.headTracker && this.activeCamera === this.perspCamera) {
       // Save the clean base position so OrbitControls sees unmodified state next frame
       const basePos = this.perspCamera.position.clone();
       const target = this.perspControls.target;
       const offset = this.headTracker.getOffset();
 
       // Convert to spherical, apply absolute offsets, convert back
-      const delta = new THREE.Vector3().subVectors(basePos, target);
-      const spherical = new THREE.Spherical().setFromVector3(delta);
-      spherical.theta += offset.azimuth;
-      spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01,
-        spherical.phi - offset.elevation));
-      spherical.radius *= offset.dolly;
-      this.perspCamera.position.setFromSpherical(spherical).add(target);
-      this.perspCamera.lookAt(target);
+      Viewer.orbitSpherical(this.perspCamera, target, (s) => {
+        s.theta += offset.azimuth;
+        s.phi = Math.max(0.01, Math.min(Math.PI - 0.01, s.phi - offset.elevation));
+        s.radius *= offset.dolly;
+      });
 
       // Render with parallax applied
       this.renderer.render(this.scene, this.activeCamera);

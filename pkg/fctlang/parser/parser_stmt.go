@@ -18,32 +18,7 @@ func (p *parser) parseStatement(comments []Comment) (Stmt, error) {
 	}
 
 	if p.cur.Type == TokenVar || p.cur.Type == TokenConst {
-		isConst := p.cur.Type == TokenConst
-		if err := p.next(); err != nil {
-			return nil, err
-		}
-		name, err := p.expect(TokenIdent)
-		if err != nil {
-			return nil, err
-		}
-		if err := p.rejectUnderscoreIdent(name, "variable"); err != nil {
-			return nil, err
-		}
-		if _, err := p.expect(TokenEquals); err != nil {
-			return nil, err
-		}
-		expr, err := p.parseExpr()
-		if err != nil {
-			return nil, err
-		}
-		constraint, err := p.parseWhereConstraint()
-		if err != nil {
-			return nil, err
-		}
-		if err := p.consumeOptionalSemi(); err != nil {
-			return nil, err
-		}
-		return &VarStmt{Name: name.Text, Value: expr, IsConst: isConst, Constraint: constraint, Pos: Pos{name.Line, name.Col}, Comments: comments}, nil
+		return p.parseVarDecl("variable", comments)
 	}
 
 	if p.cur.Type == TokenAssert {
@@ -56,6 +31,38 @@ func (p *parser) parseStatement(comments []Comment) (Stmt, error) {
 	}
 
 	return nil, p.errorf("expected statement, got %q", p.cur.Text)
+}
+
+// parseVarDecl → ("var" | "const") IDENT "=" expr [ "where" constraint ] [";"]
+// kind names the declaration context in the reserved-underscore error message
+// ("variable" in bodies, "global variable" at top level).
+func (p *parser) parseVarDecl(kind string, comments []Comment) (*VarStmt, error) {
+	isConst := p.cur.Type == TokenConst
+	if err := p.next(); err != nil {
+		return nil, err
+	}
+	name, err := p.expect(TokenIdent)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.rejectUnderscoreIdent(name, kind); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenEquals); err != nil {
+		return nil, err
+	}
+	expr, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	constraint, err := p.parseWhereConstraint()
+	if err != nil {
+		return nil, err
+	}
+	if err := p.consumeOptionalSemi(); err != nil {
+		return nil, err
+	}
+	return &VarStmt{Name: name.Text, Value: expr, IsConst: isConst, Constraint: constraint, Pos: Pos{name.Line, name.Col}, Comments: comments}, nil
 }
 
 // parseAssertStmt → "assert" expr [ "," expr ] [";"]

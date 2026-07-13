@@ -12,6 +12,7 @@
 #include <memory>    // unique_ptr
 #include <new>       // std::bad_alloc
 #include <stdexcept> // std::length_error
+#include <utility>   // std::pair, std::move
 
 namespace facet_cxx_internal {
 
@@ -105,6 +106,22 @@ static inline void wrap_checked(manifold::Manifold* m, FacetSolidRet* out) {
     return;
   }
   wrap(owned.release(), out);
+}
+
+// wrap_pair fills a FacetSolidPair from a Split/SplitByPlane result. Both halves
+// are held in unique_ptr until BOTH wraps succeed, then released to Go. wrap()
+// sets out->ptr before forcing lazy evaluation (solid_size), which can itself
+// throw, so owning both halves to the end means any throw — from make_unique or
+// either wrap — unwinds with the heap objects still owned and deleted, instead of
+// leaking the first half when the second throws.
+static inline void wrap_pair(std::pair<manifold::Manifold, manifold::Manifold> p,
+                             FacetSolidPair* out) {
+  auto a = std::make_unique<manifold::Manifold>(std::move(p.first));
+  auto b = std::make_unique<manifold::Manifold>(std::move(p.second));
+  wrap(a.get(), &out->first);
+  wrap(b.get(), &out->second);
+  a.release();
+  b.release();
 }
 
 // Construct a Solid from a triangle mesh, welding coincident vertices first.

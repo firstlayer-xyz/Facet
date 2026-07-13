@@ -10,15 +10,11 @@ import (
 	"facet/pkg/fctlang/parser"
 )
 
-// Options controls formatter behavior.
-type Options struct {
-	MaxLineLength int  // 0 = use default (80)
-	Minify        bool // strip comments, indentation, blank lines, and wrapping
-}
-
 // Format formats a parsed Facet AST back to source code.
 func Format(src *parser.Source) string {
-	return formatWithOptions(src, Options{})
+	f := &formatter{indent: "    ", maxLine: 80}
+	f.formatSource(src)
+	return f.buf.String()
 }
 
 // Minify formats a parsed Facet AST to the most compact equivalent source:
@@ -26,28 +22,17 @@ func Format(src *parser.Source) string {
 // parses back to the same (comment-free) AST — newlines between statements are
 // kept so Go-style ASI inserts the same semicolons.
 func Minify(src *parser.Source) string {
-	return formatWithOptions(src, Options{Minify: true})
-}
-
-// formatWithOptions formats with explicit options.
-func formatWithOptions(src *parser.Source, opts Options) string {
-	indent := "    "
-	if opts.Minify {
-		indent = ""
-		opts.MaxLineLength = 1 << 30 // never wrap
-	} else if opts.MaxLineLength <= 0 {
-		opts.MaxLineLength = 80
-	}
-	f := &formatter{indent: indent, opts: opts}
+	f := &formatter{maxLine: 1 << 30, minify: true} // never wrap
 	f.formatSource(src)
 	return f.buf.String()
 }
 
 type formatter struct {
-	buf    strings.Builder
-	depth  int
-	indent string
-	opts   Options
+	buf     strings.Builder
+	depth   int
+	indent  string
+	maxLine int
+	minify  bool // strip comments, indentation, blank lines, and wrapping
 }
 
 func (f *formatter) write(s string) {
@@ -63,11 +48,6 @@ func (f *formatter) writeIndent() {
 	for i := 0; i < f.depth; i++ {
 		f.buf.WriteString(f.indent)
 	}
-}
-
-func (f *formatter) writeIndented(s string) {
-	f.writeIndent()
-	f.buf.WriteString(s)
 }
 
 func (f *formatter) writeIndentedLn(s string) {
@@ -87,47 +67,24 @@ func (f *formatter) currentLineLen() int {
 
 // measureExpr returns the single-line width of an expression.
 func (f *formatter) measureExpr(e parser.Expr) int {
-	m := &formatter{indent: f.indent, depth: f.depth, opts: f.opts}
+	m := &formatter{indent: f.indent, depth: f.depth, maxLine: f.maxLine, minify: f.minify}
 	m.formatExpr(e)
 	return m.buf.Len()
 }
 
 // wouldExceed returns true if appending extra characters to the current line
-// would exceed MaxLineLength.
+// would exceed maxLine.
 func (f *formatter) wouldExceed(extra int) bool {
-	return f.currentLineLen()+extra > f.opts.MaxLineLength
+	return f.currentLineLen()+extra > f.maxLine
 }
 
 // measureMethodTail returns the single-line width of ".Method(args)".
 func (f *formatter) measureMethodTail(e *parser.MethodCallExpr) int {
-	m := &formatter{indent: f.indent, depth: f.depth, opts: Options{MaxLineLength: 1 << 30}}
+	m := &formatter{indent: f.indent, depth: f.depth, maxLine: 1 << 30}
 	m.write("." + e.Method + "(")
 	m.formatArgs(e.Args, 0) // 0 = measurement only, no user-multi-line detection
 	m.write(")")
 	return m.buf.Len()
-}
-
-// stmtComments returns the comment list attached to a statement, or nil.
-func stmtComments(s parser.Stmt) []parser.Comment {
-	switch v := s.(type) {
-	case *parser.ReturnStmt:
-		return v.Comments
-	case *parser.VarStmt:
-		return v.Comments
-	case *parser.YieldStmt:
-		return v.Comments
-	case *parser.AssignStmt:
-		return v.Comments
-	case *parser.FieldAssignStmt:
-		return v.Comments
-	case *parser.ExprStmt:
-		return v.Comments
-	case *parser.IfStmt:
-		return v.Comments
-	case *parser.AssertStmt:
-		return v.Comments
-	}
-	return nil
 }
 
 // formatForYieldHead writes "for CLAUSE[, CLAUSE]*" with no surrounding
@@ -149,7 +106,7 @@ func (f *formatter) formatForYieldHead(e *parser.ForYieldExpr) {
 // measureForYieldHead returns the single-line width of the for-yield head
 // ("for CLAUSE[, CLAUSE]*").
 func (f *formatter) measureForYieldHead(e *parser.ForYieldExpr) int {
-	m := &formatter{indent: f.indent, depth: f.depth, opts: Options{MaxLineLength: 1 << 30}}
+	m := &formatter{indent: f.indent, depth: f.depth, maxLine: 1 << 30}
 	m.formatForYieldHead(e)
 	return m.buf.Len()
 }
@@ -178,10 +135,10 @@ func (f *formatter) ifBindWidth(s *parser.IfStmt) int {
 // no comments and produces no inner newlines. This is used to collapse
 // single-statement if/for/fold bodies onto one line when they fit.
 func (f *formatter) tryFormatStmtInline(s parser.Stmt) (string, bool) {
-	if len(stmtComments(s)) > 0 {
+	if len(s.StmtComments()) > 0 {
 		return "", false
 	}
-	scratch := &formatter{indent: f.indent, depth: 0, opts: Options{MaxLineLength: 1 << 30}}
+	scratch := &formatter{indent: f.indent, depth: 0, maxLine: 1 << 30}
 	scratch.formatStmt(s)
 	out := strings.TrimRight(scratch.buf.String(), "\n")
 	if strings.Contains(out, "\n") {
@@ -195,7 +152,7 @@ func (f *formatter) formatSource(src *parser.Source) {
 	prevEndLine := 0
 	for i, decl := range src.Declarations {
 		pos := decl.DeclPos()
-		if i > 0 && !f.opts.Minify {
+		if i > 0 && !f.minify {
 			_, prevIsVar := src.Declarations[i-1].(*parser.VarStmt)
 			_, curIsVar := decl.(*parser.VarStmt)
 			if prevIsVar && curIsVar {
@@ -248,7 +205,7 @@ func (f *formatter) formatSource(src *parser.Source) {
 }
 
 func (f *formatter) writeComments(comments []parser.Comment) {
-	if f.opts.Minify {
+	if f.minify {
 		return
 	}
 	for _, c := range comments {
@@ -276,7 +233,7 @@ func splitComments(comments []parser.Comment) (leading, trailing []parser.Commen
 // writeTrailingComment appends an inline comment at the end of the current line
 // (before the newline). Called after writing a statement but before writeln.
 func (f *formatter) writeTrailingComment(comments []parser.Comment) {
-	if f.opts.Minify {
+	if f.minify {
 		return
 	}
 	for _, c := range comments {
@@ -460,7 +417,7 @@ func (f *formatter) formatStructDecl(sd *parser.StructDecl, trailing []parser.Co
 		f.writeIndent()
 		f.write(field.Name)
 		padding := 1
-		if !f.opts.Minify {
+		if !f.minify {
 			padding = maxNameLen - len(field.Name) + 1
 		}
 		for i := 0; i < padding; i++ {
@@ -486,7 +443,7 @@ func (f *formatter) formatStmts(stmts []parser.Stmt) {
 	prevEndLine := 0
 	for _, s := range stmts {
 		startLine := stmtRenderStartLine(s)
-		if prevEndLine > 0 && startLine > 0 && startLine > prevEndLine+1 && !f.opts.Minify {
+		if prevEndLine > 0 && startLine > 0 && startLine > prevEndLine+1 && !f.minify {
 			f.write("\n")
 		}
 		f.formatStmt(s)
@@ -498,77 +455,38 @@ func (f *formatter) formatStmts(stmts []parser.Stmt) {
 	}
 }
 
-// stmtStartLine returns the start line of a statement, or 0 if unavailable.
-func stmtStartLine(s parser.Stmt) int {
-	switch s := s.(type) {
-	case *parser.VarStmt:
-		return s.Pos.Line
-	case *parser.ReturnStmt:
-		return s.Pos.Line
-	case *parser.YieldStmt:
-		return s.Pos.Line
-	case *parser.AssignStmt:
-		return s.Pos.Line
-	case *parser.FieldAssignStmt:
-		return s.Pos.Line
-	case *parser.ExprStmt:
-		return s.Pos.Line
-	case *parser.IfStmt:
-		return s.Pos.Line
-	case *parser.AssertStmt:
-		return s.Pos.Line
-	}
-	return 0
-}
-
 // stmtRenderStartLine returns the source line of the first thing the formatter
 // renders for s — its first leading comment if it has one, otherwise the
 // statement itself. The blank-line gap between statements is measured from this:
-// using stmtStartLine instead would treat a leading comment that immediately
+// using StmtPos instead would treat a leading comment that immediately
 // follows the previous statement as an empty source line and insert a spurious
 // blank before the comment.
 func stmtRenderStartLine(s parser.Stmt) int {
-	if leading, _ := splitComments(stmtComments(s)); len(leading) > 0 && leading[0].Pos.Line > 0 {
+	if leading, _ := splitComments(s.StmtComments()); len(leading) > 0 && leading[0].Pos.Line > 0 {
 		return leading[0].Pos.Line
 	}
-	return stmtStartLine(s)
+	return s.StmtPos().Line
 }
 
 // stmtEndLine returns the approximate last line of a statement, or 0 if unavailable.
 func stmtEndLine(s parser.Stmt) int {
 	switch s := s.(type) {
 	case *parser.VarStmt:
-		end := s.Pos.Line
-		if l := exprEndLine(s.Value); l > end {
-			end = l
-		}
-		return end
+		return max(s.Pos.Line, exprEndLine(s.Value))
 	case *parser.ReturnStmt:
-		end := s.Pos.Line
-		if s.Value != nil {
-			if l := exprEndLine(s.Value); l > end {
-				end = l
-			}
-		}
-		return end
+		return max(s.Pos.Line, exprEndLine(s.Value))
 	case *parser.IfStmt:
 		end := s.Pos.Line
 		for _, st := range s.Then {
-			if l := stmtEndLine(st); l > end {
-				end = l
-			}
+			end = max(end, stmtEndLine(st))
 		}
 		for _, ei := range s.ElseIfs {
 			for _, st := range ei.Body {
-				if l := stmtEndLine(st); l > end {
-					end = l
-				}
+				end = max(end, stmtEndLine(st))
 			}
 		}
 		for _, st := range s.Else {
-			if l := stmtEndLine(st); l > end {
-				end = l
-			}
+			end = max(end, stmtEndLine(st))
 		}
 		return end + 1 // closing brace
 	case *parser.YieldStmt:
@@ -592,53 +510,27 @@ func exprEndLine(e parser.Expr) int {
 	}
 	switch e := e.(type) {
 	case *parser.CallExpr:
-		end := e.Pos.Line
-		if l := maxArgLine(e.Args); l > end {
-			end = l
-		}
-		return end
+		return max(e.Pos.Line, maxArgLine(e.Args))
 	case *parser.BuiltinCallExpr:
-		end := e.Pos.Line
-		if l := maxArgLine(e.Args); l > end {
-			end = l
-		}
-		return end
+		return max(e.Pos.Line, maxArgLine(e.Args))
 	case *parser.MethodCallExpr:
-		end := exprEndLine(e.Receiver)
-		if l := e.Pos.Line; l > end {
-			end = l
-		}
-		if l := maxArgLine(e.Args); l > end {
-			end = l
-		}
-		return end
+		return max(exprEndLine(e.Receiver), e.Pos.Line, maxArgLine(e.Args))
 	case *parser.ForYieldExpr:
 		end := e.Pos.Line
 		for _, st := range e.Body {
-			if l := stmtEndLine(st); l > end {
-				end = l
-			}
+			end = max(end, stmtEndLine(st))
 		}
 		return end + 1 // closing brace
 	case *parser.FoldExpr:
 		end := e.Pos.Line
 		for _, st := range e.Body {
-			if l := stmtEndLine(st); l > end {
-				end = l
-			}
+			end = max(end, stmtEndLine(st))
 		}
 		return end + 1
 	case *parser.IdentExpr:
 		return e.Pos.Line
 	case *parser.BinaryExpr:
-		end := e.Pos.Line
-		if l := exprEndLine(e.Left); l > end {
-			end = l
-		}
-		if l := exprEndLine(e.Right); l > end {
-			end = l
-		}
-		return end
+		return max(e.Pos.Line, exprEndLine(e.Left), exprEndLine(e.Right))
 	case *parser.UnaryExpr:
 		return e.Pos.Line
 	case *parser.UnitExpr:
@@ -647,11 +539,7 @@ func exprEndLine(e parser.Expr) int {
 		}
 		return e.Pos.Line
 	case *parser.NamedArg:
-		end := e.Pos.Line
-		if l := exprEndLine(e.Value); l > end {
-			end = l
-		}
-		return end
+		return max(e.Pos.Line, exprEndLine(e.Value))
 	}
 	return 0
 }
@@ -679,13 +567,11 @@ func argLine(e parser.Expr) int {
 
 // maxArgLine returns the maximum start line among args with known positions, or 0.
 func maxArgLine(args []parser.Expr) int {
-	max := 0
+	m := 0
 	for _, a := range args {
-		if l := argLine(a); l > max {
-			max = l
-		}
+		m = max(m, argLine(a))
 	}
-	return max
+	return m
 }
 
 func (f *formatter) formatStmt(s parser.Stmt) {
@@ -749,7 +635,7 @@ func (f *formatter) formatStmt(s parser.Stmt) {
 		// separate lines, always use multi-line — never force a collapse.
 		ifLine := s.Pos.Line
 		if len(s.ElseIfs) == 0 && len(s.Else) == 0 && len(s.Then) == 1 &&
-			ifLine > 0 && stmtStartLine(s.Then[0]) == ifLine {
+			ifLine > 0 && s.Then[0].StmtPos().Line == ifLine {
 			if inner, ok := f.tryFormatStmtInline(s.Then[0]); ok {
 				extra := 3 + f.ifBindWidth(s) + f.measureExpr(s.Cond) + 3 + len(inner) + 2
 				if !f.wouldExceed(extra) {
@@ -939,7 +825,7 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 			// '.' *and* wrapping args yields ugly double-wrapping with args
 			// aligned at the same column as '.Method('.
 			nextIndent := (f.depth + 1) * len(f.indent)
-			if nextIndent+tail <= f.opts.MaxLineLength {
+			if nextIndent+tail <= f.maxLine {
 				f.writeln("")
 				f.depth++
 				f.writeIndent()
@@ -1010,7 +896,7 @@ func (f *formatter) formatExprPrec(e parser.Expr, parentPrec int) {
 			f.write(e.TypeName)
 		}
 		f.write("{")
-		if len(e.Fields) > 0 && !f.opts.Minify && structFieldsHaveComments(e.Fields) {
+		if len(e.Fields) > 0 && !f.minify && structFieldsHaveComments(e.Fields) {
 			// Interior comments force one-field-per-line so each comment stays put.
 			f.formatStructFieldsWithComments(e)
 		} else if len(e.Fields) > 0 {
@@ -1125,18 +1011,15 @@ func (f *formatter) formatArrayElems(e *parser.ArrayLitExpr) {
 	if len(e.Elems) == 0 {
 		return
 	}
-	if !f.opts.Minify && arrayHasComments(e) {
+	if !f.minify && arrayHasComments(e) {
 		// Interior comments force one-element-per-line so each comment stays put.
 		f.formatArrayElemsWithComments(e)
 		return
 	}
 	elems := make([]elemInfo, len(e.Elems))
 	for i, elem := range e.Elems {
-		if sl, ok := elem.(*parser.StructLitExpr); ok && e.TypeName != "" && sl.TypeName == e.TypeName {
-			elems[i] = elemInfo{expr: elem, stripName: true}
-		} else {
-			elems[i] = elemInfo{expr: elem}
-		}
+		sl, ok := elem.(*parser.StructLitExpr)
+		elems[i] = elemInfo{expr: elem, stripName: ok && e.TypeName != "" && sl.TypeName == e.TypeName}
 	}
 
 	writeElem := func(ei elemInfo) {
@@ -1157,15 +1040,7 @@ func (f *formatter) formatArrayElems(e *parser.ArrayLitExpr) {
 		if i > 0 {
 			total += 2
 		}
-		if ei.stripName {
-			sl := ei.expr.(*parser.StructLitExpr)
-			saved := sl.TypeName
-			sl.TypeName = ""
-			total += f.measureExpr(sl)
-			sl.TypeName = saved
-		} else {
-			total += f.measureExpr(ei.expr)
-		}
+		total += f.measureElemInfo(ei)
 	}
 	if !f.wouldExceed(total + 1) { // +1 for "]"
 		for i, ei := range elems {
@@ -1188,7 +1063,7 @@ func (f *formatter) formatArrayElems(e *parser.ArrayLitExpr) {
 			sep = 2 // ", "
 		}
 		// Would this element push us past the limit?
-		if i > 0 && lineLen+sep+elemWidth > f.opts.MaxLineLength {
+		if i > 0 && lineLen+sep+elemWidth > f.maxLine {
 			f.write(",")
 			f.writeln("")
 			f.writeIndent()
@@ -1240,34 +1115,6 @@ func structFieldsHaveComments(fields []*parser.StructFieldInit) bool {
 	return false
 }
 
-// writeCommentLines emits the standalone (leading) comments as their own indented
-// lines; writeTrailingComments appends the end-of-line ones after the current
-// text. Both match formatArgs' comment style so output stays idempotent.
-func (f *formatter) writeLeadingComments(cs []parser.Comment) {
-	for _, c := range cs {
-		if !c.IsTrailing {
-			f.writeIndent()
-			if c.IsDoc {
-				f.writeln("# " + c.Text)
-			} else {
-				f.writeln("// " + c.Text)
-			}
-		}
-	}
-}
-
-func (f *formatter) writeTrailingComments(cs []parser.Comment) {
-	for _, c := range cs {
-		if c.IsTrailing {
-			if c.IsDoc {
-				f.write(" # " + c.Text)
-			} else {
-				f.write(" // " + c.Text)
-			}
-		}
-	}
-}
-
 // formatStructFieldsWithComments emits one field per line, with each field's
 // leading comments above it and its trailing comment after it. The opening "{"
 // is already written; it closes by re-indenting for the caller's "}".
@@ -1275,14 +1122,15 @@ func (f *formatter) formatStructFieldsWithComments(e *parser.StructLitExpr) {
 	f.writeln("")
 	f.depth++
 	for i, fi := range e.Fields {
-		f.writeLeadingComments(fi.Comments)
+		leading, trailing := splitComments(fi.Comments)
+		f.writeComments(leading)
 		f.writeIndent()
 		f.write(fi.Name + ": ")
 		f.formatExpr(fi.Value)
 		if i < len(e.Fields)-1 {
 			f.write(",")
 		}
-		f.writeTrailingComments(fi.Comments)
+		f.writeTrailingComment(trailing)
 		f.writeln("")
 	}
 	f.depth--
@@ -1310,7 +1158,8 @@ func (f *formatter) formatArrayElemsWithComments(e *parser.ArrayLitExpr) {
 		if i < len(e.ElemComments) {
 			cs = e.ElemComments[i]
 		}
-		f.writeLeadingComments(cs)
+		leading, trailing := splitComments(cs)
+		f.writeComments(leading)
 		f.writeIndent()
 		// Typed-array struct elements drop the repeated element type name.
 		if sl, ok := elem.(*parser.StructLitExpr); ok && e.TypeName != "" && sl.TypeName == e.TypeName {
@@ -1324,7 +1173,7 @@ func (f *formatter) formatArrayElemsWithComments(e *parser.ArrayLitExpr) {
 		if i < len(e.Elems)-1 {
 			f.write(",")
 		}
-		f.writeTrailingComments(cs)
+		f.writeTrailingComment(trailing)
 		f.writeln("")
 	}
 	f.depth--
@@ -1342,7 +1191,7 @@ func (f *formatter) formatArgs(args []parser.Expr, callLine int) {
 	// Also force if the user explicitly wrote args on multiple lines.
 	// Minify keeps everything on one line: comments are dropped, so there is
 	// nothing that forces a break.
-	userMultiLine := !f.opts.Minify &&
+	userMultiLine := !f.minify &&
 		(argsHaveComments(args) ||
 			(callLine > 0 && maxArgLine(args) > callLine))
 
@@ -1369,36 +1218,18 @@ func (f *formatter) formatArgs(args []parser.Expr, callLine int) {
 	f.writeln("")
 	f.depth++
 	for i, arg := range args {
-		// Leading comments (standalone lines before this arg)
+		var trailing []parser.Comment
 		if na, ok := arg.(*parser.NamedArg); ok {
-			for _, c := range na.Comments {
-				if !c.IsTrailing {
-					f.writeIndent()
-					if c.IsDoc {
-						f.writeln("# " + c.Text)
-					} else {
-						f.writeln("// " + c.Text)
-					}
-				}
-			}
+			var leading []parser.Comment
+			leading, trailing = splitComments(na.Comments)
+			f.writeComments(leading)
 		}
 		f.writeIndent()
 		f.formatExpr(arg)
 		if i < len(args)-1 {
 			f.write(",")
 		}
-		// Trailing end-of-line comment
-		if na, ok := arg.(*parser.NamedArg); ok {
-			for _, c := range na.Comments {
-				if c.IsTrailing {
-					if c.IsDoc {
-						f.write(" # " + c.Text)
-					} else {
-						f.write(" // " + c.Text)
-					}
-				}
-			}
-		}
+		f.writeTrailingComment(trailing)
 		f.writeln("")
 	}
 	f.depth--

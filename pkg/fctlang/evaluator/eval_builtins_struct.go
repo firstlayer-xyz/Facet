@@ -110,11 +110,7 @@ func init() {
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", name, err)
 			}
-			sf, err := pm.ToSolid()
-			if err != nil {
-				return nil, err
-			}
-			return sf, nil
+			return pm.ToSolid()
 		}},
 		{"_display_mesh", func(sv *structVal, args []value) (value, error) {
 			const name = "_display_mesh"
@@ -133,12 +129,8 @@ func init() {
 
 	// Mesh methods
 
-	builtinRegistry["_face_normals"] = structMethod("_face_normals", func(sv *structVal, args []value) (value, error) {
-		return meshFaceNormals(sv, args)
-	})
-	builtinRegistry["_vertex_normals"] = structMethod("_vertex_normals", func(sv *structVal, args []value) (value, error) {
-		return meshVertexNormals(sv, args)
-	})
+	builtinRegistry["_face_normals"] = structMethod("_face_normals", meshFaceNormals)
+	builtinRegistry["_vertex_normals"] = structMethod("_vertex_normals", meshVertexNormals)
 
 	// Color methods
 

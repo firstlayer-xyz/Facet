@@ -480,20 +480,8 @@ func isNumericScalar(v value) bool {
 func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value, error) {
 	lv = unwrap(lv)
 	rv = unwrap(rv)
-	asFloat := func(v value) (float64, bool) {
-		n, ok := v.(float64)
-		return n, ok
-	}
-	asLen := func(v value) (length, bool) {
-		l, ok := v.(length)
-		return l, ok
-	}
-	asAng := func(v value) (angle, bool) {
-		a, ok := v.(angle)
-		return a, ok
-	}
-	if ln, lok := asFloat(lv); lok {
-		if rn, rok := asFloat(rv); rok {
+	if ln, lok := lv.(float64); lok {
+		if rn, rok := rv.(float64); rok {
 			switch op {
 			case "+":
 				return ln + rn, nil
@@ -508,15 +496,15 @@ func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value
 				return ln / rn, nil
 			}
 		}
-		if rL, rok := asLen(rv); rok && op == "*" {
+		if rL, rok := rv.(length); rok && op == "*" {
 			return length{mm: ln * rL.mm}, nil
 		}
-		if rA, rok := asAng(rv); rok && op == "*" {
+		if rA, rok := rv.(angle); rok && op == "*" {
 			return angle{deg: ln * rA.deg}, nil
 		}
 	}
-	if lL, lok := asLen(lv); lok {
-		if rL, rok := asLen(rv); rok {
+	if lL, lok := lv.(length); lok {
+		if rL, rok := rv.(length); rok {
 			switch op {
 			case "+":
 				return length{mm: lL.mm + rL.mm}, nil
@@ -529,7 +517,7 @@ func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value
 				return lL.mm / rL.mm, nil
 			}
 		}
-		if rn, rok := asFloat(rv); rok {
+		if rn, rok := rv.(float64); rok {
 			switch op {
 			case "*":
 				return length{mm: lL.mm * rn}, nil
@@ -541,8 +529,8 @@ func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value
 			}
 		}
 	}
-	if lA, lok := asAng(lv); lok {
-		if rA, rok := asAng(rv); rok {
+	if lA, lok := lv.(angle); lok {
+		if rA, rok := rv.(angle); rok {
 			switch op {
 			case "+":
 				return angle{deg: lA.deg + rA.deg}, nil
@@ -550,7 +538,7 @@ func (e *evaluator) numericBinop(pos parser.Pos, op string, lv, rv value) (value
 				return angle{deg: lA.deg - rA.deg}, nil
 			}
 		}
-		if rn, rok := asFloat(rv); rok {
+		if rn, rok := rv.(float64); rok {
 			switch op {
 			case "*":
 				return angle{deg: lA.deg * rn}, nil

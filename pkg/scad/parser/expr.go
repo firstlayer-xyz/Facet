@@ -7,18 +7,16 @@ import (
 	"facet/pkg/scad/token"
 )
 
-var binPrec = map[token.Kind]int{
-	token.Or: 1, token.And: 2,
-	token.EqEq: 3, token.NeEq: 3,
-	token.Lt: 4, token.Gt: 4, token.Le: 4, token.Ge: 4,
-	token.Plus: 5, token.Minus: 5,
-	token.Star: 6, token.Slash: 6, token.Percent: 6,
-}
-
-var binOp = map[token.Kind]string{
-	token.Or: "||", token.And: "&&", token.EqEq: "==", token.NeEq: "!=",
-	token.Lt: "<", token.Gt: ">", token.Le: "<=", token.Ge: ">=",
-	token.Plus: "+", token.Minus: "-", token.Star: "*", token.Slash: "/", token.Percent: "%",
+// binOps maps binary-operator token kinds to their precedence and source text.
+var binOps = map[token.Kind]struct {
+	prec int
+	op   string
+}{
+	token.Or: {1, "||"}, token.And: {2, "&&"},
+	token.EqEq: {3, "=="}, token.NeEq: {3, "!="},
+	token.Lt: {4, "<"}, token.Gt: {4, ">"}, token.Le: {4, "<="}, token.Ge: {4, ">="},
+	token.Plus: {5, "+"}, token.Minus: {5, "-"},
+	token.Star: {6, "*"}, token.Slash: {6, "/"}, token.Percent: {6, "%"},
 }
 
 func (p *parser) parseExpr() (ast.Expr, error) { return p.parseTernary() }
@@ -52,16 +50,16 @@ func (p *parser) parseBinary(minPrec int) (ast.Expr, error) {
 		return nil, err
 	}
 	for {
-		prec, ok := binPrec[p.cur().Kind]
-		if !ok || prec < minPrec {
+		info, ok := binOps[p.cur().Kind]
+		if !ok || info.prec < minPrec {
 			return left, nil
 		}
 		opTok := p.advance()
-		right, err := p.parseBinary(prec + 1)
+		right, err := p.parseBinary(info.prec + 1)
 		if err != nil {
 			return nil, err
 		}
-		left = &ast.Binary{Op: binOp[opTok.Kind], L: left, R: right, P: curPos(opTok)}
+		left = &ast.Binary{Op: info.op, L: left, R: right, P: curPos(opTok)}
 	}
 }
 
@@ -141,7 +139,7 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 			}
 			return &ast.Call{Name: t.Text, Args: args, P: curPos(t)}, nil
 		}
-		return &ast.Ident{Name: t.Text, SpecialVar: t.SpecialVar, P: curPos(t)}, nil
+		return &ast.Ident{Name: t.Text, P: curPos(t)}, nil
 	case token.LParen:
 		p.advance()
 		e, err := p.parseExpr()

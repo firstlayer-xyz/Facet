@@ -75,13 +75,9 @@ func (dm *DisplayMesh) ExpandedColors() []byte {
 		return nil
 	}
 	rgb := make(map[uint32][3]byte, len(dm.FaceColorMap))
-	for k, hex := range dm.FaceColorMap {
-		id, err := strconv.ParseUint(k, 10, 32)
-		if err != nil {
-			continue
-		}
+	for id, hex := range dm.FaceColorMap {
 		if c, ok := ParseHexRGB(hex); ok {
-			rgb[uint32(id)] = c
+			rgb[id] = c
 		}
 	}
 

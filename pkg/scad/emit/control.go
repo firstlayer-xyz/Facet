@@ -33,10 +33,7 @@ func (e *Emitter) intersectionFor(n *ast.ModuleCall) string {
 // block-scoped bindings; they are inlined into the geometry (like let), since
 // Facet has no statement bindings inside a for-yield.
 func (e *Emitter) geomComprehension(p ast.Pos, combiner string, iters []ast.ForIter, children []ast.Stmt) string {
-	clauses := make([]string, 0, len(iters))
-	for _, it := range iters {
-		clauses = append(clauses, it.Var+" "+e.expr(it.Range, kNumber))
-	}
+	clauses := e.forClauses(iters)
 	child := e.unionStmts(geometryStmts(children))
 	if child == "" {
 		return e.errf(p, "loop body produces no geometry")
@@ -50,7 +47,7 @@ func (e *Emitter) geomComprehension(p ast.Pos, combiner string, iters []ast.ForI
 			binds.WriteString("const " + a.Name + " = " + e.expr(a.Value, kNumber) + "\n")
 		}
 	}
-	inner := "for " + strings.Join(clauses, ", ") + " {\n" + binds.String() + "yield " + child + "\n}"
+	inner := "for " + clauses + " {\n" + binds.String() + "yield " + child + "\n}"
 	return e.combineGeom(combiner, inner)
 }
 

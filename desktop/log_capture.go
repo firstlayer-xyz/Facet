@@ -93,8 +93,7 @@ func (lc *LogCapture) Start(ctx context.Context) {
 
 	// Open today's log file (append mode)
 	logName := time.Now().Format("2006-01-02") + ".log"
-	logFile, fileErr := os.OpenFile(filepath.Join(dir, logName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if fileErr == nil {
+	if logFile, err := os.OpenFile(filepath.Join(dir, logName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
 		lc.logFile = logFile
 	}
 
@@ -107,15 +106,13 @@ func (lc *LogCapture) Start(ctx context.Context) {
 
 	// Tee pipe output to original stderr + ring buffer + log file
 	writers := []io.Writer{origStderr, lc.stderrBuf}
-	if fileErr == nil {
-		writers = append(writers, logFile)
+	if lc.logFile != nil {
+		writers = append(writers, lc.logFile)
 	}
 	tee := io.MultiWriter(writers...)
 
 	go pumpStderr(r, tee, func(line string) {
-		if ctx != nil {
-			wailsRuntime.EventsEmit(ctx, "log:stderr", line)
-		}
+		wailsRuntime.EventsEmit(ctx, "log:stderr", line)
 	})
 
 	// Close the write end of the pipe when ctx is cancelled,
