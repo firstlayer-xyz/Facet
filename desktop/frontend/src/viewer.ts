@@ -129,6 +129,9 @@ export class Viewer {
   private bed: string;
   private gridSize: number;
   private gridSpacing: number;
+  // Cached model bounding sphere; invalidated in clearMeshes(). Consulted every
+  // frame to keep the perspective near/far snug around the model at any zoom.
+  private cachedSphere: THREE.Sphere | null = null;
 
   // Head tracking parallax
   private headTracker: HeadTracker | null = null;
@@ -1040,6 +1043,7 @@ export class Viewer {
       Viewer._disposeObject3D(obj);
     }
     this.userMeshes = [];
+    this.cachedSphere = null; // model changed — recompute bounds on next use
 
     // Clear dimensions — old face/edge IDs don't refer to anything in a new mesh.
     this.clearMeasurements();
@@ -1460,11 +1464,37 @@ export class Viewer {
   }
 
   private _getMeshBoundingSphere(): THREE.Sphere {
+    if (this.cachedSphere) return this.cachedSphere;
     const box = new THREE.Box3();
     for (const mesh of this.userMeshes) box.expandByObject(mesh);
     const sphere = new THREE.Sphere();
     box.getBoundingSphere(sphere);
+    // Don't cache the empty state (radius 0) — it exists only transiently
+    // between clearMeshes() and the following loadDecodedMesh().
+    if (this.userMeshes.length > 0) this.cachedSphere = sphere;
     return sphere;
+  }
+
+  // Keeps the perspective camera's clip planes bracketing the model (and the
+  // ground grid) at the current zoom, so dollying out never crosses a fixed far
+  // plane and clips the model — the "invisible back wall". The ortho camera
+  // doesn't need this: its zoom scales the frustum instead of moving the camera,
+  // and _fitOrthoToMeshes already sizes its far to the model.
+  private _updatePerspectiveClip(): void {
+    if (this.activeCamera !== this.perspCamera) return;
+    const sphere = this._getMeshBoundingSphere();
+    // Reach from the model centre out past the model or the grid, whichever is
+    // larger, plus a margin. Centring the frustum on the model (not the orbit
+    // target, which pans away) keeps it correct after panning.
+    const extent = (Math.max(sphere.radius, this.gridSize) + 10) * 1.5;
+    const dist = this.perspCamera.position.distanceTo(sphere.center);
+    const far = dist + extent;
+    const near = Math.max(0.05, dist - extent);
+    if (near !== this.perspCamera.near || far !== this.perspCamera.far) {
+      this.perspCamera.near = near;
+      this.perspCamera.far = far;
+      this.perspCamera.updateProjectionMatrix();
+    }
   }
 
   private _activatePerspective(): void {
@@ -1974,6 +2004,7 @@ export class Viewer {
     if (!this._visible) return;
     this.applyKeyboardOrbit();
     this.activeControls.update();
+    this._updatePerspectiveClip();
     for (const cb of this.frameCallbacks) cb(this.activeCamera);
 
     if (this.headTracker && this.activeCamera === this.perspCamera) {
