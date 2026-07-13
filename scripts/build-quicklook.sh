@@ -69,5 +69,5 @@ build_ext FacetQuickLook FacetQuickLook "$QL/Preview-Info.plist"   PreviewViewCo
 build_ext FacetThumbnail FacetThumbnail "$QL/Thumbnail-Info.plist" ThumbnailProvider.swift
 
 echo "build-quicklook: re-signing app bundle…"
-codesign --force --sign "$IDENTITY" --options runtime $TS "$APP"
+codesign --force --sign "$IDENTITY" --entitlements "$ROOT/desktop/build/darwin/entitlements.plist" --options runtime $TS "$APP"
 echo "build-quicklook: done — preview + thumbnail injected into $APP"

@@ -567,9 +567,10 @@ jobs:
           GOROOT: ${{ github.workspace }}/.go-toolchain
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
-      - name: Ad-hoc codesign (release.yml will do real signing for main/tag)
-        run: codesign -s - --force --deep --options runtime desktop/build/bin/Facet.app
-
+      # No ad-hoc re-sign here: `make build` runs scripts/build-quicklook.sh,
+      # which already signs the extensions (with their entitlements) and the app
+      # (with the camera entitlement) ad-hoc, inside-out. A `--deep` re-sign would
+      # strip the camera entitlement and clobber the extensions' sandbox one.
       - name: Tarball Facet.app for release.yml to consume
         # Tarball preserves bundle structure / extended attributes across
         # the upload/download boundary; bare .app upload loses things.
