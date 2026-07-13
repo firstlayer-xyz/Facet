@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -41,6 +42,9 @@ func libraryDir() (string, error) { return facetConfigSubdir("libraries") }
 
 // scratchDir returns the directory for unsaved scratch files.
 func scratchDir() (string, error) { return facetConfigSubdir("scratch") }
+
+// recordingsDir is the on-disk home for automation-captured demo videos.
+func recordingsDir() (string, error) { return facetConfigSubdir("recordings") }
 
 func (a *App) GetDefaultSource() string {
 	return examples.DefaultSource
@@ -252,6 +256,37 @@ func (a *App) SetDirtyState(dirty bool) {
 // ("" for none); errMsg is non-empty when the command failed. Bound via Wails.
 func (a *App) AutomationResult(id, valueJSON, errMsg string) error {
 	return a.automation.resolve(id, valueJSON, errMsg)
+}
+
+var recordingSeq atomic.Uint64
+
+// SaveRecording persists a webm blob (base64, optionally a "data:...;base64,"
+// URL) captured by the frontend recorder and returns the absolute file path.
+// Bound via Wails so the record.stop command can hand the driver a path.
+func (a *App) SaveRecording(base64Webm string) (string, error) {
+	raw := base64Webm
+	if i := strings.Index(raw, ","); i >= 0 && strings.HasPrefix(raw, "data:") {
+		raw = raw[i+1:]
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return "", fmt.Errorf("decode recording: %w", err)
+	}
+	dir, err := recordingsDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	// A monotonic counter names the file: wall-clock time is not reliably
+	// available here, and a per-run unique name is all that's required.
+	name := fmt.Sprintf("demo-%d.webm", recordingSeq.Add(1))
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, decoded, 0644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // beforeClose is called when the user tries to close the window.

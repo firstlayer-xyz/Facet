@@ -1,6 +1,7 @@
 import './style.css';
 import { createEditor, EditorHandle } from './editor';
 import { Viewer } from './viewer';
+import { initAutomation } from './automation';
 import { Gnomon } from './gnomon';
 import { GetDefaultSource, GetExample, DetectSlicers, SetAssistantConfig, CreateLocalLibrary, CreateLibraryFolder, ListLibraryFolders, OpenRecentFile, OpenLibraryDir } from '../wailsjs/go/main/App';
 import { ClipboardSetText, ClipboardGetText, WindowToggleMaximise } from '../wailsjs/runtime/runtime';
@@ -203,6 +204,11 @@ async function init() {
   // assert viewer state (mesh count, etc) without poking private
   // fields. Single property reference, code is in the bundle anyway.
   (window as unknown as { viewer: Viewer }).viewer = viewer;
+
+  // Remote GUI automation: listen for automation:invoke commands (only emitted
+  // when the app runs with --automation). Registering the listener always is
+  // harmless — no events arrive without the flag.
+  initAutomation({ viewer });
 
   // Gnomon — always-visible axis indicator bottom-left of viewport, drag to orbit
   const gnomon = new Gnomon(canvasContainer, (dTheta, dPhi) => viewer.orbitBy(dTheta, dPhi));

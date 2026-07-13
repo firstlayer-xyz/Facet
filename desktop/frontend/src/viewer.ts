@@ -1999,6 +1999,53 @@ export class Viewer {
     }
   }
 
+  /** The live WebGL canvas element. Used by the automation recorder, whose
+   *  captureStream() relies on the renderer's preserveDrawingBuffer. */
+  getCanvas(): HTMLCanvasElement {
+    return this.renderer.domElement;
+  }
+
+  /** Position the live perspective camera from an azimuth/elevation/distance
+   *  pose (degrees), using the same bed-basis framing as
+   *  captureScreenshotFromView but mutating the on-screen camera. The always-on
+   *  render loop shows the change on the next frame. Distance/target default to
+   *  the current framing so a caller can rotate without reframing. */
+  applyCameraPose(opts: {
+    azimuth: number;
+    elevation: number;
+    distance?: number;
+    target?: { x: number; y: number; z: number };
+  }): void {
+    const { up, front } = this.bedBasis();
+    const right = new THREE.Vector3().crossVectors(up, front).normalize();
+
+    let target: THREE.Vector3;
+    if (opts.target) {
+      target = new THREE.Vector3(opts.target.x, opts.target.y, opts.target.z);
+    } else {
+      const sphere = this._getMeshBoundingSphere();
+      target = sphere.radius > 0 ? sphere.center.clone() : this.perspControls.target.clone();
+    }
+
+    const distance = opts.distance ?? this.perspCamera.position.distanceTo(this.perspControls.target);
+
+    const az = THREE.MathUtils.degToRad(opts.azimuth);
+    const el = THREE.MathUtils.degToRad(opts.elevation);
+    const cosEl = Math.cos(el);
+    const offset = new THREE.Vector3()
+      .addScaledVector(front, cosEl * Math.cos(az))
+      .addScaledVector(right, cosEl * Math.sin(az))
+      .addScaledVector(up, Math.sin(el))
+      .multiplyScalar(distance);
+
+    this._activatePerspective();
+    this.perspCamera.up.copy(up);
+    this.perspCamera.position.copy(target).add(offset);
+    this.perspControls.target.copy(target);
+    this.perspCamera.lookAt(target);
+    this.perspControls.update();
+  }
+
   /** Up axis and front-view basis vectors for the active bed. */
   private bedBasis(): { up: THREE.Vector3; front: THREE.Vector3 } {
     switch (this.bed) {
