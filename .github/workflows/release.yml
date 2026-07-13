@@ -101,17 +101,8 @@ jobs:
             exit 1
           fi
           echo "Signing with: $IDENTITY"
-          APP=desktop/build/bin/Facet.app
-          # Sign inside-out, not with a single --deep: --deep forces the app's
-          # camera entitlement onto the sandboxed QuickLook/Thumbnail extensions
-          # (verified: it replaces their app-sandbox entitlement). Deep-sign nested
-          # code first, then each extension with its own entitlements, then the app
-          # itself LAST with the camera entitlement so it re-seals the extensions.
-          codesign -s "$IDENTITY" --force --deep --options runtime --keychain build.keychain "$APP"
-          for ext in "$APP"/Contents/PlugIns/*.appex; do
-            codesign -s "$IDENTITY" --force --entitlements desktop/quicklook/extension.entitlements --options runtime --keychain build.keychain "$ext"
-          done
-          codesign -s "$IDENTITY" --force --entitlements desktop/build/darwin/entitlements.plist --options runtime --keychain build.keychain "$APP"
+          CODESIGN_IDENTITY="$IDENTITY" CODESIGN_KEYCHAIN=build.keychain \
+            bash scripts/sign-app.sh desktop/build/bin/Facet.app
 
       - name: Create DMG
         run: |

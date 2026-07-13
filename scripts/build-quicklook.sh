@@ -5,7 +5,8 @@
 # .fct in-process — a Quick Look extension is sandboxed and cannot spawn facetc.
 #
 # macOS-only (a no-op elsewhere). Run after `wails build` and `make manifold`.
-# Signs ad-hoc by default; set CODESIGN_IDENTITY (and the release flow notarizes).
+# Signing is delegated to scripts/sign-app.sh (ad-hoc by default; set
+# CODESIGN_IDENTITY for a real identity, which the release flow then notarizes).
 set -euo pipefail
 
 if [ "$(uname -s)" != "Darwin" ]; then
@@ -16,7 +17,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GO="$ROOT/.go-toolchain/bin/go"
 APP="${FACET_APP:-$ROOT/desktop/build/bin/Facet.app}"
 QL="$ROOT/desktop/quicklook"
-IDENTITY="${CODESIGN_IDENTITY:--}"      # default: ad-hoc
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
 [ -d "$APP" ] || { echo "build-quicklook: $APP not found — build the app first" >&2; exit 1; }
@@ -28,9 +28,6 @@ case "$(uname -m)" in
 esac
 TARGET="darwin-$ARCH"
 SDK="$(xcrun -sdk macosx --show-sdk-path)"
-# A secure timestamp is required for notarization, but needs the network and a
-# real identity; skip it for ad-hoc local builds.
-[ "$IDENTITY" = "-" ] && TS=--timestamp=none || TS=--timestamp
 
 echo "build-quicklook: building c-archive (evaluator + kernel)…"
 CGO_ENABLED=1 "$GO" build -C "$ROOT" -buildmode=c-archive -o "$WORK/libfacetrender.a" ./cmd/facetrender
@@ -59,7 +56,6 @@ build_ext() { # appex  exe  info.plist  principal.swift
   mkdir -p "$b/Contents/MacOS"
   cp "$plist" "$b/Contents/Info.plist"
   cp "$WORK/$exe" "$b/Contents/MacOS/$exe"
-  codesign --force --sign "$IDENTITY" --entitlements "$QL/extension.entitlements" --options runtime $TS "$b"
   mkdir -p "$APP/Contents/PlugIns"
   rm -rf "$APP/Contents/PlugIns/$appex.appex"
   cp -R "$b" "$APP/Contents/PlugIns/"
@@ -68,6 +64,6 @@ build_ext() { # appex  exe  info.plist  principal.swift
 build_ext FacetQuickLook FacetQuickLook "$QL/Preview-Info.plist"   PreviewViewController.swift
 build_ext FacetThumbnail FacetThumbnail "$QL/Thumbnail-Info.plist" ThumbnailProvider.swift
 
-echo "build-quicklook: re-signing app bundle…"
-codesign --force --sign "$IDENTITY" --entitlements "$ROOT/desktop/build/darwin/entitlements.plist" --options runtime $TS "$APP"
+echo "build-quicklook: signing bundle…"
+bash "$ROOT/scripts/sign-app.sh" "$APP"
 echo "build-quicklook: done — preview + thumbnail injected into $APP"
