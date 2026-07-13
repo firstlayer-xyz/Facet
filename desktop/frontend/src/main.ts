@@ -225,6 +225,10 @@ async function init() {
     },
   });
 
+  // Keep the auto-rotate toolbar button in sync with viewer state, whatever
+  // flips it (toolbar click or automation's viewer.setAutoRotate).
+  viewer.onAutoRotateChange((on) => autoRotateBtn.classList.toggle('active', on));
+
   // Gnomon — always-visible axis indicator bottom-left of viewport, drag to orbit
   const gnomon = new Gnomon(canvasContainer, (dTheta, dPhi) => viewer.orbitBy(dTheta, dPhi));
   viewer.onFrame((camera) => gnomon.update(camera));
@@ -630,11 +634,10 @@ settingsBtn.addEventListener('click', () => {
 // Center model button
 centerBtn.addEventListener('click', () => viewer.fitToView());
 
-// Auto-rotate button
-autoRotateBtn.addEventListener('click', () => {
-  const active = viewer.toggleAutoRotate();
-  autoRotateBtn.classList.toggle('active', active);
-});
+// Auto-rotate button. The viewer is the single source of truth: the click just
+// toggles it; onAutoRotateChange (wired in init, once the viewer exists) keeps
+// the button in sync — so automation (viewer.setAutoRotate) updates the UI too.
+autoRotateBtn.addEventListener('click', () => viewer.toggleAutoRotate());
 
 // Head-tracking parallax button
 headTrackBtn.addEventListener('click', async () => {

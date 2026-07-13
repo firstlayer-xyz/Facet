@@ -170,11 +170,10 @@ function registerViewerCommands(viewer: Viewer): void {
     return null;
   });
 
-  // Enable/disable the existing "auto-center & rotate" turntable. Enabling also
-  // fits the model to view (toggleAutoRotate calls fitToView).
+  // Enable/disable the existing "auto-center & rotate" turntable. setAutoRotate
+  // updates both the viewer and the toolbar button (via onAutoRotateChange).
   registerCommand('viewer.autoRotate', async (p) => {
-    const want = p.on !== false; // default on
-    if (viewer.isAutoRotating() !== want) viewer.toggleAutoRotate();
+    viewer.setAutoRotate(p.on !== false); // default on
     return null;
   });
 }

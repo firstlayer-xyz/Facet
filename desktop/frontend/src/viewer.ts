@@ -181,6 +181,7 @@ export class Viewer {
     format: DEFAULT_MEASUREMENT_FORMAT,
   };
   private onMeasureModeChangeCb: ((mode: 'off' | 'placing', hoverOn: boolean) => void) | null = null;
+  private onAutoRotateChangeCb: ((on: boolean) => void) | null = null;
 
   constructor(container: HTMLElement, appearance?: ViewerAppearance) {
     this.container = container;
@@ -1268,15 +1269,31 @@ export class Viewer {
     return this.perspControls.autoRotate;
   }
 
-  toggleAutoRotate(): boolean {
-    if (this.perspControls.autoRotate) {
+  /** Register a listener notified whenever auto-rotate turns on/off, from any
+   *  source (toolbar click or automation) so the UI can stay in sync. */
+  onAutoRotateChange(cb: (on: boolean) => void): void {
+    this.onAutoRotateChangeCb = cb;
+  }
+
+  /** Enable/disable the auto-center & rotate turntable. Single source of truth:
+   *  updates the controls and notifies onAutoRotateChange, so callers never
+   *  have to keep the toolbar button state in sync by hand. Enabling also fits
+   *  the model to view. No-op (and no notification) if already in that state. */
+  setAutoRotate(on: boolean): void {
+    if (this.perspControls.autoRotate === on) return;
+    if (on) {
+      this.fitToView();
+      this.perspControls.autoRotate = true;
+      this.perspControls.autoRotateSpeed = 4;
+    } else {
       this.perspControls.autoRotate = false;
-      return false;
     }
-    this.fitToView();
-    this.perspControls.autoRotate = true;
-    this.perspControls.autoRotateSpeed = 4;
-    return true;
+    this.onAutoRotateChangeCb?.(on);
+  }
+
+  toggleAutoRotate(): boolean {
+    this.setAutoRotate(!this.perspControls.autoRotate);
+    return this.perspControls.autoRotate;
   }
 
   toggleGrid(): void {
