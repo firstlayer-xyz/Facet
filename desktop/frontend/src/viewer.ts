@@ -1241,9 +1241,18 @@ export class Viewer {
   /** Orbit `cam` around `target` by mutating the camera→target spherical
    *  coordinates, then re-derive the camera position and re-aim it. */
   private static orbitSpherical(cam: THREE.Camera, target: THREE.Vector3, mutate: (s: THREE.Spherical) => void): void {
-    const s = new THREE.Spherical().setFromVector3(new THREE.Vector3().subVectors(cam.position, target));
+    // THREE.Spherical is Y-up, so orbit in a frame where the camera's up-axis is
+    // +Y — the Bed setting can make the real up-axis Z (XY bed) or X (YZ bed),
+    // and orbiting Y-up there rotates about the wrong axis (azimuth reads as
+    // elevation and vice-versa). Rotate the offset into the Y-up frame, apply the
+    // spherical change, then rotate back. OrbitControls does its own up handling,
+    // so mouse orbit was already correct; this fixes head-tracking and keyboard.
+    const q = new THREE.Quaternion().setFromUnitVectors(cam.up.clone().normalize(), new THREE.Vector3(0, 1, 0));
+    const offset = new THREE.Vector3().subVectors(cam.position, target).applyQuaternion(q);
+    const s = new THREE.Spherical().setFromVector3(offset);
     mutate(s);
-    cam.position.setFromSpherical(s).add(target);
+    offset.setFromSpherical(s).applyQuaternion(q.invert());
+    cam.position.copy(target).add(offset);
     cam.lookAt(target);
   }
 
