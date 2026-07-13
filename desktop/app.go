@@ -267,11 +267,28 @@ func (a *App) AutomationEnabled() bool {
 	return a.automationCfg.Enabled
 }
 
+// sanitizeRecordingName reduces a caller-supplied label to a filename-safe
+// prefix (letters, digits, _ and .; everything else becomes '-'), trimmed of
+// leading/trailing separators. Empty when nothing usable remains.
+func sanitizeRecordingName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-._")
+}
+
 // newRecordingPath returns a fresh, timestamped path in the recordings dir for a
-// recording of the given extension (".mp4" / ".webm"), creating the dir. The
-// millisecond-resolution timestamp keeps successive recordings — across app
-// runs — from overwriting each other.
-func newRecordingPath(ext string) (string, error) {
+// recording of the given extension (".mp4" / ".webm"), creating the dir. name is
+// an optional label prefix for organizing recordings ("" → "demo"). The
+// millisecond-resolution timestamp keeps successive recordings — even with the
+// same name, across app runs — from overwriting each other.
+func newRecordingPath(ext, name string) (string, error) {
 	dir, err := recordingsDir()
 	if err != nil {
 		return "", err
@@ -279,14 +296,19 @@ func newRecordingPath(ext string) (string, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
-	name := "demo-" + time.Now().Format("2006-01-02_15-04-05.000") + ext
-	return filepath.Join(dir, name), nil
+	prefix := sanitizeRecordingName(name)
+	if prefix == "" {
+		prefix = "demo"
+	}
+	filename := prefix + "-" + time.Now().Format("2006-01-02_15-04-05.000") + ext
+	return filepath.Join(dir, filename), nil
 }
 
 // SaveRecording persists a webm blob (base64, optionally a "data:...;base64,"
 // URL) captured by the frontend recorder and returns the absolute file path.
-// Bound via Wails so the record.stop command can hand the driver a path.
-func (a *App) SaveRecording(base64Webm string) (string, error) {
+// name is an optional label prefix for the file. Bound via Wails so the
+// record.stop command can hand the driver a path.
+func (a *App) SaveRecording(base64Webm, name string) (string, error) {
 	raw := base64Webm
 	if i := strings.Index(raw, ","); i >= 0 && strings.HasPrefix(raw, "data:") {
 		raw = raw[i+1:]
@@ -295,7 +317,7 @@ func (a *App) SaveRecording(base64Webm string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decode recording: %w", err)
 	}
-	path, err := newRecordingPath(".webm")
+	path, err := newRecordingPath(".webm", name)
 	if err != nil {
 		return "", err
 	}
@@ -312,10 +334,11 @@ var activeWindowRecording atomic.Pointer[string]
 // StartWindowCapture begins a native, window-scoped screen recording (page
 // mode) of Facet's own window and returns the .mp4 path it writes to. When
 // width and height are both > 0 the video is scaled to that pixel size;
-// otherwise the window's native size is used. Silent after the one-time macOS
-// "Screen Recording" permission grant — no per-record picker. Bound via Wails.
-func (a *App) StartWindowCapture(width, height int) (string, error) {
-	path, err := newRecordingPath(".mp4")
+// otherwise the window's native size is used. name is an optional label prefix
+// for the file. Silent after the one-time macOS "Screen Recording" permission
+// grant — no per-record picker. Bound via Wails.
+func (a *App) StartWindowCapture(width, height int, name string) (string, error) {
+	path, err := newRecordingPath(".mp4", name)
 	if err != nil {
 		return "", err
 	}

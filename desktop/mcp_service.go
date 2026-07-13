@@ -229,6 +229,7 @@ type guiRecordStartInput struct {
 	FPS    int    `json:"fps,omitempty" jsonschema:"Frames per second. Omit for 30."`
 	Width  int    `json:"width,omitempty" jsonschema:"Output video width in pixels (page mode only). Omit for the window's native size."`
 	Height int    `json:"height,omitempty" jsonschema:"Output video height in pixels (page mode only). Omit for the window's native size."`
+	Name   string `json:"name,omitempty" jsonschema:"Optional label used as the video filename prefix (for organizing recordings)."`
 }
 
 type guiRecordStopInput struct{}

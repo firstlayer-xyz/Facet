@@ -195,21 +195,25 @@ function registerAnimationCommands(): void {
 
 function registerRecordCommands(canvas: HTMLCanvasElement): void {
   const recorder = new Recorder(canvas);
-  // Track the active surface so record.stop routes to the matching stop path.
-  // 'canvas' records the WebGL viewer here in the WebView; 'page' records the
-  // whole window natively (ScreenCaptureKit) on the Go side.
+  // Track the active surface + name so record.stop routes to the matching stop
+  // path (and canvas mode can name the file it saves at stop). 'canvas' records
+  // the WebGL viewer here in the WebView; 'page' records the whole window
+  // natively (ScreenCaptureKit) on the Go side.
   let active: RecordMode | null = null;
+  let activeName = '';
 
   registerCommand('record.start', async (p) => {
     if (active) throw new Error(`already recording (${active})`);
     const mode: RecordMode = p.mode === 'page' ? 'page' : 'canvas';
+    // Optional label → filename prefix, so recordings can be organized.
+    activeName = typeof p.name === 'string' ? p.name : '';
     if (mode === 'page') {
       // width/height (px) set the page video's output size; 0 = window's
       // native size. For canvas mode, size follows the window — use
       // window.setSize first.
       const w = p.width != null ? Number(p.width) : 0;
       const h = p.height != null ? Number(p.height) : 0;
-      await StartWindowCapture(w, h);
+      await StartWindowCapture(w, h, activeName);
     } else {
       recorder.start({ fps: p.fps != null ? Number(p.fps) : undefined });
     }
@@ -224,7 +228,7 @@ function registerRecordCommands(canvas: HTMLCanvasElement): void {
       path = await StopWindowCapture();
     } else {
       const blob = await recorder.stop();
-      path = await SaveRecording(await blobToDataURL(blob));
+      path = await SaveRecording(await blobToDataURL(blob), activeName);
     }
     active = null;
     return { path };
