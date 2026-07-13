@@ -109,10 +109,18 @@ test: go-toolchain manifold
 # wailsjs bindings. We build the frontend (real bindings + vite, no app
 # packaging) only when dist is absent, so this runs fast after a `make build`
 # or in CI right after `wails build`, but still works from a clean checkout.
-test-desktop-go: go-toolchain manifold
+#
+# On that clean-checkout path, dist must be seeded with a placeholder before
+# `wails generate module`: generating bindings compiles the desktop package,
+# whose embed pattern refuses to match an absent/empty dist. The `all:` prefix
+# makes the embed accept the dotfile, and vite empties dist on build, so the
+# placeholder never survives into a real embed.
+test-desktop-go: go-toolchain manifold wails-cli
 	@if [ ! -d desktop/frontend/dist ] || [ -z "$$(ls -A desktop/frontend/dist 2>/dev/null)" ]; then \
 		echo "frontend/dist missing — building frontend for the embed..."; \
-		( cd desktop && $(WAILS) generate module ); \
+		mkdir -p desktop/frontend/dist && \
+		touch desktop/frontend/dist/.placeholder && \
+		( cd desktop && $(WAILS) generate module ) && \
 		( cd desktop/frontend && npm ci && npm run build ); \
 	fi
 	CGO_ENABLED=1 $(GO) test ./desktop/...
