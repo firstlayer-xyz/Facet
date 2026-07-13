@@ -106,6 +106,13 @@ export class HeadTracker {
     } catch (err) {
       console.error('HeadTracker: failed to start:', err);
       this.stop();
+      // getUserMedia rejects with NotAllowedError both when the OS blocks the
+      // camera and when the user previously denied it — a prior denial can't be
+      // re-prompted programmatically, so translate the opaque platform string
+      // into an actionable one pointing at the system permission.
+      if (err instanceof DOMException && err.name === 'NotAllowedError') {
+        throw new Error('Camera access was denied. Enable it in System Settings ▸ Privacy & Security ▸ Camera, then toggle head tracking again.');
+      }
       throw err;
     }
   }
