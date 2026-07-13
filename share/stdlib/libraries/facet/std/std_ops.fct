@@ -2,13 +2,9 @@
 # Operator Functions
 # ---------------------------------------------------------------------------
 # Vec3 arithmetic
-fn +(a, b Vec3) Vec3 {
-    return Vec3{x: a.x + b.x, y: a.y + b.y, z: a.z + b.z}
-}
+fn +(a, b Vec3) Vec3 { return Vec3{x: a.x + b.x, y: a.y + b.y, z: a.z + b.z} }
 
-fn -(a, b Vec3) Vec3 {
-    return Vec3{x: a.x - b.x, y: a.y - b.y, z: a.z - b.z}
-}
+fn -(a, b Vec3) Vec3 { return Vec3{x: a.x - b.x, y: a.y - b.y, z: a.z - b.z} }
 
 # Component-wise Vec3*Vec3 — strips units on each side and reapplies the
 # Vec3 field's default mm. Strict units forbid Length*Length in user code;
@@ -20,30 +16,18 @@ fn *(a, b Vec3) Vec3 {
         z: Number(from: a.z) * Number(from: b.z)}
 }
 
-fn *(v Vec3, s Number) Vec3 {
-    return Vec3{x: v.x * s, y: v.y * s, z: v.z * s}
-}
+fn *(v Vec3, s Number) Vec3 { return Vec3{x: v.x * s, y: v.y * s, z: v.z * s} }
 
-fn *(s Number, v Vec3) Vec3 {
-    return v * s
-}
+fn *(s Number, v Vec3) Vec3 { return v * s }
 
-fn /(v Vec3, s Number) Vec3 {
-    return Vec3{x: v.x / s, y: v.y / s, z: v.z / s}
-}
+fn /(v Vec3, s Number) Vec3 { return Vec3{x: v.x / s, y: v.y / s, z: v.z / s} }
 
-fn -(v Vec3) Vec3 {
-    return Vec3{x: -v.x, y: -v.y, z: -v.z}
-}
+fn -(v Vec3) Vec3 { return Vec3{x: -v.x, y: -v.y, z: -v.z} }
 
 # Vec2 arithmetic
-fn +(a, b Vec2) Vec2 {
-    return Vec2{x: a.x + b.x, y: a.y + b.y}
-}
+fn +(a, b Vec2) Vec2 { return Vec2{x: a.x + b.x, y: a.y + b.y} }
 
-fn -(a, b Vec2) Vec2 {
-    return Vec2{x: a.x - b.x, y: a.y - b.y}
-}
+fn -(a, b Vec2) Vec2 { return Vec2{x: a.x - b.x, y: a.y - b.y} }
 
 # Component-wise Vec2*Vec2 — see Vec3*Vec3 above for rationale on Number().
 fn *(a, b Vec2) Vec2 {
@@ -51,21 +35,13 @@ fn *(a, b Vec2) Vec2 {
         y: Number(from: a.y) * Number(from: b.y)}
 }
 
-fn *(v Vec2, s Number) Vec2 {
-    return Vec2{x: v.x * s, y: v.y * s}
-}
+fn *(v Vec2, s Number) Vec2 { return Vec2{x: v.x * s, y: v.y * s} }
 
-fn *(s Number, v Vec2) Vec2 {
-    return v * s
-}
+fn *(s Number, v Vec2) Vec2 { return v * s }
 
-fn /(v Vec2, s Number) Vec2 {
-    return Vec2{x: v.x / s, y: v.y / s}
-}
+fn /(v Vec2, s Number) Vec2 { return Vec2{x: v.x / s, y: v.y / s} }
 
-fn -(v Vec2) Vec2 {
-    return Vec2{x: -v.x, y: -v.y}
-}
+fn -(v Vec2) Vec2 { return Vec2{x: -v.x, y: -v.y} }
 
 # Dot product — strips mm from each operand before multiplying. Under strict
 # units Length*Length has no type (no Area); dot/cross are inherently such
@@ -97,70 +73,40 @@ fn Cross(a, b Vec3) Vec3 {
 }
 
 # Euclidean length of a vector. Dot strips mm, so the result is re-attached to mm.
-fn Length(v Vec3) Length {
-    return Sqrt(n: Dot(a: v, b: v)) * 1 mm
-}
+fn Length(v Vec3) Length { return Sqrt(n: Dot(a: v, b: v)) * 1 mm }
 
 # Unit vector pointing the same way as v. v must be non-zero.
-fn Normalize(v Vec3) Vec3 {
-    return v / Sqrt(n: Dot(a: v, b: v))
-}
+fn Normalize(v Vec3) Vec3 { return v / Sqrt(n: Dot(a: v, b: v)) }
 
 # Comparison operators
-fn ==(a, b Vec3) Bool {
-    return a.x == b.x && a.y == b.y && a.z == b.z
-}
+fn ==(a, b Vec3) Bool { return a.x == b.x && a.y == b.y && a.z == b.z }
 
-fn !=(a, b Vec3) Bool {
-    return !(a == b)
-}
+fn !=(a, b Vec3) Bool { return !(a == b) }
 
-fn ==(a, b Vec2) Bool {
-    return a.x == b.x && a.y == b.y
-}
+fn ==(a, b Vec2) Bool { return a.x == b.x && a.y == b.y }
 
-fn !=(a, b Vec2) Bool {
-    return !(a == b)
-}
+fn !=(a, b Vec2) Bool { return !(a == b) }
 
 # Solid boolean operators
-fn +(a, b Solid) Solid {
-    return _union([a, b])
-}
+fn +(a, b Solid) Solid { return _union([a, b]) }
 
-fn -(a, b Solid) Solid {
-    return _difference([a, b])
-}
+fn -(a, b Solid) Solid { return _difference([a, b]) }
 
-fn &(a, b Solid) Solid {
-    return _intersection([a, b])
-}
+fn &(a, b Solid) Solid { return _intersection([a, b]) }
 
-fn |(a, b Solid) Solid {
-    return a.Insert(part: b)
-}
+fn |(a, b Solid) Solid { return a.Insert(part: b) }
 
-fn ^(a, b Solid) Solid {
-    return a.Exclude(with: b)
-}
+fn ^(a, b Solid) Solid { return a.Exclude(with: b) }
 
 # Sketch boolean operators
-fn +(a, b Sketch) Sketch {
-    return _union([a, b])
-}
+fn +(a, b Sketch) Sketch { return _union([a, b]) }
 
-fn -(a, b Sketch) Sketch {
-    return _difference([a, b])
-}
+fn -(a, b Sketch) Sketch { return _difference([a, b]) }
 
-fn &(a, b Sketch) Sketch {
-    return _intersection([a, b])
-}
+fn &(a, b Sketch) Sketch { return _intersection([a, b]) }
 
 # 2D polygon from an array of Vec2 vertices (minimum 3). Points connect in order; closes automatically.
-fn Polygon(points []Vec2) Sketch {
-    return _polygon(points, [])
-}
+fn Polygon(points []Vec2) Sketch { return _polygon(points, []) }
 
 # 2D polygon with holes: an outer outline plus zero or more inner outlines that are cut out.
 # Each hole must be a ring of at least 3 Vec2 points. Winding direction is irrelevant —
@@ -168,4 +114,3 @@ fn Polygon(points []Vec2) Sketch {
 fn Polygon(points []Vec2, holes [][]Vec2) Sketch {
     return _polygon(points, holes)
 }
-

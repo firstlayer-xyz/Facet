@@ -7,57 +7,37 @@ type Box {
 }
 
 # Constructs a Box from two corners.
-fn Box(min, max Vec3) Box {
-    return Box{min: min, max: max}
-}
+fn Box(min, max Vec3) Box { return Box{min: min, max: max} }
 
 # ---------------------------------------------------------------------------
 # Box Methods
 # ---------------------------------------------------------------------------
 # X extent (left to right).
-fn Box.Width() Length {
-    return self.max.x - self.min.x
-}
+fn Box.Width() Length { return self.max.x - self.min.x }
 
 # Z extent (bottom to top).
-fn Box.Height() Length {
-    return self.max.z - self.min.z
-}
+fn Box.Height() Length { return self.max.z - self.min.z }
 
 # Y extent (front to back).
-fn Box.Depth() Length {
-    return self.max.y - self.min.y
-}
+fn Box.Depth() Length { return self.max.y - self.min.y }
 
 # Minimum X.
-fn Box.Left() Length {
-    return self.min.x
-}
+fn Box.Left() Length { return self.min.x }
 
 # Maximum X.
-fn Box.Right() Length {
-    return self.max.x
-}
+fn Box.Right() Length { return self.max.x }
 
 # Minimum Y.
-fn Box.Front() Length {
-    return self.min.y
-}
+fn Box.Front() Length { return self.min.y }
 
 # Maximum Y.
-fn Box.Back() Length {
-    return self.max.y
-}
+fn Box.Back() Length { return self.max.y }
 
 # Minimum Z.
-fn Box.Bottom() Length {
-    return self.min.z
-}
+fn Box.Bottom() Length { return self.min.z }
 
 # Maximum Z.
-fn Box.Top() Length {
-    return self.max.z
-}
+fn Box.Top() Length { return self.max.z }
 
 # Center point of the box.
 fn Box.Center() Vec3 {
@@ -116,9 +96,7 @@ type Face {
 }
 
 # Constructs a Face from three vertex indices.
-fn Face(v0, v1, v2 Number) Face {
-    return Face{v0: v0, v1: v1, v2: v2}
-}
+fn Face(v0, v1, v2 Number) Face { return Face{v0: v0, v1: v1, v2: v2} }
 
 # ---------------------------------------------------------------------------
 # Mesh Type (vertex + index data)
@@ -130,82 +108,52 @@ type Mesh {
 }
 
 # Extracts triangle mesh (`.vertices` []Vec3, `.indices` []Face). `Mesh.Solid()` reconstructs.
-fn Solid.Mesh() Mesh {
-    return _mesh(self)
-}
+fn Solid.Mesh() Mesh { return _mesh(self) }
 
 # Reconstructs a Solid from this mesh's vertices and indices.
-fn Mesh.Solid() Solid {
-    return _solid_from_mesh(self.vertices, self.indices)
-}
+fn Mesh.Solid() Solid { return _solid_from_mesh(self.vertices, self.indices) }
 
 # ---------------------------------------------------------------------------
 # Mesh Methods (pure Facet)
 # ---------------------------------------------------------------------------
 # Returns one outward normal per face (same order as `.indices`).
-fn Mesh.FaceNormals() []Vec3 {
-    return _face_normals(self)
-}
+fn Mesh.FaceNormals() []Vec3 { return _face_normals(self) }
 
 # Returns one averaged normal per vertex (same order as `.vertices`).
-fn Mesh.VertexNormals() []Vec3 {
-    return _vertex_normals(self)
-}
+fn Mesh.VertexNormals() []Vec3 { return _vertex_normals(self) }
 
 # Axis-aligned bounding box of the mesh.
-fn Mesh.Bounds() Box {
-    return Bounds(of: self.vertices)
-}
+fn Mesh.Bounds() Box { return Bounds(of: self.vertices) }
 
 # X extent.
-fn Mesh.Width() Length {
-    return self.Bounds().Width()
-}
+fn Mesh.Width() Length { return self.Bounds().Width() }
 
 # Y extent.
-fn Mesh.Depth() Length {
-    return self.Bounds().Depth()
-}
+fn Mesh.Depth() Length { return self.Bounds().Depth() }
 
 # Z extent.
-fn Mesh.Height() Length {
-    return self.Bounds().Height()
-}
+fn Mesh.Height() Length { return self.Bounds().Height() }
 
 # Minimum X.
-fn Mesh.Left() Length {
-    return self.Bounds().min.x
-}
+fn Mesh.Left() Length { return self.Bounds().min.x }
 
 # Maximum X.
-fn Mesh.Right() Length {
-    return self.Bounds().max.x
-}
+fn Mesh.Right() Length { return self.Bounds().max.x }
 
 # Minimum Y.
-fn Mesh.Front() Length {
-    return self.Bounds().min.y
-}
+fn Mesh.Front() Length { return self.Bounds().min.y }
 
 # Maximum Y.
-fn Mesh.Back() Length {
-    return self.Bounds().max.y
-}
+fn Mesh.Back() Length { return self.Bounds().max.y }
 
 # Minimum Z.
-fn Mesh.Bottom() Length {
-    return self.Bounds().min.z
-}
+fn Mesh.Bottom() Length { return self.Bounds().min.z }
 
 # Maximum Z.
-fn Mesh.Top() Length {
-    return self.Bounds().max.z
-}
+fn Mesh.Top() Length { return self.Bounds().max.z }
 
 # Center of the bounding box.
-fn Mesh.Center() Vec3 {
-    return self.Bounds().Center()
-}
+fn Mesh.Center() Vec3 { return self.Bounds().Center() }
 
 # ---------------------------------------------------------------------------
 # PolyMesh Type (polygonal mesh with N-gon faces)
@@ -220,34 +168,22 @@ type PolyMesh {
 # PolyMesh Conway Operators
 # ---------------------------------------------------------------------------
 # Returns the dual polyhedron (vertices ↔ faces swapped).
-fn PolyMesh.Dual() PolyMesh {
-    return _dual(self)
-}
+fn PolyMesh.Dual() PolyMesh { return _dual(self) }
 
 # Rectifies the mesh: new vertices at edge midpoints, original vertices removed.
-fn PolyMesh.Ambo() PolyMesh {
-    return _ambo(self)
-}
+fn PolyMesh.Ambo() PolyMesh { return _ambo(self) }
 
 # Kleetope: each face is replaced by a pyramid, subdividing the mesh.
-fn PolyMesh.Kis() PolyMesh {
-    return _kis(self)
-}
+fn PolyMesh.Kis() PolyMesh { return _kis(self) }
 
 # Cuts each vertex to produce new faces at the corners.
-fn PolyMesh.Truncate() PolyMesh {
-    return _truncate(self)
-}
+fn PolyMesh.Truncate() PolyMesh { return _truncate(self) }
 
 # Expands faces outward so every edge becomes a new rectangular face.
-fn PolyMesh.Expand() PolyMesh {
-    return _expand(self)
-}
+fn PolyMesh.Expand() PolyMesh { return _expand(self) }
 
 # Chiral variant of Expand; rotates faces slightly before expanding.
-fn PolyMesh.Snub() PolyMesh {
-    return _snub(self)
-}
+fn PolyMesh.Snub() PolyMesh { return _snub(self) }
 
 # ---------------------------------------------------------------------------
 # PolyMesh Utility Methods
@@ -271,85 +207,53 @@ fn PolyMesh.ScaleUniform(factor Number) PolyMesh {
 }
 
 # Converts this PolyMesh to a Solid by triangulating its faces.
-fn PolyMesh.Solid() Solid {
-    return _solid(self)
-}
+fn PolyMesh.Solid() Solid { return _solid(self) }
 
 # Axis-aligned bounding box of the mesh.
-fn PolyMesh.Bounds() Box {
-    return Bounds(of: self.vertices)
-}
+fn PolyMesh.Bounds() Box { return Bounds(of: self.vertices) }
 
 # X extent.
-fn PolyMesh.Width() Length {
-    return self.Bounds().Width()
-}
+fn PolyMesh.Width() Length { return self.Bounds().Width() }
 
 # Y extent.
-fn PolyMesh.Depth() Length {
-    return self.Bounds().Depth()
-}
+fn PolyMesh.Depth() Length { return self.Bounds().Depth() }
 
 # Z extent.
-fn PolyMesh.Height() Length {
-    return self.Bounds().Height()
-}
+fn PolyMesh.Height() Length { return self.Bounds().Height() }
 
 # Minimum X.
-fn PolyMesh.Left() Length {
-    return self.Bounds().min.x
-}
+fn PolyMesh.Left() Length { return self.Bounds().min.x }
 
 # Maximum X.
-fn PolyMesh.Right() Length {
-    return self.Bounds().max.x
-}
+fn PolyMesh.Right() Length { return self.Bounds().max.x }
 
 # Minimum Y.
-fn PolyMesh.Front() Length {
-    return self.Bounds().min.y
-}
+fn PolyMesh.Front() Length { return self.Bounds().min.y }
 
 # Maximum Y.
-fn PolyMesh.Back() Length {
-    return self.Bounds().max.y
-}
+fn PolyMesh.Back() Length { return self.Bounds().max.y }
 
 # Minimum Z.
-fn PolyMesh.Bottom() Length {
-    return self.Bounds().min.z
-}
+fn PolyMesh.Bottom() Length { return self.Bounds().min.z }
 
 # Maximum Z.
-fn PolyMesh.Top() Length {
-    return self.Bounds().max.z
-}
+fn PolyMesh.Top() Length { return self.Bounds().max.z }
 
 # Center of the bounding box.
-fn PolyMesh.Center() Vec3 {
-    return self.Bounds().Center()
-}
+fn PolyMesh.Center() Vec3 { return self.Bounds().Center() }
 
 # Extracts a PolyMesh from this Solid using face ID grouping (reconstructs original polygon boundaries).
-fn Solid.PolyMesh() PolyMesh {
-    return _polymesh(self)
-}
+fn Solid.PolyMesh() PolyMesh { return _polymesh(self) }
 
 # Deforms each vertex using a pure Vec3→Vec3 function (runs in parallel). Refine first for smooth results.
-fn Solid.Warp(f fn(Vec3) Vec3) Solid {
-    return _warp(self, f)
-}
+fn Solid.Warp(f fn(Vec3) Vec3) Solid { return _warp(self, f) }
 
 # Sets a uniform color on all faces. Survives booleans via originalID tracking.
 # Alpha < 1 renders the affected faces translucent in the viewer and round-trips
 # in 3MF export as "#RRGGBBAA".
-fn Solid.Color(c Color) Solid {
-    return _color(self, c.r, c.g, c.b, c.a)
-}
+fn Solid.Color(c Color) Solid { return _color(self, c.r, c.g, c.b, c.a) }
 
-fn Solid.Color(hex String) Solid {
-    return self.Color(c: Color(hex: hex))
-}
+fn Solid.Color(hex String) Solid { return self.Color(c: Color(hex: hex)) }
 
 fn Solid.Color(
     r Number = 0,

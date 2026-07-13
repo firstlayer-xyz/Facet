@@ -6,9 +6,7 @@
 # ```
 # fn Main() { Square(x: 20 mm, y: 20 mm).Extrude(z: 10 mm) }
 # ```
-fn Square(x, y Length) Sketch {
-    return _square(x, y)
-}
+fn Square(x, y Length) Sketch { return _square(x, y) }
 
 # 2D circle with bounding-box min corner at (0,0) (diameter extends from 0
 # to 2r on each axis). Optional `segments` controls smoothness (default 32);
@@ -16,12 +14,7 @@ fn Square(x, y Length) Sketch {
 # ```
 # fn Main() { Circle(r: 5 mm).Extrude(z: 20 mm) }
 # ```
-fn Circle(
-    r Length,
-    segments Number = 0,
-) Sketch {
-    return _circle(r, segments)
-}
+fn Circle(r Length, segments Number = 0) Sketch { return _circle(r, segments) }
 
 fn Circle(
     d Length,
@@ -30,9 +23,7 @@ fn Circle(
     return _circle(d / 2, segments)
 }
 
-fn Square(s Length) Sketch {
-    return _square(s, s)
-}
+fn Square(s Length) Sketch { return _square(s, s) }
 
 # Regular `n`-sided polygon with all vertices on the circumradius `r`, the first
 # on +X. Corner-anchored: built around the origin, then shifted so its
@@ -45,15 +36,14 @@ fn Ngon(n Number, r Length) Sketch {
     assert n >= 3, "Ngon requires n >= 3"
     var p = Polygon(
         points: for i [0:n - 1] {
-            yield Vec2{x: r * Cos(a: i * 360 deg / n), y: r * Sin(a: i * 360 deg / n)}
+            yield Vec2{x: r * Cos(a: i * 360 deg / n),
+                y: r * Sin(a: i * 360 deg / n)}
         }
     )
     return p.Move(x: -p.Left(), y: -p.Front())
 }
 
-fn Ngon(n Number, d Length) Sketch {
-    return Ngon(n: n, r: d / 2)
-}
+fn Ngon(n Number, d Length) Sketch { return Ngon(n: n, r: d / 2) }
 
 # `n`-pointed star: a 2n-vertex polygon alternating the outer radius `r` and the
 # inner radius `ir`, with vertex `i` at angle 180*i/n. Corner-anchored like Ngon.
@@ -61,18 +51,19 @@ fn Ngon(n Number, d Length) Sketch {
 # ```
 # fn Main() { Star(n: 5, r: 12 mm, ir: 5 mm).Extrude(z: 2 mm) }
 # ```
-fn Star(n Number, r Length, ir Length) Sketch {
+fn Star(n Number, r, ir Length) Sketch {
     assert n >= 2, "Star requires n >= 2"
     var p = Polygon(
         points: for i [1:2 * n] {
             var radius = i % 2 == 1 ? ir : r
-            yield Vec2{x: radius * Cos(a: 180 deg * i / n), y: radius * Sin(a: 180 deg * i / n)}
+            yield Vec2{x: radius * Cos(a: 180 deg * i / n),
+                y: radius * Sin(a: 180 deg * i / n)}
         }
     )
     return p.Move(x: -p.Left(), y: -p.Front())
 }
 
-fn Star(n Number, d Length, id Length) Sketch {
+fn Star(n Number, d, id Length) Sketch {
     return Star(n: n, r: d / 2, ir: id / 2)
 }
 
@@ -112,9 +103,7 @@ fn Sketch.Move(
     return _translate(self, x, y)
 }
 
-fn Sketch.Move(v Vec2) Sketch {
-    return _translate(self, v.x, v.y)
-}
+fn Sketch.Move(v Vec2) Sketch { return _translate(self, v.x, v.y) }
 
 # Moves this sketch so its bounding-box minimum corner (left, front) lands at `pos`.
 fn Sketch.MoveTo(pos Vec2) Sketch {
@@ -158,54 +147,34 @@ fn Sketch.Mirror(
 }
 
 # Expands (positive) or shrinks (negative) a sketch with round joins.
-fn Sketch.Offset(delta Length) Sketch {
-    return _offset(self, delta)
-}
+fn Sketch.Offset(delta Length) Sketch { return _offset(self, delta) }
 
 # Rounds convex corners by `r`. Use before extruding for filleted edges.
-fn Sketch.Fillet(r Length) Sketch {
-    return _fillet(self, r)
-}
+fn Sketch.Fillet(r Length) Sketch { return _fillet(self, r) }
 
 # Bevels convex corners by cutting `distance` from each corner.
-fn Sketch.Chamfer(distance Length) Sketch {
-    return _chamfer(self, distance)
-}
+fn Sketch.Chamfer(distance Length) Sketch { return _chamfer(self, distance) }
 
 # Axis-aligned bounding box of a sketch (z components are 0).
-fn Sketch.Bounds() Box {
-    return _bounding_box(self)
-}
+fn Sketch.Bounds() Box { return _bounding_box(self) }
 
 # X extent of the sketch's bounding box.
-fn Sketch.Width() Length {
-    return self.Bounds().Width()
-}
+fn Sketch.Width() Length { return self.Bounds().Width() }
 
 # Y extent of the sketch's bounding box.
-fn Sketch.Depth() Length {
-    return self.Bounds().Depth()
-}
+fn Sketch.Depth() Length { return self.Bounds().Depth() }
 
 # Minimum X of the bounding box.
-fn Sketch.Left() Length {
-    return self.Bounds().Left()
-}
+fn Sketch.Left() Length { return self.Bounds().Left() }
 
 # Maximum X of the bounding box.
-fn Sketch.Right() Length {
-    return self.Bounds().Right()
-}
+fn Sketch.Right() Length { return self.Bounds().Right() }
 
 # Minimum Y of the bounding box.
-fn Sketch.Front() Length {
-    return self.Bounds().Front()
-}
+fn Sketch.Front() Length { return self.Bounds().Front() }
 
 # Maximum Y of the bounding box.
-fn Sketch.Back() Length {
-    return self.Bounds().Back()
-}
+fn Sketch.Back() Length { return self.Bounds().Back() }
 
 # Centroid of the bounding box.
 fn Sketch.Center() Vec2 {
@@ -214,9 +183,7 @@ fn Sketch.Center() Vec2 {
 }
 
 # Signed area enclosed by the sketch.
-fn Sketch.Area() Number {
-    return _area(self)
-}
+fn Sketch.Area() Number { return _area(self) }
 
 # Extrudes a sketch upward along +Z. The sketch extends from Z=0 to Z=`z`.
 # Optional args: `slices` (resolution for twist), `twist` (total rotation bottom→top),
@@ -247,7 +214,4 @@ fn Sketch.Revolve(
 }
 
 # Sweeps the sketch along a 3D path using a rotation-minimizing frame.
-fn Sketch.Sweep(path []Vec3) Solid {
-    return _sweep(self, path)
-}
-
+fn Sketch.Sweep(path []Vec3) Solid { return _sweep(self, path) }
