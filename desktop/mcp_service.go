@@ -216,6 +216,21 @@ type formatCodeInput struct {
 	Source string `json:"source,omitempty" jsonschema:"Source code to format. Omit to format the current editor code."`
 }
 
+// gui_* tool inputs drive the GUI via the automation registry (same commands
+// the /control route exposes).
+type guiSetCameraInput struct {
+	Azimuth   float64 `json:"azimuth" jsonschema:"Camera azimuth in degrees (around the up axis)."`
+	Elevation float64 `json:"elevation" jsonschema:"Camera elevation in degrees above the horizontal."`
+	Distance  float64 `json:"distance,omitempty" jsonschema:"Distance from the target. Omit to keep the current distance."`
+}
+
+type guiRecordStartInput struct {
+	Mode string `json:"mode" jsonschema:"Capture surface: 'canvas' (3D viewer only) or 'page' (full UI)."`
+	FPS  int    `json:"fps,omitempty" jsonschema:"Frames per second. Omit for 30."`
+}
+
+type guiRecordStopInput struct{}
+
 // requestPermissionInput is the payload the Claude CLI sends to the tool named
 // by --permission-prompt-tool whenever a tool use is not pre-approved.
 // CONTRACT (verified against claude 2.1.x): the CLI sends the proposed tool
@@ -366,6 +381,10 @@ type MCPService struct {
 	// this session". Cleared on ClearHistory so a new conversation re-asks.
 	rememberedMu sync.Mutex
 	remembered   map[string]struct{}
+
+	// automation drives the GUI for the gui_* tools. Shared with the /control
+	// route so the assistant and external drivers use one command registry.
+	automation *AutomationController
 }
 
 // screenshotResult carries the captured viewport PNG (raw bytes) back
@@ -396,13 +415,14 @@ type permissionDecision struct {
 // recorder on the EvalService so every /eval response updates the lastRun slot
 // that the get_last_run tool reports. The MCP server itself is built lazily by
 // buildServer when the HTTPServer mounts /mcp.
-func NewMCPService(eval *EvalService) *MCPService {
+func NewMCPService(eval *EvalService, automation *AutomationController) *MCPService {
 	m := &MCPService{
 		state:       newMCPState(),
 		questions:   make(map[string]chan questionAnswer),
 		screenshots: make(map[string]chan screenshotResult),
 		permissions: make(map[string]chan permissionDecision),
 		remembered:  make(map[string]struct{}),
+		automation:  automation,
 	}
 	eval.SetRunRecorder(m.RecordRun)
 	return m
@@ -1065,5 +1085,51 @@ func (m *MCPService) buildServer(ctx context.Context) *mcp.Server {
 		}, nil, nil
 	})
 
+	// --- GUI automation tools ---
+	// These drive the live GUI through the shared automation registry (the same
+	// commands the /control route exposes). Available to the in-app assistant;
+	// reachable by external drivers only when --automation disables auth.
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "gui_set_camera",
+		Description: "Rotate the 3D viewer camera to an azimuth/elevation (degrees).",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input guiSetCameraInput) (*mcp.CallToolResult, any, error) {
+		return m.invokeGUI(ctx, "viewer.setCamera", input)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "gui_record_start",
+		Description: "Start recording the app to a video file. mode is 'canvas' (3D viewer) or 'page' (full UI).",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input guiRecordStartInput) (*mcp.CallToolResult, any, error) {
+		return m.invokeGUI(ctx, "record.start", input)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "gui_record_stop",
+		Description: "Stop the current recording and return the saved video file path.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input guiRecordStopInput) (*mcp.CallToolResult, any, error) {
+		return m.invokeGUI(ctx, "record.stop", input)
+	})
+
 	return server
+}
+
+// invokeGUI marshals a typed tool input to JSON params and drives the named GUI
+// command through the automation controller. A command failure becomes an
+// IsError tool result (a Go error would read as a protocol fault to the SDK).
+// The command's JSON return value, when present, is echoed as the result text
+// so gui_record_stop can hand back the saved path.
+func (m *MCPService) invokeGUI(ctx context.Context, name string, input any) (*mcp.CallToolResult, any, error) {
+	params, err := json.Marshal(input)
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, nil, nil
+	}
+	value, err := m.automation.Invoke(ctx, name, params)
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, nil, nil
+	}
+	text := name + " ok"
+	if len(value) > 0 && string(value) != "null" {
+		text = string(value)
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil, nil
 }

@@ -11,7 +11,7 @@ import (
 // and-removes its own entry), a subsequent answer finds no waiter and errors —
 // no silent nil-on-dropped-answer.
 func TestAnswerQuestionLosesToCancellation(t *testing.T) {
-	m := NewMCPService(NewEvalService())
+	m := NewMCPService(NewEvalService(), NewAutomationController())
 	id := "q1"
 	ch := make(chan questionAnswer, 1)
 	m.questionsMu.Lock()
@@ -30,7 +30,7 @@ func TestAnswerQuestionLosesToCancellation(t *testing.T) {
 // buffer), the handler's cancel branch observes the entry gone and drains the
 // buffered answer instead of reporting cancellation.
 func TestAnswerQuestionWinsRace(t *testing.T) {
-	m := NewMCPService(NewEvalService())
+	m := NewMCPService(NewEvalService(), NewAutomationController())
 	id := "q1"
 	ch := make(chan questionAnswer, 1)
 	m.questionsMu.Lock()
@@ -56,7 +56,7 @@ func TestAnswerQuestionWinsRace(t *testing.T) {
 // fire concurrently, the answer is honored iff AnswerQuestion succeeded — the
 // bug (handler cancelled AND answer silently returned nil) never occurs.
 func TestAnswerQuestionCancelRaceInvariant(t *testing.T) {
-	m := NewMCPService(NewEvalService())
+	m := NewMCPService(NewEvalService(), NewAutomationController())
 	for i := 0; i < 5000; i++ {
 		id := fmt.Sprintf("q%d", i)
 		ch := make(chan questionAnswer, 1)

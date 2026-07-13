@@ -114,7 +114,7 @@ func NewApp() *App {
 	assistant := NewAssistantService()
 	eval := NewEvalService()
 	automation := NewAutomationController()
-	mcp := NewMCPService(eval)
+	mcp := NewMCPService(eval, automation)
 	return &App{
 		config:     NewConfigStore(),
 		logs:       NewLogCapture(),
