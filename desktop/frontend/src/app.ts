@@ -24,14 +24,26 @@ const SOURCE_LIBRARY = 2;
 const SOURCE_CACHED = 3;
 const SOURCE_EXAMPLE = 4;
 
-/** Read-only source kinds — not editable by the user. */
+/** Read-only source kinds — not editable by the user. Every library-backed kind
+ *  (stdlib, local-lib, cached-remote) is read-only: projectSources() filters
+ *  those out of the eval payload, so allowing edits would silently discard them.
+ *  Bundled examples are read-only too (edit-to-save-as, like a template). */
 function isReadOnlyKind(kind: number): boolean {
-  return kind === SOURCE_STDLIB || kind === SOURCE_CACHED || kind === SOURCE_EXAMPLE;
+  return isLibraryBackedKind(kind) || kind === SOURCE_EXAMPLE;
 }
 
 /** Source kinds excluded from tab persistence (ephemeral). */
 function isEphemeralKind(kind: number): boolean {
   return kind === SOURCE_STDLIB || kind === SOURCE_CACHED;
+}
+
+/** Source kinds the loader resolves from a canonical backing — embedded stdlib,
+ *  the local library dir, or the remote git cache. Their text must never be
+ *  round-tripped back as a user project root: the loader would re-resolve them
+ *  standalone and lose the containment context their relative imports need. A
+ *  library opened as a view-only tab is one of these; see the LoadMulti guard. */
+function isLibraryBackedKind(kind: number): boolean {
+  return kind === SOURCE_STDLIB || kind === SOURCE_LIBRARY || kind === SOURCE_CACHED;
 }
 
 /** Files excluded from face-click → source navigation (stdlib). Shared by the
@@ -93,6 +105,23 @@ function getTab(key: string): TabState {
 
 function isReadOnly(path: string): boolean {
   return isReadOnlyKind(evalStore.current()?.sources?.[path]?.kind ?? SOURCE_USER);
+}
+
+/** The editable project sources for an eval/export/frame request: every open
+ *  editor model except view-only library tabs (stdlib, local-lib, cached-remote).
+ *  The loader resolves those from their canonical backing; echoing a resolved
+ *  library back as a user root would re-resolve it standalone and break its
+ *  relative imports (e.g. a fasteners lib's `lib "../threads"`). A source with no
+ *  known kind (a fresh scratch buffer not yet evaluated) is treated as a user
+ *  root and kept. */
+function projectSources(): Record<string, string> {
+  const kinds = evalStore.current()?.sources;
+  const out: Record<string, string> = {};
+  for (const [path, text] of Object.entries(editor.getAllSources())) {
+    if (isLibraryBackedKind(kinds?.[path]?.kind ?? SOURCE_USER)) continue;
+    out[path] = text;
+  }
+  return out;
 }
 
 function isDirty(): boolean {
@@ -250,7 +279,7 @@ export function initApp(deps: AppDeps) {
 
   // Wire the frame playback loop.
   initPlayback({
-    getSources: () => editor.getAllSources(),
+    getSources: projectSources,
     applyFrame: (binary, header) => {
       const decoded = header.mesh ? decodeBinaryMesh(binary, header.mesh) : null;
       // excludeFiles is stable across frames (same program), so derive it from
@@ -846,7 +875,7 @@ let runGeneration = 0;
 
 async function runViaHTTP() {
   const gen = ++runGeneration;
-  const sources = editor.getAllSources();
+  const sources = projectSources();
   const active = tabStore.active();
   const picked = tabStore.activeState()?.pickedEntry ?? null;
   setRunState('running');
@@ -1135,7 +1164,7 @@ export function currentEvalErrorsText(): string {
 function currentEvalParams() {
   const state = tabStore.activeState();
   return {
-    sources: editor.getAllSources(),
+    sources: projectSources(),
     key: tabStore.active(),
     entry: state?.pickedEntry?.name ?? '',
     overrides: state?.entryOverrides ?? {},

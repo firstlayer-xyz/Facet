@@ -53,6 +53,12 @@ func (e *evaluator) run() (*EvalResult, error) {
 	}
 
 	currentSrc := e.prog.Sources[e.currentKey]
+	if currentSrc == nil {
+		// The entry key names no loaded source — e.g. a view-only library tab was
+		// made the eval target but its source is resolved from its backing, not
+		// passed as a root. Fail loudly instead of dereferencing a nil *Source.
+		return nil, fmt.Errorf("entry point source %q is not loaded", e.currentKey)
+	}
 	for _, g := range currentSrc.Globals() {
 		// A slider override replaces the initializer with the user's value; it is
 		// still constraint-checked and committed, just not re-evaluated.
