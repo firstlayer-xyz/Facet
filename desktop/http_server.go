@@ -185,22 +185,19 @@ func (s *HTTPServer) Auth() HTTPAuth { return HTTPAuth{Port: s.port, Token: s.to
 // Endpoint returns the port + bearer token the assistant uses to reach /mcp.
 // Satisfies the connection half of AssistantMCPBridge.
 func (s *HTTPServer) Endpoint() (int, string) {
-	_ = s.WaitReady() // same ready-or-10s gate; Endpoint just ignores the start error
+	_ = s.WaitReady() // block until Start finished; Endpoint just ignores the start error
 	return s.port, s.token
 }
 
 // WaitReady blocks until Start has finished, returning nil once the listener is
-// bound or the error Start failed with, or a timeout error if Start neither
-// succeeds nor fails within 10s (it should always resolve quickly, since Start
-// closes ready on every path). GetHTTPAuth calls this so a frontend eval issued
-// during startup waits for the server and surfaces a real error instead of
-// silently reading port 0. No caller context is needed: the ready signal plus
-// the safety timeout bound the wait, and Start owns its own ctx-driven shutdown.
+// bound or the error Start failed with. Start closes ready on every path
+// (success or failure, with startErr recorded), so this resolves as soon as the
+// server is ready or has definitively failed — it waits as long as a slow
+// startup needs rather than giving up early. GetHTTPAuth calls this so a
+// frontend eval issued during startup waits for the server and surfaces a real
+// error instead of silently reading port 0. No caller context is needed: the
+// ready signal bounds the wait, and Start owns its own ctx-driven shutdown.
 func (s *HTTPServer) WaitReady() error {
-	select {
-	case <-s.ready:
-		return s.startErr
-	case <-time.After(10 * time.Second):
-		return fmt.Errorf("HTTP server did not become ready within 10s")
-	}
+	<-s.ready
+	return s.startErr
 }
