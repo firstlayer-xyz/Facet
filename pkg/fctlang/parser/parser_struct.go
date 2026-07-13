@@ -100,10 +100,11 @@ func (p *parser) parseStructLit(typeName string, exprStart, typeNamePos Pos) (Ex
 	}
 	// The last field's trailing comment is scanned when peeking '}'.
 	attachTrailing()
-	if _, err := p.expect(TokenRBrace); err != nil {
+	rbrace, err := p.expect(TokenRBrace)
+	if err != nil {
 		return nil, err
 	}
-	return &StructLitExpr{TypeName: typeName, Fields: fields, Pos: exprStart, TypeNamePos: typeNamePos}, nil
+	return &StructLitExpr{TypeName: typeName, Fields: fields, Pos: exprStart, TypeNamePos: typeNamePos, EndLine: rbrace.Line}, nil
 }
 
 // parseTypedArrayLit → "[" elem { "," elem } "]"
@@ -166,8 +167,9 @@ func (p *parser) parseTypedArrayLit(typeName string, line, col int) (Expr, error
 	if prevElemLine > 0 {
 		ec.attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // last elem trailing
 	}
-	if _, err := p.expect(TokenRBracket); err != nil {
+	rbracket, err := p.expect(TokenRBracket)
+	if err != nil {
 		return nil, err
 	}
-	return &ArrayLitExpr{TypeName: typeName, Elems: elems, Pos: Pos{line, col}, ElemComments: ec.list(len(elems))}, nil
+	return &ArrayLitExpr{TypeName: typeName, Elems: elems, Pos: Pos{line, col}, ElemComments: ec.list(len(elems)), EndLine: rbracket.Line}, nil
 }

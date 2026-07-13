@@ -182,6 +182,8 @@ func (f *formatter) formatSource(src *parser.Source) {
 		// Track end line for blank-line detection
 		prevEndLine = pos.Line
 		switch d := decl.(type) {
+		case *parser.VarStmt:
+			prevEndLine = max(prevEndLine, exprEndLine(d.Value))
 		case *parser.Function:
 			prevEndLine += len(d.Body) + 1
 		case *parser.StructDecl:
@@ -519,7 +521,10 @@ func stmtRenderStartLine(s parser.Stmt) int {
 	return s.StmtPos().Line
 }
 
-// stmtEndLine returns the approximate last line of a statement, or 0 if unavailable.
+// stmtEndLine returns the last source line a statement occupies, or 0 if
+// unavailable. It accounts for a multi-line value expression (via exprEndLine)
+// so the blank-line heuristic in formatStmts measures the gap to the next
+// statement from the true end, not from the statement's start line.
 func stmtEndLine(s parser.Stmt) int {
 	switch s := s.(type) {
 	case *parser.VarStmt:
@@ -541,61 +546,68 @@ func stmtEndLine(s parser.Stmt) int {
 		}
 		return end + 1 // closing brace
 	case *parser.YieldStmt:
-		return s.Pos.Line
+		return max(s.Pos.Line, exprEndLine(s.Value))
 	case *parser.AssignStmt:
-		return s.Pos.Line
+		return max(s.Pos.Line, exprEndLine(s.Value))
 	case *parser.FieldAssignStmt:
-		return s.Pos.Line
+		return max(s.Pos.Line, exprEndLine(s.Value))
 	case *parser.ExprStmt:
-		return s.Pos.Line
+		return max(s.Pos.Line, exprEndLine(s.Expr))
 	case *parser.AssertStmt:
-		return s.Pos.Line
+		return max(s.Pos.Line, exprEndLine(s.Cond), exprEndLine(s.Message),
+			exprEndLine(s.Value), exprEndLine(s.Constraint))
 	}
 	return 0
 }
 
-// exprEndLine returns the approximate last line of an expression, or 0.
+// exprEndLine returns the last source line an expression occupies, or 0 if
+// unknown. Delimited constructs report their closing token's line (recorded by
+// the parser as EndLine); using the start line instead would under-count a
+// multi-line value and make formatStmts insert a spurious blank line before the
+// following statement.
 func exprEndLine(e parser.Expr) int {
 	if e == nil {
 		return 0
 	}
 	switch e := e.(type) {
 	case *parser.CallExpr:
-		return max(e.Pos.Line, maxArgLine(e.Args))
+		return max(e.Pos.Line, e.EndLine)
 	case *parser.BuiltinCallExpr:
-		return max(e.Pos.Line, maxArgLine(e.Args))
+		return max(e.Pos.Line, e.EndLine)
 	case *parser.MethodCallExpr:
-		return max(exprEndLine(e.Receiver), e.Pos.Line, maxArgLine(e.Args))
+		return max(e.Pos.Line, e.EndLine)
+	case *parser.ArrayLitExpr:
+		return max(e.Pos.Line, e.EndLine)
+	case *parser.StructLitExpr:
+		return max(e.Pos.Line, e.EndLine)
 	case *parser.ForYieldExpr:
-		end := e.Pos.Line
-		for _, st := range e.Body {
-			end = max(end, stmtEndLine(st))
-		}
-		return end + 1 // closing brace
+		return max(e.Pos.Line, e.EndLine)
 	case *parser.FoldExpr:
-		end := e.Pos.Line
-		for _, st := range e.Body {
-			end = max(end, stmtEndLine(st))
-		}
-		return end + 1
-	case *parser.IdentExpr:
-		return e.Pos.Line
+		return max(e.Pos.Line, e.EndLine)
 	case *parser.BinaryExpr:
 		return max(e.Pos.Line, exprEndLine(e.Left), exprEndLine(e.Right))
 	case *parser.UnaryExpr:
-		return e.Pos.Line
+		return max(e.Pos.Line, exprEndLine(e.Operand))
+	case *parser.TernaryExpr:
+		return max(e.Pos.Line, exprEndLine(e.Cond), exprEndLine(e.Then), exprEndLine(e.Else))
 	case *parser.UnitExpr:
-		if l := exprEndLine(e.Expr); l > 0 {
-			return l
-		}
+		return max(e.Pos.Line, exprEndLine(e.Expr))
+	case *parser.IndexExpr:
+		return max(e.Pos.Line, exprEndLine(e.Receiver), exprEndLine(e.Index))
+	case *parser.SliceExpr:
+		return max(e.Pos.Line, exprEndLine(e.Receiver), exprEndLine(e.Start), exprEndLine(e.End))
+	case *parser.FieldAccessExpr:
+		return max(e.Pos.Line, exprEndLine(e.Receiver))
+	case *parser.IdentExpr:
 		return e.Pos.Line
-	case *parser.NamedArg:
-		return max(e.Pos.Line, exprEndLine(e.Value))
 	}
 	return 0
 }
 
-// argLine returns the start line of an argument expression, or 0.
+// argLine returns the start line of an argument expression, or 0. Used to detect
+// whether the user wrote a call's arguments across multiple lines (start line >
+// the opening paren's line) — distinct from exprEndLine, which reports where an
+// expression ends.
 func argLine(e parser.Expr) int {
 	switch e := e.(type) {
 	case *parser.NamedArg:

@@ -10,7 +10,6 @@ fn scad_faces(fs [][]Number) []Face {
             yield Face{v0: f[0], v1: f[i], v2: f[i + 1]}
         }
     }
-
     return fold acc, tris perFace { yield acc + tris }
 }
 

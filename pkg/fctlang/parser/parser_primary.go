@@ -63,13 +63,14 @@ func (p *parser) parsePrimary() (Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			if _, err := p.expect(TokenRParen); err != nil {
+			rparen, err := p.expect(TokenRParen)
+			if err != nil {
 				return nil, err
 			}
 			if strings.HasPrefix(name, "_") {
-				return &BuiltinCallExpr{Name: name, Args: args, Pos: Pos{nameLine, nameCol}}, nil
+				return &BuiltinCallExpr{Name: name, Args: args, Pos: Pos{nameLine, nameCol}, EndLine: rparen.Line}, nil
 			}
-			return &CallExpr{Name: name, Args: args, Pos: Pos{nameLine, nameCol}}, nil
+			return &CallExpr{Name: name, Args: args, Pos: Pos{nameLine, nameCol}, EndLine: rparen.Line}, nil
 		}
 		// If followed by '{', this might be a struct literal.
 		// Disambiguate by peeking ahead for the IDENT : pattern or empty {}.

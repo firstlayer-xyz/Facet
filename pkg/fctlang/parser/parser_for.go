@@ -64,10 +64,11 @@ func (p *parser) parseForExpr() (Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := p.expect(TokenRBrace); err != nil {
+	rbrace, err := p.expect(TokenRBrace)
+	if err != nil {
 		return nil, err
 	}
-	return &ForYieldExpr{Clauses: clauses, Body: body, Pos: Pos{forLine, forCol}}, nil
+	return &ForYieldExpr{Clauses: clauses, Body: body, Pos: Pos{forLine, forCol}, EndLine: rbrace.Line}, nil
 }
 
 // parseForClause parses a single for clause.
@@ -146,10 +147,11 @@ func (p *parser) parseFoldExpr() (Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := p.expect(TokenRBrace); err != nil {
+	rbrace, err := p.expect(TokenRBrace)
+	if err != nil {
 		return nil, err
 	}
-	return &FoldExpr{AccVar: accVar.Text, ElemVar: elemVar.Text, Iter: iter, Body: body, Pos: Pos{foldLine, foldCol}}, nil
+	return &FoldExpr{AccVar: accVar.Text, ElemVar: elemVar.Text, Iter: iter, Body: body, Pos: Pos{foldLine, foldCol}, EndLine: rbrace.Line}, nil
 }
 
 // parseForStatement handles statements inside for-yield bodies: yield, plus
