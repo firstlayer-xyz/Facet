@@ -1115,34 +1115,6 @@ func structFieldsHaveComments(fields []*parser.StructFieldInit) bool {
 	return false
 }
 
-// writeCommentLines emits the standalone (leading) comments as their own indented
-// lines; writeTrailingComments appends the end-of-line ones after the current
-// text. Both match formatArgs' comment style so output stays idempotent.
-func (f *formatter) writeLeadingComments(cs []parser.Comment) {
-	for _, c := range cs {
-		if !c.IsTrailing {
-			f.writeIndent()
-			if c.IsDoc {
-				f.writeln("# " + c.Text)
-			} else {
-				f.writeln("// " + c.Text)
-			}
-		}
-	}
-}
-
-func (f *formatter) writeTrailingComments(cs []parser.Comment) {
-	for _, c := range cs {
-		if c.IsTrailing {
-			if c.IsDoc {
-				f.write(" # " + c.Text)
-			} else {
-				f.write(" // " + c.Text)
-			}
-		}
-	}
-}
-
 // formatStructFieldsWithComments emits one field per line, with each field's
 // leading comments above it and its trailing comment after it. The opening "{"
 // is already written; it closes by re-indenting for the caller's "}".
@@ -1150,14 +1122,15 @@ func (f *formatter) formatStructFieldsWithComments(e *parser.StructLitExpr) {
 	f.writeln("")
 	f.depth++
 	for i, fi := range e.Fields {
-		f.writeLeadingComments(fi.Comments)
+		leading, trailing := splitComments(fi.Comments)
+		f.writeComments(leading)
 		f.writeIndent()
 		f.write(fi.Name + ": ")
 		f.formatExpr(fi.Value)
 		if i < len(e.Fields)-1 {
 			f.write(",")
 		}
-		f.writeTrailingComments(fi.Comments)
+		f.writeTrailingComment(trailing)
 		f.writeln("")
 	}
 	f.depth--
@@ -1185,7 +1158,8 @@ func (f *formatter) formatArrayElemsWithComments(e *parser.ArrayLitExpr) {
 		if i < len(e.ElemComments) {
 			cs = e.ElemComments[i]
 		}
-		f.writeLeadingComments(cs)
+		leading, trailing := splitComments(cs)
+		f.writeComments(leading)
 		f.writeIndent()
 		// Typed-array struct elements drop the repeated element type name.
 		if sl, ok := elem.(*parser.StructLitExpr); ok && e.TypeName != "" && sl.TypeName == e.TypeName {
@@ -1199,7 +1173,7 @@ func (f *formatter) formatArrayElemsWithComments(e *parser.ArrayLitExpr) {
 		if i < len(e.Elems)-1 {
 			f.write(",")
 		}
-		f.writeTrailingComments(cs)
+		f.writeTrailingComment(trailing)
 		f.writeln("")
 	}
 	f.depth--

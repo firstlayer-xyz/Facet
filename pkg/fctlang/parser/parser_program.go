@@ -6,9 +6,7 @@ package parser
 // drainTrailingComments drains pending comments on the given line and marks them as trailing.
 func (p *parser) drainTrailingComments(line int) []Comment {
 	trailing := p.lex.drainCommentsOnLine(line)
-	for i := range trailing {
-		trailing[i].IsTrailing = true
-	}
+	markTrailing(trailing)
 	return trailing
 }
 
