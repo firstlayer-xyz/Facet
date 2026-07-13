@@ -2,6 +2,7 @@ import './style.css';
 import { createEditor, EditorHandle } from './editor';
 import { Viewer } from './viewer';
 import { initAutomation } from './automation';
+import { Toggle, bindToggleButton } from './toggle';
 import { Gnomon } from './gnomon';
 import { GetDefaultSource, GetExample, DetectSlicers, SetAssistantConfig, CreateLocalLibrary, CreateLibraryFolder, ListLibraryFolders, OpenRecentFile, OpenLibraryDir, AutomationEnabled, CreateScratchFile } from '../wailsjs/go/main/App';
 import { ClipboardSetText, ClipboardGetText, WindowToggleMaximise } from '../wailsjs/runtime/runtime';
@@ -205,6 +206,13 @@ async function init() {
   // fields. Single property reference, code is in the bundle anyway.
   (window as unknown as { viewer: Viewer }).viewer = viewer;
 
+  // Auto-center & rotate turntable, owned by one Toggle: the toolbar button, the
+  // menu (future), and automation all drive the same instance, so they can't
+  // desync. bindToggleButton wires the button both ways (click → toggle, state
+  // → active class).
+  const autoRotate = new Toggle(false, (on) => viewer.setAutoRotate(on));
+  bindToggleButton(autoRotateBtn, autoRotate);
+
   // Remote GUI automation: listen for automation:invoke commands (only emitted
   // when the app runs with --automation). Registering the listener always is
   // harmless — no events arrive without the flag.
@@ -214,6 +222,7 @@ async function init() {
   };
   initAutomation({
     viewer,
+    setAutoRotate: (on) => autoRotate.set(on),
     editor: {
       insertAtCursor: (t) => requireEditor().insertAtCursor(t),
       moveCursorAfter: (f) => requireEditor().moveCursorAfter(f),
@@ -224,10 +233,6 @@ async function init() {
       build: () => run(),
     },
   });
-
-  // Keep the auto-rotate toolbar button in sync with viewer state, whatever
-  // flips it (toolbar click or automation's viewer.setAutoRotate).
-  viewer.onAutoRotateChange((on) => autoRotateBtn.classList.toggle('active', on));
 
   // Gnomon — always-visible axis indicator bottom-left of viewport, drag to orbit
   const gnomon = new Gnomon(canvasContainer, (dTheta, dPhi) => viewer.orbitBy(dTheta, dPhi));
@@ -634,10 +639,8 @@ settingsBtn.addEventListener('click', () => {
 // Center model button
 centerBtn.addEventListener('click', () => viewer.fitToView());
 
-// Auto-rotate button. The viewer is the single source of truth: the click just
-// toggles it; onAutoRotateChange (wired in init, once the viewer exists) keeps
-// the button in sync — so automation (viewer.setAutoRotate) updates the UI too.
-autoRotateBtn.addEventListener('click', () => viewer.toggleAutoRotate());
+// Auto-rotate button is wired in init() via a Toggle (bindToggleButton), so the
+// button, menu, and automation all stay in sync — see the autoRotate Toggle.
 
 // Head-tracking parallax button
 headTrackBtn.addEventListener('click', async () => {

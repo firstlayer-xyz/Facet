@@ -39,6 +39,8 @@ export interface EditorControl {
 export interface AutomationDeps {
   viewer: Viewer;
   editor: EditorControl;
+  /** Drive the auto-rotate Toggle (keeps the toolbar button in sync too). */
+  setAutoRotate: (on: boolean) => void;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -56,7 +58,7 @@ export function registerCommand(name: string, run: CommandFn): void {
 export function initAutomation(deps: AutomationDeps): void {
   registerWindowCommands();
   registerEditorCommands(deps.editor);
-  registerViewerCommands(deps.viewer);
+  registerViewerCommands(deps.viewer, deps.setAutoRotate);
   registerAnimationCommands();
   registerRecordCommands(deps.viewer.getCanvas());
 
@@ -153,7 +155,7 @@ function registerEditorCommands(editor: EditorControl): void {
   registerCommand('editor.getCode', async () => ({ code: editor.getContent() }));
 }
 
-function registerViewerCommands(viewer: Viewer): void {
+function registerViewerCommands(viewer: Viewer, setAutoRotate: (on: boolean) => void): void {
   registerCommand('viewer.setCamera', async (p) => {
     viewer.applyCameraPose({
       azimuth: Number(p.azimuth ?? 0),
@@ -170,10 +172,10 @@ function registerViewerCommands(viewer: Viewer): void {
     return null;
   });
 
-  // Enable/disable the existing "auto-center & rotate" turntable. setAutoRotate
-  // updates both the viewer and the toolbar button (via onAutoRotateChange).
+  // Enable/disable the "auto-center & rotate" turntable via its Toggle, so the
+  // viewer AND the toolbar button update together.
   registerCommand('viewer.autoRotate', async (p) => {
-    viewer.setAutoRotate(p.on !== false); // default on
+    setAutoRotate(p.on !== false); // default on
     return null;
   });
 }
