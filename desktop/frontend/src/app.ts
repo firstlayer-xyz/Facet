@@ -77,7 +77,10 @@ let onDebugBarChangeCb: ((visible: boolean) => void) | null = null;
 let debugMode = false;
 let debugStepping = false; // true while showDebugStep is switching tabs
 let debugEntryTab = ''; // tab that was active when debug started
-let debugFinalMesh: DecodedMesh | null = null;
+// All final meshes of the debugged model. A model can produce several solids
+// (a Layout, a []Solid return), so this is an array — collapsing it to a single
+// mesh dropped multi-solid models, leaving the canvas blank on debug exit.
+let debugFinalMeshes: DecodedMesh[] = [];
 let debugBinary: ArrayBuffer | null = null;
 let debugStepIndex = 0;
 
@@ -660,7 +663,7 @@ async function closeTab(file: string) {
     editor.clearDebugLine();
     viewer.reset();
     hideStats();
-    debugFinalMesh = null;
+    debugFinalMeshes = [];
     debugEntryTab = '';
     evalStore.set(null);
     onDebugExitCb?.();
@@ -756,9 +759,9 @@ export async function showDebugStep(index: number) {
   debugLabel.textContent = `Step ${index + 1}/${debugSteps.length}  ·  ${step.op}${lineInfo}`;
 
   // Display the step — per-step mesh lazy loading is not yet implemented for HTTP eval.
-  if (step.op === 'Final' && debugFinalMesh) {
+  if (step.op === 'Final' && debugFinalMeshes.length > 0) {
     viewer.clearMeshes();
-    viewer.loadDecodedMesh(debugFinalMesh);
+    for (const m of debugFinalMeshes) viewer.loadDecodedMesh(m);
   } else if (step.meshes && step.meshes.length > 0 && debugBinary) {
     viewer.loadDebugStep(step, debugBinary);
   }
@@ -985,17 +988,17 @@ function handleDebugHTTPResult(data: EvalResult, binary: ArrayBuffer) {
       line: 0, col: 0, file: '',
     });
     data.debugSteps = steps;
-    debugFinalMesh = finalMeshes.length === 1 ? finalMeshes[0] : null; // TODO: merge if multiple
+    debugFinalMeshes = finalMeshes;
   } else {
     data.debugSteps = steps;
-    debugFinalMesh = null;
+    debugFinalMeshes = [];
   }
 
   computeValidLines(steps);
   renderTabs();
 
   viewer.clearMeshes();
-  if (debugFinalMesh) viewer.loadDecodedMesh(debugFinalMesh);
+  for (const m of debugFinalMeshes) viewer.loadDecodedMesh(m);
   if (steps.length > 0) {
     debugSlider.max = String(steps.length - 1);
     showDebugStep(0);
@@ -1212,14 +1215,13 @@ export function toggleDebug() {
     setDebugBarVisible(false);
     editor.clearDebugLine();
 
-    // Restore the final mesh with normal materials instead of re-evaluating
-    if (debugFinalMesh) {
-      viewer.clearMeshes();
-      viewer.loadDecodedMesh(debugFinalMesh);
-      viewer.fitToView();
-    }
+    // Restore the final model with normal materials instead of re-evaluating.
+    // Every final mesh must come back — a multi-solid model has more than one.
+    viewer.clearMeshes();
+    for (const m of debugFinalMeshes) viewer.loadDecodedMesh(m);
+    if (debugFinalMeshes.length > 0) viewer.fitToView();
     evalStore.set(null);
-    debugFinalMesh = null;
+    debugFinalMeshes = [];
 
     // Jump back to the tab that had the entry point
     if (debugEntryTab && !tabStore.isActive(debugEntryTab) && tabStore.has(debugEntryTab)) {
