@@ -14,7 +14,7 @@ import (
 // "Load failed" for the whole session.
 func TestWaitReadyBlocksUntilStart(t *testing.T) {
 	eval := NewEvalService()
-	srv := NewHTTPServer(eval, NewMCPService(eval))
+	srv := NewHTTPServer(eval, NewMCPService(eval), NewAutomationController())
 
 	returned := make(chan error, 1)
 	go func() {

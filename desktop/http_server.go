@@ -89,18 +89,20 @@ func authMiddleware(token string, port int, next http.Handler) http.Handler {
 // handler, so a change or failure in the assistant tooling cannot stop /eval
 // from binding.
 type HTTPServer struct {
-	eval     *EvalService
-	mcp      *MCPService
-	port     int
-	token    string
-	startErr error         // non-nil if Start failed; read after <-ready
-	ready    chan struct{} // closed once Start has finished — success or failure
+	eval       *EvalService
+	mcp        *MCPService
+	automation *AutomationController
+	port       int
+	token      string
+	startErr   error         // non-nil if Start failed; read after <-ready
+	ready      chan struct{} // closed once Start has finished — success or failure
 }
 
-// NewHTTPServer wires the core eval service and the MCP handler provider. The
-// listener is not bound until Start is called.
-func NewHTTPServer(eval *EvalService, mcp *MCPService) *HTTPServer {
-	return &HTTPServer{eval: eval, mcp: mcp, ready: make(chan struct{})}
+// NewHTTPServer wires the core eval service, the MCP handler provider, and the
+// automation controller (for the /control route). The listener is not bound
+// until Start is called.
+func NewHTTPServer(eval *EvalService, mcp *MCPService, automation *AutomationController) *HTTPServer {
+	return &HTTPServer{eval: eval, mcp: mcp, automation: automation, ready: make(chan struct{})}
 }
 
 // Start binds the listener, mounts the routes (including the MCP server the
@@ -140,6 +142,7 @@ func (s *HTTPServer) bind(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", handleMcp)
 	mux.Handle("/eval", s.eval.HTTPHandler(frameSessions))
+	mux.Handle("/control", controlHandler(s.automation))
 	mux.HandleFunc("/check", handleCheck)
 	mux.HandleFunc("/frame", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

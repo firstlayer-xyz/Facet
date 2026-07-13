@@ -121,7 +121,7 @@ func NewApp() *App {
 		libraries:  NewLibraryManager(assistant),
 		eval:       eval,
 		mcp:        mcp,
-		http:       NewHTTPServer(eval, mcp),
+		http:       NewHTTPServer(eval, mcp, automation),
 		automation: automation,
 	}
 }
