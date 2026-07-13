@@ -66,3 +66,18 @@ func TestResolveUnknownID(t *testing.T) {
 		t.Fatal("want error for unknown id")
 	}
 }
+
+func TestAppAutomationResultRoutes(t *testing.T) {
+	a := NewApp()
+	a.automation.SetEventContext(context.Background())
+	a.automation.emit = func(_ context.Context, p AutomationInvoke) {
+		go func() { _ = a.AutomationResult(p.ID, `42`, "") }()
+	}
+	out, err := a.automation.Invoke(context.Background(), "wait.ms", nil)
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if string(out) != `42` {
+		t.Fatalf("out = %s", out)
+	}
+}

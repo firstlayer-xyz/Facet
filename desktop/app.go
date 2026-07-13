@@ -93,9 +93,10 @@ type App struct {
 	logs      *LogCapture
 	assistant *AssistantService
 	libraries *LibraryManager
-	eval      *EvalService
-	mcp       *MCPService
-	http      *HTTPServer
+	eval       *EvalService
+	mcp        *MCPService
+	http       *HTTPServer
+	automation *AutomationController
 }
 
 // runtimeCtx returns the published Wails runtime context, or nil before startup
@@ -111,15 +112,17 @@ func (a *App) runtimeCtx() context.Context {
 func NewApp() *App {
 	assistant := NewAssistantService()
 	eval := NewEvalService()
+	automation := NewAutomationController()
 	mcp := NewMCPService(eval)
 	return &App{
-		config:    NewConfigStore(),
-		logs:      NewLogCapture(),
-		assistant: assistant,
-		libraries: NewLibraryManager(assistant),
-		eval:      eval,
-		mcp:       mcp,
-		http:      NewHTTPServer(eval, mcp),
+		config:     NewConfigStore(),
+		logs:       NewLogCapture(),
+		assistant:  assistant,
+		libraries:  NewLibraryManager(assistant),
+		eval:       eval,
+		mcp:        mcp,
+		http:       NewHTTPServer(eval, mcp),
+		automation: automation,
 	}
 }
 
@@ -188,6 +191,7 @@ func (a *App) startup(ctx context.Context) {
 	a.libraries.SetContext(ctx)
 	a.assistant.SetEventContext(ctx)
 	a.assistant.RebuildSystemPrompt()
+	a.automation.SetEventContext(ctx)
 	a.logs.Start(ctx)
 
 	// Start the in-process HTTP server (eval/frame/check + the assistant's mcp).
@@ -239,6 +243,13 @@ var hasDirtyFiles atomic.Bool
 // SetDirtyState is called by the frontend to report whether any files have unsaved changes.
 func (a *App) SetDirtyState(dirty bool) {
 	hasDirtyFiles.Store(dirty)
+}
+
+// AutomationResult is called by the frontend automation module to resolve the
+// pending GUI command identified by id. valueJSON is the command's JSON result
+// ("" for none); errMsg is non-empty when the command failed. Bound via Wails.
+func (a *App) AutomationResult(id, valueJSON, errMsg string) error {
+	return a.automation.resolve(id, valueJSON, errMsg)
 }
 
 // beforeClose is called when the user tries to close the window.
