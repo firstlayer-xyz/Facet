@@ -232,39 +232,6 @@ fn Solid.GridPattern(
     return self.GridPattern(countX: countX, countY: countY, gap: gap, rowOffset: rowOffset)
 }
 
-# Tiles a solid into a `countX × countY` hexagonal (honeycomb) lattice: horizontal
-# pitch is the cell width + `gap`, the row pitch is pitch·√3/2, and odd rows are
-# offset half a pitch — the densest packing, and a seamless honeycomb for a
-# pointy-top hexagonal cell with gap 0.
-fn Solid.HexPattern(
-    countX, countY Number,
-    gap Length = 0 mm,
-) Solid {
-    assert countX >= 1, "HexPattern requires countX >= 1"
-    assert countY >= 1, "HexPattern requires countY >= 1"
-    var b = self.Bounds()
-    var p = b.Width() + gap
-    var sy = p * Sqrt(n: 3) / 2
-    return Union(arr: for j [0:<countY], i [0:<countX] {
-        yield self.Move(x: i * p + (j % 2) * (p / 2), y: j * sy)
-    })
-}
-
-# Fills a `width × depth` region with a honeycomb, then delegates.
-fn Solid.HexPattern(
-    width, depth Length,
-    gap Length = 0 mm,
-) Solid {
-    var b = self.Bounds()
-    var p = b.Width() + gap
-    var sy = p * Sqrt(n: 3) / 2
-    var countX = Floor(n: (width - b.Width()) / p) + 1
-    var countY = Floor(n: (depth - b.Depth()) / sy) + 1
-    assert countX >= 1, "HexPattern: width too small to fit one copy"
-    assert countY >= 1, "HexPattern: depth too small to fit one copy"
-    return self.HexPattern(countX: countX, countY: countY, gap: gap)
-}
-
 # Same as Solid.LinearPattern (count form) but for Sketch.
 fn Sketch.LinearPattern(
     count Number,
@@ -348,34 +315,3 @@ fn Sketch.GridPattern(
     assert countY >= 1, "GridPattern: depth too small to fit one copy"
     return self.GridPattern(countX: countX, countY: countY, gap: gap, rowOffset: rowOffset)
 }
-
-# Same as Solid.HexPattern (count form) but for Sketch.
-fn Sketch.HexPattern(
-    countX, countY Number,
-    gap Length = 0 mm,
-) Sketch {
-    assert countX >= 1, "HexPattern requires countX >= 1"
-    assert countY >= 1, "HexPattern requires countY >= 1"
-    var b = self.Bounds()
-    var p = b.Width() + gap
-    var sy = p * Sqrt(n: 3) / 2
-    return Union(arr: for j [0:<countY], i [0:<countX] {
-        yield self.Move(x: i * p + (j % 2) * (p / 2), y: j * sy)
-    })
-}
-
-# Same as Solid.HexPattern (region form) but for Sketch.
-fn Sketch.HexPattern(
-    width, depth Length,
-    gap Length = 0 mm,
-) Sketch {
-    var b = self.Bounds()
-    var p = b.Width() + gap
-    var sy = p * Sqrt(n: 3) / 2
-    var countX = Floor(n: (width - b.Width()) / p) + 1
-    var countY = Floor(n: (depth - b.Depth()) / sy) + 1
-    assert countX >= 1, "HexPattern: width too small to fit one copy"
-    assert countY >= 1, "HexPattern: depth too small to fit one copy"
-    return self.HexPattern(countX: countX, countY: countY, gap: gap)
-}
-

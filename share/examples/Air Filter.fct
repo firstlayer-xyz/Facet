@@ -5,11 +5,19 @@ fn Main(
     holeD Length = 8 mm where [4:16] mm,
     wall Length = 1.5 mm where [0.5:4] mm,
 ) Solid {
-    # A flat frame with a honeycomb of hexagonal holes punched through it.
-    # HexPattern packs the holes from their own size plus the wall gap; the
-    # stamp is centered on the plate (X/Y only) before subtraction.
+    # A flat frame with a true honeycomb of hexagonal holes punched through it.
+    # Hex packing: the horizontal pitch is the hole width plus the wall gap, the
+    # row pitch is pitch·√3/2, and odd rows shift half a pitch — the densest
+    # lattice. The stamp is centered on the plate (X/Y only) before subtraction.
     var plate = Cube(x: width, y: depth, z: thickness)
     var hole = Ngon(n: 6, d: holeD).Extrude(z: thickness)
-    var holes = hole.HexPattern(width: width - 2 * wall, depth: depth - 2 * wall, gap: wall)
+    var b = hole.Bounds()
+    var pitch = b.Width() + wall
+    var rowPitch = pitch * Sqrt(n: 3) / 2
+    var countX = Floor(n: (width - 2 * wall - b.Width()) / pitch) + 1
+    var countY = Floor(n: (depth - 2 * wall - b.Depth()) / rowPitch) + 1
+    var holes = Union(arr: for j [0:<countY], i [0:<countX] {
+        yield hole.Move(x: i * pitch + (j % 2) * (pitch / 2), y: j * rowPitch)
+    })
     return plate - holes.AlignCenter(with: plate, z: false)
 }

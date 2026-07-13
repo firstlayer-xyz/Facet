@@ -90,61 +90,6 @@ fn Main() Solid {
 	assertMeshSize(t, mesh, 100, 100, 1, 0.5)
 }
 
-// ── Hex (count + region forms) ───────────────────────────────────────────────
-
-// Hex packing of a 10mm cube: horizontal pitch 10 → odd rows offset +5 widen X
-// to 105; row pitch 10·√3/2 ≈ 8.66 over 11 rows → Y ≈ 96.6.
-func TestEvalSolidHexPatternCount(t *testing.T) {
-	src := `
-fn Main() Solid {
-    return Cube(s: 10 mm).HexPattern(countX: 10, countY: 11);
-}
-`
-	mesh, err := evalMerged(context.Background(), parseTestProg(t, src), nil)
-	if err != nil {
-		t.Fatalf("eval error: %v", err)
-	}
-	assertMeshSize(t, mesh, 105, 96.6, 10, 0.6)
-}
-
-// Region form derives the same 10×11 lattice from a 100×100 area.
-func TestEvalSolidHexPatternRegion(t *testing.T) {
-	src := `
-fn Main() Solid {
-    return Cube(s: 10 mm).HexPattern(width: 100 mm, depth: 100 mm);
-}
-`
-	mesh, err := evalMerged(context.Background(), parseTestProg(t, src), nil)
-	if err != nil {
-		t.Fatalf("eval error: %v", err)
-	}
-	assertMeshSize(t, mesh, 105, 96.6, 10, 0.6)
-}
-
-func TestEvalHexPatternTooSmall(t *testing.T) {
-	src := `
-fn Main() Solid {
-    return Cube(s: 10 mm).HexPattern(width: 5 mm, depth: 100 mm);
-}
-`
-	if msg := evalErr(t, src); !strings.Contains(msg, "HexPattern: width too small to fit one copy") {
-		t.Errorf("got: %s\nwant substring about width too small", msg)
-	}
-}
-
-func TestEvalSketchHexPatternCount(t *testing.T) {
-	src := `
-fn Main() Solid {
-    return Square(s: 10 mm).HexPattern(countX: 10, countY: 11).Extrude(z: 1 mm);
-}
-`
-	mesh, err := evalMerged(context.Background(), parseTestProg(t, src), nil)
-	if err != nil {
-		t.Fatalf("eval error: %v", err)
-	}
-	assertMeshSize(t, mesh, 105, 96.6, 1, 0.6)
-}
-
 // ── Linear (size-aware gap + axis) ───────────────────────────────────────────
 
 // Count form along the default +X axis: pitch = cell width (10) + gap (5) = 15;
