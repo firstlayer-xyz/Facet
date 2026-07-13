@@ -136,6 +136,26 @@ func TestParseAutomationFlag(t *testing.T) {
 	}
 }
 
+func TestParseWindowSize(t *testing.T) {
+	cases := []struct {
+		args []string
+		w, h int
+	}{
+		{nil, 0, 0},
+		{[]string{"--window-size=1280x720"}, 1280, 720},
+		{[]string{"--automation", "--window-size=1920x1080"}, 1920, 1080},
+		{[]string{"--window-size=bad"}, 0, 0},
+		{[]string{"--window-size=1280x"}, 0, 0},
+		{[]string{"--window-size=-5x10"}, 0, 0},
+	}
+	for _, c := range cases {
+		w, h := parseWindowSize(c.args)
+		if w != c.w || h != c.h {
+			t.Errorf("parseWindowSize(%v) = %dx%d, want %dx%d", c.args, w, h, c.w, c.h)
+		}
+	}
+}
+
 func TestAuthMiddlewareSkipWhenDisabled(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 

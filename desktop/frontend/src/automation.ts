@@ -22,13 +22,26 @@ import { Recorder, blobToDataURL } from './recorder';
 
 type RecordMode = 'canvas' | 'page';
 
+/** The editor operations automation drives — a subset of EditorHandle plus a
+ *  build trigger. Kept as an interface so automation.ts stays decoupled from
+ *  Monaco (main.ts wires these to the real editor). */
+export interface EditorControl {
+  insertAtCursor(text: string): void;
+  moveCursorAfter(find: string): boolean;
+  selectRange(find: string): boolean;
+  deleteSelection(): void;
+  setContentSilent(text: string): void;
+  getContent(): string;
+  /** Trigger a build of the current editor source. */
+  build(): void;
+}
+
 export interface AutomationDeps {
   viewer: Viewer;
-  /** Replace the active editor's source and trigger a build. */
-  loadCode: (code: string) => void;
-  /** Current source in the active editor tab. */
-  getCode: () => string;
+  editor: EditorControl;
 }
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 type CommandFn = (params: any) => Promise<unknown>;
 
@@ -42,7 +55,7 @@ export function registerCommand(name: string, run: CommandFn): void {
 
 export function initAutomation(deps: AutomationDeps): void {
   registerWindowCommands();
-  registerEditorCommands(deps.loadCode, deps.getCode);
+  registerEditorCommands(deps.editor);
   registerViewerCommands(deps.viewer);
   registerAnimationCommands();
   registerRecordCommands(deps.viewer.getCanvas());
@@ -75,29 +88,69 @@ function registerWindowCommands(): void {
   });
 }
 
-function registerEditorCommands(loadCode: (code: string) => void, getCode: () => string): void {
-  // Load source into the editor and resolve only once the resulting build has
-  // rendered — the next evalStore update. run() supersedes any in-flight eval,
-  // so the update we wake on is this code's, letting demo scripts avoid sleeps.
-  registerCommand('editor.loadCode', async (p) => {
-    const code = String(p.code ?? '');
-    await new Promise<void>((resolve, reject) => {
+function registerEditorCommands(editor: EditorControl): void {
+  // Build the current editor source and resolve once it has rendered (the next
+  // evalStore update). Typing suppresses auto-run, so nothing is in flight and
+  // the update we wake on is this build's — demo scripts need no sleeps.
+  const buildAndWait = () =>
+    new Promise<void>((resolve) => {
       const unsub = evalStore.subscribe(() => {
         unsub();
         resolve();
       });
-      try {
-        loadCode(code);
-      } catch (e) {
-        unsub();
-        reject(e);
-      }
+      editor.build();
     });
+
+  const typeAtCursor = async (text: string, cps: number) => {
+    const delay = 1000 / (cps > 0 ? cps : 40);
+    for (const ch of text) {
+      editor.insertAtCursor(ch);
+      await sleep(delay);
+    }
+  };
+
+  // Instantly load full source and build (blank-slate seeding, not typed).
+  registerCommand('editor.loadCode', async (p) => {
+    editor.setContentSilent(String(p.code ?? ''));
+    await buildAndWait();
+    return null;
+  });
+
+  // Type text at the cursor char-by-char (scroll-follows), then build unless
+  // build:false. Insertion is at the cursor, so it composes with moveTo.
+  registerCommand('editor.type', async (p) => {
+    await typeAtCursor(String(p.code ?? p.text ?? ''), Number(p.cps));
+    if (p.build !== false) await buildAndWait();
+    return null;
+  });
+
+  // Move the cursor just after the first occurrence of `find`.
+  registerCommand('editor.moveTo', async (p) => {
+    const find = String(p.find ?? '');
+    if (!editor.moveCursorAfter(find)) throw new Error(`moveTo: not found: ${find}`);
+    return null;
+  });
+
+  // Find text, select it (briefly visible), delete it, and type the replacement
+  // in its place — a human-style edit. Then build unless build:false.
+  registerCommand('editor.replace', async (p) => {
+    const find = String(p.find ?? '');
+    if (!editor.selectRange(find)) throw new Error(`replace: not found: ${find}`);
+    await sleep(300); // let the highlighted selection register on camera
+    editor.deleteSelection();
+    await typeAtCursor(String(p.code ?? p.text ?? ''), Number(p.cps));
+    if (p.build !== false) await buildAndWait();
+    return null;
+  });
+
+  // Explicit build + wait (for use after a build:false type/replace).
+  registerCommand('editor.build', async () => {
+    await buildAndWait();
     return null;
   });
 
   // Read back the active editor's source (state inspection for demo scripts).
-  registerCommand('editor.getCode', async () => ({ code: getCode() }));
+  registerCommand('editor.getCode', async () => ({ code: editor.getContent() }));
 }
 
 function registerViewerCommands(viewer: Viewer): void {
@@ -114,6 +167,14 @@ function registerViewerCommands(viewer: Viewer): void {
   // Frame the model to fit the viewport — handy before recording.
   registerCommand('viewer.frameAll', async () => {
     viewer.fitToView();
+    return null;
+  });
+
+  // Enable/disable the existing "auto-center & rotate" turntable. Enabling also
+  // fits the model to view (toggleAutoRotate calls fitToView).
+  registerCommand('viewer.autoRotate', async (p) => {
+    const want = p.on !== false; // default on
+    if (viewer.isAutoRotating() !== want) viewer.toggleAutoRotate();
     return null;
   });
 }

@@ -171,6 +171,14 @@ export interface EditorHandle {
   updateReferences(refs: Record<string, DeclLocation>): void;
   updateFileSources(sources: Record<string, string>): void;
   getCursorPosition(): { lineNumber: number; column: number };
+  // Automation editing primitives (human-like scripted editing). Each content
+  // mutation suppresses auto-run so the debounced build doesn't fire mid-edit;
+  // callers build explicitly at valid checkpoints. Inserts reveal the cursor so
+  // long edits scroll into view.
+  insertAtCursor(text: string): void;
+  moveCursorAfter(find: string): boolean;
+  selectRange(find: string): boolean;
+  deleteSelection(): void;
   onCursorChange(cb: (line: number, col: number) => void): void;
   onMouseMove(cb: (line: number, col: number) => void): void;
   onMouseLeave(cb: () => void): void;
@@ -1286,6 +1294,58 @@ export function createEditor(
 
     setContentSilent(text: string) {
       replaceContent(text, true);
+    },
+
+    insertAtCursor(text: string) {
+      const pos = ed.getPosition() ?? new monaco.Position(1, 1);
+      suppressChange = true;
+      try {
+        ed.executeEdits('automation-type', [{
+          range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+          text,
+        }]);
+      } finally {
+        suppressChange = false;
+      }
+      const lines = text.split('\n');
+      const newPos = lines.length === 1
+        ? new monaco.Position(pos.lineNumber, pos.column + text.length)
+        : new monaco.Position(pos.lineNumber + lines.length - 1, lines[lines.length - 1].length + 1);
+      ed.setPosition(newPos);
+      ed.revealPositionInCenterIfOutsideViewport(newPos);
+    },
+
+    moveCursorAfter(find: string): boolean {
+      const model = ed.getModel();
+      if (!model) return false;
+      const matches = model.findMatches(find, false, false, true, null, false, 1);
+      if (matches.length === 0) return false;
+      const pos = matches[0].range.getEndPosition();
+      ed.setPosition(pos);
+      ed.revealPositionInCenterIfOutsideViewport(pos);
+      return true;
+    },
+
+    selectRange(find: string): boolean {
+      const model = ed.getModel();
+      if (!model) return false;
+      const matches = model.findMatches(find, false, false, true, null, false, 1);
+      if (matches.length === 0) return false;
+      ed.setSelection(matches[0].range);
+      ed.revealRangeInCenterIfOutsideViewport(matches[0].range);
+      return true;
+    },
+
+    deleteSelection() {
+      const sel = ed.getSelection();
+      if (!sel || sel.isEmpty()) return;
+      suppressChange = true;
+      try {
+        ed.executeEdits('automation-delete', [{ range: sel, text: '' }]);
+      } finally {
+        suppressChange = false;
+      }
+      ed.setPosition(sel.getStartPosition());
     },
 
     switchModel(fileKey: string, content: string) {
