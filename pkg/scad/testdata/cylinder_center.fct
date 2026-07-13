@@ -1,3 +1,1 @@
-fn Main() Solid {
-    return Cylinder(r: 5 mm, h: 20 mm).AlignCenter(pos: Vec3{})
-}
+fn Main() Solid { return Cylinder(r: 5 mm, h: 20 mm).AlignCenter(pos: Vec3{}) }

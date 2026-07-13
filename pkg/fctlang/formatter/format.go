@@ -264,6 +264,23 @@ func (f *formatter) formatVarDeclTrailing(v *parser.VarStmt, trailing []parser.C
 
 func (f *formatter) formatFunction(fn *parser.Function, trailing []parser.Comment) {
 	f.writeIndent()
+
+	// Collapse the whole function onto one line — `fn Name(params) Type { stmt }`
+	// — when that fits in maxLine. Unlike if/for bodies (which keep the user's
+	// line choice), this always collapses: a one-line function reads better on a
+	// single line. Requires a single-statement body with no comments (only one
+	// statement can share the line) and no trailing comment on the brace. Not in
+	// minify mode: minify strips the comments that gate this, so collapsing there
+	// would break Minify's idempotence — and it's a readability choice for the
+	// editor's formatter, not a size concern for share links.
+	if !f.minify && len(fn.Body) == 1 && len(trailing) == 0 {
+		if inline, ok := f.tryFormatFunctionInline(fn); ok && !f.wouldExceed(len(inline)) {
+			f.write(inline)
+			f.writeln("")
+			return
+		}
+	}
+
 	f.write("fn ")
 	if fn.ReceiverType != "" {
 		f.write(fn.ReceiverType + ".")
@@ -294,6 +311,7 @@ func (f *formatter) formatFunction(fn *parser.Function, trailing []parser.Commen
 	if fn.ReturnType != "" {
 		f.write(" " + fn.ReturnType)
 	}
+
 	f.write(" {")
 	f.writeTrailingComment(trailing)
 	f.writeln("")
@@ -301,6 +319,39 @@ func (f *formatter) formatFunction(fn *parser.Function, trailing []parser.Commen
 	f.formatStmts(fn.Body)
 	f.depth--
 	f.writeIndentedLn("}")
+}
+
+// tryFormatFunctionInline renders a whole function on one line —
+// `fn Name(params) Type { stmt }` — with no leading indent or trailing newline.
+// Returns (rendered, true) only for a single-statement body that inlines cleanly
+// (no comments, no inner newlines). The caller checks the width against maxLine
+// and falls back to the multi-line form when it doesn't fit.
+func (f *formatter) tryFormatFunctionInline(fn *parser.Function) (string, bool) {
+	if len(fn.Body) != 1 {
+		return "", false
+	}
+	inner, ok := f.tryFormatStmtInline(fn.Body[0])
+	if !ok {
+		return "", false
+	}
+	scratch := &formatter{indent: f.indent, depth: 0, maxLine: 1 << 30, minify: f.minify}
+	scratch.write("fn ")
+	if fn.ReceiverType != "" {
+		scratch.write(fn.ReceiverType + ".")
+	}
+	scratch.write(fn.Name)
+	scratch.write("(")
+	scratch.formatParams(fn.Params)
+	scratch.write(")")
+	if fn.ReturnType != "" {
+		scratch.write(" " + fn.ReturnType)
+	}
+	scratch.write(" { " + inner + " }")
+	out := scratch.buf.String()
+	if strings.Contains(out, "\n") {
+		return "", false
+	}
+	return out, true
 }
 
 // paramGroup is a run of consecutive parameters that share a type and render

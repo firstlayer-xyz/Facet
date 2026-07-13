@@ -71,9 +71,7 @@ fn B2.anchorPoint(a B2Anchor) Vec3 {
 }
 
 # Final solid of an attachment chain.
-fn B2.Solid() Solid {
-    return self.solid
-}
+fn B2.Solid() Solid { return self.solid }
 
 # The child solid placed at this shape's anchor point a (origin on the anchor).
 fn B2.positionPlaced(a B2Anchor, child B2) Solid {

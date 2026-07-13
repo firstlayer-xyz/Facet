@@ -1,3 +1,1 @@
-fn Main() Solid {
-    return Cube(s: 5 mm).Move(x: 10 mm)
-}
+fn Main() Solid { return Cube(s: 5 mm).Move(x: 10 mm) }
