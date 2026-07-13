@@ -10,7 +10,7 @@ export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
 WAILS_VERSION := v2.12.0
 WAILS := $(GO_TOOLCHAIN)/bin/wails
 
-.PHONY: all manifold lint dev run build clean cli scad2facet wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
+.PHONY: all manifold lint dev run build sign clean cli scad2facet wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
 
 all: manifold build
 
@@ -43,6 +43,12 @@ run: build
 build: go-toolchain manifold wails-cli
 	cd desktop && $(WAILS) build
 	bash scripts/build-quicklook.sh
+
+# Re-sign an already-built Facet.app (extensions + app, inside-out) without a
+# full rebuild — handy after tweaking entitlements. Ad-hoc by default; set
+# CODESIGN_IDENTITY=<id> (and CODESIGN_KEYCHAIN) for a real identity.
+sign:
+	bash scripts/sign-app.sh
 
 cli: go-toolchain manifold
 	$(GO) build -o build/bin/facetc ./cmd/facetc
