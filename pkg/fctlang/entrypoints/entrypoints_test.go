@@ -163,3 +163,40 @@ func TestBuildNegativeRangeConstraintOnAnimation(t *testing.T) {
 		t.Fatalf("constraint step = %v, want 1 (slider increments by 1 hour)", p.Constraint.Step)
 	}
 }
+
+// TestParamDefaultSource verifies that a non-literal default (e.g. UtcDate())
+// carries its source text in DefaultSource for the preview panel to show as a
+// placeholder, while literal defaults keep their value and leave it empty.
+func TestParamDefaultSource(t *testing.T) {
+	src := `fn Main(
+    lit String = "ALL" where ["BL", "ALL"],
+    nowhere String = "world",
+    computed String = UtcDate() where [],
+) Solid { return Cube(s: 10 mm) }`
+	prog, err := loader.Load(context.Background(), src, "main.fct", parser.SourceUser, "", nil)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	checked := checker.Check(prog)
+	if len(checked.Errors) > 0 {
+		t.Fatalf("check: %v", checked.Errors)
+	}
+	params := map[string]ParamEntry{}
+	for _, ep := range Build(checked.Prog, checked.InferredReturnTypes) {
+		if ep.Name == "Main" {
+			for _, p := range ep.Params {
+				params[p.Name] = p
+			}
+		}
+	}
+
+	if got := params["lit"]; got.Default != "ALL" || got.DefaultSource != "" {
+		t.Errorf("lit: default=%v source=%q, want default=ALL source=\"\"", got.Default, got.DefaultSource)
+	}
+	if got := params["nowhere"]; got.Default != "world" {
+		t.Errorf("nowhere: default=%v, want world", got.Default)
+	}
+	if got := params["computed"]; got.Default != nil || got.DefaultSource != "UtcDate()" {
+		t.Errorf("computed: default=%v source=%q, want default=nil source=\"UtcDate()\"", got.Default, got.DefaultSource)
+	}
+}
