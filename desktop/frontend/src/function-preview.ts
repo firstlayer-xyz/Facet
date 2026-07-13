@@ -14,6 +14,9 @@ export interface ParamEntry {
   type: string;
   hasDefault: boolean;
   default: any;
+  /** Source text of a non-literal default (e.g. "UtcDate()"), shown as a
+   *  placeholder when there's no literal value to prefill. */
+  defaultSource?: string;
   unit?: string;
   constraint?: ParamConstraint;
 }
@@ -126,7 +129,7 @@ export class FunctionPreview {
     // Params grid. A param gets a control when makeParamInput can render one:
     // any Bool (a checkbox toggle, no `where` needed) or a constrained param
     // (slider for a range, segmented buttons for an enum).
-    const configurableParams = this.selected.params.filter(p => p.type === 'Bool' || p.constraint);
+    const configurableParams = this.selected.params.filter(p => p.type === 'Bool' || p.type === 'String' || p.constraint);
     if (configurableParams.length > 0) {
       const grid = document.createElement('div');
       grid.className = 'fn-preview-params-grid';
@@ -324,9 +327,22 @@ export class FunctionPreview {
       const input = document.createElement('input');
       input.type = 'text';
       input.className = 'fn-preview-input';
-      input.value = this.overrides[param.name] ?? param.default ?? '';
+      const cur = this.overrides[param.name] ?? param.default;
+      input.value = cur != null ? String(cur) : '';
+      // A computed default (e.g. UtcDate()) has no literal value to prefill;
+      // show its source as a placeholder so the default is still visible, and
+      // leave the field empty so the evaluator computes it unless overridden.
+      if (input.value === '' && param.defaultSource) {
+        input.placeholder = param.defaultSource;
+      }
       input.addEventListener('input', () => {
-        this.overrides[param.name] = input.value;
+        // Clearing a computed-default field reverts to the default rather than
+        // forcing an empty string on the evaluator.
+        if (input.value === '' && param.defaultSource) {
+          delete this.overrides[param.name];
+        } else {
+          this.overrides[param.name] = input.value;
+        }
         this.applyOverrides();
       });
       group.appendChild(input);

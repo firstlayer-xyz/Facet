@@ -7,6 +7,8 @@ package entrypoints
 
 import (
 	"sort"
+	"strconv"
+	"strings"
 
 	"facet/pkg/fctlang/doc"
 	"facet/pkg/fctlang/loader"
@@ -25,12 +27,17 @@ type ParamConstraint struct {
 
 // ParamEntry describes a single function parameter for the preview panel.
 type ParamEntry struct {
-	Name       string           `json:"name"`
-	Type       string           `json:"type"`
-	HasDefault bool             `json:"hasDefault"`
-	Default    interface{}      `json:"default"`
-	Unit       string           `json:"unit,omitempty"`
-	Constraint *ParamConstraint `json:"constraint,omitempty"`
+	Name       string      `json:"name"`
+	Type       string      `json:"type"`
+	HasDefault bool        `json:"hasDefault"`
+	Default    interface{} `json:"default"`
+	// DefaultSource is the source text of a non-literal default (e.g. "UtcDate()")
+	// whose value can't be reduced to a literal. Empty for literal defaults (Default
+	// carries the value) and for params without a default. The preview panel shows
+	// it as a placeholder so a computed default is still visible.
+	DefaultSource string           `json:"defaultSource,omitempty"`
+	Unit          string           `json:"unit,omitempty"`
+	Constraint    *ParamConstraint `json:"constraint,omitempty"`
 }
 
 // EntryPoint describes a runnable entry point function — a capitalized,
@@ -90,6 +97,12 @@ func Build(prog loader.Program, inferredReturnTypes map[string]string) []EntryPo
 			}
 			if p.Default != nil {
 				pe.Default, _ = literalValue(p.Default)
+				// A non-literal default (e.g. `UtcDate()`) has no literal value to
+				// prefill a control with. Carry its source text so the preview
+				// panel can still show what the default is, as a placeholder.
+				if pe.Default == nil {
+					pe.DefaultSource = defaultExprSource(p.Default)
+				}
 			}
 			pe.Constraint = extractParamConstraint(p.Constraint)
 			if pe.Constraint != nil && pe.Unit == "" {
@@ -234,6 +247,45 @@ func literalNumber(e parser.Expr) (float64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// defaultExprSource renders a default-value expression back to short source text
+// for the preview panel — used when literalValue can't reduce it (e.g. a call
+// like UtcDate() or a named constant). Best-effort: returns "" for shapes it
+// doesn't know how to render, in which case the panel just shows an empty field.
+func defaultExprSource(e parser.Expr) string {
+	switch v := e.(type) {
+	case *parser.StringLit:
+		return v.Value
+	case *parser.NumberLit:
+		return strconv.FormatFloat(v.Value, 'f', -1, 64)
+	case *parser.BoolLit:
+		if v.Value {
+			return "true"
+		}
+		return "false"
+	case *parser.IdentExpr:
+		return v.Name
+	case *parser.UnitExpr:
+		inner := defaultExprSource(v.Expr)
+		if inner == "" || v.Unit == "" {
+			return inner
+		}
+		return inner + " " + v.Unit
+	case *parser.UnaryExpr:
+		inner := defaultExprSource(v.Operand)
+		if inner == "" {
+			return ""
+		}
+		return v.Op + inner
+	case *parser.CallExpr:
+		args := make([]string, len(v.Args))
+		for i, a := range v.Args {
+			args[i] = defaultExprSource(a)
+		}
+		return v.Name + "(" + strings.Join(args, ", ") + ")"
+	}
+	return ""
 }
 
 func literalValue(e parser.Expr) (interface{}, bool) {
