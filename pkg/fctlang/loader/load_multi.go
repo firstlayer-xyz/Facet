@@ -38,8 +38,19 @@ func LoadMulti(ctx context.Context, sources map[string]string, key string, libDi
 	stdSrc.Text = stdlib.StdlibSource
 	prog.Sources[StdlibPath] = stdSrc
 
-	// Resolve library imports from all user sources
+	// Resolve library imports from all user sources.
+	//
+	// A resolved remote-library source can appear here keyed by its virtual
+	// "git+..." backing when the editor has it open as a view-only tab and
+	// echoes it back in the sources map. Such a key is not a user project root:
+	// its relative imports ("../sibling") only resolve within the git tree it
+	// was read from, which is not reconstructable from the raw text here. The
+	// user source that imports it resolves it correctly from the cache, so skip
+	// it as a root — resolving it standalone would fail its relative imports.
 	for path := range sources {
+		if strings.HasPrefix(path, LibSourceScheme) {
+			continue
+		}
 		if err := ResolveLibraries(ctx, prog, path, libDir, opts); err != nil {
 			return Program{}, err
 		}
