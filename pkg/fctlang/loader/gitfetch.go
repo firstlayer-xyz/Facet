@@ -410,21 +410,12 @@ func withSharedRepo(ctx context.Context, c *Cache, gitCacheDir string, lp *LibPa
 // RefreshRepoClone is EnsureRepoClone plus a git fetch to pull every new ref
 // from origin. Used by "Update" and "Pull All" in the settings UI.
 func RefreshRepoClone(ctx context.Context, gitCacheDir string, lp *LibPath) error {
-	c := NativeCache()
-	if err := ensureRepoClone(ctx, c, gitCacheDir, lp); err != nil {
-		return err
+	if lp.IsLocal || lp.Host == "" {
+		return fmt.Errorf("EnsureRepoClone: not a remote repo: %q", lp.Raw)
 	}
-	sharedDir := filepath.Join(gitCacheDir, lp.Host, lp.User, lp.Repo, sharedRepoName)
-	// Serialize the fetch under the per-repo lock, like ensureLib does — two
-	// concurrent FetchContext calls against the same on-disk clone race.
-	lock := repoLock(sharedDir)
-	lock.Lock()
-	defer lock.Unlock()
-	repo, err := openCachedRepo(c, sharedDir)
-	if err != nil {
-		return fmt.Errorf("open bare clone: %w", err)
-	}
-	return fetchAll(ctx, repo)
+	return withSharedRepo(ctx, NativeCache(), gitCacheDir, lp, func(repo *git.Repository) error {
+		return fetchAll(ctx, repo)
+	})
 }
 
 // OpenRepoHeadTree opens the bare clone for the repo lp points at and returns
@@ -432,29 +423,27 @@ func RefreshRepoClone(ctx context.Context, gitCacheDir string, lp *LibPath) erro
 // "Fork" in the settings UI to materialize the latest revision without the
 // caller needing to know which branch is the default.
 func OpenRepoHeadTree(ctx context.Context, gitCacheDir string, lp *LibPath) (*LibTree, error) {
-	c := NativeCache()
-	if err := ensureRepoClone(ctx, c, gitCacheDir, lp); err != nil {
+	if lp.IsLocal || lp.Host == "" {
+		return nil, fmt.Errorf("EnsureRepoClone: not a remote repo: %q", lp.Raw)
+	}
+	var tree *LibTree
+	err := withSharedRepo(ctx, NativeCache(), gitCacheDir, lp, func(repo *git.Repository) error {
+		// Refresh so HEAD resolves against what's actually upstream — otherwise
+		// we'd happily fork a stale default branch.
+		if err := fetchAll(ctx, repo); err != nil {
+			return fmt.Errorf("fetch: %w", err)
+		}
+		sha, err := resolveRepoHead(repo)
+		if err != nil {
+			return fmt.Errorf("resolve HEAD: %w", err)
+		}
+		tree = &LibTree{repo: repo, sha: sha, origin: lp.RepoID()}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	sharedDir := filepath.Join(gitCacheDir, lp.Host, lp.User, lp.Repo, sharedRepoName)
-	// Serialize the fetch under the per-repo lock (see RefreshRepoClone).
-	lock := repoLock(sharedDir)
-	lock.Lock()
-	defer lock.Unlock()
-	repo, err := openCachedRepo(c, sharedDir)
-	if err != nil {
-		return nil, fmt.Errorf("open bare clone: %w", err)
-	}
-	// Refresh so HEAD resolves against what's actually upstream — otherwise
-	// we'd happily fork a stale default branch.
-	if err := fetchAll(ctx, repo); err != nil {
-		return nil, fmt.Errorf("fetch: %w", err)
-	}
-	sha, err := resolveRepoHead(repo)
-	if err != nil {
-		return nil, fmt.Errorf("resolve HEAD: %w", err)
-	}
-	return &LibTree{repo: repo, sha: sha, origin: lp.RepoID()}, nil
+	return tree, nil
 }
 
 // openCachedRepo opens the existing bare clone at path through Cache's
