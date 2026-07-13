@@ -30,6 +30,15 @@ class EvalStore {
    *  tab closed). Notifies subscribers. */
   set(result: EvalResult | null): void {
     if (this._current === result) return;
+    // Tab kinds (read-only, library-backed) live in result.sources, but a failed
+    // eval — e.g. a syntax error mid-typing — returns a header with no sources
+    // map. Those kinds describe the open tabs, not this eval, so carry them
+    // forward instead of letting a transient error erase them; otherwise a
+    // view-only library tab momentarily reads as an editable user root and gets
+    // re-sent to eval. Errors are still surfaced via result.errors.
+    if (result && !result.sources && this._current?.sources) {
+      result.sources = this._current.sources;
+    }
     this._current = result;
     this.notify();
   }
