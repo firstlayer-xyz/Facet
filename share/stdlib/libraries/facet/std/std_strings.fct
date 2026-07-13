@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 # 2D text sketch using the built-in Hack font, or a custom `.ttf`/`.otf` `font` path.
 # `s` is the cap height in mm. Extrude to make 3D lettering.
-#
+# 
 # `halign`: "left" (default — text starts at x=0), "center", or "right".
 # `valign`: "baseline" (default — y=0 sits on the baseline), "top" (y=0 at
 # ascender top), "center" (y=0 at vertical midpoint), or "bottom" (y=0 at
@@ -31,19 +31,13 @@ fn String.SubStr(start, length Number) String {
 }
 
 # Returns true if the string starts with `prefix`.
-fn String.HasPrefix(prefix String) Bool {
-    return _has_prefix(self, prefix)
-}
+fn String.HasPrefix(prefix String) Bool { return _has_prefix(self, prefix) }
 
 # Returns true if the string ends with `suffix`.
-fn String.HasSuffix(suffix String) Bool {
-    return _has_suffix(self, suffix)
-}
+fn String.HasSuffix(suffix String) Bool { return _has_suffix(self, suffix) }
 
 # Splits the string on `delimiter` and returns the resulting parts.
-fn String.Split(delimiter String) []String {
-    return _split(self, delimiter)
-}
+fn String.Split(delimiter String) []String { return _split(self, delimiter) }
 
 # Match returns the [full match, capture1, …] groups, or `nil` if the pattern
 # did not match. Bind with `if var m = s.Match(pattern: …) { … }`.
@@ -54,24 +48,16 @@ fn String.Match(pattern String) []String? {
 }
 
 # Returns the string converted to uppercase.
-fn String.ToUpper() String {
-    return _to_upper(self)
-}
+fn String.ToUpper() String { return _to_upper(self) }
 
 # Returns the string converted to lowercase.
-fn String.ToLower() String {
-    return _to_lower(self)
-}
+fn String.ToLower() String { return _to_lower(self) }
 
 # Returns the string with leading and trailing whitespace removed.
-fn String.Trim() String {
-    return _trim_str(self)
-}
+fn String.Trim() String { return _trim_str(self) }
 
 # Returns a new string with all occurrences of `old` replaced by `new`.
-fn String.Replace(old, new String) String {
-    return _replace(self, old, new)
-}
+fn String.Replace(old, new String) String { return _replace(self, old, new) }
 
 # Returns the index of the first occurrence of `substr`, or `nil` if not found.
 fn String.IndexOf(substr String) Number? {
@@ -81,21 +67,14 @@ fn String.IndexOf(substr String) Number? {
 }
 
 # Returns true if the string contains `substr`.
-fn String.Contains(substr String) Bool {
-    return _contains(self, substr)
-}
+fn String.Contains(substr String) Bool { return _contains(self, substr) }
 
 # Returns the number of characters (runes) in the string.
-fn String.Length() Number {
-    return _length(self)
-}
+fn String.Length() Number { return _length(self) }
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Mesh Import
 # ---------------------------------------------------------------------------
 # Imports an STL, OBJ, or 3MF file as a Solid. Path is relative to the current file.
-fn LoadMesh(path String) Solid {
-    return _load_mesh(path)
-}
-
+fn LoadMesh(path String) Solid { return _load_mesh(path) }

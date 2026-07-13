@@ -19,39 +19,53 @@
 # fn Main() { Cube(s: 20 mm, fillet: 2 mm) }
 # fn Main() { Cube(s: 20 mm, chamfer: 2 mm) }
 # ```
-fn Cube(x, y, z Length) Solid {
-    return _cube(x, y, z)
-}
+fn Cube(x, y, z Length) Solid { return _cube(x, y, z) }
 
-fn Cube(x, y, z Length, fillet Length, edges EdgeSet = EDGES_ALL) Solid {
+fn Cube(
+    x, y, z, fillet Length,
+    edges EdgeSet = EDGES_ALL,
+) Solid {
     return _cube_rounded(x, y, z, fillet, false, edges)
 }
 
-fn Cube(x, y, z Length, chamfer Length, edges EdgeSet = EDGES_ALL) Solid {
+fn Cube(
+    x, y, z, chamfer Length,
+    edges EdgeSet = EDGES_ALL,
+) Solid {
     return _cube_rounded(x, y, z, chamfer, true, edges)
 }
 
-fn Cube(s Vec3) Solid {
-    return _cube(s.x, s.y, s.z)
-}
+fn Cube(s Vec3) Solid { return _cube(s.x, s.y, s.z) }
 
-fn Cube(s Vec3, fillet Length, edges EdgeSet = EDGES_ALL) Solid {
+fn Cube(
+    s Vec3,
+    fillet Length,
+    edges EdgeSet = EDGES_ALL,
+) Solid {
     return _cube_rounded(s.x, s.y, s.z, fillet, false, edges)
 }
 
-fn Cube(s Vec3, chamfer Length, edges EdgeSet = EDGES_ALL) Solid {
+fn Cube(
+    s Vec3,
+    chamfer Length,
+    edges EdgeSet = EDGES_ALL,
+) Solid {
     return _cube_rounded(s.x, s.y, s.z, chamfer, true, edges)
 }
 
-fn Cube(s Length) Solid {
-    return _cube(s, s, s)
-}
+fn Cube(s Length) Solid { return _cube(s, s, s) }
 
-fn Cube(s Length, fillet Length, edges EdgeSet = EDGES_ALL) Solid {
+fn Cube(
+    s, fillet Length,
+    edges EdgeSet = EDGES_ALL,
+) Solid {
     return _cube_rounded(s, s, s, fillet, false, edges)
 }
 
-fn Cube(s Length, chamfer Length, edges EdgeSet = EDGES_ALL) Solid {
+fn Cube(
+    s, chamfer Length,
+    edges EdgeSet = EDGES_ALL,
+) Solid {
     return _cube_rounded(s, s, s, chamfer, true, edges)
 }
 
@@ -61,12 +75,7 @@ fn Cube(s Length, chamfer Length, edges EdgeSet = EDGES_ALL) Solid {
 # ```
 # fn Main() { Sphere(r: 10 mm) }
 # ```
-fn Sphere(
-    r Length,
-    segments Number = 0,
-) Solid {
-    return _sphere(r, segments)
-}
+fn Sphere(r Length, segments Number = 0) Solid { return _sphere(r, segments) }
 
 fn Sphere(
     d Length,
@@ -86,7 +95,8 @@ fn Torus(
     r_maj, r_min Length,
     segments Number = 0,
 ) Solid {
-    return Circle(r: r_min).Move(x: r_maj - r_min, y: -r_min).Revolve(segments: segments)
+    return Circle(r: r_min).Move(x: r_maj - r_min, y: -r_min)
+        .Revolve(segments: segments)
 }
 
 fn Torus(
@@ -105,8 +115,7 @@ fn Torus(
 # fn Main() { Octahedron(r: 8 mm) }
 # ```
 fn Octahedron(r Length) Solid {
-    return Mesh{
-        vertices: [
+    return Mesh{vertices: [
             Vec3{x: r, y: r, z: 0 mm}, Vec3{x: r, y: r, z: 2 * r},
             Vec3{x: 0 mm, y: r, z: r}, Vec3{x: 2 * r, y: r, z: r},
             Vec3{x: r, y: 0 mm, z: r}, Vec3{x: r, y: 2 * r, z: r}
@@ -116,8 +125,7 @@ fn Octahedron(r Length) Solid {
             Face{v0: 1, v1: 2, v2: 4}, Face{v0: 1, v1: 4, v2: 3},
             Face{v0: 0, v1: 5, v2: 3}, Face{v0: 0, v1: 2, v2: 5},
             Face{v0: 0, v1: 4, v2: 2}, Face{v0: 0, v1: 3, v2: 4}
-        ]
-    }.Solid()
+        ]}.Solid()
 }
 
 # Uniform cylinder with bounding-box min corner at (0,0,0): axis runs along Z
@@ -127,27 +135,45 @@ fn Octahedron(r Length) Solid {
 # ```
 # fn Main() { Cylinder(r: 5 mm, h: 20 mm, fillet: 1 mm) }
 # ```
-fn Cylinder(r, h Length, segments Number = 0) Solid {
+fn Cylinder(
+    r, h Length,
+    segments Number = 0,
+) Solid {
     return _cylinder(h, r, r, segments)
 }
 
-fn Cylinder(r, h Length, fillet Length, segments Number = 0) Solid {
+fn Cylinder(
+    r, h, fillet Length,
+    segments Number = 0,
+) Solid {
     return _frustum_rounded(r, r, h, fillet, false, segments)
 }
 
-fn Cylinder(r, h Length, chamfer Length, segments Number = 0) Solid {
+fn Cylinder(
+    r, h, chamfer Length,
+    segments Number = 0,
+) Solid {
     return _frustum_rounded(r, r, h, chamfer, true, segments)
 }
 
-fn Cylinder(d, h Length, segments Number = 0) Solid {
+fn Cylinder(
+    d, h Length,
+    segments Number = 0,
+) Solid {
     return _cylinder(h, d / 2, d / 2, segments)
 }
 
-fn Cylinder(d, h Length, fillet Length, segments Number = 0) Solid {
+fn Cylinder(
+    d, h, fillet Length,
+    segments Number = 0,
+) Solid {
     return _frustum_rounded(d / 2, d / 2, h, fillet, false, segments)
 }
 
-fn Cylinder(d, h Length, chamfer Length, segments Number = 0) Solid {
+fn Cylinder(
+    d, h, chamfer Length,
+    segments Number = 0,
+) Solid {
     return _frustum_rounded(d / 2, d / 2, h, chamfer, true, segments)
 }
 
@@ -159,34 +185,50 @@ fn Cylinder(d, h Length, chamfer Length, segments Number = 0) Solid {
 # ```
 # fn Main() { Frustum(r1: 8 mm, r2: 3 mm, h: 20 mm, fillet: 1 mm) }
 # ```
-fn Frustum(r1, r2, h Length, segments Number = 0) Solid {
+fn Frustum(
+    r1, r2, h Length,
+    segments Number = 0,
+) Solid {
     return _cylinder(h, r1, r2, segments)
 }
 
-fn Frustum(r1, r2, h Length, fillet Length, segments Number = 0) Solid {
+fn Frustum(
+    r1, r2, h, fillet Length,
+    segments Number = 0,
+) Solid {
     return _frustum_rounded(r1, r2, h, fillet, false, segments)
 }
 
-fn Frustum(r1, r2, h Length, chamfer Length, segments Number = 0) Solid {
+fn Frustum(
+    r1, r2, h, chamfer Length,
+    segments Number = 0,
+) Solid {
     return _frustum_rounded(r1, r2, h, chamfer, true, segments)
 }
 
-fn Frustum(d1, d2, h Length, segments Number = 0) Solid {
+fn Frustum(
+    d1, d2, h Length,
+    segments Number = 0,
+) Solid {
     return _cylinder(h, d1 / 2, d2 / 2, segments)
 }
 
-fn Frustum(d1, d2, h Length, fillet Length, segments Number = 0) Solid {
+fn Frustum(
+    d1, d2, h, fillet Length,
+    segments Number = 0,
+) Solid {
     return _frustum_rounded(d1 / 2, d2 / 2, h, fillet, false, segments)
 }
 
-fn Frustum(d1, d2, h Length, chamfer Length, segments Number = 0) Solid {
+fn Frustum(
+    d1, d2, h, chamfer Length,
+    segments Number = 0,
+) Solid {
     return _frustum_rounded(d1 / 2, d2 / 2, h, chamfer, true, segments)
 }
 
 # Cone along Z from Z=0 to Z=`h` with base radius `r`.
-fn Cone(r, h Length) Solid {
-    return _cylinder(h, r, 0 mm)
-}
+fn Cone(r, h Length) Solid { return _cylinder(h, r, 0 mm) }
 
 # Right prism: regular n-gon cross-section extruded along Z. `s` is the
 # polygon side length; `h` the extrusion height. `sides` defaults to 3
@@ -233,8 +275,13 @@ fn Prism(a, b, c Vec2, h Length) Solid {
 # fn Main() { Wedge(x: 20 mm, y: 12 mm, z: 8 mm) }
 # ```
 fn Wedge(x, y, z Length) Solid {
-    var tri = Polygon(points: [Vec2{x: 0 mm, y: 0 mm}, Vec2{x: y, y: 0 mm}, Vec2{x: 0 mm, y: z}])
-    return tri.Extrude(z: x).Rotate(axis: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}, angle: 120 deg)
+    var tri = Polygon(
+        points: [
+            Vec2{x: 0 mm, y: 0 mm}, Vec2{x: y, y: 0 mm}, Vec2{x: 0 mm, y: z}
+        ]
+    )
+    return tri.Extrude(z: x)
+        .Rotate(axis: Vec3{x: 1 mm, y: 1 mm, z: 1 mm}, angle: 120 deg)
 }
 
 # ---------------------------------------------------------------------------
@@ -249,9 +296,7 @@ fn Solid.Move(
     return _translate(self, x, y, z)
 }
 
-fn Solid.Move(v Vec3) Solid {
-    return _translate(self, v.x, v.y, v.z)
-}
+fn Solid.Move(v Vec3) Solid { return _translate(self, v.x, v.y, v.z) }
 
 # Rotates the solid around X→Y→Z axes through a pivot point. Unspecified axes and pivot default to zero,
 # so `.Rotate(z: 90 deg)` spins around the world Z axis. Pass `self.Bounds().Center()` for the bbox center.
@@ -372,7 +417,10 @@ fn Solid.Trim(
 # ```
 # fn Main() { Sphere(r: 10 mm).Offset(delta: 2 mm) }
 # ```
-fn Solid.Offset(delta Length, resolution Length = 0 mm) Solid {
+fn Solid.Offset(
+    delta Length,
+    resolution Length = 0 mm,
+) Solid {
     return _solid_offset(self, delta, resolution)
 }
 
@@ -383,8 +431,12 @@ fn Solid.Offset(delta Length, resolution Length = 0 mm) Solid {
 # ```
 # fn Main() { Cube(s: 20 mm).Round(r: 3 mm) }
 # ```
-fn Solid.Round(r Length, resolution Length = 0 mm) Solid {
-    return self.Offset(delta: -r, resolution: resolution).Offset(delta: r, resolution: resolution)
+fn Solid.Round(
+    r Length,
+    resolution Length = 0 mm,
+) Solid {
+    return self.Offset(delta: -r, resolution: resolution)
+        .Offset(delta: r, resolution: resolution)
 }
 
 # Fillet all CONCAVE (interior) edges by `r` — morphological closing (dilate then
@@ -393,8 +445,12 @@ fn Solid.Round(r Length, resolution Length = 0 mm) Solid {
 # ```
 # fn Main() { Cube(s: 20 mm) + Cube(x: 8 mm, y: 20 mm, z: 20 mm) |> Cove(r: 3 mm) }
 # ```
-fn Solid.Cove(r Length, resolution Length = 0 mm) Solid {
-    return self.Offset(delta: r, resolution: resolution).Offset(delta: -r, resolution: resolution)
+fn Solid.Cove(
+    r Length,
+    resolution Length = 0 mm,
+) Solid {
+    return self.Offset(delta: r, resolution: resolution)
+        .Offset(delta: -r, resolution: resolution)
 }
 
 # Smooths edges sharper than `minSharpAngle` using Laplacian relaxation; `minSmoothness` in [0,1].
@@ -404,9 +460,7 @@ fn Solid.Smooth(minSharpAngle Angle, minSmoothness Number) Solid {
 }
 
 # Subdivides every triangle `n` times (each pass quadruples triangle count). Use before `Smooth` for best results.
-fn Solid.Refine(n Number) Solid {
-    return _refine(self, n)
-}
+fn Solid.Refine(n Number) Solid { return _refine(self, n) }
 
 # Returns the enclosed volume as a Number. Defaults to cubic millimeters; pass `unit` to convert (e.g. `unit: 1 cm` → cubic centimeters, `unit: 1 in` → cubic inches).
 fn Solid.Volume(
@@ -425,78 +479,48 @@ fn Solid.SurfaceArea(
 }
 
 # Cross-section at Z=`z` → Sketch. `Project()` → orthographic top-down silhouette.
-fn Solid.Slice(z Length) Sketch {
-    return _slice(self, z)
-}
+fn Solid.Slice(z Length) Sketch { return _slice(self, z) }
 
-fn Solid.Project() Sketch {
-    return _project(self)
-}
+fn Solid.Project() Sketch { return _project(self) }
 
 # Axis-aligned bounding box. Access via `.min`/`.max`, `.Width()`, `.Height()`, `.Depth()`, `.Center()`.
-fn Solid.Bounds() Box {
-    return _bounding_box(self)
-}
+fn Solid.Bounds() Box { return _bounding_box(self) }
 
 # X extent of the bounding box. Shorthand for `Bounds().Width()`.
-fn Solid.Width() Length {
-    return self.Bounds().Width()
-}
+fn Solid.Width() Length { return self.Bounds().Width() }
 
 # Y extent (front-to-back depth) of the bounding box. Shorthand for `Bounds().Depth()`.
-fn Solid.Depth() Length {
-    return self.Bounds().Depth()
-}
+fn Solid.Depth() Length { return self.Bounds().Depth() }
 
 # Z extent (vertical height) of the bounding box. Shorthand for `Bounds().Height()`.
-fn Solid.Height() Length {
-    return self.Bounds().Height()
-}
+fn Solid.Height() Length { return self.Bounds().Height() }
 
 # X coordinate of the left face (bounding box min.x).
-fn Solid.Left() Length {
-    return self.Bounds().Left()
-}
+fn Solid.Left() Length { return self.Bounds().Left() }
 
 # X coordinate of the right face (bounding box max.x).
-fn Solid.Right() Length {
-    return self.Bounds().Right()
-}
+fn Solid.Right() Length { return self.Bounds().Right() }
 
 # Y coordinate of the front face (bounding box min.y).
-fn Solid.Front() Length {
-    return self.Bounds().Front()
-}
+fn Solid.Front() Length { return self.Bounds().Front() }
 
 # Y coordinate of the back face (bounding box max.y).
-fn Solid.Back() Length {
-    return self.Bounds().Back()
-}
+fn Solid.Back() Length { return self.Bounds().Back() }
 
 # Z coordinate of the bottom face (bounding box min.z).
-fn Solid.Bottom() Length {
-    return self.Bounds().Bottom()
-}
+fn Solid.Bottom() Length { return self.Bounds().Bottom() }
 
 # Z coordinate of the top face (bounding box max.z).
-fn Solid.Top() Length {
-    return self.Bounds().Top()
-}
+fn Solid.Top() Length { return self.Bounds().Top() }
 
 # Center point of the bounding box (midpoint of min and max corners).
-fn Solid.Center() Vec3 {
-    return self.Bounds().Center()
-}
+fn Solid.Center() Vec3 { return self.Bounds().Center() }
 
 # World-space position of the left-front-bottom corner (bounding box min).
-fn Solid.LeftFrontBottom() Vec3 {
-    return self.Bounds().min
-}
+fn Solid.LeftFrontBottom() Vec3 { return self.Bounds().min }
 
 # World-space position of the right-back-top corner (bounding box max).
-fn Solid.RightBackTop() Vec3 {
-    return self.Bounds().max
-}
+fn Solid.RightBackTop() Vec3 { return self.Bounds().max }
 
 # World-space position of the right-front-bottom corner.
 fn Solid.RightFrontBottom() Vec3 {
@@ -546,8 +570,15 @@ fn Solid.AlignCenter(
     nudgeY Length = 0 mm,
     nudgeZ Length = 0 mm,
 ) Solid {
-    return self.AlignCenter(pos: with.Bounds().Center(), x: x, y: y, z: z,
-        nudgeX: nudgeX, nudgeY: nudgeY, nudgeZ: nudgeZ)
+    return self.AlignCenter(
+        pos: with.Bounds().Center(),
+        x: x,
+        y: y,
+        z: z,
+        nudgeX: nudgeX,
+        nudgeY: nudgeY,
+        nudgeZ: nudgeZ
+    )
 }
 
 # Aligns this solid's bounding-box center to a fixed point. Pass `Vec3{}`
@@ -750,4 +781,3 @@ fn Solid.AlignTop(
 fn Solid.AlignTop(pos Length) Solid {
     return self.Move(z: pos - self.Bounds().Top())
 }
-

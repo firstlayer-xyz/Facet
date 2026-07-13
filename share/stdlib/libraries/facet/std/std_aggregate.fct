@@ -2,48 +2,28 @@
 # Aggregate Operations
 # ---------------------------------------------------------------------------
 # Convex hull of an array of Solid, Sketch, or Vec3 values.
-fn Hull(arr []Solid) Solid {
-    return _hull(arr)
-}
+fn Hull(arr []Solid) Solid { return _hull(arr) }
 
-fn Hull(arr []Sketch) Sketch {
-    return _hull(arr)
-}
+fn Hull(arr []Sketch) Sketch { return _hull(arr) }
 
-fn Hull(arr []Vec3) Solid {
-    return _hull(arr)
-}
+fn Hull(arr []Vec3) Solid { return _hull(arr) }
 
 # N-ary boolean operations on arrays of Solid or Sketch.
 # Union: combine all. Difference: subtract 2..n from first. Intersection: keep overlap only.
-fn Union(arr []Solid) Solid {
-    return _union(arr)
-}
+fn Union(arr []Solid) Solid { return _union(arr) }
 
-fn Union(arr []Sketch) Sketch {
-    return _union(arr)
-}
+fn Union(arr []Sketch) Sketch { return _union(arr) }
 
-fn Difference(arr []Solid) Solid {
-    return _difference(arr)
-}
+fn Difference(arr []Solid) Solid { return _difference(arr) }
 
-fn Difference(arr []Sketch) Sketch {
-    return _difference(arr)
-}
+fn Difference(arr []Sketch) Sketch { return _difference(arr) }
 
-fn Intersection(arr []Solid) Solid {
-    return _intersection(arr)
-}
+fn Intersection(arr []Solid) Solid { return _intersection(arr) }
 
-fn Intersection(arr []Sketch) Sketch {
-    return _intersection(arr)
-}
+fn Intersection(arr []Sketch) Sketch { return _intersection(arr) }
 
 # Symmetric difference: material in exactly one of {self, b}.
-fn Solid.Exclude(with Solid) Solid {
-    return self + with - (self & with)
-}
+fn Solid.Exclude(with Solid) Solid { return self + with - (self & with) }
 
 # N-ary even-odd fill: material inside an odd number of input solids.
 fn EvenOdd(solids []Solid) Solid {
@@ -52,24 +32,16 @@ fn EvenOdd(solids []Solid) Solid {
 }
 
 # Cuts a hole for `part`, removes floating bore plugs, then seats `part`. Used with the `|` operator. Designed for inserting hollow tools (pipes, tubes) into a body.
-fn Solid.Insert(part Solid) Solid {
-    return _insert(self, part)
-}
+fn Solid.Insert(part Solid) Solid { return _insert(self, part) }
 
 # Splits a solid into its disconnected components as an array of independent solids.
-fn Decompose(s Solid) []Solid {
-    return _decompose(s)
-}
+fn Decompose(s Solid) []Solid { return _decompose(s) }
 
 # Packs non-overlapping solids into one without boolean operations (faster than Union). Behavior is undefined if any solids overlap.
-fn Compose(solids []Solid) Solid {
-    return _compose(solids)
-}
+fn Compose(solids []Solid) Solid { return _compose(solids) }
 
 # Splits a solid into [inside, outside] using a cutter solid, or [above, below] using a plane.
-fn Solid.Split(cutter Solid) []Solid {
-    return _split(self, cutter)
-}
+fn Solid.Split(cutter Solid) []Solid { return _split(self, cutter) }
 
 # Splits into [above, below] along a plane. `normal` is the plane's orientation vector; `offset` shifts the plane along the normal from the origin.
 fn Solid.SplitByPlane(normal Vec3, offset Length) []Solid {
@@ -83,9 +55,7 @@ fn Solid.SplitByPlane(normal Vec3, offset Length) []Solid {
 }
 
 # Reduces triangle count by collapsing edges shorter than `tolerance`.
-fn Solid.Simplify(tolerance Length) Solid {
-    return _simplify(self, tolerance)
-}
+fn Solid.Simplify(tolerance Length) Solid { return _simplify(self, tolerance) }
 
 # Subdivides edges longer than `edgeLength`. Finer control than `Refine(n)`.
 fn Solid.RefineToLength(edgeLength Length) Solid {
@@ -93,9 +63,7 @@ fn Solid.RefineToLength(edgeLength Length) Solid {
 }
 
 # Topological genus: 0 = sphere-like, 1 = torus-like (one through-hole), etc.
-fn Solid.Genus() Number {
-    return _genus(self)
-}
+fn Solid.Genus() Number { return _genus(self) }
 
 # Minimum gap (closest distance) between two solids. `searchLength` bounds the search.
 fn Solid.MinGap(with Solid, reach Length) Length {
@@ -121,12 +89,7 @@ fn Loft(profiles []Sketch, heights []Length) Solid {
 #     return Layout(solids: [Cube(s: 10 mm), Sphere(r: 5 mm), Cylinder(r: 3 mm, h: 15 mm)])
 # }
 # ```
-fn Layout(
-    solids []Solid,
-    gap Length?,
-) []Solid {
-    return _layout(solids, gap)
-}
+fn Layout(solids []Solid, gap Length?) []Solid { return _layout(solids, gap) }
 
 # ---------------------------------------------------------------------------
 # Pattern Operations
@@ -137,7 +100,6 @@ fn Layout(
 # form (`count`/`countX,countY`) and a region form (`length`/`width,depth`) that
 # derives the count to fill the region and delegates to the count form. Copies
 # are corner-anchored (the first is `self`) and combined with the batched Union.
-
 # Repeats a solid `count` times along `axis`, spaced by the cell's extent along
 # that axis plus `gap`.
 fn Solid.LinearPattern(
@@ -152,12 +114,16 @@ fn Solid.LinearPattern(
     var dz = Number(from: u.z)
     var b = self.Bounds()
     # Sqrt(d*d) = |d|; the AABB's extent projected onto the axis.
-    var size = Sqrt(n: dx * dx) * b.Width() + Sqrt(n: dy * dy) * b.Depth()
-        + Sqrt(n: dz * dz) * b.Height()
+    var size = Sqrt(n: dx * dx) * b.Width() + Sqrt(n: dy * dy) * b.Depth() + Sqrt(
+        n: dz * dz
+    ) * b.Height()
     var pitch = size + gap
-    return Union(arr: for i [0:<count] {
-        yield self.Move(x: dx * i * pitch, y: dy * i * pitch, z: dz * i * pitch)
-    })
+    return Union(
+        arr: for i [0:<count] {
+            yield self
+                .Move(x: dx * i * pitch, y: dy * i * pitch, z: dz * i * pitch)
+        }
+    )
 }
 
 # Fills `length` along `axis` with as many copies as fit, then delegates.
@@ -171,8 +137,9 @@ fn Solid.LinearPattern(
     var dy = Number(from: u.y)
     var dz = Number(from: u.z)
     var b = self.Bounds()
-    var size = Sqrt(n: dx * dx) * b.Width() + Sqrt(n: dy * dy) * b.Depth()
-        + Sqrt(n: dz * dz) * b.Height()
+    var size = Sqrt(n: dx * dx) * b.Width() + Sqrt(n: dy * dy) * b.Depth() + Sqrt(
+        n: dz * dz
+    ) * b.Height()
     var count = Floor(n: (length - size) / (size + gap)) + 1
     assert count >= 1, "LinearPattern: length too small to fit one copy"
     return self.LinearPattern(count: count, gap: gap, axis: axis)
@@ -193,9 +160,9 @@ fn Solid.CircularPattern(
         assert count >= 2, "CircularPattern with span requires count >= 2"
         step = span / (count - 1)
     }
-    return Union(arr: for i [0:<count] {
-        yield self.Rotate(z: i * step, around: center)
-    })
+    return Union(
+        arr: for i [0:<count] { yield self.Rotate(z: i * step, around: center) }
+    )
 }
 
 # Tiles a solid across a `countX × countY` grid in the XY plane. `rowOffset` is a
@@ -212,10 +179,12 @@ fn Solid.GridPattern(
     var b = self.Bounds()
     var sx = b.Width() + gap.x
     var sy = b.Depth() + gap.y
-    return Union(arr: for j [0:<countY], i [0:<countX] {
-        var f = j * rowOffset
-        yield self.Move(x: i * sx + (f - Floor(n: f)) * sx, y: j * sy)
-    })
+    return Union(
+        arr: for j [0:<countY], i [0:<countX] {
+            var f = j * rowOffset
+            yield self.Move(x: i * sx + (f - Floor(n: f)) * sx, y: j * sy)
+        }
+    )
 }
 
 # Fills a `width × depth` region with a grid, then delegates.
@@ -229,7 +198,12 @@ fn Solid.GridPattern(
     var countY = Floor(n: (depth - b.Depth()) / (b.Depth() + gap.y)) + 1
     assert countX >= 1, "GridPattern: width too small to fit one copy"
     assert countY >= 1, "GridPattern: depth too small to fit one copy"
-    return self.GridPattern(countX: countX, countY: countY, gap: gap, rowOffset: rowOffset)
+    return self.GridPattern(
+        countX: countX,
+        countY: countY,
+        gap: gap,
+        rowOffset: rowOffset
+    )
 }
 
 # Same as Solid.LinearPattern (count form) but for Sketch.
@@ -245,9 +219,11 @@ fn Sketch.LinearPattern(
     var b = self.Bounds()
     var size = Sqrt(n: dx * dx) * b.Width() + Sqrt(n: dy * dy) * b.Depth()
     var pitch = size + gap
-    return Union(arr: for i [0:<count] {
-        yield self.Move(x: dx * i * pitch, y: dy * i * pitch)
-    })
+    return Union(
+        arr: for i [0:<count] {
+            yield self.Move(x: dx * i * pitch, y: dy * i * pitch)
+        }
+    )
 }
 
 # Same as Solid.LinearPattern (region form) but for Sketch.
@@ -280,9 +256,9 @@ fn Sketch.CircularPattern(
         assert count >= 2, "CircularPattern with span requires count >= 2"
         step = span / (count - 1)
     }
-    return Union(arr: for i [0:<count] {
-        yield self.Rotate(a: i * step, around: center)
-    })
+    return Union(
+        arr: for i [0:<count] { yield self.Rotate(a: i * step, around: center) }
+    )
 }
 
 # Same as Solid.GridPattern (count form) but for Sketch.
@@ -296,10 +272,12 @@ fn Sketch.GridPattern(
     var b = self.Bounds()
     var sx = b.Width() + gap.x
     var sy = b.Depth() + gap.y
-    return Union(arr: for j [0:<countY], i [0:<countX] {
-        var f = j * rowOffset
-        yield self.Move(x: i * sx + (f - Floor(n: f)) * sx, y: j * sy)
-    })
+    return Union(
+        arr: for j [0:<countY], i [0:<countX] {
+            var f = j * rowOffset
+            yield self.Move(x: i * sx + (f - Floor(n: f)) * sx, y: j * sy)
+        }
+    )
 }
 
 # Same as Solid.GridPattern (region form) but for Sketch.
@@ -313,5 +291,10 @@ fn Sketch.GridPattern(
     var countY = Floor(n: (depth - b.Depth()) / (b.Depth() + gap.y)) + 1
     assert countX >= 1, "GridPattern: width too small to fit one copy"
     assert countY >= 1, "GridPattern: depth too small to fit one copy"
-    return self.GridPattern(countX: countX, countY: countY, gap: gap, rowOffset: rowOffset)
+    return self.GridPattern(
+        countX: countX,
+        countY: countY,
+        gap: gap,
+        rowOffset: rowOffset
+    )
 }

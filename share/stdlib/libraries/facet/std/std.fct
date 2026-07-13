@@ -51,9 +51,7 @@ type Vec2 {
 }
 
 # Sets both components to `v`.
-fn Vec2(v Length) Vec2 {
-    return Vec2{x: v, y: v}
-}
+fn Vec2(v Length) Vec2 { return Vec2{x: v, y: v} }
 
 type Vec3 {
     x Length
@@ -62,14 +60,10 @@ type Vec3 {
 }
 
 # Sets all three components to `v`.
-fn Vec3(v Length) Vec3 {
-    return Vec3{x: v, y: v, z: v}
-}
+fn Vec3(v Length) Vec3 { return Vec3{x: v, y: v, z: v} }
 
 # Lifts `xy` into 3D with the given `z` component.
-fn Vec3(xy Vec2, z Length) Vec3 {
-    return Vec3{x: xy.x, y: xy.y, z: z}
-}
+fn Vec3(xy Vec2, z Length) Vec3 { return Vec3{x: xy.x, y: xy.y, z: z} }
 
 # RGBA color with channels in the 0–1 range. Use `Color{r: v, g: v, b: v, a: v}` or the constructors below.
 type Color {
@@ -90,14 +84,10 @@ fn Color(
 }
 
 # Color from a hex string ("#RGB", "#RRGGBB", or "#RRGGBBAA").
-fn Color(hex String) Color {
-    return _color_from_hex(hex)
-}
+fn Color(hex String) Color { return _color_from_hex(hex) }
 
 # Convert a Color to its "#RRGGBB" hex string.
-fn Color.Hex() String {
-    return _color_to_hex(self)
-}
+fn Color.Hex() String { return _color_to_hex(self) }
 
 # ---------------------------------------------------------------------------
 # Animation Type (a model as a function of time)
@@ -109,4 +99,3 @@ fn Color.Hex() String {
 type Animation {
     frame fn(Number) Solid
 }
-
