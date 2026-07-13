@@ -2,7 +2,6 @@ package evaluator
 
 import (
 	"context"
-	"slices"
 	"testing"
 
 	"facet/pkg/manifold"
@@ -75,12 +74,14 @@ func TestBindingReusePreservesAlpha(t *testing.T) {
 	}
 }
 
-// TestBindingReidentifiesReusedMultipartSolid pins the reuse case: one uncolored
-// 2-part `proto` is reused for a, b, c and assembled into `part`. Each reuse must
-// get its own identity so the three connectors are distinct objects, while the
-// assembly `part` is NOT collapsed — a click resolves to the specific connector,
-// not the whole part.
-func TestBindingReidentifiesReusedMultipartSolid(t *testing.T) {
+// TestReusedMultipartInterimSharesIdentity documents the interim tradeoff of the
+// multi-part guard: reidentify no longer touches multi-part solids, so a 2-part
+// `proto` reused for a, b, c keeps its two groups and the three reuses SHARE them
+// (pre-per-binding-identity behavior, but only for multi-part). The important
+// guarantee here is that `part` is not flattened — every part stays clickable.
+// The per-part reidentify follow-up restores per-reuse distinctness (each reuse
+// gets its own fresh set of part identities) without collapsing anything.
+func TestReusedMultipartInterimSharesIdentity(t *testing.T) {
 	prog := parseTestProg(t, `fn Main() Solid {
     var proto = Cylinder(d: 20 mm, h: 40 mm) + Cylinder(d: 10 mm, h: 60 mm)
     var a = proto
@@ -93,27 +94,16 @@ func TestBindingReidentifiesReusedMultipartSolid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eval: %v", err)
 	}
-	// a, b, c each collapse to their own id; proto's ids are reidentified away and
-	// don't reach the output. With the sphere that's 4 distinct objects.
-	if got := len(result.Solids[0].FaceMap); got != 4 {
-		t.Fatalf("proto reused for a/b/c + sphere: want 4 distinct objects, got %d", got)
+	// a, b, c share proto's two part identities; with the sphere that's 3 groups.
+	// (The per-part reidentify follow-up makes this 7 — two fresh parts per reuse
+	// plus the sphere — each independently selectable.)
+	if got := len(result.Solids[0].FaceMap); got != 3 {
+		t.Fatalf("interim reused-multipart: want 3 shared groups, got %d", got)
 	}
-	// Every face's first posMap entry must own it alone, so a click lands on the
-	// specific connector's binding, not the whole `part` assembly.
-	for id := range result.Solids[0].FaceMap {
-		var first *PosEntry
-		for i := range result.PosMap {
-			if slices.Contains(result.PosMap[i].FaceIDs, id) {
-				first = &result.PosMap[i]
-				break
-			}
-		}
-		if first == nil {
-			t.Fatalf("face %d has no posMap entry", id)
-		}
-		if len(first.FaceIDs) != 1 {
-			t.Errorf("face %d: first posMap entry owns %d ids (want 1) — click would highlight more than this object", id, len(first.FaceIDs))
-		}
+	// The parts are not flattened: proto's assembly keeps more than one group, so
+	// a click still distinguishes the big cylinder from the small one.
+	if len(result.Solids[0].FaceMap) < 2 {
+		t.Fatalf("multi-part solid was flattened to a single group")
 	}
 }
 
