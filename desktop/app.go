@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"facet/pkg/facet3mf"
 	"facet/pkg/fctlang/doc"
@@ -266,7 +267,21 @@ func (a *App) AutomationEnabled() bool {
 	return a.automationCfg.Enabled
 }
 
-var recordingSeq atomic.Uint64
+// newRecordingPath returns a fresh, timestamped path in the recordings dir for a
+// recording of the given extension (".mp4" / ".webm"), creating the dir. The
+// millisecond-resolution timestamp keeps successive recordings — across app
+// runs — from overwriting each other.
+func newRecordingPath(ext string) (string, error) {
+	dir, err := recordingsDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	name := "demo-" + time.Now().Format("2006-01-02_15-04-05.000") + ext
+	return filepath.Join(dir, name), nil
+}
 
 // SaveRecording persists a webm blob (base64, optionally a "data:...;base64,"
 // URL) captured by the frontend recorder and returns the absolute file path.
@@ -280,17 +295,10 @@ func (a *App) SaveRecording(base64Webm string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decode recording: %w", err)
 	}
-	dir, err := recordingsDir()
+	path, err := newRecordingPath(".webm")
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
-	}
-	// A monotonic counter names the file: wall-clock time is not reliably
-	// available here, and a per-run unique name is all that's required.
-	name := fmt.Sprintf("demo-%d.webm", recordingSeq.Add(1))
-	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, decoded, 0644); err != nil {
 		return "", err
 	}
@@ -307,14 +315,10 @@ var activeWindowRecording atomic.Pointer[string]
 // otherwise the window's native size is used. Silent after the one-time macOS
 // "Screen Recording" permission grant — no per-record picker. Bound via Wails.
 func (a *App) StartWindowCapture(width, height int) (string, error) {
-	dir, err := recordingsDir()
+	path, err := newRecordingPath(".mp4")
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
-	}
-	path := filepath.Join(dir, fmt.Sprintf("demo-%d.mp4", recordingSeq.Add(1)))
 	if err := startWindowCapture(path, os.Getpid(), width, height); err != nil {
 		return "", err
 	}
