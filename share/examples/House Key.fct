@@ -1,9 +1,9 @@
-# House Keys
-# Kwikset KW1 bitting (pin depths 1-7)
-var kw = [2, 5, 3, 4, 1]
-
-# Schlage SC1 bitting (pin depths 0-9)
-var sc = [3, 7, 2, 5, 1]
+# House Key
+# Pick a key type and dial in the cut code (bitting). Every dimension is
+# adjustable; the type sets the keyway cross-section and validates the cuts.
+#
+# Real bittings to try — Kwikset KW1 (pin depths 1-7): 2 5 3 4 1
+#                        Schlage SC1 (pin depths 0-9): 3 7 2 5 1
 
 # Keyway cross-sections: x = blade thickness, y = height from bitting edge to
 # spine. The blade is the side silhouette intersected with this profile swept
@@ -43,31 +43,58 @@ type Key {
     min_cut      Number
     bow_width    Length
     bow_height   Length
+    hole_r       Length
 }
 
 # ---------------------------------------------------------------------------
-# Constructors
+# Constructors — validate the bitting for the type, then assemble the Key.
+# Every dimension is a parameter (defaulted to the type's real values) so the
+# whole key stays adjustable; only the keyway cross-section is fixed per type.
 # ---------------------------------------------------------------------------
-fn Kwikset(bitting []Number) Key {
+fn Kwikset(
+    bitting []Number,
+    blade_width Length = 8.560 mm,
+    blade_length Length = 28.575 mm,
+    first_pin Length = 6.274 mm,
+    pin_spacing Length = 3.810 mm,
+    depth_inc Length = 0.584 mm,
+    max_depth Length = 8.357 mm,
+    min_cut Number = 1,
+    bow_width Length = 20 mm,
+    bow_height Length = 22 mm,
+    hole_r Length = 3 mm,
+) Key {
     assert Size(of: bitting) == 5, "Kwikset keys have 5 pins"
     for i, d bitting {
         assert d >= 1 && d <= 7, "Kwikset pin depths must be 1-7"
     }
-    return Key{bitting: bitting, keyway: kw1_keyway, blade_width: 8.560 mm,
-        blade_length: 28.575 mm, first_pin: 6.274 mm, pin_spacing: 3.810 mm,
-        depth_inc: 0.584 mm, max_depth: 8.357 mm, min_cut: 1, bow_width: 20 mm,
-        bow_height: 22 mm}
+    return Key{bitting: bitting, keyway: kw1_keyway, blade_width: blade_width,
+        blade_length: blade_length, first_pin: first_pin, pin_spacing: pin_spacing,
+        depth_inc: depth_inc, max_depth: max_depth, min_cut: min_cut,
+        bow_width: bow_width, bow_height: bow_height, hole_r: hole_r}
 }
 
-fn Schlage(bitting []Number) Key {
+fn Schlage(
+    bitting []Number,
+    blade_width Length = 8.509 mm,
+    blade_length Length = 26.988 mm,
+    first_pin Length = 5.867 mm,
+    pin_spacing Length = 3.962 mm,
+    depth_inc Length = 0.381 mm,
+    max_depth Length = 8.509 mm,
+    min_cut Number = 0,
+    bow_width Length = 20 mm,
+    bow_height Length = 22 mm,
+    hole_r Length = 3 mm,
+) Key {
     assert Size(of: bitting) == 5, "Schlage keys have 5 pins"
     for i, d bitting {
         assert d >= 0 && d <= 9, "Schlage pin depths must be 0-9"
     }
-    return Key{bitting: bitting, keyway: sc1_keyway, blade_width: 8.509 mm,
-        blade_length: 26.988 mm, first_pin: 5.867 mm, pin_spacing: 3.962 mm,
-        depth_inc: 0.381 mm, max_depth: 8.509 mm, min_cut: 0, bow_width: 20 mm,
-        bow_height: 22 mm}
+    return Key{bitting: bitting, keyway: sc1_keyway, blade_width: blade_width,
+        blade_length: blade_length, first_pin: first_pin, pin_spacing: pin_spacing,
+        depth_inc: depth_inc, max_depth: max_depth, min_cut: min_cut,
+        bow_width: bow_width, bow_height: bow_height, hole_r: hole_r}
 }
 
 # ---------------------------------------------------------------------------
@@ -126,15 +153,43 @@ fn Key.Build() Solid {
     var bow_body = Square(x: bow_w, y: bow_h).Fillet(r: 3 mm)
         .Extrude(z: bt)
         .AlignCenter(pos: Vec3{x: 1 mm - bow_w / 2, y: bw / 2, z: bt / 2})
-    var hole_r = 3 mm
-    var hole = Cylinder(r: hole_r, h: bt + 1 mm).AlignCenter(
+    var hole = Cylinder(r: self.hole_r, h: bt + 1 mm).AlignCenter(
         pos: Vec3{x: 1 mm - bow_w / 2, y: bw / 2 + bow_h / 4, z: bt / 2}
     )
     return blade + (bow_body - hole)
 }
 
-fn Main() {
-    return Layout(
-        solids: [Kwikset(bitting: kw).Build(), Schlage(bitting: sc).Build()]
-    )
+# ---------------------------------------------------------------------------
+# Parametric entry point — pick the type, dial in the cut code and dimensions.
+# The cut code is validated against the chosen type (assert on out-of-range).
+# ---------------------------------------------------------------------------
+fn Main(
+    keyType String = "Kwikset" where ["Kwikset", "Schlage"],
+    pin1 Number = 2 where [0:9:1],
+    pin2 Number = 5 where [0:9:1],
+    pin3 Number = 3 where [0:9:1],
+    pin4 Number = 4 where [0:9:1],
+    pin5 Number = 1 where [0:9:1],
+    blade_width Length = 8.560 mm where [6:12] mm,
+    blade_length Length = 28.575 mm where [20:40] mm,
+    first_pin Length = 6.274 mm where [3:12] mm,
+    pin_spacing Length = 3.810 mm where [2:6] mm,
+    depth_inc Length = 0.584 mm where [0.2:1.2] mm,
+    max_depth Length = 8.357 mm where [5:12] mm,
+    min_cut Number = 1 where [0:2:1],
+    bow_width Length = 20 mm where [10:40] mm,
+    bow_height Length = 22 mm where [10:40] mm,
+    hole_r Length = 3 mm where [1:6] mm,
+) Solid {
+    var bitting = [pin1, pin2, pin3, pin4, pin5]
+    if keyType == "Kwikset" {
+        return Kwikset(bitting: bitting, blade_width: blade_width,
+            blade_length: blade_length, first_pin: first_pin, pin_spacing: pin_spacing,
+            depth_inc: depth_inc, max_depth: max_depth, min_cut: min_cut,
+            bow_width: bow_width, bow_height: bow_height, hole_r: hole_r).Build()
+    }
+    return Schlage(bitting: bitting, blade_width: blade_width,
+        blade_length: blade_length, first_pin: first_pin, pin_spacing: pin_spacing,
+        depth_inc: depth_inc, max_depth: max_depth, min_cut: min_cut,
+        bow_width: bow_width, bow_height: bow_height, hole_r: hole_r).Build()
 }
