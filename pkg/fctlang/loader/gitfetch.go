@@ -225,6 +225,13 @@ func (t *LibTree) SourceKey(subPath string) string {
 	return filepath.Join(t.diskDir, filepath.FromSlash(subPath))
 }
 
+// IsVirtualSourceKey reports whether key is a virtualized library URI (as
+// produced by LibTree.SourceKey on a virtual tree). Non-virtual keys are real
+// filesystem paths or well-known pseudo-paths like StdlibPath.
+func IsVirtualSourceKey(key string) bool {
+	return strings.HasPrefix(key, LibSourceScheme)
+}
+
 // ReadFile returns the contents of the file at subPath within the tree.
 // subPath is forward-slash-separated and relative to the tree root.
 func (t *LibTree) ReadFile(subPath string) ([]byte, error) {
