@@ -305,14 +305,18 @@ func bindCallArgs(callee string, args []ast.Arg, fn callVisitor) {
 }
 
 // walkExprNodes visits x and every sub-expression in pre-order, invoking visit
-// on each node. It descends the expression forms the parameter analyses inspect;
-// list comprehensions are not descended, matching those analyses' current reach.
+// on each node, descending into list-comprehension clauses via walkCompElem so
+// calls and indexing inside a comprehension are reached like anywhere else.
 func walkExprNodes(x ast.Expr, visit func(ast.Expr)) {
 	visit(x)
 	switch n := x.(type) {
 	case *ast.Call:
 		for _, a := range n.Args {
 			walkExprNodes(a.Value, visit)
+		}
+	case *ast.ListComp:
+		for _, el := range n.Elems {
+			walkCompElem(el, func(string) {}, func(e ast.Expr) { walkExprNodes(e, visit) })
 		}
 	case *ast.Binary:
 		walkExprNodes(n.L, visit)
