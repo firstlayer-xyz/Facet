@@ -3,7 +3,7 @@ import { createEditor, EditorHandle } from './editor';
 import { Viewer } from './viewer';
 import { initAutomation } from './automation';
 import { Gnomon } from './gnomon';
-import { GetDefaultSource, GetExample, DetectSlicers, SetAssistantConfig, CreateLocalLibrary, CreateLibraryFolder, ListLibraryFolders, OpenRecentFile, OpenLibraryDir } from '../wailsjs/go/main/App';
+import { GetDefaultSource, GetExample, DetectSlicers, SetAssistantConfig, CreateLocalLibrary, CreateLibraryFolder, ListLibraryFolders, OpenRecentFile, OpenLibraryDir, AutomationEnabled, CreateScratchFile } from '../wailsjs/go/main/App';
 import { ClipboardSetText, ClipboardGetText, WindowToggleMaximise } from '../wailsjs/runtime/runtime';
 import { on } from './events';
 import { tabStore } from './tabs';
@@ -215,6 +215,7 @@ async function init() {
       editorRef.setContentSilent(code);
       run();
     },
+    getCode: () => editorRef?.getContent() ?? '',
   });
 
   // Gnomon — always-visible axis indicator bottom-left of viewport, drag to orbit
@@ -229,6 +230,11 @@ async function init() {
   });
 
   // Initialize app module with all dependencies
+  // --automation: boot a clean blank slate and don't persist the throwaway
+  // session over the user's real tabs. The flag is Go-owned; the frontend just
+  // reads it here.
+  const automationMode = await AutomationEnabled();
+
   initApp({
     viewer,
     docsPanel,
@@ -239,6 +245,7 @@ async function init() {
     tabBar,
     statsBar,
     compilingOverlay,
+    automationMode,
     onEvalStatus: (state, ms) => applyEvalStatus?.(state, ms),
     onDebugBarChange: (visible) => {
       previewSelector.style.display = visible ? 'none' : '';
@@ -251,9 +258,12 @@ async function init() {
     app, fullCodeBtn,
   });
 
-  // Restore saved tab state or load default tutorial
-  const savedTabs = settings.savedTabs;
-  const savedActiveTab = settings.activeTab;
+  // Under --automation (fetched above) we assume a demo/recording session: boot
+  // a clean blank slate instead of restoring the user's last session (app.ts
+  // also skips persisting on close, so this throwaway session never clobbers
+  // their tabs).
+  const savedTabs = automationMode ? [] : settings.savedTabs;
+  const savedActiveTab = automationMode ? null : settings.activeTab;
 
   // Load a saved tab's source — handles both example: and filesystem paths.
   async function loadSavedTab(path: string): Promise<{ source: string; path: string; readOnly: boolean } | null> {
@@ -283,10 +293,17 @@ async function init() {
     }
   }
 
-  // Fall back to default tutorial when no saved tabs could be loaded
+  // With no tabs to restore: a blank editable scratch tab under automation (a
+  // clean canvas the demo script fills via editor.loadCode), otherwise the
+  // default tutorial.
   if (loadedTabs.length === 0) {
-    const source = await GetDefaultSource();
-    loadedTabs.push({ source, path: 'example:Tutorial.fct', readOnly: true, cursor: null });
+    if (automationMode) {
+      const key = await CreateScratchFile('Untitled-' + Date.now());
+      loadedTabs.push({ source: '', path: key, readOnly: false, cursor: null });
+    } else {
+      const source = await GetDefaultSource();
+      loadedTabs.push({ source, path: 'example:Tutorial.fct', readOnly: true, cursor: null });
+    }
   }
 
   // Wrap Monaco in an explicit flex:1 container so the status bar always

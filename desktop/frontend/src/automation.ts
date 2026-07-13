@@ -26,6 +26,8 @@ export interface AutomationDeps {
   viewer: Viewer;
   /** Replace the active editor's source and trigger a build. */
   loadCode: (code: string) => void;
+  /** Current source in the active editor tab. */
+  getCode: () => string;
 }
 
 type CommandFn = (params: any) => Promise<unknown>;
@@ -40,7 +42,7 @@ export function registerCommand(name: string, run: CommandFn): void {
 
 export function initAutomation(deps: AutomationDeps): void {
   registerWindowCommands();
-  registerEditorCommands(deps.loadCode);
+  registerEditorCommands(deps.loadCode, deps.getCode);
   registerViewerCommands(deps.viewer);
   registerAnimationCommands();
   registerRecordCommands(deps.viewer.getCanvas());
@@ -73,7 +75,7 @@ function registerWindowCommands(): void {
   });
 }
 
-function registerEditorCommands(loadCode: (code: string) => void): void {
+function registerEditorCommands(loadCode: (code: string) => void, getCode: () => string): void {
   // Load source into the editor and resolve only once the resulting build has
   // rendered — the next evalStore update. run() supersedes any in-flight eval,
   // so the update we wake on is this code's, letting demo scripts avoid sleeps.
@@ -93,6 +95,9 @@ function registerEditorCommands(loadCode: (code: string) => void): void {
     });
     return null;
   });
+
+  // Read back the active editor's source (state inspection for demo scripts).
+  registerCommand('editor.getCode', async () => ({ code: getCode() }));
 }
 
 function registerViewerCommands(viewer: Viewer): void {

@@ -258,6 +258,14 @@ func (a *App) AutomationResult(id, valueJSON, errMsg string) error {
 	return a.automation.resolve(id, valueJSON, errMsg)
 }
 
+// AutomationEnabled reports whether the app was launched with --automation. The
+// frontend uses it to boot a blank slate (skipping session restore, and not
+// persisting tabs on close) so demo recordings start clean and don't clobber
+// the user's real last session. Bound via Wails.
+func (a *App) AutomationEnabled() bool {
+	return a.automationCfg.Enabled
+}
+
 var recordingSeq atomic.Uint64
 
 // SaveRecording persists a webm blob (base64, optionally a "data:...;base64,"
