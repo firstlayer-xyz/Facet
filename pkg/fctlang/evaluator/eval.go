@@ -377,7 +377,13 @@ func reidentifyBinding(v value, scope map[string]value) value {
 func reidentifyValue(v value, scope map[string]value) (value, bool) {
 	switch tv := v.(type) {
 	case *manifold.Solid:
-		if uniformlyColored(tv) && reusesScopedSolid(tv, scope) {
+		// Only single-part solids are collapsed to a fresh identity. Reidentify
+		// (manifold's AsOriginal) flattens ALL of a solid's faces into one group,
+		// so applying it to a multi-part solid destroys its per-part identities —
+		// a click can then no longer tell its features apart. A multi-part solid
+		// reused verbatim keeps its groups; giving reused multi-part copies their
+		// own per-part identities is the job of the per-part reidentify path.
+		if len(tv.FaceMap) <= 1 && uniformlyColored(tv) && reusesScopedSolid(tv, scope) {
 			return tv.Reidentify(), true
 		}
 		return v, false
