@@ -25,9 +25,12 @@ const SOURCE_LIBRARY = 2;
 const SOURCE_CACHED = 3;
 const SOURCE_EXAMPLE = 4;
 
-/** Read-only source kinds — not editable by the user. */
+/** Read-only source kinds — not editable by the user. Every library-backed kind
+ *  (stdlib, local-lib, cached-remote) is read-only: projectSources() filters
+ *  those out of the eval payload, so allowing edits would silently discard them.
+ *  Bundled examples are read-only too (edit-to-save-as, like a template). */
 function isReadOnlyKind(kind: number): boolean {
-  return kind === SOURCE_STDLIB || kind === SOURCE_CACHED || kind === SOURCE_EXAMPLE;
+  return isLibraryBackedKind(kind) || kind === SOURCE_EXAMPLE;
 }
 
 /** Source kinds excluded from tab persistence (ephemeral). */
@@ -117,10 +120,10 @@ function isReadOnly(path: string): boolean {
  *  known kind (a fresh scratch buffer not yet evaluated) is treated as a user
  *  root and kept. */
 function projectSources(): Record<string, string> {
-  const kinds = evalStore.current()?.sources ?? {};
+  const kinds = evalStore.current()?.sources;
   const out: Record<string, string> = {};
   for (const [path, text] of Object.entries(editor.getAllSources())) {
-    if (isLibraryBackedKind(kinds[path]?.kind ?? SOURCE_USER)) continue;
+    if (isLibraryBackedKind(kinds?.[path]?.kind ?? SOURCE_USER)) continue;
     out[path] = text;
   }
   return out;
@@ -287,7 +290,7 @@ export function initApp(deps: AppDeps) {
 
   // Wire the frame playback loop.
   initPlayback({
-    getSources: () => projectSources(),
+    getSources: projectSources,
     applyFrame: (binary, header) => {
       const decoded = header.mesh ? decodeBinaryMesh(binary, header.mesh) : null;
       // excludeFiles is stable across frames (same program), so derive it from

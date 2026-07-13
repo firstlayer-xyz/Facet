@@ -203,6 +203,15 @@ type Options struct {
 // files, and populates prog.Sources and prog.Imports.
 // Returns an error if any library cannot be loaded.
 func ResolveLibraries(ctx context.Context, prog Program, key string, libDir string, opts *Options) error {
+	// A loader-minted virtual key (a resolved library's "git+..." backing) is
+	// never a compilation root: its relative imports resolve only within the git
+	// tree it was read from, which is not reconstructable here, so passing one as
+	// a root would silently disable its relative imports (empty parentCtx below).
+	// Callers resolve such a source from its canonical backing instead; treat a
+	// virtual root as a hard programming error rather than degrading quietly.
+	if IsVirtualSourceKey(key) {
+		return fmt.Errorf("cannot resolve %q as a compilation root: it is a library source resolved from its canonical backing", key)
+	}
 	r := &resolver{
 		ctx:     ctx,
 		libDir:  libDir,

@@ -24,9 +24,15 @@ func TestLoadMultiIgnoresResolvedLibrarySourcesAsRoots(t *testing.T) {
 		libKey: "var T = lib \"../threads\"\nfn Knurl() { return 1 }\n",
 	}
 
-	_, err := LoadMulti(context.Background(), sources, "/tmp/project/main.fct", "", nil)
+	prog, err := LoadMulti(context.Background(), sources, "/tmp/project/main.fct", "", nil)
 	if err != nil {
 		t.Fatalf("LoadMulti must not resolve a view-only library source as a root, got: %v", err)
+	}
+	// The virtual key must not enter prog.Sources at all: if it did, the checker
+	// would later walk it and flag its unresolved "../threads" import, blocking
+	// the render even though LoadMulti itself returned no error.
+	if _, ok := prog.Sources[libKey]; ok {
+		t.Errorf("view-only library source %q must not be added to prog.Sources", libKey)
 	}
 }
 
