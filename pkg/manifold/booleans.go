@@ -16,52 +16,38 @@ import (
 // 3D Boolean Operations
 // ---------------------------------------------------------------------------
 
-// Union computes the boolean union of two solids. Panics if either operand
-// is nil — a nil Solid here is an internal bug, not a recoverable input.
+// binaryBool is the shared body of the pairwise Solid booleans: validate,
+// run the kernel op, merge the face maps (a's entries win). Panics if either
+// operand is nil — a nil Solid here is an internal bug, not a recoverable
+// input. Returns nil when the kernel fails (the exception barrier nulled the
+// result) — nil, not a panic.
+func (a *Solid) binaryBool(name string, b *Solid, call func(x, y *C.ManifoldPtr, ret *C.FacetSolidRet)) *Solid {
+	requireSolids(name, a, b)
+	var ret C.FacetSolidRet
+	call(a.ptr, b.ptr, &ret)
+	runtime.KeepAlive(a)
+	runtime.KeepAlive(b)
+	s := newSolid(ret)
+	if s == nil {
+		return nil
+	}
+	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
+	return s
+}
+
+// Union computes the boolean union of two solids.
 func (a *Solid) Union(b *Solid) *Solid {
-	requireSolids("Union", a, b)
-	var ret C.FacetSolidRet
-	C.facet_union(a.ptr, b.ptr, &ret)
-	runtime.KeepAlive(a)
-	runtime.KeepAlive(b)
-	s := newSolid(ret)
-	if s == nil {
-		return nil // kernel failed (the exception barrier nulled the result) — nil, not a panic
-	}
-	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
-	return s
+	return a.binaryBool("Union", b, func(x, y *C.ManifoldPtr, ret *C.FacetSolidRet) { C.facet_union(x, y, ret) })
 }
 
-// Difference computes the boolean difference of two solids. Panics if either
-// operand is nil.
+// Difference computes the boolean difference of two solids.
 func (a *Solid) Difference(b *Solid) *Solid {
-	requireSolids("Difference", a, b)
-	var ret C.FacetSolidRet
-	C.facet_difference(a.ptr, b.ptr, &ret)
-	runtime.KeepAlive(a)
-	runtime.KeepAlive(b)
-	s := newSolid(ret)
-	if s == nil {
-		return nil // kernel failed (the exception barrier nulled the result) — nil, not a panic
-	}
-	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
-	return s
+	return a.binaryBool("Difference", b, func(x, y *C.ManifoldPtr, ret *C.FacetSolidRet) { C.facet_difference(x, y, ret) })
 }
 
-// Intersection computes the boolean intersection of two solids. Panics if
-// either operand is nil.
+// Intersection computes the boolean intersection of two solids.
 func (a *Solid) Intersection(b *Solid) *Solid {
-	requireSolids("Intersection", a, b)
-	var ret C.FacetSolidRet
-	C.facet_intersection(a.ptr, b.ptr, &ret)
-	runtime.KeepAlive(a)
-	runtime.KeepAlive(b)
-	s := newSolid(ret)
-	if s == nil {
-		return nil // kernel failed (the exception barrier nulled the result) — nil, not a panic
-	}
-	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
-	return s
+	return a.binaryBool("Intersection", b, func(x, y *C.ManifoldPtr, ret *C.FacetSolidRet) { C.facet_intersection(x, y, ret) })
 }
 
 // Insert cuts a hole in a for b, removes floating inner plugs, and seats b.
@@ -110,34 +96,30 @@ func DecomposeSolid(s *Solid) []*Solid {
 // 2D Boolean Operations
 // ---------------------------------------------------------------------------
 
-// Union computes the boolean union of two sketches.
-func (a *Sketch) Union(b *Sketch) *Sketch {
-	requireSketches("Sketch.Union", a, b)
+// binaryBool is the shared body of the pairwise Sketch booleans (sketches
+// carry no face map). Panics if either operand is nil.
+func (a *Sketch) binaryBool(name string, b *Sketch, call func(x, y *C.ManifoldCrossSection, ret *C.FacetSketchRet)) *Sketch {
+	requireSketches(name, a, b)
 	var ret C.FacetSketchRet
-	C.facet_cs_union(a.ptr, b.ptr, &ret)
+	call(a.ptr, b.ptr, &ret)
 	runtime.KeepAlive(a)
 	runtime.KeepAlive(b)
 	return newSketch(ret)
+}
+
+// Union computes the boolean union of two sketches.
+func (a *Sketch) Union(b *Sketch) *Sketch {
+	return a.binaryBool("Sketch.Union", b, func(x, y *C.ManifoldCrossSection, ret *C.FacetSketchRet) { C.facet_cs_union(x, y, ret) })
 }
 
 // Difference computes the boolean difference of two sketches.
 func (a *Sketch) Difference(b *Sketch) *Sketch {
-	requireSketches("Sketch.Difference", a, b)
-	var ret C.FacetSketchRet
-	C.facet_cs_difference(a.ptr, b.ptr, &ret)
-	runtime.KeepAlive(a)
-	runtime.KeepAlive(b)
-	return newSketch(ret)
+	return a.binaryBool("Sketch.Difference", b, func(x, y *C.ManifoldCrossSection, ret *C.FacetSketchRet) { C.facet_cs_difference(x, y, ret) })
 }
 
 // Intersection computes the boolean intersection of two sketches.
 func (a *Sketch) Intersection(b *Sketch) *Sketch {
-	requireSketches("Sketch.Intersection", a, b)
-	var ret C.FacetSketchRet
-	C.facet_cs_intersection(a.ptr, b.ptr, &ret)
-	runtime.KeepAlive(a)
-	runtime.KeepAlive(b)
-	return newSketch(ret)
+	return a.binaryBool("Sketch.Intersection", b, func(x, y *C.ManifoldCrossSection, ret *C.FacetSketchRet) { C.facet_cs_intersection(x, y, ret) })
 }
 
 // BatchBoolean combines solids with op in a single kernel tree-reduction, which

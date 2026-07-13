@@ -41,7 +41,7 @@ type meshMeta struct {
 	VertexCount    int               `json:"vertexCount"`
 	IndexCount     int               `json:"indexCount"`
 	FaceGroupCount int               `json:"faceGroupCount"`
-	FaceColors     map[string]string `json:"faceColors,omitempty"`
+	FaceColors     map[uint32]string `json:"faceColors,omitempty"`
 	Vertices       blobRef           `json:"vertices"`
 	Indices        blobRef           `json:"indices"`
 	FaceGroups     *blobRef          `json:"faceGroups,omitempty"`
@@ -199,11 +199,7 @@ func handleEval(ctx context.Context, w http.ResponseWriter, req evalRequest, rec
 
 		// Build final meshes
 		for _, s := range debugResult.Solids {
-			dm := s.ToDisplayMesh()
-			debugResult.Final = append(debugResult.Final, dm)
-		}
-		for _, dm := range debugResult.Final {
-			meta, data := appendMeshBinary(binaryData, dm)
+			meta, data := appendMeshBinary(binaryData, s.ToDisplayMesh())
 			binaryData = data
 			header.DebugFinal = append(header.DebugFinal, meta)
 		}

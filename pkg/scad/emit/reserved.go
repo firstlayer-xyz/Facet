@@ -24,48 +24,10 @@ func (e *Emitter) checkReservedNames(f *ast.File) {
 		}
 	}
 
-	var walkExpr func(x ast.Expr)
-	walkExpr = func(x ast.Expr) {
-		switch n := x.(type) {
-		case *ast.Let:
-			for _, b := range n.Binds {
-				check(b.Name, n.Pos())
-				walkExpr(b.Value)
-			}
-			walkExpr(n.Body)
-		case *ast.ListComp:
-			for _, el := range n.Elems {
-				walkCompElem(el, func(nm string) { check(nm, n.Pos()) }, walkExpr)
-			}
-		case *ast.Vector:
-			for _, el := range n.Elems {
-				walkExpr(el)
-			}
-		case *ast.Range:
-			walkExpr(n.Start)
-			walkExpr(n.End)
-			if n.Step != nil {
-				walkExpr(n.Step)
-			}
-		case *ast.Binary:
-			walkExpr(n.L)
-			walkExpr(n.R)
-		case *ast.Unary:
-			walkExpr(n.X)
-		case *ast.Ternary:
-			walkExpr(n.Cond)
-			walkExpr(n.Then)
-			walkExpr(n.Else)
-		case *ast.Call:
-			for _, a := range n.Args {
-				walkExpr(a.Value)
-			}
-		case *ast.Index:
-			walkExpr(n.X)
-			walkExpr(n.Index)
-		case *ast.Member:
-			walkExpr(n.X)
-		}
+	// A bare identifier is a reference, not a binding, so only Let and
+	// comprehension bound names are checked (via eachExprName's bind callback).
+	walkExpr := func(x ast.Expr) {
+		eachExprName(x, func(string) {}, check)
 	}
 
 	var walkStmts func(stmts []ast.Stmt)

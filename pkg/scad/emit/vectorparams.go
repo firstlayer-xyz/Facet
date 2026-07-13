@@ -186,96 +186,42 @@ func paramIsNestedIntrinsic(p ast.Param, sym *symbol) bool {
 	return false
 }
 
+// isDoubleIndex reports whether e is `name[i][j]` — the named identifier indexed
+// twice over, a direct signal that it is a nested array.
+func isDoubleIndex(e ast.Expr, name string) bool {
+	outer, ok := e.(*ast.Index)
+	if !ok {
+		return false
+	}
+	inner, ok := outer.X.(*ast.Index)
+	if !ok {
+		return false
+	}
+	id, ok := inner.X.(*ast.Ident)
+	return ok && id.Name == name
+}
+
 // exprDoubleIndexes reports whether `name` is indexed twice over (name[i][j])
 // anywhere in x — a direct signal that it is a nested array.
 func exprDoubleIndexes(name string, x ast.Expr) bool {
-	switch n := x.(type) {
-	case *ast.Index:
-		if inner, ok := n.X.(*ast.Index); ok {
-			if id, ok := inner.X.(*ast.Ident); ok && id.Name == name {
-				return true
-			}
+	found := false
+	walkExprNodes(x, func(e ast.Expr) {
+		if isDoubleIndex(e, name) {
+			found = true
 		}
-		return exprDoubleIndexes(name, n.X) || exprDoubleIndexes(name, n.Index)
-	case *ast.Binary:
-		return exprDoubleIndexes(name, n.L) || exprDoubleIndexes(name, n.R)
-	case *ast.Unary:
-		return exprDoubleIndexes(name, n.X)
-	case *ast.Member:
-		return exprDoubleIndexes(name, n.X)
-	case *ast.Ternary:
-		return exprDoubleIndexes(name, n.Cond) || exprDoubleIndexes(name, n.Then) || exprDoubleIndexes(name, n.Else)
-	case *ast.Call:
-		for _, a := range n.Args {
-			if exprDoubleIndexes(name, a.Value) {
-				return true
-			}
-		}
-	case *ast.Vector:
-		for _, el := range n.Elems {
-			if exprDoubleIndexes(name, el) {
-				return true
-			}
-		}
-	case *ast.Range:
-		if exprDoubleIndexes(name, n.Start) || exprDoubleIndexes(name, n.End) {
-			return true
-		}
-		return n.Step != nil && exprDoubleIndexes(name, n.Step)
-	case *ast.Let:
-		for _, b := range n.Binds {
-			if exprDoubleIndexes(name, b.Value) {
-				return true
-			}
-		}
-		return exprDoubleIndexes(name, n.Body)
-	}
-	return false
+	})
+	return found
 }
 
 // stmtDoubleIndexes is the statement-level companion to exprDoubleIndexes.
 func stmtDoubleIndexes(name string, s ast.Stmt) bool {
-	switch n := s.(type) {
-	case *ast.ModuleCall:
-		for _, a := range n.Args {
-			if exprDoubleIndexes(name, a.Value) {
-				return true
-			}
+	found := false
+	walkStmtNodes(s, func(ast.Stmt) {}, func(e ast.Expr) {
+		if isDoubleIndex(e, name) {
+			found = true
 		}
-		for _, c := range n.Children {
-			if stmtDoubleIndexes(name, c) {
-				return true
-			}
-		}
-	case *ast.Assign:
-		return exprDoubleIndexes(name, n.Value)
-	case *ast.For:
-		for _, it := range n.Iters {
-			if exprDoubleIndexes(name, it.Range) {
-				return true
-			}
-		}
-		for _, c := range n.Children {
-			if stmtDoubleIndexes(name, c) {
-				return true
-			}
-		}
-	case *ast.If:
-		if exprDoubleIndexes(name, n.Cond) {
-			return true
-		}
-		for _, c := range n.Then {
-			if stmtDoubleIndexes(name, c) {
-				return true
-			}
-		}
-		for _, c := range n.Else {
-			if stmtDoubleIndexes(name, c) {
-				return true
-			}
-		}
-	}
-	return false
+	})
+	return found
 }
 
 // paramIsVectorIntrinsic reports whether a parameter is a vector from its own
@@ -325,12 +271,22 @@ type callVisitor func(callee, argName string, pos int, arg ast.Expr)
 // visitCalls invokes fn for every call/module-call argument binding in a
 // definition's body, recursing through nested expressions and children.
 func visitCalls(sym *symbol, fn callVisitor) {
+	onCallExpr := func(x ast.Expr) {
+		if c, ok := x.(*ast.Call); ok {
+			bindCallArgs(c.Name, c.Args, fn)
+		}
+	}
 	if sym.isFunc {
-		walkExprCalls(sym.funcBody, fn)
+		walkExprNodes(sym.funcBody, onCallExpr)
 		return
 	}
+	onModuleCall := func(s ast.Stmt) {
+		if mc, ok := s.(*ast.ModuleCall); ok {
+			bindCallArgs(mc.Name, mc.Args, fn)
+		}
+	}
 	for _, s := range sym.moduleBody {
-		walkStmtCalls(s, fn)
+		walkStmtNodes(s, onModuleCall, onCallExpr)
 	}
 }
 
@@ -348,75 +304,82 @@ func bindCallArgs(callee string, args []ast.Arg, fn callVisitor) {
 	}
 }
 
-// walkExprCalls visits every call within an expression: it binds the call's own
-// arguments via bindCallArgs and recurses into all sub-expressions.
-func walkExprCalls(x ast.Expr, fn callVisitor) {
+// walkExprNodes visits x and every sub-expression in pre-order, invoking visit
+// on each node, descending into list-comprehension clauses via walkCompElem so
+// calls and indexing inside a comprehension are reached like anywhere else.
+func walkExprNodes(x ast.Expr, visit func(ast.Expr)) {
+	visit(x)
 	switch n := x.(type) {
 	case *ast.Call:
-		bindCallArgs(n.Name, n.Args, fn)
 		for _, a := range n.Args {
-			walkExprCalls(a.Value, fn)
+			walkExprNodes(a.Value, visit)
+		}
+	case *ast.ListComp:
+		for _, el := range n.Elems {
+			walkCompElem(el, func(string) {}, func(e ast.Expr) { walkExprNodes(e, visit) })
 		}
 	case *ast.Binary:
-		walkExprCalls(n.L, fn)
-		walkExprCalls(n.R, fn)
+		walkExprNodes(n.L, visit)
+		walkExprNodes(n.R, visit)
 	case *ast.Unary:
-		walkExprCalls(n.X, fn)
+		walkExprNodes(n.X, visit)
 	case *ast.Index:
-		walkExprCalls(n.X, fn)
-		walkExprCalls(n.Index, fn)
+		walkExprNodes(n.X, visit)
+		walkExprNodes(n.Index, visit)
 	case *ast.Member:
-		walkExprCalls(n.X, fn)
+		walkExprNodes(n.X, visit)
 	case *ast.Ternary:
-		walkExprCalls(n.Cond, fn)
-		walkExprCalls(n.Then, fn)
-		walkExprCalls(n.Else, fn)
+		walkExprNodes(n.Cond, visit)
+		walkExprNodes(n.Then, visit)
+		walkExprNodes(n.Else, visit)
 	case *ast.Vector:
 		for _, el := range n.Elems {
-			walkExprCalls(el, fn)
+			walkExprNodes(el, visit)
 		}
 	case *ast.Range:
-		walkExprCalls(n.Start, fn)
-		walkExprCalls(n.End, fn)
+		walkExprNodes(n.Start, visit)
+		walkExprNodes(n.End, visit)
 		if n.Step != nil {
-			walkExprCalls(n.Step, fn)
+			walkExprNodes(n.Step, visit)
 		}
 	case *ast.Let:
 		for _, b := range n.Binds {
-			walkExprCalls(b.Value, fn)
+			walkExprNodes(b.Value, visit)
 		}
-		walkExprCalls(n.Body, fn)
+		walkExprNodes(n.Body, visit)
 	}
 }
 
-// walkStmtCalls visits every call within a statement, recursing through nested
-// expressions, children, and control-flow branches.
-func walkStmtCalls(s ast.Stmt, fn callVisitor) {
+// walkStmtNodes visits statement s in pre-order: it invokes visitStmt on each
+// statement node and walks every expression it holds via walkExprNodes(visitExpr),
+// recursing through children and control-flow branches. It covers the statement
+// forms the parameter analyses inspect.
+func walkStmtNodes(s ast.Stmt, visitStmt func(ast.Stmt), visitExpr func(ast.Expr)) {
+	visitStmt(s)
 	switch n := s.(type) {
 	case *ast.ModuleCall:
-		bindCallArgs(n.Name, n.Args, fn)
 		for _, a := range n.Args {
-			walkExprCalls(a.Value, fn)
+			walkExprNodes(a.Value, visitExpr)
 		}
 		for _, c := range n.Children {
-			walkStmtCalls(c, fn)
+			walkStmtNodes(c, visitStmt, visitExpr)
 		}
 	case *ast.Assign:
-		walkExprCalls(n.Value, fn)
+		walkExprNodes(n.Value, visitExpr)
 	case *ast.For:
 		for _, it := range n.Iters {
-			walkExprCalls(it.Range, fn)
+			walkExprNodes(it.Range, visitExpr)
 		}
 		for _, c := range n.Children {
-			walkStmtCalls(c, fn)
+			walkStmtNodes(c, visitStmt, visitExpr)
 		}
 	case *ast.If:
-		walkExprCalls(n.Cond, fn)
+		walkExprNodes(n.Cond, visitExpr)
 		for _, c := range n.Then {
-			walkStmtCalls(c, fn)
+			walkStmtNodes(c, visitStmt, visitExpr)
 		}
 		for _, c := range n.Else {
-			walkStmtCalls(c, fn)
+			walkStmtNodes(c, visitStmt, visitExpr)
 		}
 	}
 }

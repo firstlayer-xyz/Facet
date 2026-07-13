@@ -379,7 +379,7 @@ func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function
 	} else {
 		// Validate provided arg types with top-down coercion for untyped arrays
 		for i := 0; i < len(argTypes) && i < len(fn.Params); i++ {
-			expected := c.resolveParamType(fn, fn.Params[i].Type)
+			expected := c.resolveParamType(fn.Params[i].Type)
 			if expected.ft == typeUnknown {
 				continue
 			}
@@ -499,7 +499,7 @@ func (c *checker) qualifyLibReturn(libVarName string, ti typeInfo) typeInfo {
 }
 
 // resolveParamType resolves a parameter type string to typeInfo.
-func (c *checker) resolveParamType(fn *parser.Function, typeName string) typeInfo {
+func (c *checker) resolveParamType(typeName string) typeInfo {
 	// Function types must use the checker-aware path so user-defined struct
 	// names inside (Vec3, Mesh, etc.) resolve to typeStruct rather than
 	// typeUnknown — the stateless typeFromNameStr can't see structDecls.
@@ -556,11 +556,7 @@ func (c *checker) checkMethodCall(mc *parser.MethodCallExpr, env *typeEnv) typeI
 			c.addError(mc.Pos, fmt.Sprintf("?. operator requires an Optional receiver, got %s", recvType.displayName()))
 			return unknown()
 		}
-		inner := unknown()
-		if recvType.inner != nil {
-			inner = *recvType.inner
-		}
-		ret := c.checkMethodOnRecvType(mc, env, inner, argTypes)
+		ret := c.checkMethodOnRecvType(mc, env, optionalInnerOr(recvType), argTypes)
 		if ret.ft == typeUnknown {
 			return unknown()
 		}
@@ -736,37 +732,19 @@ func tryConstFloat(expr parser.Expr) (float64, bool) {
 	return 0, false
 }
 
-// tryConstLengthMM extracts a constant Length value in mm.
-func tryConstLengthMM(expr parser.Expr) (float64, bool) {
+// tryConstUnitValue extracts a constant unit value from a literal (possibly
+// negated) UnitExpr — degrees when isAngle is true, mm otherwise.
+func tryConstUnitValue(expr parser.Expr, isAngle bool) (float64, bool) {
 	switch e := expr.(type) {
 	case *parser.UnitExpr:
-		if !e.IsAngle {
+		if e.IsAngle == isAngle {
 			if v, ok := tryConstFloat(e.Expr); ok {
 				return v * e.Factor, true
 			}
 		}
 	case *parser.UnaryExpr:
 		if e.Op == "-" {
-			if v, ok := tryConstLengthMM(e.Operand); ok {
-				return -v, true
-			}
-		}
-	}
-	return 0, false
-}
-
-// tryConstAngleDeg extracts a constant Angle value in degrees.
-func tryConstAngleDeg(expr parser.Expr) (float64, bool) {
-	switch e := expr.(type) {
-	case *parser.UnitExpr:
-		if e.IsAngle {
-			if v, ok := tryConstFloat(e.Expr); ok {
-				return v * e.Factor, true
-			}
-		}
-	case *parser.UnaryExpr:
-		if e.Op == "-" {
-			if v, ok := tryConstAngleDeg(e.Operand); ok {
+			if v, ok := tryConstUnitValue(e.Operand, isAngle); ok {
 				return -v, true
 			}
 		}
@@ -782,7 +760,26 @@ func tryConstString(expr parser.Expr) (string, bool) {
 	return "", false
 }
 
-// checkConstraint validates that a variable's constraint is compatible with its type.
+// outOfRange reports whether val falls outside [lo:hi] — inclusive of hi
+// normally, exclusive of hi when exclusive is true.
+func outOfRange(val, lo, hi float64, exclusive bool) bool {
+	if exclusive {
+		return val < lo || val >= hi
+	}
+	return val < lo || val > hi
+}
+
+// constInSet reports whether val equals a constant element of elems, using
+// extract to pull the constant out of each element expression.
+func constInSet[T comparable](val T, elems []parser.Expr, extract func(parser.Expr) (T, bool)) bool {
+	for _, elem := range elems {
+		if v, ok := extract(elem); ok && v == val {
+			return true
+		}
+	}
+	return false
+}
+
 // checkConstrainedRangeTypes validates that a ConstrainedRange's bounds (start,
 // end, and optional step) are Numbers and that its unit matches targetType.
 // msgPrefix is prepended to each error — empty for a variable, `"F() parameter
@@ -813,59 +810,73 @@ func (c *checker) checkConstrainedRangeTypes(pos parser.Pos, con *parser.Constra
 	}
 }
 
+// checkRangeConstraintBoundTypes validates that a range constraint's bounds
+// match targetType: Length or Number when the target is a Length, Number only
+// otherwise. msgPrefix follows the same convention as
+// checkConstrainedRangeTypes. Shared by the variable and parameter constraint
+// checkers.
+func (c *checker) checkRangeConstraintBoundTypes(pos parser.Pos, con *parser.RangeExpr, targetType typeInfo, env *typeEnv, msgPrefix string) {
+	st := c.inferExpr(con.Start, env)
+	et := c.inferExpr(con.End, env)
+	if targetType.ft == typeLength {
+		if st.ft != typeUnknown && st.ft != typeLength && st.ft != typeNumber {
+			c.addError(pos, fmt.Sprintf("%sconstraint range start must be Length or Number, got %s", msgPrefix, st.displayName()))
+		}
+		if et.ft != typeUnknown && et.ft != typeLength && et.ft != typeNumber {
+			c.addError(pos, fmt.Sprintf("%sconstraint range end must be Length or Number, got %s", msgPrefix, et.displayName()))
+		}
+	} else {
+		if st.ft != typeUnknown && st.ft != typeNumber {
+			c.addError(pos, fmt.Sprintf("%sconstraint range start must be a Number, got %s", msgPrefix, st.displayName()))
+		}
+		if et.ft != typeUnknown && et.ft != typeNumber {
+			c.addError(pos, fmt.Sprintf("%sconstraint range end must be a Number, got %s", msgPrefix, et.displayName()))
+		}
+	}
+}
+
+// checkEnumConstraintTypes validates that every enum constraint element's type
+// matches targetType. msgPrefix follows the same convention as
+// checkConstrainedRangeTypes. Shared by the variable and parameter constraint
+// checkers.
+func (c *checker) checkEnumConstraintTypes(pos parser.Pos, con *parser.ArrayLitExpr, targetType typeInfo, env *typeEnv, msgPrefix string) {
+	for i, elem := range con.Elems {
+		elemType := c.inferExpr(elem, env)
+		if elemType.ft != typeUnknown && targetType.ft != typeUnknown && !c.typeCompatible(targetType, elemType) {
+			c.addError(pos, fmt.Sprintf("%sconstraint enum element %d has type %s, expected %s",
+				msgPrefix, i+1, elemType.displayName(), targetType.displayName()))
+		}
+	}
+}
+
+// checkConstraint validates that a variable's constraint is compatible with its type.
 func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *typeEnv) {
 	switch con := g.Constraint.(type) {
 	case *parser.ConstrainedRange:
 		// Unit range constraint — validate bounds are numeric and unit matches var type
 		c.checkConstrainedRangeTypes(g.Pos, con, varType, env, "", "variable")
 		// Value range check for constant expressions
-		if startN, ok1 := tryConstFloat(con.Range.Start); ok1 {
-			if endN, ok2 := tryConstFloat(con.Range.End); ok2 {
-				if factor, isAngle := parser.AngleFactors[con.Unit]; isAngle {
-					lo, hi := startN*factor, endN*factor
-					if valDeg, ok := tryConstAngleDeg(g.Value); ok {
-						if con.Range.IsExclusive() {
-							if valDeg < lo || valDeg >= hi {
-								c.addError(g.Pos, fmt.Sprintf("value %.4g %s is out of range [%g:<%g] %s", valDeg/factor, con.Unit, startN, endN, con.Unit))
-							}
-						} else if valDeg < lo || valDeg > hi {
-							c.addError(g.Pos, fmt.Sprintf("value %.4g %s is out of range [%g:%g] %s", valDeg/factor, con.Unit, startN, endN, con.Unit))
-						}
-					}
-				} else if factor, isUnit := parser.UnitFactors[con.Unit]; isUnit {
-					lo, hi := startN*factor, endN*factor
-					if valMM, ok := tryConstLengthMM(g.Value); ok {
-						if con.Range.IsExclusive() {
-							if valMM < lo || valMM >= hi {
-								c.addError(g.Pos, fmt.Sprintf("value %.4g %s is out of range [%g:<%g] %s", valMM/factor, con.Unit, startN, endN, con.Unit))
-							}
-						} else if valMM < lo || valMM > hi {
-							c.addError(g.Pos, fmt.Sprintf("value %.4g %s is out of range [%g:%g] %s", valMM/factor, con.Unit, startN, endN, con.Unit))
-						}
-					}
-				}
+		factor, isAngle := parser.AngleFactors[con.Unit]
+		if !isAngle {
+			var isLength bool
+			if factor, isLength = parser.UnitFactors[con.Unit]; !isLength {
+				return
 			}
+		}
+		startN, ok1 := tryConstFloat(con.Range.Start)
+		endN, ok2 := tryConstFloat(con.Range.End)
+		val, ok3 := tryConstUnitValue(g.Value, isAngle)
+		if ok1 && ok2 && ok3 && outOfRange(val, startN*factor, endN*factor, con.Range.IsExclusive()) {
+			boundsFmt := "[%g:%g]"
+			if con.Range.IsExclusive() {
+				boundsFmt = "[%g:<%g]"
+			}
+			c.addError(g.Pos, fmt.Sprintf("value %.4g %s is out of range "+boundsFmt+" %s", val/factor, con.Unit, startN, endN, con.Unit))
 		}
 
 	case *parser.RangeExpr:
-		st := c.inferExpr(con.Start, env)
-		et := c.inferExpr(con.End, env)
 		// Range bounds should match var type or be Number
-		if varType.ft == typeLength {
-			if st.ft != typeUnknown && st.ft != typeLength && st.ft != typeNumber {
-				c.addError(g.Pos, fmt.Sprintf("constraint range start must be Length or Number, got %s", st.displayName()))
-			}
-			if et.ft != typeUnknown && et.ft != typeLength && et.ft != typeNumber {
-				c.addError(g.Pos, fmt.Sprintf("constraint range end must be Length or Number, got %s", et.displayName()))
-			}
-		} else {
-			if st.ft != typeUnknown && st.ft != typeNumber {
-				c.addError(g.Pos, fmt.Sprintf("constraint range start must be a Number, got %s", st.displayName()))
-			}
-			if et.ft != typeUnknown && et.ft != typeNumber {
-				c.addError(g.Pos, fmt.Sprintf("constraint range end must be a Number, got %s", et.displayName()))
-			}
-		}
+		c.checkRangeConstraintBoundTypes(g.Pos, con, varType, env, "")
 		if con.Step != nil {
 			stept := c.inferExpr(con.Step, env)
 			if stept.ft != typeUnknown && stept.ft != typeNumber {
@@ -880,36 +891,24 @@ func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *type
 				}
 			}
 		}
-		if startMM, ok1 := tryConstLengthMM(con.Start); ok1 {
-			if endMM, ok2 := tryConstLengthMM(con.End); ok2 {
+		// Non-empty and value range checks — try length bounds first, then plain number
+		if startMM, ok1 := tryConstUnitValue(con.Start, false); ok1 {
+			if endMM, ok2 := tryConstUnitValue(con.End, false); ok2 {
 				if startMM > endMM {
 					c.addError(g.Pos, "constraint range is empty: start > end")
 				}
-			}
-		}
-		// Value range check — try length bounds first, then plain number
-		if startMM, ok1 := tryConstLengthMM(con.Start); ok1 {
-			if endMM, ok2 := tryConstLengthMM(con.End); ok2 {
-				if valMM, ok3 := tryConstLengthMM(g.Value); ok3 {
-					if con.IsExclusive() {
-						if valMM < startMM || valMM >= endMM {
-							c.addError(g.Pos, "value is out of range")
-						}
-					} else if valMM < startMM || valMM > endMM {
-						c.addError(g.Pos, "value is out of range")
-					}
+				if valMM, ok3 := tryConstUnitValue(g.Value, false); ok3 && outOfRange(valMM, startMM, endMM, con.IsExclusive()) {
+					c.addError(g.Pos, "value is out of range")
 				}
 			}
 		} else if startN, ok1 := tryConstFloat(con.Start); ok1 {
 			if endN, ok2 := tryConstFloat(con.End); ok2 {
-				if valN, ok3 := tryConstFloat(g.Value); ok3 {
+				if valN, ok3 := tryConstFloat(g.Value); ok3 && outOfRange(valN, startN, endN, con.IsExclusive()) {
+					boundsFmt := "[%g:%g]"
 					if con.IsExclusive() {
-						if valN < startN || valN >= endN {
-							c.addError(g.Pos, fmt.Sprintf("value %g is out of range [%g:<%g]", valN, startN, endN))
-						}
-					} else if valN < startN || valN > endN {
-						c.addError(g.Pos, fmt.Sprintf("value %g is out of range [%g:%g]", valN, startN, endN))
+						boundsFmt = "[%g:<%g]"
 					}
+					c.addError(g.Pos, fmt.Sprintf("value %g is out of range "+boundsFmt, valN, startN, endN))
 				}
 			}
 		}
@@ -919,77 +918,34 @@ func (c *checker) checkConstraint(g *parser.VarStmt, varType typeInfo, env *type
 			return // free-form, no validation needed
 		}
 		// Enum — check all elements are the same type and match the var type
-		for i, elem := range con.Elems {
-			elemType := c.inferExpr(elem, env)
-			if elemType.ft != typeUnknown && varType.ft != typeUnknown && !c.typeCompatible(varType, elemType) {
-				c.addError(g.Pos, fmt.Sprintf("constraint enum element %d has type %s, expected %s",
-					i+1, elemType.displayName(), varType.displayName()))
-			}
-		}
+		c.checkEnumConstraintTypes(g.Pos, con, varType, env, "")
 		// Value membership check for string enums
-		if valStr, ok := tryConstString(g.Value); ok {
-			found := false
-			for _, elem := range con.Elems {
-				if s, ok := tryConstString(elem); ok && s == valStr {
-					found = true
-					break
-				}
-			}
-			if !found {
-				c.addError(g.Pos, fmt.Sprintf("value %q is not in the allowed set", valStr))
-			}
+		if valStr, ok := tryConstString(g.Value); ok && !constInSet(valStr, con.Elems, tryConstString) {
+			c.addError(g.Pos, fmt.Sprintf("value %q is not in the allowed set", valStr))
 		}
 		// Value membership check for number enums
-		if valN, ok := tryConstFloat(g.Value); ok {
-			found := false
-			for _, elem := range con.Elems {
-				if n, ok := tryConstFloat(elem); ok && n == valN {
-					found = true
-					break
-				}
-			}
-			if !found {
-				c.addError(g.Pos, fmt.Sprintf("value %g is not in the allowed set", valN))
-			}
+		if valN, ok := tryConstFloat(g.Value); ok && !constInSet(valN, con.Elems, tryConstFloat) {
+			c.addError(g.Pos, fmt.Sprintf("value %g is not in the allowed set", valN))
 		}
 	}
 }
 
 // checkParamConstraint validates a function parameter's constraint expression.
-// This is a lightweight version of checkConstraint for Param (not VarStmt).
+// This is a lightweight version of checkConstraint for Param (not VarStmt):
+// only the type checks apply, since a parameter has no constant value to
+// range- or membership-check.
 func (c *checker) checkParamConstraint(fn *parser.Function, p *parser.Param, paramType typeInfo, env *typeEnv) {
+	msgPrefix := fmt.Sprintf("%s() parameter %q: ", fn.Name, p.Name)
 	switch con := p.Constraint.(type) {
 	case *parser.ConstrainedRange:
 		// Validate bounds are numeric and the unit matches the parameter type
 		// (shared with the variable path), so e.g. an angle unit on a Length
 		// parameter is caught at check time rather than slipping through.
-		c.checkConstrainedRangeTypes(fn.Pos, con, paramType, env, fmt.Sprintf("%s() parameter %q: ", fn.Name, p.Name), "parameter")
+		c.checkConstrainedRangeTypes(fn.Pos, con, paramType, env, msgPrefix, "parameter")
 	case *parser.RangeExpr:
-		st := c.inferExpr(con.Start, env)
-		et := c.inferExpr(con.End, env)
-		if paramType.ft == typeLength {
-			if st.ft != typeUnknown && st.ft != typeLength && st.ft != typeNumber {
-				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint range start must be Length or Number, got %s", fn.Name, p.Name, st.displayName()))
-			}
-			if et.ft != typeUnknown && et.ft != typeLength && et.ft != typeNumber {
-				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint range end must be Length or Number, got %s", fn.Name, p.Name, et.displayName()))
-			}
-		} else {
-			if st.ft != typeUnknown && st.ft != typeNumber {
-				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint range start must be a Number, got %s", fn.Name, p.Name, st.displayName()))
-			}
-			if et.ft != typeUnknown && et.ft != typeNumber {
-				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint range end must be a Number, got %s", fn.Name, p.Name, et.displayName()))
-			}
-		}
+		c.checkRangeConstraintBoundTypes(fn.Pos, con, paramType, env, msgPrefix)
 	case *parser.ArrayLitExpr:
-		for i, elem := range con.Elems {
-			elemType := c.inferExpr(elem, env)
-			if elemType.ft != typeUnknown && paramType.ft != typeUnknown && !c.typeCompatible(paramType, elemType) {
-				c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: constraint enum element %d has type %s, expected %s",
-					fn.Name, p.Name, i+1, elemType.displayName(), paramType.displayName()))
-			}
-		}
+		c.checkEnumConstraintTypes(fn.Pos, con, paramType, env, msgPrefix)
 	}
 }
 
@@ -1011,7 +967,8 @@ func (c *checker) findOverload(candidates []*parser.Function, callArgs []parser.
 
 	for _, fn := range candidates {
 		// Map call args to parameter positions, disqualifying candidates
-		// whose params don't include a given NamedArg name.
+		// whose params don't include a given NamedArg name. Every arg is a
+		// NamedArg: all call paths are gated by requireNamedArgs.
 		paramIdx := make(map[string]int, len(fn.Params))
 		for i, p := range fn.Params {
 			paramIdx[p.Name] = i
@@ -1020,30 +977,14 @@ func (c *checker) findOverload(candidates []*parser.Function, callArgs []parser.
 		filled := make([]bool, len(fn.Params))
 		invalid := false
 		for i, a := range callArgs {
-			if na, ok := a.(*parser.NamedArg); ok {
-				idx, exists := paramIdx[na.Name]
-				if !exists || filled[idx] {
-					invalid = true
-					break
-				}
-				reordered[idx] = argTypes[i]
-				filled[idx] = true
-				continue
-			}
-			// Positional: fill next unfilled slot.
-			slot := -1
-			for j := range filled {
-				if !filled[j] {
-					slot = j
-					break
-				}
-			}
-			if slot < 0 {
+			na := a.(*parser.NamedArg)
+			idx, exists := paramIdx[na.Name]
+			if !exists || filled[idx] {
 				invalid = true
 				break
 			}
-			reordered[slot] = argTypes[i]
-			filled[slot] = true
+			reordered[idx] = argTypes[i]
+			filled[idx] = true
 		}
 		if invalid {
 			continue
@@ -1054,7 +995,7 @@ func (c *checker) findOverload(candidates []*parser.Function, callArgs []parser.
 			if !filled[i] {
 				continue
 			}
-			expected := c.resolveParamType(fn, p.Type)
+			expected := c.resolveParamType(p.Type)
 			got := reordered[i]
 			if expected.ft == typeUnknown || got.ft == typeUnknown {
 				continue

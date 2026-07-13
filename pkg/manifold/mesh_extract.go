@@ -41,7 +41,7 @@ func (p *Sketch) ToMesh() *Mesh {
 // ToDisplayMesh extracts a DisplayMesh from a Solid with expanded positions and edge lines.
 func (s *Solid) ToDisplayMesh() *DisplayMesh {
 	m := extractDisplayMesh(s.ptr, s.FaceMap)
-	appendExpandedData(m, s.ptr, 40)
+	appendExpandedData(m, s.ptr, DefaultDisplayEdgeThresholdDeg)
 	runtime.KeepAlive(s)
 	return m
 }
@@ -53,7 +53,7 @@ func (p *Sketch) ToDisplayMesh() *DisplayMesh {
 		panic(fmt.Errorf("Sketch.ToDisplayMesh: identity-scale extrude failed: %w", err))
 	}
 	m := extractDisplayMesh(solid.ptr, nil)
-	appendExpandedData(m, solid.ptr, 40)
+	appendExpandedData(m, solid.ptr, DefaultDisplayEdgeThresholdDeg)
 	runtime.KeepAlive(solid)
 	return m
 }
@@ -61,14 +61,6 @@ func (p *Sketch) ToDisplayMesh() *DisplayMesh {
 // ---------------------------------------------------------------------------
 // Mesh Extraction (typed slices)
 // ---------------------------------------------------------------------------
-
-// ExtractMeshShared extracts a mesh with shared vertices from a Solid,
-// suitable for querying geometry data (vertex positions + triangle indices).
-func ExtractMeshShared(s *Solid) *Mesh {
-	m := extractMesh(s.ptr)
-	runtime.KeepAlive(s)
-	return m
-}
 
 // extractMesh converts a ManifoldPtr into a Go Mesh with shared vertices and indices.
 // Normals are omitted; the frontend uses flatShading (GPU-computed face normals).
@@ -139,7 +131,7 @@ func buildDisplayMeshFromC(b cDisplayMeshBuffers, faceMap map[uint32]FaceInfo) *
 
 	var fgRaw []byte
 	var fgCount int
-	var fcMap map[string]string
+	var fcMap map[uint32]string
 	nFaceIDs := int(b.numFaceIDs)
 	if nFaceIDs > 0 {
 		defer C.free(unsafe.Pointer(b.faceIDs))
@@ -208,11 +200,7 @@ func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
 		return &DisplayMesh{}
 	}
 
-	// Merge all FaceMaps from constituent solids
-	var merged map[uint32]FaceInfo
-	for _, s := range solids {
-		merged = mergeFaceMaps(merged, s.FaceMap)
-	}
+	merged := mergedFaceMaps(solids)
 
 	if len(solids) == 1 {
 		// extractDisplayMesh receives only the raw C pointer, so the owning
@@ -337,26 +325,23 @@ func MergeExtractExpandedMeshes(solids []*Solid, edgeThresholdDeg float32) *Disp
 	// Extract the standard indexed mesh (needed for face colors, posMap, etc.)
 	dm := MergeExtractDisplayMeshes(solids)
 
-	// Extract the expanded + edge data. Single- and multi-solid paths use
-	// different C functions but populate identical buffer shapes.
-	var b cExpandedMeshBuffers
+	// Append the expanded + edge data.
 	if len(solids) == 1 {
-		C.facet_extract_expanded_mesh(solids[0].ptr,
-			&b.positions, &b.numPositions,
-			&b.faceIDs, &b.numFaceIDs,
-			&b.edgeLines, &b.numEdges,
-			C.float(edgeThresholdDeg))
-	} else {
-		ptrs := make([]*C.ManifoldPtr, len(solids))
-		for i, s := range solids {
-			ptrs[i] = s.ptr
-		}
-		C.facet_merge_extract_expanded_mesh(&ptrs[0], C.size_t(len(solids)),
-			&b.positions, &b.numPositions,
-			&b.faceIDs, &b.numFaceIDs,
-			&b.edgeLines, &b.numEdges,
-			C.float(edgeThresholdDeg))
+		appendExpandedData(dm, solids[0].ptr, edgeThresholdDeg)
+		runtime.KeepAlive(solids)
+		return dm
 	}
+
+	ptrs := make([]*C.ManifoldPtr, len(solids))
+	for i, s := range solids {
+		ptrs[i] = s.ptr
+	}
+	var b cExpandedMeshBuffers
+	C.facet_merge_extract_expanded_mesh(&ptrs[0], C.size_t(len(solids)),
+		&b.positions, &b.numPositions,
+		&b.faceIDs, &b.numFaceIDs,
+		&b.edgeLines, &b.numEdges,
+		C.float(edgeThresholdDeg))
 	runtime.KeepAlive(solids)
 	copyExpandedMeshToDisplayMesh(dm, b)
 	return dm

@@ -39,7 +39,7 @@ var exceptions = map[string]string{
 }
 
 var (
-	reHeaderFunc = regexp.MustCompile(`\bfacet_[a-z0-9_]+\s*\(`)
+	reHeaderFunc = regexp.MustCompile(`\b(facet_[a-z0-9_]+)\s*\(`)
 	reNativeCall = regexp.MustCompile(`C\.(facet_[a-z0-9_]+)`)
 	reMfCall     = regexp.MustCompile(`(_mf_[a-z0-9_]+)`)
 	reMfDef      = regexp.MustCompile(`globalThis\.(_mf_[a-z0-9_]+)\s*=`)
@@ -82,12 +82,7 @@ func main() {
 
 	// Header: declared C functions.
 	header := mustRead("pkg/manifold/cxx/include/facet_cxx.h")
-	headerFuncs := map[string]bool{}
-	for _, m := range reHeaderFunc.FindAllString(header, -1) {
-		name := strings.TrimRight(strings.TrimSpace(m), "(")
-		name = strings.TrimSpace(name)
-		headerFuncs[name] = true
-	}
+	headerFuncs := names(reHeaderFunc, header)
 
 	// Native C.facet_X calls (non-js, non-test) and wasm _mf_X calls (js).
 	nativeC := map[string]bool{}

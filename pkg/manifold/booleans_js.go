@@ -7,37 +7,30 @@ import (
 	"syscall/js"
 )
 
-func (a *Solid) Union(b *Solid) *Solid {
-	requireSolids("Union", a, b)
-	id := js.Global().Call("_mf_union", a.id, b.id).Int()
+// binaryBool is the shared body of the pairwise Solid booleans: validate, call
+// the fn bridge, merge the face maps (a's entries win). On a 0 id the kernel
+// failed — return nil, not a silently-empty solid (matches native).
+func (a *Solid) binaryBool(name, fn string, b *Solid) *Solid {
+	requireSolids(name, a, b)
+	id := js.Global().Call(fn, a.id, b.id).Int()
 	if id == 0 {
-		return nil // kernel failed — nil, not a silently-empty solid (matches native)
+		return nil
 	}
 	s := newSolid(id)
 	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
 	return s
+}
+
+func (a *Solid) Union(b *Solid) *Solid {
+	return a.binaryBool("Union", "_mf_union", b)
 }
 
 func (a *Solid) Difference(b *Solid) *Solid {
-	requireSolids("Difference", a, b)
-	id := js.Global().Call("_mf_difference", a.id, b.id).Int()
-	if id == 0 {
-		return nil // kernel failed — nil, not a silently-empty solid (matches native)
-	}
-	s := newSolid(id)
-	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
-	return s
+	return a.binaryBool("Difference", "_mf_difference", b)
 }
 
 func (a *Solid) Intersection(b *Solid) *Solid {
-	requireSolids("Intersection", a, b)
-	id := js.Global().Call("_mf_intersection", a.id, b.id).Int()
-	if id == 0 {
-		return nil // kernel failed — nil, not a silently-empty solid (matches native)
-	}
-	s := newSolid(id)
-	s.FaceMap = mergeFaceMaps(a.FaceMap, b.FaceMap)
-	return s
+	return a.binaryBool("Intersection", "_mf_intersection", b)
 }
 
 // Insert cuts a hole in a for b, removes floating inner plugs, and seats b.
@@ -72,22 +65,23 @@ func DecomposeSolid(s *Solid) []*Solid {
 	return result
 }
 
+// binaryBool is the shared body of the pairwise Sketch booleans (sketches
+// carry no face map). Panics if either operand is nil.
+func (a *Sketch) binaryBool(name, fn string, b *Sketch) *Sketch {
+	requireSketches(name, a, b)
+	return newSketch(js.Global().Call(fn, a.id, b.id).Int())
+}
+
 func (a *Sketch) Union(b *Sketch) *Sketch {
-	requireSketches("Sketch.Union", a, b)
-	id := js.Global().Call("_mf_cs_union", a.id, b.id).Int()
-	return newSketch(id)
+	return a.binaryBool("Sketch.Union", "_mf_cs_union", b)
 }
 
 func (a *Sketch) Difference(b *Sketch) *Sketch {
-	requireSketches("Sketch.Difference", a, b)
-	id := js.Global().Call("_mf_cs_difference", a.id, b.id).Int()
-	return newSketch(id)
+	return a.binaryBool("Sketch.Difference", "_mf_cs_difference", b)
 }
 
 func (a *Sketch) Intersection(b *Sketch) *Sketch {
-	requireSketches("Sketch.Intersection", a, b)
-	id := js.Global().Call("_mf_cs_intersection", a.id, b.id).Int()
-	return newSketch(id)
+	return a.binaryBool("Sketch.Intersection", "_mf_cs_intersection", b)
 }
 
 func ComposeSolids(solids []*Solid) (*Solid, error) {
@@ -95,18 +89,12 @@ func ComposeSolids(solids []*Solid) (*Solid, error) {
 		return nil, fmt.Errorf("ComposeSolids: solids is empty")
 	}
 	requireSolids("ComposeSolids", solids...)
-	arr := js.Global().Get("Array").New()
-	for _, s := range solids {
-		arr.Call("push", s.id)
-	}
-	id := js.Global().Call("_mf_compose", arr).Int()
+	id := js.Global().Call("_mf_compose", solidIDArray(solids)).Int()
 	if id == 0 {
 		return nil, fmt.Errorf("ComposeSolids: compose failed")
 	}
 	r := newSolid(id)
-	for _, s := range solids {
-		r.FaceMap = mergeFaceMaps(r.FaceMap, s.FaceMap)
-	}
+	r.FaceMap = mergedFaceMaps(solids)
 	return r, nil
 }
 
@@ -117,11 +105,7 @@ func BatchBoolean(solids []*Solid, op BoolOp) (*Solid, error) {
 		return nil, errBatchBooleanEmpty
 	}
 	requireSolids("BatchBoolean", solids...)
-	arr := js.Global().Get("Array").New()
-	for _, s := range solids {
-		arr.Call("push", s.id)
-	}
-	id := js.Global().Call("_mf_batch_boolean", arr, int(op)).Int()
+	id := js.Global().Call("_mf_batch_boolean", solidIDArray(solids), int(op)).Int()
 	if id == 0 {
 		return nil, errBatchBooleanFailed
 	}
@@ -136,11 +120,7 @@ func SketchBatchBoolean(sketches []*Sketch, op BoolOp) (*Sketch, error) {
 		return nil, errBatchBooleanEmpty
 	}
 	requireSketches("SketchBatchBoolean", sketches...)
-	arr := js.Global().Get("Array").New()
-	for _, p := range sketches {
-		arr.Call("push", p.id)
-	}
-	id := js.Global().Call("_mf_cs_batch_boolean", arr, int(op)).Int()
+	id := js.Global().Call("_mf_cs_batch_boolean", sketchIDArray(sketches), int(op)).Int()
 	if id == 0 {
 		return nil, errBatchBooleanFailed
 	}

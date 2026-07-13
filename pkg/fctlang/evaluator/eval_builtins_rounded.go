@@ -69,7 +69,7 @@ func octahedronSolid(r float64) (*manifold.Solid, error) {
 // builtinCubeRounded implements _cube_rounded(x, y, z, r, bevel, edges): a box
 // with its edges rounded (bevel=false) or beveled (bevel=true) by inset `r`,
 // restricted to `edges`. Corner-origin, bounding box (0,0,0)..(x,y,z).
-func (e *evaluator) builtinCubeRounded(args []value) (value, error) {
+func builtinCubeRounded(_ *evaluator, args []value) (value, error) {
 	const name = "_cube_rounded"
 	if len(args) != 6 {
 		return nil, fmt.Errorf("%s() expects 6 arguments, got %d", name, len(args))
@@ -188,7 +188,7 @@ func rimTorus(rMaj, rMin float64, segs int) (*manifold.Solid, error) {
 // a frustum/cylinder with its top and bottom rims rounded (bevel=false, the hull
 // of two rim tori) or beveled (bevel=true, a 45°-clipped revolved profile, which
 // requires equal radii). Corner-origin.
-func (e *evaluator) builtinFrustumRounded(args []value) (value, error) {
+func builtinFrustumRounded(_ *evaluator, args []value) (value, error) {
 	const name = "_frustum_rounded"
 	if len(args) != 6 {
 		return nil, fmt.Errorf("%s() expects 6 arguments, got %d", name, len(args))
@@ -213,11 +213,7 @@ func (e *evaluator) builtinFrustumRounded(args []value) (value, error) {
 	if !isBool {
 		return nil, fmt.Errorf("%s() argument 5 (bevel) must be a Bool", name)
 	}
-	segN, err := requireNumber(name, 6, args[5])
-	if err != nil {
-		return nil, err
-	}
-	segs, err := requireCount(name, 6, segN, maxSegments)
+	segs, err := requireCountArg(name, 6, args[5], maxSegments)
 	if err != nil {
 		return nil, err
 	}

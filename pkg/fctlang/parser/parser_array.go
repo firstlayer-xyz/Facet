@@ -79,28 +79,17 @@ func (p *parser) parseArrayLit() (Expr, error) {
 	// the next statement. Mirrors parseCallArgs / parseStructLit.
 	elems := []Expr{first}
 	prevElemLine := firstElemLine
-	comments := map[int][]Comment{} // element index → its comments
-	attach := func(idx int, cs []Comment, trailing bool) {
-		if len(cs) == 0 {
-			return
-		}
-		if trailing {
-			for i := range cs {
-				cs[i].IsTrailing = true
-			}
-		}
-		comments[idx] = append(comments[idx], cs...)
-	}
+	ec := newElemComments()
 	for p.cur.Type == TokenComma {
 		if err := p.next(); err != nil { // consume ','
 			return nil, err
 		}
-		attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // prev elem trailing
+		ec.attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // prev elem trailing
 		leading := p.lex.drainComments()
 		if p.cur.Type == TokenRBracket {
 			// Trailing comma with dangling comments before ']'. Keep them (as
 			// trailing on the last element) rather than leaking them forward.
-			attach(len(elems)-1, leading, true)
+			ec.attach(len(elems)-1, leading, true)
 			break
 		}
 		elemLine := p.cur.Line
@@ -109,21 +98,14 @@ func (p *parser) parseArrayLit() (Expr, error) {
 			return nil, err
 		}
 		elems = append(elems, elem)
-		attach(len(elems)-1, leading, false) // this elem's leading
+		ec.attach(len(elems)-1, leading, false) // this elem's leading
 		prevElemLine = elemLine
 	}
-	attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // last elem trailing (before ']')
+	ec.attach(len(elems)-1, p.lex.drainCommentsOnLine(prevElemLine), true) // last elem trailing (before ']')
 	if _, err := p.expect(TokenRBracket); err != nil {
 		return nil, err
 	}
-	var elemComments [][]Comment
-	if len(comments) > 0 {
-		elemComments = make([][]Comment, len(elems))
-		for i := range elems {
-			elemComments[i] = comments[i]
-		}
-	}
-	return &ArrayLitExpr{Elems: elems, Pos: Pos{bracketLine, bracketCol}, ElemComments: elemComments}, nil
+	return &ArrayLitExpr{Elems: elems, Pos: Pos{bracketLine, bracketCol}, ElemComments: ec.list(len(elems))}, nil
 }
 
 // parseConstraint parses the optional constraint after a var value expression.

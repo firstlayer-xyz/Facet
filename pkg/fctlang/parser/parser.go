@@ -69,6 +69,24 @@ func (p *parser) next() error {
 	return nil
 }
 
+// parserState is a restore point for backtracking: the lexer snapshot plus the
+// current token, which must always be saved and restored together.
+type parserState struct {
+	lex lexerState
+	cur Token
+}
+
+// snapshot captures the parser's current position for later restore.
+func (p *parser) snapshot() parserState {
+	return parserState{p.lex.snapshot(), p.cur}
+}
+
+// restore resets the parser to a previously captured snapshot.
+func (p *parser) restore(s parserState) {
+	p.lex.restore(s.lex)
+	p.cur = s.cur
+}
+
 func (p *parser) errorf(format string, args ...interface{}) error {
 	return &SourceError{Line: p.cur.Line, Col: p.cur.Col, Message: fmt.Sprintf(format, args...)}
 }

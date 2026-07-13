@@ -368,11 +368,6 @@ func (m *LibraryManager) OpenLibraryDir(dir string) (map[string]string, error) {
 	return map[string]string{"path": fctPath, "source": string(data)}, nil
 }
 
-// GetLibraryDir returns the path to the local libraries root directory.
-func (m *LibraryManager) GetLibraryDir() (string, error) {
-	return libraryDir()
-}
-
 // validateLibName checks that a name contains only safe characters for library paths.
 func validateLibName(name string) error {
 	if name == "" {

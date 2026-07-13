@@ -6,9 +6,7 @@ package parser
 // drainTrailingComments drains pending comments on the given line and marks them as trailing.
 func (p *parser) drainTrailingComments(line int) []Comment {
 	trailing := p.lex.drainCommentsOnLine(line)
-	for i := range trailing {
-		trailing[i].IsTrailing = true
-	}
+	markTrailing(trailing)
 	return trailing
 }
 
@@ -46,33 +44,11 @@ func (p *parser) parseProgram() (*Source, error) {
 
 		// Global variable/constant: var/const name = expr;
 		if p.cur.Type == TokenVar || p.cur.Type == TokenConst {
-			isConst := p.cur.Type == TokenConst
-			if err := p.next(); err != nil {
-				return nil, err
-			}
-			name, err := p.expect(TokenIdent)
+			v, err := p.parseVarDecl("global variable", comments)
 			if err != nil {
 				return nil, err
 			}
-			if err := p.rejectUnderscoreIdent(name, "global variable"); err != nil {
-				return nil, err
-			}
-			if _, err := p.expect(TokenEquals); err != nil {
-				return nil, err
-			}
-			expr, err := p.parseExpr()
-			if err != nil {
-				return nil, err
-			}
-			constraint, err := p.parseWhereConstraint()
-			if err != nil {
-				return nil, err
-			}
-			if err := p.consumeOptionalSemi(); err != nil {
-				return nil, err
-			}
-			v := &VarStmt{Name: name.Text, Value: expr, IsConst: isConst, Constraint: constraint, Pos: Pos{name.Line, name.Col}, Comments: comments}
-			v.Comments = append(v.Comments, p.drainTrailingComments(name.Line)...)
+			v.Comments = append(v.Comments, p.drainTrailingComments(v.Pos.Line)...)
 			prog.Declarations = append(prog.Declarations, v)
 			continue
 		}

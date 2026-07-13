@@ -171,13 +171,6 @@ class TabStore {
     this.notify();
   }
 
-  setLabel(path: string, label: string): void {
-    const t = this._tabs[path];
-    if (!t || t.label === label) return;
-    t.label = label;
-    this.notify();
-  }
-
   // ── Subscriptions ─────────────────────────────────────────────────
 
   /**

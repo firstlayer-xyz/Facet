@@ -47,7 +47,7 @@ func TestExpandedColors_PerTriangle(t *testing.T) {
 	dm := &DisplayMesh{
 		ExpandedCount: 3,
 		FaceGroupRaw:  leU32(7),
-		FaceColorMap:  map[string]string{"7": "#FF0000"},
+		FaceColorMap:  map[uint32]string{7: "#FF0000"},
 	}
 	got := dm.ExpandedColors()
 	if len(got) != 9 {
@@ -66,7 +66,7 @@ func TestExpandedColors_FallbackForUnassignedFace(t *testing.T) {
 	dm := &DisplayMesh{
 		ExpandedCount: 6,
 		FaceGroupRaw:  leU32(7, 9), // one id per triangle
-		FaceColorMap:  map[string]string{"7": "#FF0000"},
+		FaceColorMap:  map[uint32]string{7: "#FF0000"},
 	}
 	got := dm.ExpandedColors()
 	if len(got) != 18 {
@@ -88,7 +88,7 @@ func TestExpandedColors_PerVertexFaceGroups(t *testing.T) {
 	dm := &DisplayMesh{
 		ExpandedCount: 3,
 		FaceGroupRaw:  leU32(5, 5, 5),
-		FaceColorMap:  map[string]string{"5": "#00FF00"},
+		FaceColorMap:  map[uint32]string{5: "#00FF00"},
 	}
 	got := dm.ExpandedColors()
 	if len(got) != 9 {

@@ -146,10 +146,8 @@ type DebugStep struct {
 }
 
 // DebugResult holds the evaluated solids plus the step-by-step debug trace.
-// Final is populated by callers (not the evaluator) with render meshes for display.
 type DebugResult struct {
 	Solids []*manifold.Solid
-	Final  []*manifold.DisplayMesh // render meshes — populated by caller
 	Steps  []DebugStep
 	Files  map[string]string // path → source text (for editor display)
 }
@@ -202,7 +200,7 @@ type SolidTrack struct {
 }
 
 // EvalResult holds the evaluated solids and model statistics.
-// Callers extract meshes as needed: ToMesh() for rendering, ExtractMeshShared() for export.
+// Callers extract meshes as needed via ToMesh().
 // When the entry returns an Animation, Animation is non-nil and Solids is empty.
 type EvalResult struct {
 	Solids    []*manifold.Solid
@@ -310,7 +308,7 @@ type evaluator struct {
 	file         string                         // current file disk path
 	yieldTarget  *[]value                       // non-nil when inside a for-yield body
 	foldAcc      *value                         // non-nil when inside a fold body; yield writes here
-	libSources   map[string]string              // collected library sources (debug only)
+	libSources   map[string]string              // source text per file (error snippets, debug tabs); always allocated
 	stdFuncs     []*parser.Function             // stdlib free functions
 	stdMethods   map[string][]*parser.Function  // receiverType → method functions
 	structDecls  map[string]*parser.StructDecl  // user-defined struct declarations

@@ -105,130 +105,6 @@ func (pm *PolyMesh) circumradius() float64 {
 	return maxR
 }
 
-// ---------- Platonic solid constructors (unit circumradius, test-only) ----------
-
-// newTetrahedron returns a regular tetrahedron with unit circumradius.
-func newTetrahedron() *PolyMesh {
-	// Vertices of a regular tetrahedron inscribed in unit sphere
-	s := 1.0 / math.Sqrt(3.0)
-	return &PolyMesh{
-		Vertices: []float64{
-			s, s, s,
-			s, -s, -s,
-			-s, s, -s,
-			-s, -s, s,
-		},
-		Faces: [][]int{
-			{0, 1, 2},
-			{0, 3, 1},
-			{0, 2, 3},
-			{1, 3, 2},
-		},
-	}
-}
-
-// newOctahedron returns a regular octahedron with unit circumradius.
-func newOctahedron() *PolyMesh {
-	return &PolyMesh{
-		Vertices: []float64{
-			1, 0, 0,
-			-1, 0, 0,
-			0, 1, 0,
-			0, -1, 0,
-			0, 0, 1,
-			0, 0, -1,
-		},
-		Faces: [][]int{
-			{0, 2, 4},
-			{2, 1, 4},
-			{1, 3, 4},
-			{3, 0, 4},
-			{0, 3, 5},
-			{3, 1, 5},
-			{1, 2, 5},
-			{2, 0, 5},
-		},
-	}
-}
-
-// newPlatoCube returns a regular cube with unit circumradius.
-func newPlatoCube() *PolyMesh {
-	s := 1.0 / math.Sqrt(3.0)
-	return &PolyMesh{
-		Vertices: []float64{
-			-s, -s, -s,
-			s, -s, -s,
-			s, s, -s,
-			-s, s, -s,
-			-s, -s, s,
-			s, -s, s,
-			s, s, s,
-			-s, s, s,
-		},
-		Faces: [][]int{
-			{0, 3, 2, 1}, // bottom
-			{4, 5, 6, 7}, // top
-			{0, 1, 5, 4}, // front
-			{2, 3, 7, 6}, // back
-			{0, 4, 7, 3}, // left
-			{1, 2, 6, 5}, // right
-		},
-	}
-}
-
-// newIcosahedron returns a regular icosahedron with unit circumradius.
-func newIcosahedron() *PolyMesh {
-	phi := (1.0 + math.Sqrt(5.0)) / 2.0
-	r := math.Sqrt(1.0 + phi*phi)
-	a := 1.0 / r
-	b := phi / r
-
-	return &PolyMesh{
-		Vertices: []float64{
-			-a, b, 0,
-			a, b, 0,
-			-a, -b, 0,
-			a, -b, 0,
-			0, -a, b,
-			0, a, b,
-			0, -a, -b,
-			0, a, -b,
-			b, 0, -a,
-			b, 0, a,
-			-b, 0, -a,
-			-b, 0, a,
-		},
-		Faces: [][]int{
-			{0, 11, 5},
-			{0, 5, 1},
-			{0, 1, 7},
-			{0, 7, 10},
-			{0, 10, 11},
-			{1, 5, 9},
-			{5, 11, 4},
-			{11, 10, 2},
-			{10, 7, 6},
-			{7, 1, 8},
-			{3, 9, 4},
-			{3, 4, 2},
-			{3, 2, 6},
-			{3, 6, 8},
-			{3, 8, 9},
-			{4, 9, 5},
-			{2, 4, 11},
-			{6, 2, 10},
-			{8, 6, 7},
-			{9, 8, 1},
-		},
-	}
-}
-
-// newDodecahedron returns a regular dodecahedron with unit circumradius.
-// Computed as the dual of an icosahedron.
-func newDodecahedron() *PolyMesh {
-	return newIcosahedron().Dual()
-}
-
 // ---------- Conway operators ----------
 
 // Dual returns the dual polyhedron: face centroids become vertices,
@@ -779,17 +655,7 @@ func (pm *PolyMesh) ScaleToRadius(radius float64) *PolyMesh {
 	if cr < 1e-12 {
 		cr = 1.0
 	}
-	s := radius / cr
-	verts := make([]float64, len(pm.Vertices))
-	for i, v := range pm.Vertices {
-		verts[i] = v * s
-	}
-	faces := make([][]int, len(pm.Faces))
-	for i, f := range pm.Faces {
-		faces[i] = make([]int, len(f))
-		copy(faces[i], f)
-	}
-	return &PolyMesh{Vertices: verts, Faces: faces}
+	return pm.ScaleUniform(radius / cr)
 }
 
 // ScaleUniform returns a new PolyMesh scaled uniformly by the given factor.
@@ -806,19 +672,14 @@ func (pm *PolyMesh) ScaleUniform(factor float64) *PolyMesh {
 	return &PolyMesh{Vertices: verts, Faces: faces}
 }
 
-// ToSolid converts the PolyMesh to a Manifold Solid by fan-triangulating faces.
-// Each polygon face is tagged with a unique faceID so that polygon boundaries
-// survive through Manifold's boolean operations and can be reconstructed later.
-func (pm *PolyMesh) ToSolid() (*Solid, error) {
-	// Convert vertices to float32
-	verts := make([]float32, len(pm.Vertices))
+// triangulate fan-triangulates the faces into flat float32 vertices, triangle
+// indices, and per-triangle face IDs (the source polygon's index) — the common
+// input shape for solid construction and display extraction.
+func (pm *PolyMesh) triangulate() (verts []float32, indices, faceIDs []uint32) {
+	verts = make([]float32, len(pm.Vertices))
 	for i, v := range pm.Vertices {
 		verts[i] = float32(v)
 	}
-
-	// Fan-triangulate with per-triangle faceID
-	var indices []uint32
-	var faceIDs []uint32
 	for fi, face := range pm.Faces {
 		n := len(face)
 		if n < 3 {
@@ -829,30 +690,18 @@ func (pm *PolyMesh) ToSolid() (*Solid, error) {
 			faceIDs = append(faceIDs, uint32(fi))
 		}
 	}
+	return verts, indices, faceIDs
+}
 
-	return createSolidFromMeshWithFaceIDs(verts, indices, faceIDs)
+// ToSolid converts the PolyMesh to a Manifold Solid by fan-triangulating faces.
+// Each polygon face is tagged with a unique faceID so that polygon boundaries
+// survive through Manifold's boolean operations and can be reconstructed later.
+func (pm *PolyMesh) ToSolid() (*Solid, error) {
+	return createSolidFromMeshWithFaceIDs(pm.triangulate())
 }
 
 // ToDisplayMesh converts the PolyMesh to a DisplayMesh for rendering.
 // Includes face group IDs for polygon-boundary wireframe rendering.
 func (pm *PolyMesh) ToDisplayMesh() *DisplayMesh {
-	verts := make([]float32, len(pm.Vertices))
-	for i, v := range pm.Vertices {
-		verts[i] = float32(v)
-	}
-
-	var indices []uint32
-	var faceGroups []uint32
-	for fi, face := range pm.Faces {
-		n := len(face)
-		if n < 3 {
-			continue
-		}
-		for i := 1; i < n-1; i++ {
-			indices = append(indices, uint32(face[0]), uint32(face[i]), uint32(face[i+1]))
-			faceGroups = append(faceGroups, uint32(fi))
-		}
-	}
-
-	return buildDisplayMesh(verts, indices, faceGroups)
+	return buildDisplayMesh(pm.triangulate())
 }

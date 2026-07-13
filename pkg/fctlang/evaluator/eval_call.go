@@ -73,18 +73,11 @@ func (e *evaluator) evalCall(call *parser.CallExpr, locals map[string]value) (va
 	}
 
 	// Check if the callee is a functionVal stored in local or global scope.
-	if fv, ok := unwrap(locals[call.Name]).(*functionVal); ok {
-		argMap, err := e.evalNamedArgs(call.Args, locals)
-		if err != nil {
-			return nil, err
-		}
-		v, err := e.callFunctionVal(fv, argMap)
-		if err != nil {
-			return nil, e.wrapErr(call.Pos, err)
-		}
-		return v, nil
+	fv, ok := unwrap(locals[call.Name]).(*functionVal)
+	if !ok {
+		fv, ok = unwrap(e.globals[call.Name]).(*functionVal)
 	}
-	if fv, ok := unwrap(e.globals[call.Name]).(*functionVal); ok {
+	if ok {
 		argMap, err := e.evalNamedArgs(call.Args, locals)
 		if err != nil {
 			return nil, err

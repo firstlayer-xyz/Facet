@@ -72,18 +72,13 @@ const darkBaseColors: Record<string, string> = {
   'editorLineNumber.foreground': '#555555',
 };
 
-interface AccentColors {
-  /** Token foreground for constant.numeric / constant.language */
-  light: string;
-  dark: string;
-  /** Cursor color (light variant) */
-  cursorLight: string;
-  /** Cursor color (dark variant) */
-  cursorDark: string;
-  /** Selection background (light variant) */
-  selectionLight: string;
-  /** Selection background (dark variant) */
-  selectionDark: string;
+interface AccentVariant {
+  /** Token foreground for accent-colored tokens (constant.numeric / constant.language). */
+  accent: string;
+  /** Cursor color. */
+  cursor: string;
+  /** Selection background. */
+  selection: string;
 }
 
 // Token color definitions — each entry maps to { light, dark } foreground colors.
@@ -103,70 +98,44 @@ const TOKEN_COLORS: [string, string | null, string | null][] = [
   ['punctuation.delimiter', '3a3a3a', 'cccccc'],
 ];
 
-function defineAccentThemes(name: string, accent: AccentColors): void {
-  function buildRules(variant: 'light' | 'dark'): monaco.editor.ITokenThemeRule[] {
-    const accentColor = variant === 'light' ? accent.light : accent.dark;
-    return TOKEN_COLORS.map(([token, light, dark]) => ({
-      token,
-      foreground: (variant === 'light' ? light : dark) ?? accentColor,
-    }));
+function defineAccentThemes(name: string, v: { light: AccentVariant; dark: AccentVariant }): void {
+  for (const variant of ['light', 'dark'] as const) {
+    const { accent, cursor, selection } = v[variant];
+    // Active-line wash: accent at ~8% (light) / ~6% (dark) opacity, as 8-char hex.
+    const wash = `#${accent}${variant === 'light' ? '14' : '0F'}`;
+    monaco.editor.defineTheme(`facet-${name}-${variant}`, {
+      base: variant === 'light' ? 'vs' : 'vs-dark',
+      inherit: true,
+      rules: TOKEN_COLORS.map(([token, light, dark]) => ({
+        token,
+        foreground: (variant === 'light' ? light : dark) ?? accent,
+      })),
+      colors: {
+        ...(variant === 'light' ? lightBaseColors : darkBaseColors),
+        'editorSuggestWidget.highlightForeground': '#' + accent,
+        'editorSuggestWidget.focusHighlightForeground': '#' + accent,
+        'editorCursor.foreground': cursor,
+        'editor.selectionBackground': selection,
+        'editor.lineHighlightBackground': wash,
+        'editor.lineHighlightBorder': '#00000000',
+        'editorGutter.activeLineBackground': wash,
+        'editorLineNumber.activeForeground': '#' + accent,
+      },
+    });
   }
-  const lightRules = buildRules('light');
-  const darkRules = buildRules('dark');
-
-  // Active-line wash: accent at ~8% (light) / ~6% (dark) opacity, as 8-char hex
-  const lineWashLight = `#${accent.light}14`;
-  const lineWashDark  = `#${accent.dark}0F`;
-
-  monaco.editor.defineTheme(`facet-${name}-light`, {
-    base: 'vs',
-    inherit: true,
-    rules: lightRules,
-    colors: {
-      ...lightBaseColors,
-      'editorSuggestWidget.highlightForeground': '#' + accent.light,
-      'editorSuggestWidget.focusHighlightForeground': '#' + accent.light,
-      'editorCursor.foreground': accent.cursorLight,
-      'editor.selectionBackground': accent.selectionLight,
-      'editor.lineHighlightBackground': lineWashLight,
-      'editor.lineHighlightBorder': '#00000000',
-      'editorGutter.activeLineBackground': lineWashLight,
-      'editorLineNumber.activeForeground': `#${accent.light}`,
-    },
-  });
-
-  monaco.editor.defineTheme(`facet-${name}-dark`, {
-    base: 'vs-dark',
-    inherit: true,
-    rules: darkRules,
-    colors: {
-      ...darkBaseColors,
-      'editorSuggestWidget.highlightForeground': '#' + accent.dark,
-      'editorSuggestWidget.focusHighlightForeground': '#' + accent.dark,
-      'editorCursor.foreground': accent.cursorDark,
-      'editor.selectionBackground': accent.selectionDark,
-      'editor.lineHighlightBackground': lineWashDark,
-      'editor.lineHighlightBorder': '#00000000',
-      'editorGutter.activeLineBackground': lineWashDark,
-      'editorLineNumber.activeForeground': `#${accent.dark}`,
-    },
-  });
 }
 
 defineAccentThemes('orange', {
-  light: 'e45500', dark: 'ffaa44',
-  cursorLight: '#ff6d00', cursorDark: '#ff6d00',
-  selectionLight: '#ffe0c0', selectionDark: '#553a1a',
+  light: { accent: 'e45500', cursor: '#ff6d00', selection: '#ffe0c0' },
+  dark: { accent: 'ffaa44', cursor: '#ff6d00', selection: '#553a1a' },
 });
 defineAccentThemes('green', {
-  light: '1e8a3e', dark: '52c878',
-  cursorLight: '#1e8a3e', cursorDark: '#2eb84e',
-  selectionLight: '#c8f0d4', selectionDark: '#1a3a22',
+  light: { accent: '1e8a3e', cursor: '#1e8a3e', selection: '#c8f0d4' },
+  dark: { accent: '52c878', cursor: '#2eb84e', selection: '#1a3a22' },
 });
 defineAccentThemes('digital-blue', {
-  light: '0060c8', dark: '5aa8ff',
-  cursorLight: '#0060c8', cursorDark: '#3d96ff',
-  selectionLight: '#c8d8f8', selectionDark: '#1a2a4a',
+  light: { accent: '0060c8', cursor: '#0060c8', selection: '#c8d8f8' },
+  dark: { accent: '5aa8ff', cursor: '#3d96ff', selection: '#1a2a4a' },
 });
 
 
@@ -709,53 +678,21 @@ export function createEditor(
     },
   });
 
-  // Word navigation — registered explicitly because Monaco standalone (ESM) does
-  // not always bind these when using selective contribution imports.
-  ed.addAction({
-    id: 'facet.cursorWordStartLeft',
-    label: 'Move Word Left',
-    keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow],
-    run: (ed) => ed.trigger('keyboard', 'cursorWordStartLeft', {}),
-  });
-  ed.addAction({
-    id: 'facet.cursorWordEndRight',
-    label: 'Move Word Right',
-    keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.RightArrow],
-    run: (ed) => ed.trigger('keyboard', 'cursorWordEndRight', {}),
-  });
-  ed.addAction({
-    id: 'facet.cursorWordStartLeftSelect',
-    label: 'Select Word Left',
-    keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow],
-    run: (ed) => ed.trigger('keyboard', 'cursorWordStartLeftSelect', {}),
-  });
-  ed.addAction({
-    id: 'facet.cursorWordEndRightSelect',
-    label: 'Select Word Right',
-    keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow],
-    run: (ed) => ed.trigger('keyboard', 'cursorWordEndRightSelect', {}),
-  });
-
-  // Multi-cursor / selection shortcuts — registered explicitly because Monaco
-  // standalone doesn't always bind these by default.
-  ed.addAction({
-    id: 'facet.addSelectionToNextFindMatch',
-    label: 'Add Selection to Next Find Match',
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD],
-    run: (ed) => ed.trigger('keyboard', 'editor.action.addSelectionToNextFindMatch', {}),
-  });
-  ed.addAction({
-    id: 'facet.selectHighlights',
-    label: 'Select All Occurrences of Selection',
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyL],
-    run: (ed) => ed.trigger('keyboard', 'editor.action.selectHighlights', {}),
-  });
-  ed.addAction({
-    id: 'facet.insertCursorAtEndOfEachLineSelected',
-    label: 'Add Cursor to Line Ends',
-    keybindings: [monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyI],
-    run: (ed) => ed.trigger('keyboard', 'editor.action.insertCursorAtEndOfEachLineSelected', {}),
-  });
+  // Word navigation and multi-cursor shortcuts — registered explicitly because
+  // Monaco standalone (ESM) doesn't always bind these when using selective
+  // contribution imports. Each action forwards to a built-in editor command.
+  const triggerActions: [id: string, label: string, kb: number, cmd: string][] = [
+    ['facet.cursorWordStartLeft', 'Move Word Left', monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, 'cursorWordStartLeft'],
+    ['facet.cursorWordEndRight', 'Move Word Right', monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, 'cursorWordEndRight'],
+    ['facet.cursorWordStartLeftSelect', 'Select Word Left', monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, 'cursorWordStartLeftSelect'],
+    ['facet.cursorWordEndRightSelect', 'Select Word Right', monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, 'cursorWordEndRightSelect'],
+    ['facet.addSelectionToNextFindMatch', 'Add Selection to Next Find Match', monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD, 'editor.action.addSelectionToNextFindMatch'],
+    ['facet.selectHighlights', 'Select All Occurrences of Selection', monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyL, 'editor.action.selectHighlights'],
+    ['facet.insertCursorAtEndOfEachLineSelected', 'Add Cursor to Line Ends', monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyI, 'editor.action.insertCursorAtEndOfEachLineSelected'],
+  ];
+  for (const [id, label, kb, cmd] of triggerActions) {
+    ed.addAction({ id, label, keybindings: [kb], run: (ed) => ed.trigger('keyboard', cmd, {}) });
+  }
 
   ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Equal, () => {
     const size = ed.getOption(monaco.editor.EditorOption.fontSize);

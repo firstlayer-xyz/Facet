@@ -9,24 +9,12 @@ import (
 
 func (s *Solid) Hull() *Solid {
 	requireSolids("Hull", s)
-	id := js.Global().Call("_mf_hull", s.id).Int()
-	r := newSolid(id)
-	if r == nil {
-		return nil
-	}
-	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(s))
-	return r
+	return seedHullResult(js.Global().Call("_mf_hull", s.id).Int(), firstFaceInfo(s))
 }
 
 func (s *Solid) Reidentify() *Solid {
 	requireSolids("Reidentify", s)
-	id := js.Global().Call("_mf_as_original", s.id).Int()
-	r := newSolid(id)
-	if r == nil {
-		return nil
-	}
-	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(s))
-	return r
+	return seedHullResult(js.Global().Call("_mf_as_original", s.id).Int(), firstFaceInfo(s))
 }
 
 func BatchHull(solids []*Solid) (*Solid, error) {
@@ -34,17 +22,7 @@ func BatchHull(solids []*Solid) (*Solid, error) {
 		return nil, fmt.Errorf("BatchHull: solids is empty")
 	}
 	requireSolids("BatchHull", solids...)
-	arr := js.Global().Get("Array").New()
-	for _, s := range solids {
-		arr.Call("push", s.id)
-	}
-	id := js.Global().Call("_mf_batch_hull", arr).Int()
-	r := newSolid(id)
-	if r == nil {
-		return nil, nil
-	}
-	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(solids...))
-	return r, nil
+	return seedHullResult(js.Global().Call("_mf_batch_hull", solidIDArray(solids)).Int(), firstFaceInfo(solids...)), nil
 }
 
 func HullPoints(points []Point3D) (*Solid, error) {
@@ -89,13 +67,7 @@ func (s *Solid) RefineToLength(length float64) *Solid {
 
 func (s *Solid) Offset(delta, edgeLen float64) *Solid {
 	requireSolids("Offset", s)
-	id := js.Global().Call("_mf_offset", s.id, delta, edgeLen).Int()
-	r := newSolid(id)
-	if r == nil {
-		return nil
-	}
-	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), firstFaceInfo(s))
-	return r
+	return seedHullResult(js.Global().Call("_mf_offset", s.id, delta, edgeLen).Int(), firstFaceInfo(s))
 }
 
 func SplitSolid(m, cutter *Solid) [2]*Solid {
@@ -140,11 +112,7 @@ func SketchBatchHull(sketches []*Sketch) (*Sketch, error) {
 	if len(sketches) == 0 {
 		return nil, fmt.Errorf("SketchBatchHull: sketches is empty")
 	}
-	arr := js.Global().Get("Array").New()
-	for _, p := range sketches {
-		arr.Call("push", p.id)
-	}
-	id := js.Global().Call("_mf_cs_batch_hull", arr).Int()
+	id := js.Global().Call("_mf_cs_batch_hull", sketchIDArray(sketches)).Int()
 	return newSketch(id), nil
 }
 

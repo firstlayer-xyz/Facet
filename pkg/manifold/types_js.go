@@ -24,17 +24,13 @@ type Sketch struct {
 // FaceInfo, NoColor, and clamp01 live in face_color.go (no build tag) so
 // both the native and wasm builds share the same definition.
 
-// ExternalMemSize reports the approximate C++-side footprint registered with
-// the Go GC. The wasm geometry lives in the separate facet_cxx module's linear
-// memory, invisible to Go's heap accounting, so each object queries its size at
-// creation and reports it via runtime.ExternalAlloc; that lets the GC pace
-// collection against the real off-heap growth and free C++ memory promptly
-// (otherwise sustained per-frame solid creation during animation playback never
-// triggers a GC and native memory climbs without bound).
-func (s *Solid) ExternalMemSize() int { return int(s.memSize) }
-
-func (sk *Sketch) ExternalMemSize() int { return int(sk.memSize) }
-
+// newSolid wraps a JS-side manifold handle. The wasm geometry lives in the
+// separate facet_cxx module's linear memory, invisible to Go's heap accounting,
+// so each object queries its size at creation and reports it via
+// runtime.ExternalAlloc; that lets the GC pace collection against the real
+// off-heap growth and free C++ memory promptly (otherwise sustained per-frame
+// solid creation during animation playback never triggers a GC and native
+// memory climbs without bound).
 func newSolid(id int) *Solid {
 	// id 0 is a null handle: every C++ op ends catch(...){ facetClear } which
 	// nulls the pointer, and web/index.html reports that as id 0. Return nil like
@@ -92,6 +88,18 @@ func (s *Solid) SetColor(r, g, b, a float64) *Solid {
 	return out
 }
 
+// seedHullResult wraps a kernel op whose FaceMap collapses to a single original,
+// carrying face onto it. A null handle yields nil (like newSolidWithOrigin); the
+// nil check must precede _mf_original_id so it is never called on a null handle.
+func seedHullResult(id int, face FaceInfo) *Solid {
+	r := newSolid(id)
+	if r == nil {
+		return nil
+	}
+	seedHullFaceMap(r, js.Global().Call("_mf_original_id", id).Int(), face)
+	return r
+}
+
 // transformSolid wraps the result of a unary solid transform, carrying over the FaceMap.
 func transformSolid(s *Solid, id int) *Solid {
 	if id == 0 {
@@ -100,6 +108,24 @@ func transformSolid(s *Solid, id int) *Solid {
 	r := newSolid(id)
 	r.FaceMap = s.withFaceMap()
 	return r
+}
+
+// solidIDArray marshals the solids' JS handles into a JS Array for bridge calls.
+func solidIDArray(solids []*Solid) js.Value {
+	arr := js.Global().Get("Array").New()
+	for _, s := range solids {
+		arr.Call("push", s.id)
+	}
+	return arr
+}
+
+// sketchIDArray marshals the sketches' JS handles into a JS Array for bridge calls.
+func sketchIDArray(sketches []*Sketch) js.Value {
+	arr := js.Global().Get("Array").New()
+	for _, p := range sketches {
+		arr.Call("push", p.id)
+	}
+	return arr
 }
 
 // typedArrayToBytes copies a JS TypedArray's bytes into a Go slice.

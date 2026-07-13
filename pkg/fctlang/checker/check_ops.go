@@ -47,10 +47,7 @@ func (c *checker) inferBinaryOp(ex *parser.BinaryExpr, env *typeEnv) typeInfo {
 			c.addError(ex.Pos, fmt.Sprintf("operator ??: left operand must be Optional, got %s", left.displayName()))
 			return unknown()
 		}
-		inner := unknown()
-		if left.inner != nil {
-			inner = *left.inner
-		}
+		inner := optionalInnerOr(left)
 		if right.ft == typeOptional {
 			if inner.ft != typeUnknown && right.inner != nil && right.inner.ft != typeUnknown &&
 				!c.typeCompatible(inner, *right.inner) {

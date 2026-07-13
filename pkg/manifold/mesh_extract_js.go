@@ -47,10 +47,6 @@ func (p *Sketch) ToDisplayMesh() *DisplayMesh {
 	return solid.ToDisplayMesh()
 }
 
-func ExtractMeshShared(s *Solid) *Mesh {
-	return s.ToMesh()
-}
-
 func extractDisplayMeshJS(s *Solid) *DisplayMesh {
 	return displayMeshFromExpanded(js.Global().Call("_mf_extract_display_mesh", s.id), s.FaceMap)
 }
@@ -74,7 +70,7 @@ func displayMeshFromExpanded(r js.Value, faceMap map[uint32]FaceInfo) *DisplayMe
 	// Decode the face IDs to []uint32 and hand them to the shared
 	// buildFaceColorMap so native and wasm produce identical maps (incl.
 	// #RRGGBBAA for translucent faces).
-	var fcMap map[string]string
+	var fcMap map[uint32]string
 	if len(faceMap) > 0 && len(faceIDRaw) > 0 {
 		faceIDs := make([]uint32, len(faceIDRaw)/4)
 		for i := range faceIDs {
@@ -110,12 +106,6 @@ func MergeExtractExpandedMeshes(solids []*Solid, edgeThresholdDeg float32) *Disp
 	if len(solids) == 1 {
 		return extractDisplayMeshJS(solids[0])
 	}
-	idArr := js.Global().Get("Array").New()
-	var faceMap map[uint32]FaceInfo
-	for _, s := range solids {
-		idArr.Call("push", s.id)
-		faceMap = mergeFaceMaps(faceMap, s.FaceMap)
-	}
-	r := js.Global().Call("_mf_merge_extract_expanded_mesh", idArr, len(solids), edgeThresholdDeg)
-	return displayMeshFromExpanded(r, faceMap)
+	r := js.Global().Call("_mf_merge_extract_expanded_mesh", solidIDArray(solids), len(solids), edgeThresholdDeg)
+	return displayMeshFromExpanded(r, mergedFaceMaps(solids))
 }

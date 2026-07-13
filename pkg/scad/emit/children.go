@@ -2,11 +2,12 @@ package emit
 
 import "facet/pkg/scad/ast"
 
-// childUse records how a module consumes the geometry passed to it as children.
-// OpenSCAD's children()/children(i) become indexing into a `children` array
-// parameter, so a module that uses children gains that parameter.
+// childUse records that a module consumes the geometry passed to it as
+// children(): a module's presence in the childUse map means its body references
+// children(...), and the recorded dimensionality selects the Facet element type
+// of that array. OpenSCAD's children()/children(i) become indexing into a
+// `children` array parameter, so a module that uses children gains that parameter.
 type childUse struct {
-	uses bool // body references children(...)
 	is2D bool // the children are 2D (Sketch) rather than 3D (Solid)
 }
 
@@ -26,7 +27,7 @@ func (e *Emitter) analyzeChildren(f *ast.File) map[string]childUse {
 	info := map[string]childUse{}
 	for name, sym := range e.syms {
 		if !sym.isFunc && bodyUsesChildren(sym.moduleBody) {
-			info[name] = childUse{uses: true}
+			info[name] = childUse{}
 		}
 	}
 	if len(info) == 0 {
@@ -39,7 +40,7 @@ func (e *Emitter) analyzeChildren(f *ast.File) map[string]childUse {
 		}
 	}
 	for name := range info {
-		info[name] = childUse{uses: true, is2D: e.callSiteChildIs2D(name, bodies)}
+		info[name] = childUse{is2D: e.callSiteChildIs2D(name, bodies)}
 	}
 	return info
 }

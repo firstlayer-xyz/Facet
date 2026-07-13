@@ -174,9 +174,9 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2MirrorCopy(n), true
 	// deferred-CSG modeling (tag-partition over the scope's children)
 	case "diff":
-		return e.bosl2Diff(n), true
+		return e.bosl2CSGOp(n, "remove", roleRemove, "-"), true
 	case "intersect":
-		return e.bosl2Intersect(n), true
+		return e.bosl2CSGOp(n, "intersect", roleIntersect, "&"), true
 	case "hide":
 		return e.bosl2Hide(n), true
 	case "show_only":
@@ -468,7 +468,7 @@ func (e *Emitter) bosl2RotCopies(n *ast.ModuleCall) string {
 // `size` ([x,y] or scalar); the inner is `isize`, or `size` minus 2·`wall`.
 func (e *Emitter) bosl2RectTube(n *ast.ModuleCall) string {
 	e.rejectExtraArgs(n, 1, "h", "l", "height", "size", "isize", "wall", "anchor", "$fn", "$fa", "$fs")
-	h, ok := cylHeightArg(n)
+	h, ok := cylHeightArg(n, 0)
 	if !ok {
 		return e.errf(n.Pos(), "rect_tube without height")
 	}
@@ -476,10 +476,10 @@ func (e *Emitter) bosl2RectTube(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "rect_tube without size")
 	}
-	ox, oy := e.rect2Components(size)
+	ox, oy := e.pair2(size, kLength)
 	var ix, iy string
 	if isize, ok := arg(n, "isize", -1); ok {
-		ix, iy = e.rect2Components(isize)
+		ix, iy = e.pair2(isize, kLength)
 	} else if wall, ok := arg(n, "wall", -1); ok {
 		w := e.expr(wall, kLength)
 		ix = ox + " - 2 * (" + w + ")"
@@ -529,16 +529,7 @@ func (e *Emitter) bosl2Prismoid(n *ast.ModuleCall) string {
 	if !ok {
 		return e.errf(n.Pos(), "prismoid without size2")
 	}
-	h, ok := arg(n, "h", -1)
-	if !ok {
-		h, ok = arg(n, "l", -1)
-	}
-	if !ok {
-		h, ok = arg(n, "height", -1)
-	}
-	if !ok {
-		h, ok = arg(n, "", 2)
-	}
+	h, ok := cylHeightArg(n, 2)
 	if !ok {
 		return e.errf(n.Pos(), "prismoid without height")
 	}
@@ -733,12 +724,6 @@ func (e *Emitter) ngonRadius(n *ast.ModuleCall, rPos int) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// rect2Components renders a 2D footprint size into (x, y) Length expressions: a
-// 2-vector gives per-axis lengths; a scalar repeats across both.
-func (e *Emitter) rect2Components(size ast.Expr) (x, y string) {
-	return e.pair2(size, kLength)
 }
 
 // pair2 renders a scalar-or-2-vector argument into two component expressions of
@@ -1071,7 +1056,7 @@ func (e *Emitter) bosl2Cyl(n *ast.ModuleCall) string {
 // error is already recorded).
 func (e *Emitter) cylCentered(n *ast.ModuleCall) (string, bool) {
 	e.rejectExtraArgs(n, 2, "h", "l", "height", "r", "d", "r1", "r2", "d1", "d2", "rounding", "chamfer", "orient", "anchor", "spin", "$fn", "$fa", "$fs")
-	h, ok := cylHeightArg(n)
+	h, ok := cylHeightArg(n, 0)
 	if !ok {
 		return e.errf(n.Pos(), "cyl without height"), false
 	}
@@ -1165,7 +1150,7 @@ func (e *Emitter) bosl2OrientedCyl(n *ast.ModuleCall, rotate string) string {
 // are not yet translated and error via rejectExtraArgs.
 func (e *Emitter) bosl2Tube(n *ast.ModuleCall) string {
 	e.rejectExtraArgs(n, 1, "h", "l", "height", "or", "ir", "od", "id", "anchor", "$fn", "$fa", "$fs")
-	h, ok := cylHeightArg(n)
+	h, ok := cylHeightArg(n, 0)
 	if !ok {
 		return e.errf(n.Pos(), "tube without height")
 	}
@@ -1229,13 +1214,13 @@ func (e *Emitter) tubeRadius(n *ast.ModuleCall, rName, dName string) (string, bo
 	return "", false
 }
 
-// cylHeightArg resolves a BOSL2 cyl's length: named h/l/height, else the first
-// positional argument.
-func cylHeightArg(n *ast.ModuleCall) (ast.Expr, bool) {
+// cylHeightArg resolves a BOSL2 cyl's length: named h/l/height, else the
+// positional argument at posIdx.
+func cylHeightArg(n *ast.ModuleCall, posIdx int) (ast.Expr, bool) {
 	for _, name := range []string{"h", "l", "height"} {
 		if v, ok := arg(n, name, -1); ok {
 			return v, true
 		}
 	}
-	return arg(n, "", 0)
+	return arg(n, "", posIdx)
 }

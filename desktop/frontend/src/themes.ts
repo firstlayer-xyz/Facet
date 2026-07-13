@@ -35,6 +35,9 @@ interface ThemeEntry {
 /** UI themes for the appearance selector. Each has light + dark palette variants.
  *  The dark mode switch picks which variant is used. */
 export const UI_THEMES: ThemeEntry[] = [
+  { id: 'facet-orange', label: 'Facet - Orange' },
+  { id: 'facet-green', label: 'Facet - Green' },
+  { id: 'facet-digital-blue', label: 'Facet - Digital Blue' },
   { id: 'cobalt', label: 'Cobalt' },
   { id: 'dracula', label: 'Dracula' },
   { id: 'github', label: 'GitHub' },
@@ -78,88 +81,47 @@ export interface UIPalette {
   viewGridMinor: string;
 }
 
+// The three Facet themes share every palette value except accent, textCode,
+// and the user-message background (and in the light variants textCode tracks
+// the accent). These builders keep that shared base in one place.
+const facetLight = (accent: string, msgUserBg: string): UIPalette => ({
+  bg: '#ffffff', bgDark: '#f0f0f0', surface: '#f7f7f7',
+  border: '#d0d0d0', borderHover: '#b0b0b0',
+  text: '#3a3a3a', textMuted: '#888888', textBright: '#111111',
+  textDim: '#aaaaaa', textPlaceholder: '#bbbbbb', textCode: accent,
+  panelBg: 'rgba(240, 240, 240, 0.95)', panelBorder: 'rgba(180, 180, 180, 0.5)',
+  accent, errorBg: '#fff0f0', errorBorder: '#e0a0a0',
+  msgUserBg,
+  viewBg: '#ffffff', viewMeshMetalness: 0.0, viewMeshRoughness: 0.45,
+  viewEdgeColor: '#000000', viewEdgeOpacity: 0.25, viewEdgeThreshold: 40,
+  viewAmbientIntensity: 2.0,
+  viewGridMajor: '#cccccc', viewGridMinor: '#e5e5e5',
+});
+
+const facetDark = (accent: string, textCode: string, msgUserBg: string): UIPalette => ({
+  bg: '#0E0E0E', bgDark: '#131313', surface: '#1A1A1A',
+  border: '#262626', borderHover: '#484847',
+  text: '#ADAAAA', textMuted: '#767575', textBright: '#E8E8E8',
+  textDim: '#484847', textPlaceholder: '#262626', textCode,
+  panelBg: 'rgba(26, 26, 26, 0.98)', panelBorder: 'rgba(72, 72, 71, 0.2)',
+  accent, errorBg: '#1c0a0a', errorBorder: '#3d1515',
+  msgUserBg,
+  viewBg: '#000000', viewMeshMetalness: 0.15, viewMeshRoughness: 0.35,
+  viewEdgeColor: '#ffffff', viewEdgeOpacity: 0.06, viewEdgeThreshold: 40,
+  viewAmbientIntensity: 1.2,
+  viewGridMajor: '#1a1a1a', viewGridMinor: '#131313',
+});
+
 const THEME_PALETTES: Record<string, UIPalette> = {
   // ── Facet - Orange ──
-  'facet-orange-light': {
-    bg: '#ffffff', bgDark: '#f0f0f0', surface: '#f7f7f7',
-    border: '#d0d0d0', borderHover: '#b0b0b0',
-    text: '#3a3a3a', textMuted: '#888888', textBright: '#111111',
-    textDim: '#aaaaaa', textPlaceholder: '#bbbbbb', textCode: '#e56c30',
-    panelBg: 'rgba(240, 240, 240, 0.95)', panelBorder: 'rgba(180, 180, 180, 0.5)',
-    accent: '#e56c30', errorBg: '#fff0f0', errorBorder: '#e0a0a0',
-    msgUserBg: '#ffe8d0',
-    viewBg: '#ffffff', viewMeshMetalness: 0.0, viewMeshRoughness: 0.45,
-    viewEdgeColor: '#000000', viewEdgeOpacity: 0.25, viewEdgeThreshold: 40,
-    viewAmbientIntensity: 2.0,
-    viewGridMajor: '#cccccc', viewGridMinor: '#e5e5e5',
-  },
-  'facet-orange-dark': {
-    bg: '#0E0E0E', bgDark: '#131313', surface: '#1A1A1A',
-    border: '#262626', borderHover: '#484847',
-    text: '#ADAAAA', textMuted: '#767575', textBright: '#E8E8E8',
-    textDim: '#484847', textPlaceholder: '#262626', textCode: '#FF9154',
-    panelBg: 'rgba(26, 26, 26, 0.98)', panelBorder: 'rgba(72, 72, 71, 0.2)',
-    accent: '#FF7518', errorBg: '#1c0a0a', errorBorder: '#3d1515',
-    msgUserBg: 'rgba(255, 117, 24, 0.08)',
-    viewBg: '#000000', viewMeshMetalness: 0.15, viewMeshRoughness: 0.35,
-    viewEdgeColor: '#ffffff', viewEdgeOpacity: 0.06, viewEdgeThreshold: 40,
-    viewAmbientIntensity: 1.2,
-    viewGridMajor: '#1a1a1a', viewGridMinor: '#131313',
-  },
+  'facet-orange-light': facetLight('#e56c30', '#ffe8d0'),
+  'facet-orange-dark': facetDark('#FF7518', '#FF9154', 'rgba(255, 117, 24, 0.08)'),
   // ── Facet - Green ──
-  'facet-green-light': {
-    bg: '#ffffff', bgDark: '#f0f0f0', surface: '#f7f7f7',
-    border: '#d0d0d0', borderHover: '#b0b0b0',
-    text: '#3a3a3a', textMuted: '#888888', textBright: '#111111',
-    textDim: '#aaaaaa', textPlaceholder: '#bbbbbb', textCode: '#1e8a3e',
-    panelBg: 'rgba(240, 240, 240, 0.95)', panelBorder: 'rgba(180, 180, 180, 0.5)',
-    accent: '#1e8a3e', errorBg: '#fff0f0', errorBorder: '#e0a0a0',
-    msgUserBg: '#d4f0dc',
-    viewBg: '#ffffff', viewMeshMetalness: 0.0, viewMeshRoughness: 0.45,
-    viewEdgeColor: '#000000', viewEdgeOpacity: 0.25, viewEdgeThreshold: 40,
-    viewAmbientIntensity: 2.0,
-    viewGridMajor: '#cccccc', viewGridMinor: '#e5e5e5',
-  },
-  'facet-green-dark': {
-    bg: '#0E0E0E', bgDark: '#131313', surface: '#1A1A1A',
-    border: '#262626', borderHover: '#484847',
-    text: '#ADAAAA', textMuted: '#767575', textBright: '#E8E8E8',
-    textDim: '#484847', textPlaceholder: '#262626', textCode: '#52c878',
-    panelBg: 'rgba(26, 26, 26, 0.98)', panelBorder: 'rgba(72, 72, 71, 0.2)',
-    accent: '#2eb84e', errorBg: '#1c0a0a', errorBorder: '#3d1515',
-    msgUserBg: 'rgba(46, 184, 78, 0.08)',
-    viewBg: '#000000', viewMeshMetalness: 0.15, viewMeshRoughness: 0.35,
-    viewEdgeColor: '#ffffff', viewEdgeOpacity: 0.06, viewEdgeThreshold: 40,
-    viewAmbientIntensity: 1.2,
-    viewGridMajor: '#1a1a1a', viewGridMinor: '#131313',
-  },
+  'facet-green-light': facetLight('#1e8a3e', '#d4f0dc'),
+  'facet-green-dark': facetDark('#2eb84e', '#52c878', 'rgba(46, 184, 78, 0.08)'),
   // ── Facet - Digital Blue ──
-  'facet-digital-blue-light': {
-    bg: '#ffffff', bgDark: '#f0f0f0', surface: '#f7f7f7',
-    border: '#d0d0d0', borderHover: '#b0b0b0',
-    text: '#3a3a3a', textMuted: '#888888', textBright: '#111111',
-    textDim: '#aaaaaa', textPlaceholder: '#bbbbbb', textCode: '#0060c8',
-    panelBg: 'rgba(240, 240, 240, 0.95)', panelBorder: 'rgba(180, 180, 180, 0.5)',
-    accent: '#0060c8', errorBg: '#fff0f0', errorBorder: '#e0a0a0',
-    msgUserBg: '#d0e4ff',
-    viewBg: '#ffffff', viewMeshMetalness: 0.0, viewMeshRoughness: 0.45,
-    viewEdgeColor: '#000000', viewEdgeOpacity: 0.25, viewEdgeThreshold: 40,
-    viewAmbientIntensity: 2.0,
-    viewGridMajor: '#cccccc', viewGridMinor: '#e5e5e5',
-  },
-  'facet-digital-blue-dark': {
-    bg: '#0E0E0E', bgDark: '#131313', surface: '#1A1A1A',
-    border: '#262626', borderHover: '#484847',
-    text: '#ADAAAA', textMuted: '#767575', textBright: '#E8E8E8',
-    textDim: '#484847', textPlaceholder: '#262626', textCode: '#5aa8ff',
-    panelBg: 'rgba(26, 26, 26, 0.98)', panelBorder: 'rgba(72, 72, 71, 0.2)',
-    accent: '#3d96ff', errorBg: '#1c0a0a', errorBorder: '#3d1515',
-    msgUserBg: 'rgba(61, 150, 255, 0.08)',
-    viewBg: '#000000', viewMeshMetalness: 0.15, viewMeshRoughness: 0.35,
-    viewEdgeColor: '#ffffff', viewEdgeOpacity: 0.06, viewEdgeThreshold: 40,
-    viewAmbientIntensity: 1.2,
-    viewGridMajor: '#1a1a1a', viewGridMinor: '#131313',
-  },
+  'facet-digital-blue-light': facetLight('#0060c8', '#d0e4ff'),
+  'facet-digital-blue-dark': facetDark('#3d96ff', '#5aa8ff', 'rgba(61, 150, 255, 0.08)'),
   // ── Cobalt ──
   'cobalt-light': {
     bg: '#f0f5fa', bgDark: '#dce6f0', surface: '#e4edf5',
@@ -412,29 +374,18 @@ export function resolveUiTheme(uiTheme: string, darkMode: 'light' | 'dark' | 'au
 /** Apply UI palette to CSS custom properties (no Monaco theme change). */
 export function applyUIPalette(palette: UIPalette): void {
   const root = document.documentElement;
-  root.style.setProperty('--ui-bg', palette.bg);
-  root.style.setProperty('--ui-bg-dark', palette.bgDark);
-  root.style.setProperty('--ui-surface', palette.surface);
-  root.style.setProperty('--ui-border', palette.border);
-  root.style.setProperty('--ui-border-hover', palette.borderHover);
-  root.style.setProperty('--ui-text', palette.text);
-  root.style.setProperty('--ui-text-muted', palette.textMuted);
+  // Each UI-section palette field maps to '--ui-' + its kebab-cased key.
+  for (const f of PALETTE_FIELDS) {
+    if (f.section !== 'UI') continue;
+    const cssVar = '--ui-' + f.key.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
+    root.style.setProperty(cssVar, String(palette[f.key]));
+  }
   // The dropdown chevron is an inline SVG; recolor its stroke to the muted
   // text color so it matches each theme (a data URI can't read a CSS var).
   root.style.setProperty(
     '--ui-chevron',
     `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='${encodeURIComponent(palette.textMuted)}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
   );
-  root.style.setProperty('--ui-text-bright', palette.textBright);
-  root.style.setProperty('--ui-text-dim', palette.textDim);
-  root.style.setProperty('--ui-text-placeholder', palette.textPlaceholder);
-  root.style.setProperty('--ui-text-code', palette.textCode);
-  root.style.setProperty('--ui-panel-bg', palette.panelBg);
-  root.style.setProperty('--ui-panel-border', palette.panelBorder);
-  root.style.setProperty('--ui-accent', palette.accent);
-  root.style.setProperty('--ui-error-bg', palette.errorBg);
-  root.style.setProperty('--ui-error-border', palette.errorBorder);
-  root.style.setProperty('--ui-msg-user-bg', palette.msgUserBg);
 }
 
 interface PaletteField {

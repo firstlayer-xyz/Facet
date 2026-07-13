@@ -265,8 +265,7 @@ func TestVirtualLibTreeExtractTo(t *testing.T) {
 	}
 }
 
-// TestSourceKeyVirtual confirms the URI shape for virtual-tree keys and
-// that IsVirtualSourceKey recognises them.
+// TestSourceKeyVirtual confirms the URI shape for virtual-tree keys.
 func TestSourceKeyVirtual(t *testing.T) {
 	tree := &LibTree{
 		repo:   nil, // unused for SourceKey
@@ -282,12 +281,6 @@ func TestSourceKeyVirtual(t *testing.T) {
 	if got != want {
 		t.Errorf("SourceKey got %q, want %q", got, want)
 	}
-	if !IsVirtualSourceKey(got) {
-		t.Error("IsVirtualSourceKey returned false for virtual URI")
-	}
-	if IsVirtualSourceKey("/abs/path/foo.fct") {
-		t.Error("IsVirtualSourceKey true for abs path")
-	}
 }
 
 // TestPhysicalTreeSourceKey confirms physical-tree SourceKey is a plain
@@ -299,8 +292,5 @@ func TestPhysicalTreeSourceKey(t *testing.T) {
 	want := filepath.Join(dir, "sub", "foo.fct")
 	if got != want {
 		t.Errorf("SourceKey got %q, want %q", got, want)
-	}
-	if IsVirtualSourceKey(got) {
-		t.Error("IsVirtualSourceKey true for physical key")
 	}
 }

@@ -41,52 +41,14 @@ function distinctLibraries(entries: DocEntry[]): string[] {
   return result;
 }
 
-// Group entries by kind/section only, ignoring library — used for single-source views
-// (Your Code tab, library tabs) so entries don't get re-bucketed under a library heading.
-function groupEntriesFlat(entries: DocEntry[]): [string, DocEntry[]][] {
-  const typesBucket: DocEntry[] = [];
-  const keywordsBucket: DocEntry[] = [];
-  const fnSectionOrder: string[] = [];
-  const fnSections = new Map<string, DocEntry[]>();
-  const methodOrder: string[] = [];
-  const methodBuckets = new Map<string, DocEntry[]>();
-
-  for (const e of entries) {
-    if (e.kind === 'type') {
-      typesBucket.push(e);
-    } else if (e.kind === 'keyword') {
-      keywordsBucket.push(e);
-    } else if (e.kind === 'method') {
-      const dot = e.name.indexOf('.');
-      const receiver = dot > 0 ? e.name.substring(0, dot) + ' Methods' : 'Methods';
-      if (!methodBuckets.has(receiver)) {
-        methodOrder.push(receiver);
-        methodBuckets.set(receiver, []);
-      }
-      methodBuckets.get(receiver)!.push(e);
-    } else if (e.kind === 'function') {
-      const key = e.section || 'Functions';
-      if (!fnSections.has(key)) {
-        fnSectionOrder.push(key);
-        fnSections.set(key, []);
-      }
-      fnSections.get(key)!.push(e);
-    }
-  }
-
-  const result: [string, DocEntry[]][] = [];
-  if (typesBucket.length > 0) result.push(['Types', typesBucket]);
-  for (const sec of fnSectionOrder) result.push([sec, fnSections.get(sec)!]);
-  for (const recv of methodOrder) result.push([recv, methodBuckets.get(recv)!]);
-  if (keywordsBucket.length > 0) result.push(['Keywords', keywordsBucket]);
-  return result;
-}
-
 // Group entries by display section, preserving source order for stdlib functions.
 // Stdlib functions are subdivided by their section field (e.g. "3D Constructors").
-// Methods are grouped by receiver type. Library entries get one bucket each.
-// User-code entries (library === USER_LIBRARY) appear in a "Your Code" section.
-function groupEntries(entries: DocEntry[]): [string, DocEntry[]][] {
+// Methods are grouped by receiver type. When splitByLibrary is set, user-code
+// entries (library === USER_LIBRARY) appear in a "Your Code" section and each
+// external library gets its own bucket; otherwise library is ignored, which
+// keeps single-source views (Your Code tab, library tabs) from re-bucketing
+// entries under a library heading.
+function groupEntries(entries: DocEntry[], splitByLibrary: boolean): [string, DocEntry[]][] {
   const typesBucket: DocEntry[] = [];
   const keywordsBucket: DocEntry[] = [];
   const userCodeBucket: DocEntry[] = [];
@@ -104,13 +66,13 @@ function groupEntries(entries: DocEntry[]): [string, DocEntry[]][] {
   const libBuckets = new Map<string, DocEntry[]>();
 
   for (const e of entries) {
-    if (e.library === USER_LIBRARY) {
+    if (splitByLibrary && e.library === USER_LIBRARY) {
       userCodeBucket.push(e);
     } else if (e.kind === 'type') {
       typesBucket.push(e);
     } else if (e.kind === 'keyword') {
       keywordsBucket.push(e);
-    } else if (e.library && e.library !== 'facet/std') {
+    } else if (splitByLibrary && e.library && e.library !== 'facet/std') {
       if (!libBuckets.has(e.library)) {
         libOrder.push(e.library);
         libBuckets.set(e.library, []);
@@ -652,7 +614,7 @@ export class DocsPanel {
             e.signature.toLowerCase().includes(lf) ||
             e.doc.toLowerCase().includes(lf))
         : pool;
-      const groups = isSourceView ? groupEntriesFlat(filtered) : groupEntries(filtered);
+      const groups = groupEntries(filtered, !isSourceView);
       this.renderAPI(this.contentEl, filter, groups, isSourceView);
       this.renderSideNav(groups.map(([label]) => ({
         label,

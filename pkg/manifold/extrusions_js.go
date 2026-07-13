@@ -48,10 +48,7 @@ func Loft(sketches []*Sketch, heights []float64) (*Solid, error) {
 	if err := validateLoft(len(sketches), len(heights)); err != nil {
 		return nil, err
 	}
-	skArr := js.Global().Get("Array").New()
-	for _, s := range sketches {
-		skArr.Call("push", s.id)
-	}
+	skArr := sketchIDArray(sketches)
 	htArr := js.Global().Get("Float64Array").New(len(heights))
 	for i, h := range heights {
 		htArr.SetIndex(i, h)

@@ -72,24 +72,14 @@ func newSketch(ret C.FacetSketchRet) *Sketch {
 // Solid wraps a C ManifoldPtr pointer for use in boolean operations.
 type Solid struct {
 	ptr     *C.ManifoldPtr
-	memSize uint64              // cached ExternalMemSize, set once at creation
+	memSize uint64              // C++ heap footprint, set once at creation
 	FaceMap map[uint32]FaceInfo // originalID → face metadata (nil if empty)
 }
 
 // Sketch wraps a C ManifoldCrossSection pointer for 2D shapes.
 type Sketch struct {
 	ptr     *C.ManifoldCrossSection
-	memSize uint64 // cached ExternalMemSize, set once at creation
-}
-
-// ExternalMemSize returns the approximate C++ heap memory used by this Solid.
-func (s *Solid) ExternalMemSize() int {
-	return int(s.memSize)
-}
-
-// ExternalMemSize returns the approximate C++ heap memory used by this Sketch.
-func (sk *Sketch) ExternalMemSize() int {
-	return int(sk.memSize)
+	memSize uint64 // C++ heap footprint, set once at creation
 }
 
 // SetColor returns a copy of the solid with a uniform RGBA color on all faces.

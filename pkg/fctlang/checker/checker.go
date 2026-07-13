@@ -119,7 +119,7 @@ func (c *checker) checkGlobals() {
 			}
 			if t.ft == typeLibrary {
 				if le, ok := g.Value.(*parser.LibExpr); ok {
-					if ns := libPathToNamespace(le.Key()); ns != "" {
+					if ns := loader.LibPathToNamespace(le.Key()); ns != "" {
 						c.srcVarTypes()[g.Name] = "Library:" + ns
 					}
 				}
@@ -283,7 +283,7 @@ func (c *checker) inferReturnType(fn *parser.Function) typeInfo {
 
 	env := c.srcGlobalEnv(c.currentSrcKey).child()
 	for _, p := range fn.Params {
-		env.set(p.Name, c.resolveParamType(fn, p.Type))
+		env.set(p.Name, c.resolveParamType(p.Type))
 	}
 
 	savedSuppress := c.suppressErrors
@@ -355,7 +355,7 @@ func (c *checker) validateFunction(fn *parser.Function, src *parser.Source, srcE
 		if bareType == "Array" {
 			c.addError(fn.Pos, fmt.Sprintf("%s() parameter %q: bare Array type is not allowed; use a typed array (e.g., []Solid) or []var for generic arrays", fn.Name, p.Name))
 		}
-		pt := c.resolveParamType(fn, p.Type)
+		pt := c.resolveParamType(p.Type)
 		// `Any` is the explicit dynamic type: it resolves to the permissive
 		// typeUnknown on purpose (indexable, op-checks skipped, runtime-
 		// checked), so it is not an "unknown type" error. Other unrecognized
@@ -789,12 +789,4 @@ func (c *checker) qualifyStructType(parentQualified, typeName string) string {
 		}
 	}
 	return ""
-}
-
-// libPathToNamespace forwards to loader.LibPathToNamespace, which owns
-// the canonical mapping. Both this package and the desktop /eval handler
-// use that shared definition so the editor sees one consistent namespace
-// for library-alias completion lookups.
-func libPathToNamespace(rawPath string) string {
-	return loader.LibPathToNamespace(rawPath)
 }

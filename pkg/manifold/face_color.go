@@ -92,8 +92,8 @@ func colorFromFaceInfo(fi FaceInfo) string {
 
 // buildFaceColorMap constructs a faceID→hex color map from a slice of face IDs
 // and a FaceInfo map. Only face IDs with a non-NoColor entry are included.
-func buildFaceColorMap(faceIDs []uint32, faceMap map[uint32]FaceInfo) map[string]string {
-	var fcMap map[string]string
+func buildFaceColorMap(faceIDs []uint32, faceMap map[uint32]FaceInfo) map[uint32]string {
+	var fcMap map[uint32]string
 	seen := make(map[uint32]bool)
 	for _, fid := range faceIDs {
 		if seen[fid] {
@@ -102,9 +102,9 @@ func buildFaceColorMap(faceIDs []uint32, faceMap map[uint32]FaceInfo) map[string
 		seen[fid] = true
 		if fi, ok := faceMap[fid]; ok && fi.Color != NoColor {
 			if fcMap == nil {
-				fcMap = make(map[string]string)
+				fcMap = make(map[uint32]string)
 			}
-			fcMap[fmt.Sprintf("%d", fid)] = colorFromFaceInfo(fi)
+			fcMap[fid] = colorFromFaceInfo(fi)
 		}
 	}
 	return fcMap

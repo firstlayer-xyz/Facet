@@ -330,7 +330,7 @@ func TestSketchScaleRejectsNaNAndInf(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// mergeFaceMaps semantics + fast paths (bug K + cleanup)
+// mergeFaceMaps semantics (bug K)
 // ---------------------------------------------------------------------------
 
 // TestMergeFaceMapsAFullyOverrides documents the actual merge semantic:
@@ -348,8 +348,10 @@ func TestMergeFaceMapsAFullyOverrides(t *testing.T) {
 	}
 }
 
-// TestMergeFaceMapsFastPaths covers the single-side-empty branches.
-func TestMergeFaceMapsFastPaths(t *testing.T) {
+// TestMergeFaceMapsSingleSided pins the empty and one-sided behavior: both
+// empty returns nil, and a one-sided merge returns a fresh copy, never an
+// aliased input map.
+func TestMergeFaceMapsSingleSided(t *testing.T) {
 	a := map[uint32]FaceInfo{1: {Color: 0x111111, Alpha: 10}}
 
 	bothEmpty := mergeFaceMaps(nil, nil)

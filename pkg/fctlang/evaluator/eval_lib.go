@@ -35,30 +35,14 @@ func (e *evaluator) evalLibExpr(ex *parser.LibExpr) (value, error) {
 	}
 
 	// Populate source for debug file tracking
-	if e.libSources != nil && libSrc.Text != "" {
+	if libSrc.Text != "" {
 		e.libSources[key] = libSrc.Text
 	}
 
-	// Create a sub-evaluator to evaluate the library's globals.
-	libEval := &evaluator{
-		ctx:          e.ctx,
-		prog:         e.prog,
-		currentKey:   diskPath,
-		file:         diskPath,
-		debug:        e.debug,
-		libEvalCache: e.libEvalCache,
-		libLoadStack: e.libLoadStack,
-		libSources:   e.libSources,
-		stdFuncs:     e.stdFuncs,
-		stdMethods:   e.stdMethods,
-		structDecls:  buildStructDecls(e.prog, diskPath),
-		opFuncs:      buildOpFuncs(e.prog, diskPath),
-		solidTracks:  e.solidTracks,
-	}
-	libEval.globals = make(map[string]value)
-	// Pre-create libRef so struct values created during globals eval get lib context
+	// Create a sub-evaluator to evaluate the library's globals. The libRef is
+	// created first so struct values created during globals eval get lib context.
 	lv := &libRef{path: key}
-	libEval.currentLib = lv
+	libEval := e.newLibEval(lv, make(map[string]value), nil)
 	// Seed stdlib globals (PI, TAU, E, etc.) so library code can reference them.
 	// Const stdlib globals stay const-wrapped inside the library body too, so a
 	// library `var PI = 3` errors as a const reassignment just like in main.

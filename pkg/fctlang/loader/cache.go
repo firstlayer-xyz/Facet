@@ -1,7 +1,6 @@
 package loader
 
 import (
-	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/plumbing/cache"
 	"github.com/go-git/go-git/v5/storage"
@@ -9,23 +8,20 @@ import (
 )
 
 // Cache bundles the storage primitives the loader uses to maintain a
-// per-origin cache of bare git clones. Three pieces:
+// per-origin cache of bare git clones. Two pieces:
 //
-//	FS          — the loader's own bookkeeping (READMEs, the mkdir/mktemp/
-//	              rename dance that protects in-flight clones from being seen
-//	              mid-write). See fs.go.
-//	StorerFor   — go-git object store factory, keyed by path. Native: an
-//	              osfs-backed storage. Wasm: in-memory go-git storage.
-//	WorktreeFor — billy.Filesystem factory for the working tree. Returns nil
-//	              for bare clones (which is what the lib cache always uses).
+//	FS        — the loader's own bookkeeping (READMEs, the mkdir/mktemp/
+//	            rename dance that protects in-flight clones from being seen
+//	            mid-write). See fs.go.
+//	StorerFor — go-git object store factory, keyed by path. Native: an
+//	            osfs-backed storage. Wasm: in-memory go-git storage.
 //
-// Path arguments to the factories are opaque keys — whatever ensureSharedRepo
+// Path arguments to the factory are opaque keys — whatever ensureSharedRepo
 // computed for a given (host, user, repo). The native impl interprets them as
 // real disk paths; the wasm impl uses them as map keys.
 type Cache struct {
-	FS          FS
-	StorerFor   func(path string) storage.Storer
-	WorktreeFor func(path string) billy.Filesystem
+	FS        FS
+	StorerFor func(path string) storage.Storer
 }
 
 // NativeCache returns a Cache backed by the local filesystem.
@@ -34,10 +30,6 @@ func NativeCache() *Cache {
 		FS: diskFS{},
 		StorerFor: func(p string) storage.Storer {
 			return filesystem.NewStorage(osfs.New(p), cache.NewObjectLRUDefault())
-		},
-		WorktreeFor: func(p string) billy.Filesystem {
-			// The lib cache always uses bare clones — no worktree needed.
-			return nil
 		},
 	}
 }
@@ -54,8 +46,5 @@ func MemoryCache() *Cache {
 	return &Cache{
 		FS:        m,
 		StorerFor: m.storerFor,
-		WorktreeFor: func(_ string) billy.Filesystem {
-			return nil
-		},
 	}
 }

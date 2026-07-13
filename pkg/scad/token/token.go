@@ -6,7 +6,7 @@ type Kind int
 
 const (
 	EOF    Kind = iota
-	Ident       // foo, cube, $fn  (SpecialVar flag set for $-prefixed)
+	Ident       // foo, cube, $fn
 	Number      // 10, 1.5, .5, 1e3
 	String      // "text"
 	True
@@ -62,10 +62,9 @@ const (
 
 // Token is a single OpenSCAD lexical unit with source position.
 type Token struct {
-	Kind       Kind
-	Text       string // literal text (identifier name, number text, string value)
-	Line, Col  int
-	SpecialVar bool // true for $-prefixed identifiers ($fn, $fa, $t…)
+	Kind      Kind
+	Text      string // literal text (identifier name, number text, string value)
+	Line, Col int
 }
 
 var keywords = map[string]Kind{

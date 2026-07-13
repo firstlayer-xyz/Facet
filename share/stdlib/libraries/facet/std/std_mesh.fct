@@ -90,6 +90,21 @@ fn Box.Union(other Box) Box {
             z: Max(a: self.max.z, b: other.max.z)}}
 }
 
+# Axis-aligned bounding box enclosing a list of points.
+fn Bounds(of []Vec3) Box {
+    var minV = fold a, v of {
+        yield Vec3{x: Min(a: a.x, b: v.x), y: Min(a: a.y, b: v.y),
+            z: Min(a: a.z, b: v.z)}
+    }
+
+    var maxV = fold a, v of {
+        yield Vec3{x: Max(a: a.x, b: v.x), y: Max(a: a.y, b: v.y),
+            z: Max(a: a.z, b: v.z)}
+    }
+
+    return Box{min: minV, max: maxV}
+}
+
 # ---------------------------------------------------------------------------
 # Tri Type (triangle index triple)
 # ---------------------------------------------------------------------------
@@ -139,35 +154,22 @@ fn Mesh.VertexNormals() []Vec3 {
 
 # Axis-aligned bounding box of the mesh.
 fn Mesh.Bounds() Box {
-    var minV = fold a, v self.vertices {
-        yield Vec3{x: Min(a: a.x, b: v.x), y: Min(a: a.y, b: v.y),
-            z: Min(a: a.z, b: v.z)}
-    }
-
-    var maxV = fold a, v self.vertices {
-        yield Vec3{x: Max(a: a.x, b: v.x), y: Max(a: a.y, b: v.y),
-            z: Max(a: a.z, b: v.z)}
-    }
-
-    return Box{min: minV, max: maxV}
+    return Bounds(of: self.vertices)
 }
 
 # X extent.
 fn Mesh.Width() Length {
-    var b = self.Bounds()
-    return b.max.x - b.min.x
+    return self.Bounds().Width()
 }
 
 # Y extent.
 fn Mesh.Depth() Length {
-    var b = self.Bounds()
-    return b.max.y - b.min.y
+    return self.Bounds().Depth()
 }
 
 # Z extent.
 fn Mesh.Height() Length {
-    var b = self.Bounds()
-    return b.max.z - b.min.z
+    return self.Bounds().Height()
 }
 
 # Minimum X.
@@ -275,35 +277,22 @@ fn PolyMesh.Solid() Solid {
 
 # Axis-aligned bounding box of the mesh.
 fn PolyMesh.Bounds() Box {
-    var minV = fold a, v self.vertices {
-        yield Vec3{x: Min(a: a.x, b: v.x), y: Min(a: a.y, b: v.y),
-            z: Min(a: a.z, b: v.z)}
-    }
-
-    var maxV = fold a, v self.vertices {
-        yield Vec3{x: Max(a: a.x, b: v.x), y: Max(a: a.y, b: v.y),
-            z: Max(a: a.z, b: v.z)}
-    }
-
-    return Box{min: minV, max: maxV}
+    return Bounds(of: self.vertices)
 }
 
 # X extent.
 fn PolyMesh.Width() Length {
-    var b = self.Bounds()
-    return b.max.x - b.min.x
+    return self.Bounds().Width()
 }
 
 # Y extent.
 fn PolyMesh.Depth() Length {
-    var b = self.Bounds()
-    return b.max.y - b.min.y
+    return self.Bounds().Depth()
 }
 
 # Z extent.
 fn PolyMesh.Height() Length {
-    var b = self.Bounds()
-    return b.max.z - b.min.z
+    return self.Bounds().Height()
 }
 
 # Minimum X.

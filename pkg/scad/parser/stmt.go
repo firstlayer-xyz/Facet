@@ -63,7 +63,7 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		// Display modifiers (* disable, ! show-only, % background, # highlight)
 		// alter preview rendering and have no Facet equivalent. Reject them
 		// rather than silently emitting the unmodified geometry.
-		return nil, p.errf("display modifier %q is not supported", modifierText(p.cur().Kind))
+		return nil, p.errf("display modifier %q is not supported", modifierText[p.cur().Kind])
 	case token.Ident:
 		// Lookahead for `name = ...` (assignment) vs a module call. Guarded
 		// for consistency with parseArgs; the lexer's trailing EOF token makes
@@ -76,18 +76,8 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 	return nil, p.errf("unexpected token %q at statement start", p.cur().Text)
 }
 
-func modifierText(k token.Kind) string {
-	switch k {
-	case token.Hash:
-		return "#"
-	case token.Bang:
-		return "!"
-	case token.Percent:
-		return "%"
-	case token.Star:
-		return "*"
-	}
-	return ""
+var modifierText = map[token.Kind]string{
+	token.Hash: "#", token.Bang: "!", token.Percent: "%", token.Star: "*",
 }
 
 func (p *parser) parseAssign() (ast.Stmt, error) {
@@ -131,9 +121,6 @@ func (p *parser) parseChildren() ([]ast.Stmt, error) {
 		s, err := p.parseStmt()
 		if err != nil {
 			return nil, err
-		}
-		if s == nil {
-			return nil, nil
 		}
 		return []ast.Stmt{s}, nil
 	}
@@ -235,25 +222,9 @@ func (p *parser) parseFor() (ast.Stmt, error) {
 	if _, err := p.expect(token.LParen); err != nil {
 		return nil, err
 	}
-	var iters []ast.ForIter
-	for {
-		v, err := p.expect(token.Ident)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := p.expect(token.Assign); err != nil {
-			return nil, err
-		}
-		rng, err := p.parseExpr()
-		if err != nil {
-			return nil, err
-		}
-		iters = append(iters, ast.ForIter{Var: v.Text, Range: rng})
-		if p.at(token.Comma) {
-			p.advance()
-			continue
-		}
-		break
+	iters, err := p.parseForIters()
+	if err != nil {
+		return nil, err
 	}
 	if _, err := p.expect(token.RParen); err != nil {
 		return nil, err

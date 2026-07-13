@@ -9,7 +9,6 @@ import "C"
 import (
 	"fmt"
 	"runtime"
-	"unsafe"
 )
 
 // ---------------------------------------------------------------------------
@@ -140,6 +139,18 @@ func (s *Solid) Offset(delta, edgeLen float64) *Solid {
 	return r
 }
 
+// splitPair wraps a kernel split result: both halves originate from src's
+// geometry, so each carries its own copy of src's FaceMap.
+func splitPair(src *Solid, pair C.FacetSolidPair) [2]*Solid {
+	out := [2]*Solid{newSolid(pair.first), newSolid(pair.second)}
+	for _, r := range out {
+		if r != nil {
+			r.FaceMap = src.withFaceMap()
+		}
+	}
+	return out
+}
+
 // SplitSolid splits m by cutter, returning [inside, outside]. Both halves
 // originate from m's geometry, so both carry m's FaceMap; cutter's FaceMap is
 // intentionally not propagated — its faces don't appear in either result.
@@ -149,15 +160,7 @@ func SplitSolid(m, cutter *Solid) [2]*Solid {
 	C.facet_split(m.ptr, cutter.ptr, &pair)
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(cutter)
-	first := newSolid(pair.first)
-	if first != nil {
-		first.FaceMap = m.withFaceMap()
-	}
-	second := newSolid(pair.second)
-	if second != nil {
-		second.FaceMap = m.withFaceMap()
-	}
-	return [2]*Solid{first, second}
+	return splitPair(m, pair)
 }
 
 // SplitSolidByPlane splits a solid by an infinite plane, returning [above, below].
@@ -166,15 +169,7 @@ func SplitSolidByPlane(s *Solid, nx, ny, nz, offset float64) [2]*Solid {
 	var pair C.FacetSolidPair
 	C.facet_split_by_plane(s.ptr, C.double(nx), C.double(ny), C.double(nz), C.double(offset), &pair)
 	runtime.KeepAlive(s)
-	first := newSolid(pair.first)
-	if first != nil {
-		first.FaceMap = s.withFaceMap()
-	}
-	second := newSolid(pair.second)
-	if second != nil {
-		second.FaceMap = s.withFaceMap()
-	}
-	return [2]*Solid{first, second}
+	return splitPair(s, pair)
 }
 
 // ComposeSolids assembles non-overlapping solids into one without boolean
@@ -189,17 +184,13 @@ func ComposeSolids(solids []*Solid) (*Solid, error) {
 		ptrs[i] = s.ptr
 	}
 	var ret C.FacetSolidRet
-	C.facet_compose((**C.ManifoldPtr)(unsafe.Pointer(&ptrs[0])), C.int(len(solids)), &ret)
-	for _, s := range solids {
-		runtime.KeepAlive(s)
-	}
+	C.facet_compose(&ptrs[0], C.int(len(solids)), &ret)
+	runtime.KeepAlive(solids)
 	r := newSolid(ret)
 	if r == nil {
 		return nil, fmt.Errorf("ComposeSolids: compose failed")
 	}
-	for _, s := range solids {
-		r.FaceMap = mergeFaceMaps(r.FaceMap, s.FaceMap)
-	}
+	r.FaceMap = mergedFaceMaps(solids)
 	return r, nil
 }
 

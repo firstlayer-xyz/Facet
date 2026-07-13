@@ -13,17 +13,12 @@ interface FullCodeDeps {
 }
 
 let active = false;
-let dragMove: ((e: MouseEvent) => void) | null = null;
-let dragUp: (() => void) | null = null;
-let resizeMove: ((e: MouseEvent) => void) | null = null;
-let resizeUp: (() => void) | null = null;
+let listeners: AbortController | null = null;
 let deps: FullCodeDeps;
 
 export function initFullCode(d: FullCodeDeps) {
   deps = d;
-  deps.fullCodeBtn.addEventListener('click', () => {
-    if (active) exit(); else enter();
-  });
+  deps.fullCodeBtn.addEventListener('click', toggleFullCode);
 }
 
 export function toggleFullCode() {
@@ -94,6 +89,9 @@ function enter() {
     requestAnimationFrame(() => { resizePending = false; viewer.resize(); });
   };
 
+  listeners = new AbortController();
+  const opts = { signal: listeners.signal };
+
   // ── Drag to reposition ──
   let dragOffsetX = 0, dragOffsetY = 0, dragging = false;
   dragBar.addEventListener('mousedown', (e) => {
@@ -104,7 +102,7 @@ function enter() {
     dragBar.style.cursor = 'grabbing';
     e.preventDefault();
   });
-  dragMove = (e: MouseEvent) => {
+  const dragMove = (e: MouseEvent) => {
     if (!dragging) return;
     const appRect = app.getBoundingClientRect();
     let x = e.clientX - appRect.left - dragOffsetX;
@@ -114,14 +112,14 @@ function enter() {
     preview.style.left = x + 'px';
     preview.style.top = y + 'px';
   };
-  dragUp = () => {
+  const dragUp = () => {
     if (dragging) {
       dragging = false;
       dragBar.style.cursor = '';
     }
   };
-  document.addEventListener('mousemove', dragMove);
-  document.addEventListener('mouseup', dragUp);
+  document.addEventListener('mousemove', dragMove, opts);
+  document.addEventListener('mouseup', dragUp, opts);
 
   // ── Resize by dragging the bottom-right handle ──
   let resizing = false;
@@ -137,7 +135,7 @@ function enter() {
     e.preventDefault();
     e.stopPropagation();
   });
-  resizeMove = (e: MouseEvent) => {
+  const resizeMove = (e: MouseEvent) => {
     if (!resizing) return;
     const appRect = app.getBoundingClientRect();
     const previewRect = preview.getBoundingClientRect();
@@ -149,21 +147,19 @@ function enter() {
     preview.style.height = newH + 'px';
     scheduleResize();
   };
-  resizeUp = () => {
+  const resizeUp = () => {
     if (resizing) resizing = false;
   };
-  document.addEventListener('mousemove', resizeMove);
-  document.addEventListener('mouseup', resizeUp);
+  document.addEventListener('mousemove', resizeMove, opts);
+  document.addEventListener('mouseup', resizeUp, opts);
 
   requestAnimationFrame(() => viewer.resize());
 }
 
 function exit() {
   const { viewer, editorPanel, viewportPanel, canvasContainer, divider, fullCodeBtn } = deps;
-  if (dragMove) { document.removeEventListener('mousemove', dragMove); dragMove = null; }
-  if (dragUp) { document.removeEventListener('mouseup', dragUp); dragUp = null; }
-  if (resizeMove) { document.removeEventListener('mousemove', resizeMove); resizeMove = null; }
-  if (resizeUp) { document.removeEventListener('mouseup', resizeUp); resizeUp = null; }
+  listeners?.abort();
+  listeners = null;
 
   active = false;
   fullCodeBtn.classList.add('active');
