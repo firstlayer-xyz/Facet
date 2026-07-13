@@ -29,17 +29,17 @@ func TestFormat(t *testing.T) {
 		{
 			name:  "already correct simple function",
 			input: "fn Main() {\n    return 1\n}\n",
-			want:  "fn Main() {\n    return 1\n}\n",
+			want:  "fn Main() { return 1 }\n",
 		},
 		{
 			name:  "re-indent over-indented body",
-			input: "fn Main() {\n        return 1\n}\n",
-			want:  "fn Main() {\n    return 1\n}\n",
+			input: "fn Main() {\n        var x = 1\n        return x\n}\n",
+			want:  "fn Main() {\n    var x = 1\n    return x\n}\n",
 		},
 		{
 			name:  "re-indent under-indented body",
-			input: "fn Main() {\nreturn 1\n}\n",
-			want:  "fn Main() {\n    return 1\n}\n",
+			input: "fn Main() {\nvar x = 1\nreturn x\n}\n",
+			want:  "fn Main() {\n    var x = 1\n    return x\n}\n",
 		},
 		{
 			name: "if else",
@@ -107,9 +107,7 @@ return x + y
 
 var y = 20 mm
 
-fn Main() {
-    return x + y
-}
+fn Main() { return x + y }
 `,
 		},
 		{
@@ -123,9 +121,7 @@ return x + y
 			want: `var x = 10 mm
 var y = 20 mm
 
-fn Main() {
-    return x + y
-}
+fn Main() { return x + y }
 `,
 		},
 		{
@@ -136,9 +132,7 @@ return 1
 }
 `,
 			want: `# Top comment
-fn Main() {
-    return 1
-}
+fn Main() { return 1 }
 `,
 		},
 		{
@@ -149,9 +143,7 @@ return 1
 }
 `,
 			want: `// User comment
-fn Main() {
-    return 1
-}
+fn Main() { return 1 }
 `,
 		},
 		{
@@ -165,9 +157,7 @@ return x + y
 			want: `var x = 10 mm // width
 var y = 20 mm
 
-fn Main() {
-    return x + y
-}
+fn Main() { return x + y }
 `,
 		},
 		{
@@ -187,10 +177,7 @@ return 1 // the answer
 return self
 }
 `,
-			want: `fn Solid.Scale(f Number) Solid {
-    return self
-}
-`,
+			want: "fn Solid.Scale(f Number) Solid { return self }\n",
 		},
 		{
 			name: "deeply nested",
@@ -281,10 +268,7 @@ y Length
 return Point{x: 1 mm, y: 2 mm}
 }
 `,
-			want: `fn Main() {
-    return Point{x: 1 mm, y: 2 mm}
-}
-`,
+			want: "fn Main() { return Point{x: 1 mm, y: 2 mm} }\n",
 		},
 		{
 			name: "struct literal preserves explicit zeros",
@@ -292,10 +276,7 @@ return Point{x: 1 mm, y: 2 mm}
 return Vec3{x: 1 mm, y: 0 mm, z: 0 mm}
 }
 `,
-			want: `fn Main() {
-    return Vec3{x: 1 mm, y: 0 mm, z: 0 mm}
-}
-`,
+			want: "fn Main() { return Vec3{x: 1 mm, y: 0 mm, z: 0 mm} }\n",
 		},
 		{
 			name: "method chain splits on dot",
@@ -315,10 +296,7 @@ return Cube(x: 10 mm, y: 10 mm, z: 10 mm).Move(v: Vec3{x: 5 mm, y: 0 mm, z: 0 mm
 return 1 + 2 * 3
 }
 `,
-			want: `fn Main() {
-    return 1 + 2 * 3
-}
-`,
+			want: "fn Main() { return 1 + 2 * 3 }\n",
 		},
 		{
 			name: "assert statement",
@@ -366,10 +344,7 @@ return x
 return []Number[1, 2, 3]
 }
 `,
-			want: `fn Main() {
-    return []Number[1, 2, 3]
-}
-`,
+			want: "fn Main() { return []Number[1, 2, 3] }\n",
 		},
 		{
 			name: "typed array strips struct type",
@@ -377,10 +352,7 @@ return []Number[1, 2, 3]
 return []Vec3[Vec3{x: 1, y: 2, z: 3}, Vec3{x: 4, y: 5, z: 6}]
 }
 `,
-			want: `fn Main() {
-    return []Vec3[{x: 1, y: 2, z: 3}, {x: 4, y: 5, z: 6}]
-}
-`,
+			want: "fn Main() { return []Vec3[{x: 1, y: 2, z: 3}, {x: 4, y: 5, z: 6}] }\n",
 		},
 		{
 			name: "long array wraps to multi-line",
@@ -459,10 +431,7 @@ yield acc + elem
 }
 }
 `,
-			want: `fn Main() {
-    return fold acc, elem [1, 2, 3] { yield acc + elem }
-}
-`,
+			want: "fn Main() { return fold acc, elem [1, 2, 3] { yield acc + elem } }\n",
 		},
 		{
 			name: "field assignment",
@@ -482,34 +451,37 @@ return self
 		{
 			name: "param with default",
 			input: `fn Foo(x Length = 10) Length {
-return x
+var y = x
+return y
 }
 `,
 			want: `fn Foo(
     x Length = 10,
 ) Length {
-    return x
+    var y = x
+    return y
 }
-`,
-		},
+`},
 		{
 			name: "multi-line params group consecutive same-type without defaults",
 			input: `fn Frustum(r1 Length, r2 Length, h Length, segments Number = 0) Solid {
-return r1
+var out = r1
+return out
 }
 `,
 			want: `fn Frustum(
     r1, r2, h Length,
     segments Number = 0,
 ) Solid {
-    return r1
+    var out = r1
+    return out
 }
-`,
-		},
+`},
 		{
 			name: "multi-line params keep distinct types on separate group lines",
 			input: `fn Foo(a Length, b Length, c Number, d Number, e Angle = 0 deg) Solid {
-return a
+var out = a
+return out
 }
 `,
 			want: `fn Foo(
@@ -517,10 +489,10 @@ return a
     c, d Number,
     e Angle = 0 deg,
 ) Solid {
-    return a
+    var out = a
+    return out
 }
-`,
-		},
+`},
 		{
 			// Grouping Any params shares a type slot (the checker forces them to
 			// one concrete type), so independently-declared Any params must NOT
@@ -530,15 +502,13 @@ return a
 return a
 }
 `,
-			want: `fn Foo(a Any, b Any) Any {
-    return a
-}
-`,
+			want: "fn Foo(a Any, b Any) Any { return a }\n",
 		},
 		{
 			name: "independently-declared generic Any params are not merged multi-line",
 			input: `fn Foo(a Any, b Any, c Number = 0) Any {
-return a
+var out = a
+return out
 }
 `,
 			want: `fn Foo(
@@ -546,36 +516,34 @@ return a
     b Any,
     c Number = 0,
 ) Any {
-    return a
+    var out = a
+    return out
 }
-`,
-		},
+`},
 		{
 			// Author-declared generic groups DO share a type slot, so they must
 			// be preserved exactly as grouped.
 			name: "author-grouped generic Any params are preserved",
 			input: `fn Foo(a, b Any, c Number = 0) Any {
-return a
+var out = a
+return out
 }
 `,
 			want: `fn Foo(
     a, b Any,
     c Number = 0,
 ) Any {
-    return a
+    var out = a
+    return out
 }
-`,
-		},
+`},
 		{
 			name: "fraction preserved",
 			input: `fn Main() {
 return 1/2 mm
 }
 `,
-			want: `fn Main() {
-    return 1/2 mm
-}
-`,
+			want: "fn Main() { return 1/2 mm }\n",
 		},
 		{
 			name: "fraction without unit preserved",
@@ -583,10 +551,7 @@ return 1/2 mm
 return 1/2
 }
 `,
-			want: `fn Main() {
-    return 1/2
-}
-`,
+			want: "fn Main() { return 1/2 }\n",
 		},
 		{
 			name: "parenthesized division with unit",
@@ -594,10 +559,7 @@ return 1/2
 return (1 / 2) mm
 }
 `,
-			want: `fn Main() {
-    return (1 / 2) mm
-}
-`,
+			want: "fn Main() { return (1 / 2) mm }\n",
 		},
 		{
 			name: "parenthesized division without unit",
@@ -605,10 +567,7 @@ return (1 / 2) mm
 return (1 / 2)
 }
 `,
-			want: `fn Main() {
-    return 1 / 2
-}
-`,
+			want: "fn Main() { return 1 / 2 }\n",
 		},
 		{
 			name: "ternary",
@@ -616,10 +575,7 @@ return (1 / 2)
 return a > 0 ? 1 : 2
 }
 `,
-			want: `fn Main() {
-    return a > 0 ? 1 : 2
-}
-`,
+			want: "fn Main() { return a > 0 ? 1 : 2 }\n",
 		},
 		{
 			name: "nested ternary right-associative",
@@ -627,10 +583,7 @@ return a > 0 ? 1 : 2
 return a ? 1 : b ? 2 : 3
 }
 `,
-			want: `fn Main() {
-    return a ? 1 : b ? 2 : 3
-}
-`,
+			want: "fn Main() { return a ? 1 : b ? 2 : 3 }\n",
 		},
 		{
 			name: "ternary inside binary needs parens",
@@ -638,10 +591,7 @@ return a ? 1 : b ? 2 : 3
 return 1 + (a ? 2 : 3)
 }
 `,
-			want: `fn Main() {
-    return 1 + (a ? 2 : 3)
-}
-`,
+			want: "fn Main() { return 1 + (a ? 2 : 3) }\n",
 		},
 		{
 			name: "nil literal",
@@ -649,10 +599,7 @@ return 1 + (a ? 2 : 3)
 return nil
 }
 `,
-			want: `fn Lookup() Number? {
-    return nil
-}
-`,
+			want: "fn Lookup() Number? { return nil }\n",
 		},
 		{
 			name: "null-coalesce binds tighter than or",
@@ -660,10 +607,7 @@ return nil
 return a || x ?? 0
 }
 `,
-			want: `fn Main() {
-    return a || x ?? 0
-}
-`,
+			want: "fn Main() { return a || x ?? 0 }\n",
 		},
 		{
 			name: "optional field access",
@@ -671,10 +615,7 @@ return a || x ?? 0
 return p?.x
 }
 `,
-			want: `fn Main() {
-    return p?.x
-}
-`,
+			want: "fn Main() { return p?.x }\n",
 		},
 		{
 			name: "optional method call",
@@ -682,10 +623,7 @@ return p?.x
 return p?.Norm()
 }
 `,
-			want: `fn Main() {
-    return p?.Norm()
-}
-`,
+			want: "fn Main() { return p?.Norm() }\n",
 		},
 	}
 
@@ -884,5 +822,45 @@ func TestFormatTypedArrayInteriorComment(t *testing.T) {
 	}
 	if got := Format(prog2); got != out {
 		t.Fatalf("not idempotent:\nfirst:\n%s\nsecond:\n%s", out, got)
+	}
+}
+
+// TestCollapseSingleStatementFunction pins the rule: a function with a
+// single-statement body collapses onto one line — params and all — when the
+// whole line fits in 80 cols; extra statements, body comments, or an over-long
+// line keep it expanded.
+func TestCollapseSingleStatementFunction(t *testing.T) {
+	cases := []struct{ name, input, want string }{
+		{"no-param single return collapses",
+			"fn Foo() Solid {\n    return Cube(s: 10 mm)\n}\n",
+			"fn Foo() Solid { return Cube(s: 10 mm) }\n"},
+		{"method with receiver collapses",
+			"fn Solid.Twice() Solid {\n    return self + self\n}\n",
+			"fn Solid.Twice() Solid { return self + self }\n"},
+		{"single non-return statement collapses",
+			"fn Foo() {\n    assert true, \"ok\"\n}\n",
+			"fn Foo() { assert true, \"ok\" }\n"},
+		{"params that fit collapse",
+			"fn Add(a, b Number) Number {\n    return a + b\n}\n",
+			"fn Add(a, b Number) Number { return a + b }\n"},
+		{"params that overflow keep it expanded",
+			"fn Combine(alpha Number, beta Number, gamma Number, delta Number) Number {\n    return alpha + beta + gamma + delta * epsilon * zeta\n}\n",
+			"fn Combine(alpha, beta, gamma, delta Number) Number {\n    return alpha + beta + gamma + delta * epsilon * zeta\n}\n"},
+		{"multiple statements keep it expanded",
+			"fn Foo() Number {\n    var x = 1\n    return x\n}\n",
+			"fn Foo() Number {\n    var x = 1\n    return x\n}\n"},
+		{"body comment keeps it expanded",
+			"fn Foo() Number {\n    // keep me\n    return 1\n}\n",
+			"fn Foo() Number {\n    // keep me\n    return 1\n}\n"},
+		{"over-long collapse stays expanded",
+			"fn Compute() Length {\n    return alpha + beta + gamma + delta + epsilon + zeta + eta + theta + iota\n}\n",
+			"fn Compute() Length {\n    return alpha + beta + gamma + delta + epsilon + zeta + eta + theta + iota\n}\n"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatString(tt.input); got != tt.want {
+				t.Errorf("Format() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

@@ -100,6 +100,4 @@ fn fixPosition(p []Number) []Number {
     return [p[0] / l, p[1] / l, p[2] / l]
 }
 
-fn Main() Solid {
-    return icosphere(radius: 10, recursion: 1)
-}
+fn Main() Solid { return icosphere(radius: 10, recursion: 1) }

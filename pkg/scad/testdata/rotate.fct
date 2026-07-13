@@ -1,3 +1,1 @@
-fn Main() Solid {
-    return Cube(s: 5 mm).Rotate(z: 45 deg)
-}
+fn Main() Solid { return Cube(s: 5 mm).Rotate(z: 45 deg) }

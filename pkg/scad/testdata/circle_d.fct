@@ -1,3 +1,1 @@
-fn Main() Sketch {
-    return Circle(d: 10 mm).Move(x: -10 mm / 2, y: -10 mm / 2)
-}
+fn Main() Sketch { return Circle(d: 10 mm).Move(x: -10 mm / 2, y: -10 mm / 2) }

@@ -1,3 +1,1 @@
-fn Main() Solid {
-    return Cube(x: 20 mm, y: 10 mm, z: 5 mm)
-}
+fn Main() Solid { return Cube(x: 20 mm, y: 10 mm, z: 5 mm) }

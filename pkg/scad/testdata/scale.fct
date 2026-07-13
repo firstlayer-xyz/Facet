@@ -1,3 +1,1 @@
-fn Main() Solid {
-    return Cube(s: 5 mm).Scale(x: 2, y: 1, z: 1)
-}
+fn Main() Solid { return Cube(s: 5 mm).Scale(x: 2, y: 1, z: 1) }
