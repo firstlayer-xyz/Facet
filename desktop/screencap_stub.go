@@ -6,7 +6,7 @@ import "fmt"
 
 // startWindowCapture is unavailable off macOS. A loud error, not a silent
 // fallback: page-mode recording is a native-macOS capability.
-func startWindowCapture(outPath string, pid int) error {
+func startWindowCapture(outPath string, pid, width, height int) error {
 	return fmt.Errorf("window recording is only supported on macOS")
 }
 

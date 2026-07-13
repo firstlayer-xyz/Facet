@@ -24,8 +24,10 @@ static void fcSetErr(char *errbuf, int errlen, NSString *msg) {
 }
 
 // facet_start_window_capture records the on-screen window owned by pid to
-// outPath (mp4). Returns 0 on success; non-zero with errbuf populated.
-int facet_start_window_capture(int pid, const char *outPath, char *errbuf, int errlen) {
+// outPath (mp4). If width>0 && height>0, the video is scaled to those pixel
+// dimensions; otherwise it uses the window's native (Retina) pixel size.
+// Returns 0 on success; non-zero with errbuf populated.
+int facet_start_window_capture(int pid, const char *outPath, int width, int height, char *errbuf, int errlen) {
     if (@available(macOS 15.0, *)) {
         if (gStream != nil) { fcSetErr(errbuf, errlen, @"already recording"); return 1; }
 
@@ -63,9 +65,17 @@ int facet_start_window_capture(int pid, const char *outPath, char *errbuf, int e
         SCContentFilter *filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:target];
 
         SCStreamConfiguration *cfg = [[SCStreamConfiguration alloc] init];
-        // Match the window's pixel dimensions so the video is 1:1 with the UI.
-        cfg.width = (size_t)(filter.contentRect.size.width * filter.pointPixelScale);
-        cfg.height = (size_t)(filter.contentRect.size.height * filter.pointPixelScale);
+        if (width > 0 && height > 0) {
+            // Caller-chosen output size; scale the window content to fit it
+            // (preserving aspect — letterboxed if it differs from the window).
+            cfg.width = (size_t)width;
+            cfg.height = (size_t)height;
+            cfg.scalesToFit = YES;
+        } else {
+            // Default: match the window's pixel dimensions so the video is 1:1.
+            cfg.width = (size_t)(filter.contentRect.size.width * filter.pointPixelScale);
+            cfg.height = (size_t)(filter.contentRect.size.height * filter.pointPixelScale);
+        }
         cfg.minimumFrameInterval = CMTimeMake(1, 60);
         cfg.showsCursor = YES;
 
@@ -135,12 +145,14 @@ import (
 )
 
 // startWindowCapture begins recording the on-screen window owned by pid to
-// outPath (an .mp4). It blocks until ScreenCaptureKit has started (or errored).
-func startWindowCapture(outPath string, pid int) error {
+// outPath (an .mp4). width/height set the output pixel size when both > 0;
+// otherwise the window's native size is used. Blocks until ScreenCaptureKit has
+// started (or errored).
+func startWindowCapture(outPath string, pid, width, height int) error {
 	cPath := C.CString(outPath)
 	defer C.free(unsafe.Pointer(cPath))
 	var errbuf [512]C.char
-	rc := C.facet_start_window_capture(C.int(pid), cPath, &errbuf[0], C.int(len(errbuf)))
+	rc := C.facet_start_window_capture(C.int(pid), cPath, C.int(width), C.int(height), &errbuf[0], C.int(len(errbuf)))
 	if rc != 0 {
 		return fmt.Errorf("%s", C.GoString(&errbuf[0]))
 	}

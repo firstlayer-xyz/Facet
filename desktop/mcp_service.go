@@ -225,11 +225,18 @@ type guiSetCameraInput struct {
 }
 
 type guiRecordStartInput struct {
-	Mode string `json:"mode" jsonschema:"Capture surface: 'canvas' (3D viewer only) or 'page' (full UI)."`
-	FPS  int    `json:"fps,omitempty" jsonschema:"Frames per second. Omit for 30."`
+	Mode   string `json:"mode" jsonschema:"Capture surface: 'canvas' (3D viewer only) or 'page' (full UI)."`
+	FPS    int    `json:"fps,omitempty" jsonschema:"Frames per second. Omit for 30."`
+	Width  int    `json:"width,omitempty" jsonschema:"Output video width in pixels (page mode only). Omit for the window's native size."`
+	Height int    `json:"height,omitempty" jsonschema:"Output video height in pixels (page mode only). Omit for the window's native size."`
 }
 
 type guiRecordStopInput struct{}
+
+type guiSetWindowSizeInput struct {
+	Width  int `json:"width" jsonschema:"App window width in points."`
+	Height int `json:"height" jsonschema:"App window height in points."`
+}
 
 // requestPermissionInput is the payload the Claude CLI sends to the tool named
 // by --permission-prompt-tool whenever a tool use is not pre-approved.
@@ -1108,6 +1115,13 @@ func (m *MCPService) buildServer(ctx context.Context) *mcp.Server {
 		Description: "Stop the current recording and return the saved video file path.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input guiRecordStopInput) (*mcp.CallToolResult, any, error) {
 		return m.invokeGUI(ctx, "record.stop", input)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "gui_set_window_size",
+		Description: "Resize the app window (points). Lays out the whole UI at that size so recordings frame to it.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input guiSetWindowSizeInput) (*mcp.CallToolResult, any, error) {
+		return m.invokeGUI(ctx, "window.setSize", input)
 	})
 
 	return server

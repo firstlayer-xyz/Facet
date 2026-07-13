@@ -294,10 +294,11 @@ func (a *App) SaveRecording(base64Webm string) (string, error) {
 var activeWindowRecording atomic.Pointer[string]
 
 // StartWindowCapture begins a native, window-scoped screen recording (page
-// mode) of Facet's own window and returns the .mp4 path it writes to. Silent
-// after the one-time macOS "Screen Recording" permission grant — no per-record
-// picker. Bound via Wails.
-func (a *App) StartWindowCapture() (string, error) {
+// mode) of Facet's own window and returns the .mp4 path it writes to. When
+// width and height are both > 0 the video is scaled to that pixel size;
+// otherwise the window's native size is used. Silent after the one-time macOS
+// "Screen Recording" permission grant — no per-record picker. Bound via Wails.
+func (a *App) StartWindowCapture(width, height int) (string, error) {
 	dir, err := recordingsDir()
 	if err != nil {
 		return "", err
@@ -306,7 +307,7 @@ func (a *App) StartWindowCapture() (string, error) {
 		return "", err
 	}
 	path := filepath.Join(dir, fmt.Sprintf("demo-%d.mp4", recordingSeq.Add(1)))
-	if err := startWindowCapture(path, os.Getpid()); err != nil {
+	if err := startWindowCapture(path, os.Getpid(), width, height); err != nil {
 		return "", err
 	}
 	activeWindowRecording.Store(&path)

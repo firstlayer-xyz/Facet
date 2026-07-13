@@ -13,6 +13,7 @@ import {
   StartWindowCapture,
   StopWindowCapture,
 } from '../wailsjs/go/main/App';
+import { WindowSetSize } from '../wailsjs/runtime/runtime';
 import { on, type AutomationInvokePayload } from './events';
 import type { Viewer } from './viewer';
 import { Recorder, blobToDataURL } from './recorder';
@@ -34,6 +35,7 @@ export function registerCommand(name: string, run: CommandFn): void {
 }
 
 export function initAutomation(deps: AutomationDeps): void {
+  registerWindowCommands();
   registerViewerCommands(deps.viewer);
   registerRecordCommands(deps.viewer.getCanvas());
 
@@ -49,6 +51,19 @@ export function initAutomation(deps: AutomationDeps): void {
     } catch (e) {
       await AutomationResult(payload.id, '', e instanceof Error ? e.message : String(e));
     }
+  });
+}
+
+function registerWindowCommands(): void {
+  // Resize the app window (points). This lays out the whole UI at the target
+  // size, so both the WebGL canvas (canvas recording) and the captured window
+  // (page recording) follow — the clean way to fix a demo's frame.
+  registerCommand('window.setSize', async (p) => {
+    const w = Math.round(Number(p.width));
+    const h = Math.round(Number(p.height));
+    if (!(w > 0 && h > 0)) throw new Error('window.setSize needs positive width and height');
+    WindowSetSize(w, h);
+    return null;
   });
 }
 
@@ -75,7 +90,12 @@ function registerRecordCommands(canvas: HTMLCanvasElement): void {
     if (active) throw new Error(`already recording (${active})`);
     const mode: RecordMode = p.mode === 'page' ? 'page' : 'canvas';
     if (mode === 'page') {
-      await StartWindowCapture();
+      // width/height (px) set the page video's output size; 0 = window's
+      // native size. For canvas mode, size follows the window — use
+      // window.setSize first.
+      const w = p.width != null ? Number(p.width) : 0;
+      const h = p.height != null ? Number(p.height) : 0;
+      await StartWindowCapture(w, h);
     } else {
       recorder.start({ fps: p.fps != null ? Number(p.fps) : undefined });
     }
