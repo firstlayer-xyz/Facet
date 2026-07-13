@@ -17,6 +17,7 @@ import { WindowSetSize } from '../wailsjs/runtime/runtime';
 import { on, type AutomationInvokePayload } from './events';
 import type { Viewer } from './viewer';
 import { evalStore } from './eval-store';
+import { setPlaying } from './playback';
 import { Recorder, blobToDataURL } from './recorder';
 
 type RecordMode = 'canvas' | 'page';
@@ -41,6 +42,7 @@ export function initAutomation(deps: AutomationDeps): void {
   registerWindowCommands();
   registerEditorCommands(deps.loadCode);
   registerViewerCommands(deps.viewer);
+  registerAnimationCommands();
   registerRecordCommands(deps.viewer.getCanvas());
 
   on('automation:invoke', async (payload: AutomationInvokePayload) => {
@@ -101,6 +103,25 @@ function registerViewerCommands(viewer: Viewer): void {
       distance: p.distance != null ? Number(p.distance) : undefined,
       target: p.target,
     });
+    return null;
+  });
+
+  // Frame the model to fit the viewport — handy before recording.
+  registerCommand('viewer.frameAll', async () => {
+    viewer.fitToView();
+    return null;
+  });
+}
+
+function registerAnimationCommands(): void {
+  // Play/pause the wall-clock animation loop (only meaningful for an Animation
+  // entry point; a no-op otherwise).
+  registerCommand('animation.play', async () => {
+    setPlaying(true);
+    return null;
+  });
+  registerCommand('animation.pause', async () => {
+    setPlaying(false);
     return null;
   });
 }
