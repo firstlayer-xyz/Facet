@@ -646,6 +646,11 @@ func TestFormatIdempotent(t *testing.T) {
 		"var x = 10 mm\n\nfn Main() {\n    return x\n}\n",
 		"# Doc comment\nfn Main() {\n    return 1\n}\n",
 		"fn Main() {\n    var arr = for i [0:<3] {\n        yield i * 2\n    }\n    return arr\n}\n",
+		// A statement whose value wraps to several lines, followed by another
+		// statement. The blank-line heuristic must measure the gap from the value's
+		// closing ')', not its start line — otherwise the second pass reads a
+		// phantom blank and splits the two statements apart.
+		"fn Main() {\n    var pts = Polygon(points: [Vec2{x: 0 mm, y: 0 mm}, Vec2{x: 10 mm, y: 0 mm}, Vec2{x: 0 mm, y: 10 mm}])\n    return pts.Extrude(z: 5 mm)\n}\n",
 	}
 	for _, src := range sources {
 		first := formatString(src)

@@ -206,10 +206,11 @@ func (p *parser) parsePostfixOn(expr Expr) (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := p.expect(TokenRParen); err != nil {
+		rparen, err := p.expect(TokenRParen)
+		if err != nil {
 			return nil, err
 		}
-		expr = &MethodCallExpr{Receiver: expr, Method: method.Text, Args: args, Pos: Pos{methodLine, methodCol}, Optional: optional}
+		expr = &MethodCallExpr{Receiver: expr, Method: method.Text, Args: args, Pos: Pos{methodLine, methodCol}, Optional: optional, EndLine: rparen.Line}
 	}
 	// Qualified struct literal: T.Thread { field: val }. After parsing it,
 	// continue the chain so `.method()` / `.field` can follow.

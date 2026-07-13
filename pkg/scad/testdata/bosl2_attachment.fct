@@ -37,7 +37,6 @@ fn b2_cuboid(
         false,
         edges
     ) : _cube(size.x, size.y, size.z)
-
     return B2{solid: box.AlignCenter(pos: Vec3{}), size: size}
 }
 

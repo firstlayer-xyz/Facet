@@ -289,6 +289,11 @@ type CallExpr struct {
 	Name string
 	Args []Expr
 	Pos  Pos
+	// EndLine is the source line of the closing ')'. The formatter reads it to
+	// tell whether a blank line separates a statement from the next one; a
+	// multi-line construct's start line alone would misjudge the gap. 0 when the
+	// node wasn't produced by the parser (e.g. synthesized by a later pass).
+	EndLine int
 }
 
 func (*CallExpr) exprNode() {}
@@ -297,9 +302,10 @@ func (*CallExpr) exprNode() {}
 // Arguments are positional (no NamedArg wrapping). Builtins are always free
 // functions — never methods.
 type BuiltinCallExpr struct {
-	Name string // includes the _ prefix, e.g. "_cylinder"
-	Args []Expr
-	Pos  Pos
+	Name    string // includes the _ prefix, e.g. "_cylinder"
+	Args    []Expr
+	Pos     Pos
+	EndLine int // source line of the closing ')'; see CallExpr.EndLine
 }
 
 func (*BuiltinCallExpr) exprNode() {}
@@ -322,6 +328,7 @@ type MethodCallExpr struct {
 	Args     []Expr
 	Pos      Pos
 	Optional bool
+	EndLine  int // source line of the closing ')'; see CallExpr.EndLine
 }
 
 func (*MethodCallExpr) exprNode() {}
@@ -394,6 +401,7 @@ type ArrayLitExpr struct {
 	// side-list rather than a per-element wrapper keeps checker/evaluator, which
 	// iterate .Elems, unchanged.
 	ElemComments [][]Comment
+	EndLine      int // source line of the closing ']'; see CallExpr.EndLine
 }
 
 func (*ArrayLitExpr) exprNode() {}
@@ -439,6 +447,7 @@ type ForYieldExpr struct {
 	Clauses []*ForClause
 	Body    []Stmt
 	Pos     Pos
+	EndLine int // source line of the closing '}'; see CallExpr.EndLine
 }
 
 func (*ForYieldExpr) exprNode() {}
@@ -453,6 +462,7 @@ type FoldExpr struct {
 	Iter    Expr
 	Body    []Stmt
 	Pos     Pos
+	EndLine int // source line of the closing '}'; see CallExpr.EndLine
 }
 
 func (*FoldExpr) exprNode() {}
@@ -621,6 +631,7 @@ type StructLitExpr struct {
 	// by the checker so go-to-definition on `Thread` resolves to the type
 	// declaration rather than to the library variable T.
 	TypeNamePos Pos
+	EndLine     int // source line of the closing '}'; see CallExpr.EndLine
 }
 
 func (*StructLitExpr) exprNode() {}
