@@ -1,13 +1,9 @@
-// In-app screen recorder for the automation system. `canvas` mode captures the
-// WebGL viewer canvas via captureStream + MediaRecorder (which works because the
-// renderer keeps preserveDrawingBuffer). `page` mode (full UI) is pending the
-// getDisplayMedia-in-WKWebView spike and is added by Task 7 — until then it is a
-// loud error, not a silent fallback to canvas.
+// In-app canvas recorder. Captures the WebGL viewer canvas via captureStream +
+// MediaRecorder (which works because the renderer keeps preserveDrawingBuffer).
+// This is the `canvas` capture surface only; whole-window (`page`) recording is
+// done natively on the Go side (ScreenCaptureKit) — see automation.ts.
 
-export type RecordMode = 'canvas' | 'page';
-
-export interface RecordOpts {
-  mode: RecordMode;
+export interface CanvasRecordOpts {
   fps?: number;
 }
 
@@ -17,13 +13,8 @@ export class Recorder {
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
-  async start(opts: RecordOpts): Promise<void> {
+  start(opts: CanvasRecordOpts): void {
     if (this.rec) throw new Error('recorder: already recording');
-    if (opts.mode !== 'canvas') {
-      throw new Error(
-        `recorder: mode '${opts.mode}' not yet supported (page capture pending getDisplayMedia spike)`,
-      );
-    }
     const stream = this.canvas.captureStream(opts.fps ?? 30);
     this.chunks = [];
     this.rec = new MediaRecorder(stream, { mimeType: 'video/webm' });

@@ -7,10 +7,17 @@
 // The registry is the single vocabulary shared by both front doors: the
 // /control HTTP route and the gui_* MCP tools both drive these same commands.
 
-import { AutomationResult, SaveRecording } from '../wailsjs/go/main/App';
+import {
+  AutomationResult,
+  SaveRecording,
+  StartWindowCapture,
+  StopWindowCapture,
+} from '../wailsjs/go/main/App';
 import { on, type AutomationInvokePayload } from './events';
 import type { Viewer } from './viewer';
-import { Recorder, blobToDataURL, type RecordMode } from './recorder';
+import { Recorder, blobToDataURL } from './recorder';
+
+type RecordMode = 'canvas' | 'page';
 
 export interface AutomationDeps {
   viewer: Viewer;
@@ -59,16 +66,33 @@ function registerViewerCommands(viewer: Viewer): void {
 
 function registerRecordCommands(canvas: HTMLCanvasElement): void {
   const recorder = new Recorder(canvas);
+  // Track the active surface so record.stop routes to the matching stop path.
+  // 'canvas' records the WebGL viewer here in the WebView; 'page' records the
+  // whole window natively (ScreenCaptureKit) on the Go side.
+  let active: RecordMode | null = null;
+
   registerCommand('record.start', async (p) => {
-    await recorder.start({
-      mode: (p.mode as RecordMode) ?? 'canvas',
-      fps: p.fps != null ? Number(p.fps) : undefined,
-    });
+    if (active) throw new Error(`already recording (${active})`);
+    const mode: RecordMode = p.mode === 'page' ? 'page' : 'canvas';
+    if (mode === 'page') {
+      await StartWindowCapture();
+    } else {
+      recorder.start({ fps: p.fps != null ? Number(p.fps) : undefined });
+    }
+    active = mode;
     return null;
   });
+
   registerCommand('record.stop', async () => {
-    const blob = await recorder.stop();
-    const path = await SaveRecording(await blobToDataURL(blob));
+    if (!active) throw new Error('not recording');
+    let path: string;
+    if (active === 'page') {
+      path = await StopWindowCapture();
+    } else {
+      const blob = await recorder.stop();
+      path = await SaveRecording(await blobToDataURL(blob));
+    }
+    active = null;
     return { path };
   });
 }

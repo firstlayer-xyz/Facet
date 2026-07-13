@@ -289,6 +289,41 @@ func (a *App) SaveRecording(base64Webm string) (string, error) {
 	return path, nil
 }
 
+// activeWindowRecording holds the output path of the in-flight native window
+// recording so StopWindowCapture can return it. nil when not recording.
+var activeWindowRecording atomic.Pointer[string]
+
+// StartWindowCapture begins a native, window-scoped screen recording (page
+// mode) of Facet's own window and returns the .mp4 path it writes to. Silent
+// after the one-time macOS "Screen Recording" permission grant — no per-record
+// picker. Bound via Wails.
+func (a *App) StartWindowCapture() (string, error) {
+	dir, err := recordingsDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, fmt.Sprintf("demo-%d.mp4", recordingSeq.Add(1)))
+	if err := startWindowCapture(path, os.Getpid()); err != nil {
+		return "", err
+	}
+	activeWindowRecording.Store(&path)
+	return path, nil
+}
+
+// StopWindowCapture finalizes the native window recording and returns its path.
+func (a *App) StopWindowCapture() (string, error) {
+	if err := stopWindowCapture(); err != nil {
+		return "", err
+	}
+	if p := activeWindowRecording.Swap(nil); p != nil {
+		return *p, nil
+	}
+	return "", nil
+}
+
 // beforeClose is called when the user tries to close the window.
 // Returns true to prevent closing (user chose to cancel).
 func (a *App) beforeClose(ctx context.Context) bool {
