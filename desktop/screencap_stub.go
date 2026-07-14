@@ -10,6 +10,14 @@ func startWindowCapture(outPath string, pid, width, height int) error {
 	return fmt.Errorf("window recording is only supported on macOS")
 }
 
+func startCompositeCapture(outPath string, pid, width, height int) error {
+	return fmt.Errorf("screen recording is only supported on macOS")
+}
+
+func captureAddApp(appName string) error {
+	return fmt.Errorf("screen recording is only supported on macOS")
+}
+
 func stopWindowCapture() error {
 	return fmt.Errorf("window recording is only supported on macOS")
 }

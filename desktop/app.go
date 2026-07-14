@@ -394,6 +394,29 @@ func (a *App) StartWindowCapture(width, height int, name string) (string, error)
 	return path, nil
 }
 
+// StartScreenCapture begins recording Facet's windows composited on a clean
+// background (no desktop) to a timestamped mp4, cursor visible — for shots that
+// hand a model off to an external app. Fold that app in with CaptureAddApp.
+// Stopped via StopWindowCapture (shared recording).
+func (a *App) StartScreenCapture(width, height int, name string) (string, error) {
+	path, err := newRecordingPath(".mp4", name)
+	if err != nil {
+		return "", err
+	}
+	if err := startCompositeCapture(path, os.Getpid(), width, height); err != nil {
+		return "", err
+	}
+	activeWindowRecording.Store(&path)
+	return path, nil
+}
+
+// CaptureAddApp folds a launched app's window into the active composite
+// recording (e.g. "BambuStudio" after SendToSlicer), so the handoff is captured
+// on the clean background. Blocks until the app's window appears (or times out).
+func (a *App) CaptureAddApp(appName string) error {
+	return captureAddApp(appName)
+}
+
 // StopWindowCapture finalizes the native window recording and returns its path.
 func (a *App) StopWindowCapture() (string, error) {
 	if err := stopWindowCapture(); err != nil {

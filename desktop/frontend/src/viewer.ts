@@ -2070,11 +2070,19 @@ export class Viewer {
     }
   }
 
+  private animClock = new THREE.Clock();
+
   private animate(): void {
     requestAnimationFrame(() => this.animate());
     if (!this._visible) return;
     this.applyKeyboardOrbit();
-    this.activeControls.update();
+    // Pass elapsed time so OrbitControls' auto-rotate is time-based, not
+    // per-frame: one turntable revolution takes a fixed wall-clock duration
+    // (60/autoRotateSpeed seconds) regardless of render framerate, so a screen
+    // recording captures a predictable number of rotations. Clamp the delta so a
+    // long stall (tab hidden) can't jump the camera on resume.
+    const dt = Math.min(this.animClock.getDelta(), 0.1);
+    this.activeControls.update(dt);
     this._updatePerspectiveClip();
     for (const cb of this.frameCallbacks) cb(this.activeCamera);
 

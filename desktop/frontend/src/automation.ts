@@ -12,6 +12,8 @@ import {
   SaveRecording,
   SaveImage,
   StartWindowCapture,
+  StartScreenCapture,
+  CaptureAddApp,
   StopWindowCapture,
   CaptureWindowImage,
 } from '../wailsjs/go/main/App';
@@ -22,10 +24,11 @@ import { evalStore } from './eval-store';
 import { setPlaying } from './playback';
 import { UI_THEMES } from './themes';
 import { Recorder, blobToDataURL } from './recorder';
+import { DemoCursor } from './demo-cursor';
 
 export type DarkMode = 'light' | 'dark' | 'auto';
 
-type RecordMode = 'canvas' | 'page';
+type RecordMode = 'canvas' | 'page' | 'screen';
 
 /** The editor operations automation drives — a subset of EditorHandle plus a
  *  build trigger. Kept as an interface so automation.ts stays decoupled from
@@ -55,9 +58,13 @@ export interface AutomationDeps {
     open: () => void;
     send: (prompt: string) => void;
     isStreaming: () => boolean;
+    /** Text of the assistant's latest message — read it to reply to questions. */
+    lastResponse: () => string;
   };
   /** Show/hide the code editor panel (e.g. hidden for the AI demo). */
   setCodeVisible: (visible: boolean) => void;
+  /** Export the current model and launch it in the given slicer (by id). */
+  sendToSlicer: (id: string) => Promise<void>;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -65,6 +72,19 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 type CommandFn = (params: any) => Promise<unknown>;
 
 const registry = new Map<string, CommandFn>();
+
+// One synthetic pointer shared across demos: the 3D face-click nav and
+// cursor-driven UI clicks (e.g. pressing "Send to Slicer" on camera).
+const demoCursor = new DemoCursor();
+
+/** Move the demo pointer to a UI element's centre and pulse — a visible click. */
+async function cursorPulseAt(selector: string): Promise<void> {
+  const el = document.querySelector<HTMLElement>(selector);
+  if (!el) throw new Error(`cursor: no element for selector "${selector}"`);
+  const r = el.getBoundingClientRect();
+  await demoCursor.moveTo(r.left + r.width / 2, r.top + r.height / 2);
+  await demoCursor.click();
+}
 
 /** Register a command. Grows as demos need more of the GUI driven. */
 export function registerCommand(name: string, run: CommandFn): void {
@@ -83,6 +103,7 @@ export function initAutomation(deps: AutomationDeps): void {
   registerAnimationCommands();
   registerScreenshotCommands(deps.viewer);
   registerRecordCommands(deps.viewer.getCanvas());
+  registerSlicerCommands(deps.sendToSlicer);
 
   on('automation:invoke', async (payload: AutomationInvokePayload) => {
     const cmd = registry.get(payload.name);
@@ -113,6 +134,24 @@ function registerUICommands(setCodeVisible: (visible: boolean) => void): void {
     return null;
   });
 
+  // Like ui.click, but the visible demo pointer travels to the element and pulses
+  // first (as in face-click nav), THEN really clicks it — so a recording shows the
+  // action. `text` disambiguates when a selector matches several elements (e.g.
+  // ".slicer-item" text:"OrcaSlicer" picks that entry in the slicer menu).
+  registerCommand('ui.clickCursor', async (p) => {
+    const selector = String(p.selector ?? '');
+    if (!selector) throw new Error('ui.clickCursor: missing selector');
+    const text = p.text != null ? String(p.text) : null;
+    const els = Array.from(document.querySelectorAll<HTMLElement>(selector));
+    const el = text != null ? els.find((e) => (e.textContent ?? '').includes(text)) : els[0];
+    if (!el) throw new Error(`ui.clickCursor: no element for "${selector}"${text ? ` with text "${text}"` : ''}`);
+    const r = el.getBoundingClientRect();
+    await demoCursor.moveTo(r.left + r.width / 2, r.top + r.height / 2);
+    await demoCursor.click();
+    el.click();
+    return null;
+  });
+
   // Show/hide a named panel idempotently (unlike ui.click, which toggles). Only
   // "code" today — hide the editor to focus a demo on the assistant + viewer.
   registerCommand('ui.setPanel', async (p) => {
@@ -124,7 +163,7 @@ function registerUICommands(setCodeVisible: (visible: boolean) => void): void {
   });
 }
 
-function registerAssistantCommands(assistant: { open: () => void; send: (prompt: string) => void; isStreaming: () => boolean }): void {
+function registerAssistantCommands(assistant: { open: () => void; send: (prompt: string) => void; isStreaming: () => boolean; lastResponse: () => string }): void {
   // Open the AI assistant drawer.
   registerCommand('assistant.open', async () => {
     assistant.open();
@@ -142,6 +181,10 @@ function registerAssistantCommands(assistant: { open: () => void; send: (prompt:
   // Report whether the assistant is mid-response — drivers poll this to do
   // multi-round conversations, waiting for the agent between prompts.
   registerCommand('assistant.status', async () => ({ streaming: assistant.isStreaming() }));
+  // Return the assistant's latest message text — a driver reads this to answer
+  // the AI's clarifying questions and hold a real back-and-forth (no need for a
+  // "don't ask questions" prompt).
+  registerCommand('assistant.response', async () => ({ text: assistant.lastResponse() }));
 }
 
 function registerParamCommands(setParam: (name: string, value: number | boolean | string) => boolean): void {
@@ -302,12 +345,23 @@ function registerViewerCommands(viewer: Viewer, setAutoRotate: (on: boolean) => 
   });
 
   // Click a face at normalized canvas coords (default centre) as if the user
-  // clicked it: highlights it and navigates the editor to the op that made it.
-  // Repeated calls at the same spot cycle through the ops (face-click nav demo).
+  // clicked it: a visible pointer travels to the spot and pulses (so a screen
+  // recording shows what caused the highlight), then the face is picked —
+  // highlighting it and navigating the editor to the op that made it. Repeated
+  // calls at the same spot cycle through the ops (face-click nav demo).
   registerCommand('viewer.clickFace', async (p) => {
     const x = p.x != null ? Number(p.x) : 0.5;
     const y = p.y != null ? Number(p.y) : 0.5;
+    const rect = viewer.getCanvas().getBoundingClientRect();
+    await demoCursor.moveTo(rect.left + x * rect.width, rect.top + y * rect.height);
+    await demoCursor.click();
     viewer.pickFaceAt(x, y);
+    return null;
+  });
+
+  // Remove the demo pointer (fade out) — call when a cursor-driven shot ends.
+  registerCommand('viewer.hideCursor', async () => {
+    await demoCursor.hide();
     return null;
   });
 
@@ -343,16 +397,17 @@ function registerRecordCommands(canvas: HTMLCanvasElement): void {
 
   registerCommand('record.start', async (p) => {
     if (active) throw new Error(`already recording (${active})`);
-    const mode: RecordMode = p.mode === 'page' ? 'page' : 'canvas';
+    const mode: RecordMode = p.mode === 'page' ? 'page' : p.mode === 'screen' ? 'screen' : 'canvas';
     // Optional label → filename prefix, so recordings can be organized.
     activeName = typeof p.name === 'string' ? p.name : '';
-    if (mode === 'page') {
-      // width/height (px) set the page video's output size; 0 = window's
-      // native size. For canvas mode, size follows the window — use
-      // window.setSize first.
+    if (mode === 'page' || mode === 'screen') {
+      // width/height (px) set the video's output size; 0 = native size. 'page'
+      // records just the Facet window; 'screen' records the whole display (for
+      // handing off to an external app, e.g. a slicer). For canvas mode, size
+      // follows the window — use window.setSize first.
       const w = p.width != null ? Number(p.width) : 0;
       const h = p.height != null ? Number(p.height) : 0;
-      await StartWindowCapture(w, h, activeName);
+      await (mode === 'screen' ? StartScreenCapture(w, h, activeName) : StartWindowCapture(w, h, activeName));
     } else {
       recorder.start({ fps: p.fps != null ? Number(p.fps) : undefined });
     }
@@ -363,7 +418,8 @@ function registerRecordCommands(canvas: HTMLCanvasElement): void {
   registerCommand('record.stop', async () => {
     if (!active) throw new Error('not recording');
     let path: string;
-    if (active === 'page') {
+    if (active === 'page' || active === 'screen') {
+      // Both native modes share one ScreenCaptureKit stream → one stop path.
       path = await StopWindowCapture();
     } else {
       const blob = await recorder.stop();
@@ -371,5 +427,26 @@ function registerRecordCommands(canvas: HTMLCanvasElement): void {
     }
     active = null;
     return { path };
+  });
+}
+
+function registerSlicerCommands(sendToSlicer: (id: string) => Promise<void>): void {
+  // Export the current model and launch it in an external slicer (id: "bambu",
+  // "orca", "prusa", …). Pair with record.start mode:"screen" to capture the
+  // handoff. With cursor:true the demo pointer travels to the "Send to Slicer"
+  // toolbar button and pulses first, so the recording shows the click that
+  // triggers it (then we send to the chosen slicer directly, skipping the picker).
+  registerCommand('slicer.send', async (p) => {
+    if (p.cursor) await cursorPulseAt('#slicer-btn');
+    await sendToSlicer(String(p.id ?? 'bambu'));
+    return null;
+  });
+
+  // Fold a launched app's window into the active screen (composite) recording,
+  // so it appears alongside Facet on the clean background. Blocks until the app's
+  // window shows up. Call after slicer.send, e.g. capture.addApp {name:"BambuStudio"}.
+  registerCommand('capture.addApp', async (p) => {
+    await CaptureAddApp(String(p.name ?? ''));
+    return null;
   });
 }

@@ -325,6 +325,15 @@ export class AssistantPanel {
     return this.streaming;
   }
 
+  /** Plain text of the most recent assistant message — lets a driver read what
+   *  the AI said (e.g. a clarifying question) and reply, instead of forcing a
+   *  no-questions one-shot. Empty if the assistant hasn't spoken yet. */
+  lastResponse(): string {
+    const msgs = this.messagesDiv.querySelectorAll('.assistant-msg-assistant');
+    const last = msgs[msgs.length - 1] as HTMLElement | undefined;
+    return last ? (last.textContent ?? '').trim() : '';
+  }
+
   private registerEvents(): void {
     if (this.offs.length > 0) return;
     this.offs = [

@@ -237,8 +237,10 @@ async function init() {
       open: () => assistantPanel.show(),
       send: (prompt) => assistantPanel.submitPrompt(prompt),
       isStreaming: () => assistantPanel.isStreaming(),
+      lastResponse: () => assistantPanel.lastResponse(),
     },
     setCodeVisible: (visible) => setCodeVisible(visible),
+    sendToSlicer: (id) => sendToSlicer(id),
     editor: {
       insertAtCursor: (t) => requireEditor().insertAtCursor(t),
       moveCursorAfter: (f) => requireEditor().moveCursorAfter(f),
