@@ -98,6 +98,18 @@ export class FunctionPreview {
     return { ...this.overrides };
   }
 
+  /** Programmatically set a parameter override (for automation), re-render the
+   *  control so it reflects the value, and re-evaluate. Returns false if the
+   *  current entry has no such parameter. Drivers call this in steps to animate
+   *  a slider drag. */
+  setParam(name: string, value: number | boolean | string): boolean {
+    if (!this.selected || !this.selected.params.some(p => p.name === name)) return false;
+    this.overrides[name] = value;
+    this.render();
+    this.applyOverrides();
+    return true;
+  }
+
   private render() {
     this.panel.innerHTML = '';
     if (!this.selected) {

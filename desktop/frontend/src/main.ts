@@ -230,6 +230,8 @@ async function init() {
       if (dark) settings.appearance.darkMode = dark;
       applyCurrentTheme();
     },
+    // Set an entry-point parameter (drives the slider/control + re-eval).
+    setParam: (name, value) => functionPreview.setParam(name, value),
     editor: {
       insertAtCursor: (t) => requireEditor().insertAtCursor(t),
       moveCursorAfter: (f) => requireEditor().moveCursorAfter(f),

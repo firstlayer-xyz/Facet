@@ -48,6 +48,8 @@ export interface AutomationDeps {
   setAutoRotate: (on: boolean) => void;
   /** Apply a UI theme (and optional light/dark mode) live. */
   setTheme: (name: string, dark?: DarkMode) => void;
+  /** Set an entry-point parameter; false if the current entry lacks it. */
+  setParam: (name: string, value: number | boolean | string) => boolean;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -66,6 +68,7 @@ export function initAutomation(deps: AutomationDeps): void {
   registerWindowCommands();
   registerUICommands();
   registerThemeCommands(deps.setTheme);
+  registerParamCommands(deps.setParam);
   registerEditorCommands(deps.editor);
   registerViewerCommands(deps.viewer, deps.setAutoRotate);
   registerAnimationCommands();
@@ -98,6 +101,37 @@ function registerUICommands(): void {
     const el = document.querySelector<HTMLElement>(selector);
     if (!el) throw new Error(`ui.click: no element for selector "${selector}"`);
     el.click();
+    return null;
+  });
+}
+
+function registerParamCommands(setParam: (name: string, value: number | boolean | string) => boolean): void {
+  // Set an entry-point parameter (slider/toggle/enum). With durationMs, ramps
+  // from the current value to `value` for a visible slider-drag effect.
+  registerCommand('params.set', async (p) => {
+    const name = String(p.name ?? '');
+    const value = p.value;
+    const duration = Number(p.durationMs);
+    if (typeof value === 'number' && duration > 0) {
+      const start = Number(p.from);
+      const from = Number.isFinite(start) ? start : value;
+      const t0 = performance.now();
+      await new Promise<void>((resolve, reject) => {
+        const tick = () => {
+          const t = Math.min(1, (performance.now() - t0) / duration);
+          const v = from + (value - from) * t;
+          if (!setParam(name, v)) {
+            reject(new Error(`params.set: no parameter "${name}"`));
+            return;
+          }
+          if (t < 1) requestAnimationFrame(tick);
+          else resolve();
+        };
+        requestAnimationFrame(tick);
+      });
+    } else if (!setParam(name, value)) {
+      throw new Error(`params.set: no parameter "${name}"`);
+    }
     return null;
   });
 }
