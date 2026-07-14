@@ -10,15 +10,20 @@
 import {
   AutomationResult,
   SaveRecording,
+  SaveImage,
   StartWindowCapture,
   StopWindowCapture,
+  CaptureWindowImage,
 } from '../wailsjs/go/main/App';
 import { WindowSetSize } from '../wailsjs/runtime/runtime';
 import { on, type AutomationInvokePayload } from './events';
 import type { Viewer } from './viewer';
 import { evalStore } from './eval-store';
 import { setPlaying } from './playback';
+import { UI_THEMES } from './themes';
 import { Recorder, blobToDataURL } from './recorder';
+
+export type DarkMode = 'light' | 'dark' | 'auto';
 
 type RecordMode = 'canvas' | 'page';
 
@@ -41,6 +46,8 @@ export interface AutomationDeps {
   editor: EditorControl;
   /** Drive the auto-rotate Toggle (keeps the toolbar button in sync too). */
   setAutoRotate: (on: boolean) => void;
+  /** Apply a UI theme (and optional light/dark mode) live. */
+  setTheme: (name: string, dark?: DarkMode) => void;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -57,9 +64,12 @@ export function registerCommand(name: string, run: CommandFn): void {
 
 export function initAutomation(deps: AutomationDeps): void {
   registerWindowCommands();
+  registerUICommands();
+  registerThemeCommands(deps.setTheme);
   registerEditorCommands(deps.editor);
   registerViewerCommands(deps.viewer, deps.setAutoRotate);
   registerAnimationCommands();
+  registerScreenshotCommands(deps.viewer);
   registerRecordCommands(deps.viewer.getCanvas());
 
   on('automation:invoke', async (payload: AutomationInvokePayload) => {
@@ -74,6 +84,52 @@ export function initAutomation(deps: AutomationDeps): void {
     } catch (e) {
       await AutomationResult(payload.id, '', e instanceof Error ? e.message : String(e));
     }
+  });
+}
+
+function registerUICommands(): void {
+  // Click any UI element by CSS selector (e.g. "#assistant-btn", "#export-btn").
+  // Routes through the element's own click handler, so it drives real behavior
+  // (open the assistant drawer, export, share, toggle a panel, …). Errors if the
+  // selector matches nothing — no silent no-op.
+  registerCommand('ui.click', async (p) => {
+    const selector = String(p.selector ?? '');
+    if (!selector) throw new Error('ui.click: missing selector');
+    const el = document.querySelector<HTMLElement>(selector);
+    if (!el) throw new Error(`ui.click: no element for selector "${selector}"`);
+    el.click();
+    return null;
+  });
+}
+
+function registerThemeCommands(setTheme: (name: string, dark?: DarkMode) => void): void {
+  // Apply a UI theme by id (e.g. "dracula", "nord", "facet-orange"), optionally
+  // with a light/dark mode. Errors on an unknown theme — no silent fallback.
+  registerCommand('theme.set', async (p) => {
+    const name = String(p.name ?? '');
+    const known = UI_THEMES.some((t) => t.id === name) || name.startsWith('custom-');
+    if (!known) {
+      throw new Error(`theme.set: unknown theme "${name}" (options: ${UI_THEMES.map((t) => t.id).join(', ')})`);
+    }
+    const dark: DarkMode | undefined =
+      p.dark === 'light' || p.dark === 'dark' || p.dark === 'auto' ? p.dark : undefined;
+    setTheme(name, dark);
+    return null;
+  });
+}
+
+function registerScreenshotCommands(viewer: Viewer): void {
+  // Capture a still PNG. 'page' (default) grabs the whole window natively;
+  // 'canvas' grabs just the 3D viewer. Returns the saved path.
+  registerCommand('screenshot', async (p) => {
+    const name = typeof p.name === 'string' ? p.name : '';
+    let path: string;
+    if (p.mode === 'canvas') {
+      path = await SaveImage(viewer.captureScreenshot(), name);
+    } else {
+      path = await CaptureWindowImage(name);
+    }
+    return { path };
   });
 }
 

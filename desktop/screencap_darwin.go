@@ -4,11 +4,12 @@ package main
 
 /*
 #cgo CFLAGS: -x objective-c -fobjc-arc
-#cgo LDFLAGS: -framework Foundation -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia
+#cgo LDFLAGS: -framework Foundation -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework ImageIO -framework CoreGraphics
 
 #import <Foundation/Foundation.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import <ImageIO/ImageIO.h>
 #import <string.h>
 
 // Single active recording. ScreenCaptureKit's SCStream + SCRecordingOutput
@@ -21,6 +22,80 @@ static void fcSetErr(char *errbuf, int errlen, NSString *msg) {
     if (c == NULL) c = "";
     strncpy(errbuf, c, (size_t)errlen - 1);
     errbuf[errlen - 1] = '\0';
+}
+
+// fcFindAppWindow returns the on-screen window owned by pid with the largest
+// area (the main app window), or nil. getShareableContent is async; we block on
+// it. *outErr is set on a TCC/permission failure.
+API_AVAILABLE(macos(12.3))
+static SCWindow *fcFindAppWindow(int pid, NSError **outErr) {
+    __block SCWindow *target = nil;
+    __block NSError *listErr = nil;
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+    [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent *content, NSError *error) {
+        if (error != nil) {
+            listErr = error;
+        } else {
+            CGFloat bestArea = 0;
+            for (SCWindow *w in content.windows) {
+                if (w.owningApplication == nil) continue;
+                if ((int)w.owningApplication.processID != pid) continue;
+                if (!w.onScreen) continue;
+                CGFloat area = w.frame.size.width * w.frame.size.height;
+                if (area > bestArea) { bestArea = area; target = w; }
+            }
+        }
+        dispatch_semaphore_signal(sem);
+    }];
+    dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+    if (outErr) *outErr = listErr;
+    return target;
+}
+
+// facet_capture_window_png grabs a still image of the app's own window to a PNG
+// at outPath. Returns 0 on success; non-zero with errbuf populated.
+int facet_capture_window_png(int pid, const char *outPath, char *errbuf, int errlen) {
+    if (@available(macOS 14.0, *)) {
+        NSError *listErr = nil;
+        SCWindow *target = fcFindAppWindow(pid, &listErr);
+        if (listErr != nil) {
+            fcSetErr(errbuf, errlen, [NSString stringWithFormat:@"screen capture unavailable — grant Facet 'Screen Recording' in System Settings > Privacy & Security (%@)", listErr.localizedDescription]);
+            return 1;
+        }
+        if (target == nil) { fcSetErr(errbuf, errlen, @"could not find the app window"); return 1; }
+
+        SCContentFilter *filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:target];
+        SCStreamConfiguration *cfg = [[SCStreamConfiguration alloc] init];
+        cfg.width = (size_t)(filter.contentRect.size.width * filter.pointPixelScale);
+        cfg.height = (size_t)(filter.contentRect.size.height * filter.pointPixelScale);
+
+        __block CGImageRef img = NULL;
+        __block NSError *capErr = nil;
+        dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+        [SCScreenshotManager captureImageWithFilter:filter configuration:cfg completionHandler:^(CGImageRef image, NSError *error) {
+            if (error != nil) capErr = error;
+            else if (image != NULL) img = CGImageRetain(image);
+            dispatch_semaphore_signal(sem);
+        }];
+        dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+        if (capErr != nil || img == NULL) {
+            fcSetErr(errbuf, errlen, capErr ? [NSString stringWithFormat:@"capture image: %@", capErr.localizedDescription] : @"capture image: no image");
+            return 1;
+        }
+
+        NSURL *url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:outPath]];
+        CGImageDestinationRef dest = CGImageDestinationCreateWithURL((__bridge CFURLRef)url, (__bridge CFStringRef)@"public.png", 1, NULL);
+        if (dest == NULL) { CGImageRelease(img); fcSetErr(errbuf, errlen, @"create PNG destination"); return 1; }
+        CGImageDestinationAddImage(dest, img, NULL);
+        bool ok = CGImageDestinationFinalize(dest);
+        CFRelease(dest);
+        CGImageRelease(img);
+        if (!ok) { fcSetErr(errbuf, errlen, @"write PNG"); return 1; }
+        return 0;
+    } else {
+        fcSetErr(errbuf, errlen, @"window screenshot requires macOS 14 or later");
+        return 1;
+    }
 }
 
 // facet_start_window_capture records the on-screen window owned by pid to
@@ -163,6 +238,18 @@ func startWindowCapture(outPath string, pid, width, height int) error {
 func stopWindowCapture() error {
 	var errbuf [512]C.char
 	rc := C.facet_stop_window_capture(&errbuf[0], C.int(len(errbuf)))
+	if rc != 0 {
+		return fmt.Errorf("%s", C.GoString(&errbuf[0]))
+	}
+	return nil
+}
+
+// captureWindowImage writes a still PNG of the app's own window to outPath.
+func captureWindowImage(outPath string, pid int) error {
+	cPath := C.CString(outPath)
+	defer C.free(unsafe.Pointer(cPath))
+	var errbuf [512]C.char
+	rc := C.facet_capture_window_png(C.int(pid), cPath, &errbuf[0], C.int(len(errbuf)))
 	if rc != 0 {
 		return fmt.Errorf("%s", C.GoString(&errbuf[0]))
 	}

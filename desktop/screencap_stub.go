@@ -13,3 +13,7 @@ func startWindowCapture(outPath string, pid, width, height int) error {
 func stopWindowCapture() error {
 	return fmt.Errorf("window recording is only supported on macOS")
 }
+
+func captureWindowImage(outPath string, pid int) error {
+	return fmt.Errorf("window screenshot is only supported on macOS")
+}

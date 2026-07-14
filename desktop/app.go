@@ -47,6 +47,9 @@ func scratchDir() (string, error) { return facetConfigSubdir("scratch") }
 // recordingsDir is the on-disk home for automation-captured demo videos.
 func recordingsDir() (string, error) { return facetConfigSubdir("recordings") }
 
+// screenshotsDir is the on-disk home for automation-captured still images.
+func screenshotsDir() (string, error) { return facetConfigSubdir("screenshots") }
+
 func (a *App) GetDefaultSource() string {
 	return examples.DefaultSource
 }
@@ -283,25 +286,67 @@ func sanitizeRecordingName(name string) string {
 	return strings.Trim(b.String(), "-._")
 }
 
-// newRecordingPath returns a fresh, timestamped path in the recordings dir for a
-// recording of the given extension (".mp4" / ".webm"), creating the dir. name is
-// an optional label prefix for organizing recordings ("" → "demo"). The
-// millisecond-resolution timestamp keeps successive recordings — even with the
-// same name, across app runs — from overwriting each other.
-func newRecordingPath(ext, name string) (string, error) {
-	dir, err := recordingsDir()
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
-	}
+// captureFilename builds "<name|demo>-<timestamp><ext>". The millisecond
+// timestamp keeps captures — even same-named, across app runs — from
+// overwriting each other; the optional name is a filename-safe label prefix.
+func captureFilename(name, ext string) string {
 	prefix := sanitizeRecordingName(name)
 	if prefix == "" {
 		prefix = "demo"
 	}
-	filename := prefix + "-" + time.Now().Format("2006-01-02_15-04-05.000") + ext
-	return filepath.Join(dir, filename), nil
+	return prefix + "-" + time.Now().Format("2006-01-02_15-04-05.000") + ext
+}
+
+// newCapturePath returns a fresh timestamped path in dir, creating the dir.
+func newCapturePath(dir func() (string, error), ext, name string) (string, error) {
+	d, err := dir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(d, 0755); err != nil {
+		return "", err
+	}
+	return filepath.Join(d, captureFilename(name, ext)), nil
+}
+
+func newRecordingPath(ext, name string) (string, error) {
+	return newCapturePath(recordingsDir, ext, name)
+}
+
+// SaveImage writes a base64 PNG (from viewer.captureScreenshot) to the
+// screenshots dir and returns the path. name is an optional filename label.
+// Bound via Wails.
+func (a *App) SaveImage(dataURL, name string) (string, error) {
+	raw := dataURL
+	if i := strings.Index(raw, ","); i >= 0 && strings.HasPrefix(raw, "data:") {
+		raw = raw[i+1:]
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return "", fmt.Errorf("decode image: %w", err)
+	}
+	path, err := newCapturePath(screenshotsDir, ".png", name)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, decoded, 0644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// CaptureWindowImage grabs a still PNG of Facet's own window (the whole UI)
+// natively and returns the path. name is an optional filename label. Bound via
+// Wails.
+func (a *App) CaptureWindowImage(name string) (string, error) {
+	path, err := newCapturePath(screenshotsDir, ".png", name)
+	if err != nil {
+		return "", err
+	}
+	if err := captureWindowImage(path, os.Getpid()); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // SaveRecording persists a webm blob (base64, optionally a "data:...;base64,"

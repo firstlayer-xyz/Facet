@@ -223,6 +223,13 @@ async function init() {
   initAutomation({
     viewer,
     setAutoRotate: (on) => autoRotate.set(on),
+    // Apply a theme live (not persisted — a demo shouldn't overwrite the user's
+    // saved theme); reuses the same path as a settings change.
+    setTheme: (name, dark) => {
+      settings.appearance.uiTheme = name;
+      if (dark) settings.appearance.darkMode = dark;
+      applyCurrentTheme();
+    },
     editor: {
       insertAtCursor: (t) => requireEditor().insertAtCursor(t),
       moveCursorAfter: (f) => requireEditor().moveCursorAfter(f),
