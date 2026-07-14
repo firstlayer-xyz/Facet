@@ -48,7 +48,7 @@ import {
   openExample, openFile, openRecentFile, saveFile, saveFileAs, newFile, exportMesh, sendToSlicer, shareToWeb,
   reeval, toggleDebug, toggleDocs, openDocsToEntry, openLibraryFile, openLibraryTab,
   switchToTab, closeActiveTab,
-  getSources, getActiveTabValue, isActiveTabReadOnly, assistantCreateFile, getActiveLabel, addRestoredTab, renderTabs,
+  getSources, getActiveTabValue, isActiveTabReadOnly, assistantCreateFile, labelForPath, addRestoredTab, renderTabs,
   isDebugStepping,
   setOnSourceChange, setOnDebugFilesChange, setOnDebugExit, setOnEntryPoints,
   setEntryOverrides, refreshEditorUI, showError, currentEvalErrorsText,
@@ -406,13 +406,7 @@ async function init() {
   /** Show file name in the preview label, but keep showing fn name once one is picked. */
   function updatePreviewLabel(tab: string) {
     if (selectedFnKey !== null) return;
-    if (tab === '') {
-      previewFileLbl.textContent = getActiveLabel();
-      return;
-    }
-    let name = tab.split('/').pop() || tab;
-    if (name.endsWith('.fct')) name = name.slice(0, -4);
-    previewFileLbl.textContent = name;
+    previewFileLbl.textContent = labelForPath(tab);
   }
 
   const functionPreview = new FunctionPreview(canvasContainer, {

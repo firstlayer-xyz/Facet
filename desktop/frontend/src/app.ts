@@ -210,9 +210,7 @@ function persistOpenTabs() {
 }
 
 function updateWindowTitle() {
-  const active = tabStore.active();
-  const tab = tabStore.activeState();
-  const name = tab ? tab.label || tabLabel(active) : 'Untitled';
+  const name = labelForPath(tabStore.active());
   const prefix = isDirty() ? '\u25cf ' : '';
   SetWindowTitle(`${prefix}${name} \u2014 Facet`);
   syncTitlebarFilename(name, isDirty());
@@ -505,6 +503,16 @@ function tabLabel(path: string): string {
   return name.endsWith('.fct') ? name.slice(0, -4) : name;
 }
 
+// labelForPath is the single source of truth for a tab's display name. It
+// prefers the label stored on the tab — which is scratch-aware, so an unsaved
+// file shows its base name without the "-<timestamp>" uniqueness suffix (see
+// scratchAwareLabel) — and only derives one from the raw path for a tab that
+// isn't open yet. Every consumer (tab bar, window title, preview panel) reads
+// through here so the name is computed one way, in one place.
+export function labelForPath(path: string): string {
+  return tabStore.get(path)?.label || tabLabel(path);
+}
+
 export function renderTabs() {
   onDebugFilesChangeCb?.();
   persistOpenTabs();
@@ -563,7 +571,7 @@ export function renderTabs() {
 
     const label = document.createElement('span');
     label.className = 'tab-label';
-    label.textContent = getTab(path).label || tabLabel(path);
+    label.textContent = labelForPath(path);
     tab.appendChild(label);
 
     const closeBtn = document.createElement('span');
@@ -1282,11 +1290,6 @@ export async function openDocsToEntry(name: string, library?: string): Promise<v
 export function getSources(): Record<string, SourceEntry> { return evalStore.current()?.sources ?? {}; }
 export function getActiveTabValue(): string { return tabStore.active(); }
 export function isActiveTabReadOnly(): boolean { return isReadOnly(tabStore.active()); }
-export function getActiveLabel(): string {
-  const active = tabStore.active();
-  const tab = tabStore.activeState();
-  return tab ? tab.label || tabLabel(active) : 'Untitled';
-}
 
 /**
  * Create a new editable scratch tab from the assistant and load it with the
