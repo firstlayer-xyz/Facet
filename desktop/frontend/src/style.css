@@ -2861,6 +2861,35 @@ mark.search-highlight {
   opacity: 0.6;
   cursor: default;
 }
+.assistant-question-progress {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ui-text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.assistant-question-body {
+  display: flex;
+  flex-direction: column;
+}
+.assistant-question-back {
+  padding: 6px 12px;
+  border: 1px solid var(--ui-border, #d0d0d0);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+.assistant-question-back:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ui-accent) 8%, transparent);
+}
+.assistant-question-back:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 
 /* ── update_task_plan checklist card ───────────────────────────────── */
 .assistant-task-plan {

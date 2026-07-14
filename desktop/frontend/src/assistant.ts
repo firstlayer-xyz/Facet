@@ -618,32 +618,106 @@ export class AssistantPanel {
     this.scrollToBottom();
   }
 
-  // showQuestion renders an interactive multiple-choice card from the
-  // ask_user_question payload. Each question gets 2-4 options plus an
-  // automatic "Other" entry that reveals a free-text input. The model
-  // is blocked on a channel in the MCP layer; once Submit is clicked,
-  // AnswerAssistantQuestion routes the selections back as the tool's
-  // result and the card locks into a read-only summary.
+  // showQuestion renders an interactive card from the ask_user_question payload.
+  // Questions are shown ONE AT A TIME — a multi-question ask would otherwise
+  // stack into a tall card that scrolls its later questions out of view. Each
+  // question gets 2-4 options plus an automatic "Other" free-text entry; Back /
+  // Next step through them and Submit (on the last) routes every answer back via
+  // AnswerAssistantQuestion. The model is blocked on a channel in the MCP layer
+  // until then, at which point the card locks into a read-only summary.
   private showQuestion(payload: AssistantQuestionPayload): void {
     if (!payload?.questions?.length) return;
     this.finalizeCurrentMessage();
     this.removeToolUseIndicator();
     this.removeThinking();
 
+    const questions = payload.questions;
+    const total = questions.length;
+
     const card = document.createElement('div');
     card.className = 'assistant-question-card';
 
-    // Per-question UI state. `selected` is a Set so multiSelect questions
-    // can toggle multiple labels; single-select questions just keep one.
-    const state = payload.questions.map(() => ({
+    // Per-question UI state. `selected` is a Set so multiSelect questions can
+    // toggle multiple labels; single-select questions just keep one.
+    const state = questions.map(() => ({
       selected: new Set<string>(),
       otherText: '',
       otherActive: false,
     }));
 
-    const otherInputs: HTMLTextAreaElement[] = [];
+    const progress = document.createElement('div');
+    progress.className = 'assistant-question-progress';
 
-    payload.questions.forEach((q, qi) => {
+    const body = document.createElement('div');
+    body.className = 'assistant-question-body';
+
+    const footer = document.createElement('div');
+    footer.className = 'assistant-question-footer';
+    const backBtn = document.createElement('button');
+    backBtn.type = 'button';
+    backBtn.className = 'assistant-question-back';
+    backBtn.textContent = 'Back';
+    const errMsg = document.createElement('span');
+    errMsg.className = 'assistant-question-error';
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'assistant-question-submit';
+    footer.append(backBtn, errMsg, nextBtn);
+
+    card.append(progress, body, footer);
+    this.messagesDiv.appendChild(card);
+
+    let current = 0;
+    const isLast = () => current === total - 1;
+
+    const invalidReason = (qi: number): string | null => {
+      if (state[qi].selected.size === 0) return 'Pick an option for';
+      if (state[qi].selected.has('Other') && !state[qi].otherText.trim()) return 'Type a custom answer for';
+      return null;
+    };
+
+    const submitAll = async () => {
+      const answers: Record<string, string> = {};
+      const notes: Record<string, string> = {};
+      questions.forEach((q, qi) => {
+        // Replace 'Other' with the user's free text (so the model sees the actual
+        // choice) and stash the original text in notes for reference.
+        const finalLabels = Array.from(state[qi].selected).map(l => (l === 'Other' ? state[qi].otherText.trim() : l));
+        answers[q.question] = finalLabels.join(', ');
+        if (state[qi].otherActive && state[qi].otherText.trim()) notes[q.question] = state[qi].otherText.trim();
+      });
+      card.classList.add('answered');
+      card.querySelectorAll('button, textarea').forEach(el => ((el as HTMLButtonElement | HTMLTextAreaElement).disabled = true));
+      nextBtn.textContent = 'Sent';
+      this.showThinking();
+      try {
+        await AnswerAssistantQuestion(payload.id, answers, notes);
+      } catch (err: any) {
+        this.showError(`Failed to send answer: ${err?.message || err}`);
+      }
+    };
+
+    const advance = () => {
+      const reason = invalidReason(current);
+      if (reason) {
+        const q = questions[current];
+        errMsg.textContent = `${reason}: ${q.header || q.question}`;
+        return;
+      }
+      errMsg.textContent = '';
+      if (isLast()) { void submitAll(); return; }
+      current++;
+      renderCurrent();
+    };
+
+    const renderCurrent = () => {
+      const q = questions[current];
+      const st = state[current];
+      body.innerHTML = '';
+      errMsg.textContent = '';
+      progress.textContent = total > 1 ? `Question ${current + 1} of ${total}` : '';
+      progress.style.display = total > 1 ? 'block' : 'none';
+
       const block = document.createElement('div');
       block.className = 'assistant-question-block';
 
@@ -665,26 +739,21 @@ export class AssistantPanel {
       otherInput.className = 'assistant-question-other';
       otherInput.placeholder = 'Your answer...';
       otherInput.rows = 2;
-      otherInput.style.display = 'none';
-      otherInput.addEventListener('input', () => {
-        state[qi].otherText = otherInput.value;
-      });
-      otherInputs.push(otherInput);
+      otherInput.value = st.otherText;
+      otherInput.style.display = st.otherActive ? 'block' : 'none';
+      otherInput.addEventListener('input', () => { st.otherText = otherInput.value; });
 
       const opts = document.createElement('div');
       opts.className = 'assistant-question-options';
-      // Always append a synthetic "Other" so the user can supply free
-      // text even when none of the model's options fit. Matching the
-      // built-in AskUserQuestion convention.
-      const allOptions: AssistantQuestionOption[] = [
-        ...q.options,
-        { label: 'Other', description: 'Provide custom text' },
-      ];
+      // Always append a synthetic "Other" so the user can supply free text even
+      // when none of the model's options fit (matches the built-in convention).
+      const allOptions: AssistantQuestionOption[] = [...q.options, { label: 'Other', description: 'Provide custom text' }];
 
       allOptions.forEach((opt) => {
         const optBtn = document.createElement('button');
         optBtn.type = 'button';
         optBtn.className = 'assistant-question-option';
+        if (st.selected.has(opt.label)) optBtn.classList.add('selected');
 
         const labelEl = document.createElement('div');
         labelEl.className = 'assistant-question-option-label';
@@ -701,24 +770,20 @@ export class AssistantPanel {
         optBtn.addEventListener('click', () => {
           const isOther = opt.label === 'Other';
           if (q.multiSelect) {
-            if (state[qi].selected.has(opt.label)) {
-              state[qi].selected.delete(opt.label);
-              optBtn.classList.remove('selected');
-            } else {
-              state[qi].selected.add(opt.label);
-              optBtn.classList.add('selected');
-            }
+            if (st.selected.has(opt.label)) { st.selected.delete(opt.label); optBtn.classList.remove('selected'); }
+            else { st.selected.add(opt.label); optBtn.classList.add('selected'); }
           } else {
-            state[qi].selected.clear();
-            state[qi].selected.add(opt.label);
+            st.selected.clear();
+            st.selected.add(opt.label);
             opts.querySelectorAll('.assistant-question-option').forEach(b => b.classList.remove('selected'));
             optBtn.classList.add('selected');
           }
           if (isOther) {
-            state[qi].otherActive = state[qi].selected.has('Other');
-            otherInput.style.display = state[qi].otherActive ? 'block' : 'none';
-            if (state[qi].otherActive) otherInput.focus();
+            st.otherActive = st.selected.has('Other');
+            otherInput.style.display = st.otherActive ? 'block' : 'none';
+            if (st.otherActive) otherInput.focus();
           }
+          errMsg.textContent = '';
         });
 
         opts.appendChild(optBtn);
@@ -726,67 +791,21 @@ export class AssistantPanel {
 
       block.appendChild(opts);
       block.appendChild(otherInput);
-      card.appendChild(block);
+      body.appendChild(block);
+
+      backBtn.style.display = current > 0 ? 'inline-block' : 'none';
+      nextBtn.textContent = isLast() ? 'Submit' : 'Next';
+      this.scrollToBottom();
+    };
+
+    backBtn.addEventListener('click', () => {
+      if (current === 0) return;
+      current--;
+      renderCurrent();
     });
+    nextBtn.addEventListener('click', advance);
 
-    const footer = document.createElement('div');
-    footer.className = 'assistant-question-footer';
-    const errMsg = document.createElement('span');
-    errMsg.className = 'assistant-question-error';
-    footer.appendChild(errMsg);
-    const submitBtn = document.createElement('button');
-    submitBtn.type = 'button';
-    submitBtn.className = 'assistant-question-submit';
-    submitBtn.textContent = 'Submit';
-    footer.appendChild(submitBtn);
-    card.appendChild(footer);
-
-    this.messagesDiv.appendChild(card);
-    this.scrollToBottom();
-
-    submitBtn.addEventListener('click', async () => {
-      // Validate: every question needs at least one selection, and
-      // "Other" requires non-empty text. Short-circuit on the first
-      // failure with an inline message; don't lock the card.
-      for (let qi = 0; qi < payload.questions.length; qi++) {
-        if (state[qi].selected.size === 0) {
-          errMsg.textContent = `Pick an option for: ${payload.questions[qi].header || payload.questions[qi].question}`;
-          return;
-        }
-        if (state[qi].selected.has('Other') && !state[qi].otherText.trim()) {
-          errMsg.textContent = `Type a custom answer for: ${payload.questions[qi].header || payload.questions[qi].question}`;
-          otherInputs[qi].focus();
-          return;
-        }
-      }
-      errMsg.textContent = '';
-
-      const answers: Record<string, string> = {};
-      const notes: Record<string, string> = {};
-      payload.questions.forEach((q, qi) => {
-        const sel = Array.from(state[qi].selected);
-        // Replace 'Other' with the user's free text in the answer
-        // string (so the model sees the actual choice), and stash the
-        // original text in notes for reference.
-        const finalLabels = sel.map(l => l === 'Other' ? state[qi].otherText.trim() : l);
-        answers[q.question] = finalLabels.join(', ');
-        if (state[qi].otherActive && state[qi].otherText.trim()) {
-          notes[q.question] = state[qi].otherText.trim();
-        }
-      });
-
-      // Lock the card and disable further input.
-      card.classList.add('answered');
-      card.querySelectorAll('button, textarea').forEach(el => (el as HTMLButtonElement | HTMLTextAreaElement).disabled = true);
-      submitBtn.textContent = 'Sent';
-      this.showThinking();
-
-      try {
-        await AnswerAssistantQuestion(payload.id, answers, notes);
-      } catch (err: any) {
-        this.showError(`Failed to send answer: ${err?.message || err}`);
-      }
-    });
+    renderCurrent();
   }
 
   // showPermission renders an Allow/Deny card for a tool the model wants to

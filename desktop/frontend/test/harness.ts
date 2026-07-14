@@ -51,16 +51,35 @@ export const test = base.extend<{ mockedPage: Page; setEvalHandler: (handler: Ev
       (window as any).go = { main: { App } };
 
       // Wails runtime stubs — covers all window.runtime methods the app calls.
-      // EventsOff/EventsOffAll are used as cleanup in settings_debug.ts and
-      // must be present to avoid TypeError at teardown. The generated
+      // EventsOn is a REAL event bus (not a no-op) so tests can drive
+      // event-triggered UI (e.g. the ask_user_question card) by calling
+      // window.__emit(name, ...args); it also returns a working unsubscribe so
+      // registerEvents/unregisterEvents round-trips faithfully. The generated
       // runtime.js wrappers reach into window.runtime[name], so any name the
       // app actually imports needs an entry here.
+      const listeners: Record<string, Array<(...a: unknown[]) => void>> = {};
+      (window as any).__eventListeners = listeners;
+      (window as any).__emit = (name: string, ...args: unknown[]) => {
+        (listeners[name] || []).slice().forEach(cb => cb(...args));
+      };
+      const eventsOn = (name: string, cb: (...a: unknown[]) => void) => {
+        (listeners[name] || (listeners[name] = [])).push(cb);
+        return () => {
+          const arr = listeners[name];
+          if (!arr) return;
+          const i = arr.indexOf(cb);
+          if (i >= 0) arr.splice(i, 1);
+        };
+      };
       (window as any).runtime = {
-        EventsOn: () => {},
-        EventsOnMultiple: () => {},
-        EventsOnce: () => {},
-        EventsOff: () => {},
-        EventsOffAll: () => {},
+        EventsOn: eventsOn,
+        EventsOnMultiple: eventsOn,
+        EventsOnce: (name: string, cb: (...a: unknown[]) => void) => {
+          const off = eventsOn(name, (...a: unknown[]) => { off(); cb(...a); });
+          return off;
+        },
+        EventsOff: (name: string) => { delete listeners[name]; },
+        EventsOffAll: () => { for (const k in listeners) delete listeners[k]; },
         ClipboardSetText: async () => {},
         ClipboardGetText: async () => '',
         WindowToggleMaximise: () => {},
