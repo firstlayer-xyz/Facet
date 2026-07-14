@@ -657,6 +657,19 @@ export class Viewer {
     this.onFaceClickCb?.(entry.file, entry.line, entry.col);
   }
 
+  /** Pick a face at normalized canvas coords (0..1, default centre), as if the
+   *  user clicked there — highlights the face, navigates the editor to the op
+   *  that made it, and cycles through the ops on repeated same-face picks. For
+   *  automation (the face-click-navigation demo). */
+  pickFaceAt(nx = 0.5, ny = 0.5): void {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const e = new MouseEvent('click', {
+      clientX: rect.left + nx * rect.width,
+      clientY: rect.top + ny * rect.height,
+    });
+    this.handleFacePick(e);
+  }
+
   // -------------------------------------------------------------------------
   // Measurement / dimensioning
   // -------------------------------------------------------------------------

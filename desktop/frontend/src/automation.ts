@@ -301,6 +301,16 @@ function registerViewerCommands(viewer: Viewer, setAutoRotate: (on: boolean) => 
     return null;
   });
 
+  // Click a face at normalized canvas coords (default centre) as if the user
+  // clicked it: highlights it and navigates the editor to the op that made it.
+  // Repeated calls at the same spot cycle through the ops (face-click nav demo).
+  registerCommand('viewer.clickFace', async (p) => {
+    const x = p.x != null ? Number(p.x) : 0.5;
+    const y = p.y != null ? Number(p.y) : 0.5;
+    viewer.pickFaceAt(x, y);
+    return null;
+  });
+
   // Enable/disable the "auto-center & rotate" turntable via its Toggle, so the
   // viewer AND the toolbar button update together.
   registerCommand('viewer.autoRotate', async (p) => {
