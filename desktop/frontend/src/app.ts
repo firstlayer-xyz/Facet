@@ -150,9 +150,21 @@ let onEntryPointsCb: ((fns: EntryPoint[]) => { name: string; libPath: string } |
 // live on each tab — see TabState.entryOverrides. setEntryOverrides
 // below routes writes to the active tab; reads pull from
 // tabStore.activeState() at eval time.
+// scratchAwareLabel computes a tab's display name, recovering the base name of a
+// scratch file. Scratch files are stored as "<base>-<Date.now()>.fct" for on-disk
+// uniqueness; the timestamp is an implementation detail, not part of the name.
+// We only strip it when the backend confirms the file is a scratch file (so a
+// real user file that happens to end in "-<digits>" is left untouched), inverting
+// exactly the suffix CreateScratchFile appended. Restore recomputes this, so any
+// timestamped label an older build may have persisted heals on the next launch.
+async function scratchAwareLabel(path: string): Promise<string> {
+  const base = tabLabel(path);
+  return (await IsScratchFile(path)) ? base.replace(/-\d+$/, '') : base;
+}
+
 /** Set the file path on startup (no discard prompt, no re-persist). */
-export function setInitialFile(path: string, readOnly?: boolean) {
-  addTab(path);
+export async function setInitialFile(path: string, readOnly?: boolean) {
+  addTab(path, await scratchAwareLabel(path));
   tabStore.setActive(path);
   editor.setCurrentSource(path);
   editor.setReadOnly(readOnly ?? isReadOnly(path));
@@ -162,8 +174,8 @@ export function setInitialFile(path: string, readOnly?: boolean) {
 
 /** Register a tab restored from saved state without switching the editor or triggering a run.
  *  The Monaco model should already be pre-created via editor.switchModel(). */
-export function addRestoredTab(path: string, cursor: { lineNumber: number; column: number } | null) {
-  addTab(path, tabLabel(path), cursor);
+export async function addRestoredTab(path: string, cursor: { lineNumber: number; column: number } | null) {
+  addTab(path, await scratchAwareLabel(path), cursor);
 }
 
 function markDirty() {

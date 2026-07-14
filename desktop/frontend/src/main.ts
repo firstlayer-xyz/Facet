@@ -366,14 +366,14 @@ async function init() {
   });
 
   // Register all loaded tabs
-  setInitialFile(first.path, first.readOnly);
+  await setInitialFile(first.path, first.readOnly);
   if (first.cursor) {
     editor.revealLine(first.cursor.lineNumber, first.cursor.column);
   }
   for (let i = 1; i < loadedTabs.length; i++) {
     const tab = loadedTabs[i];
     editor.preloadModel(tab.path, tab.source);
-    addRestoredTab(tab.path, tab.cursor);
+    await addRestoredTab(tab.path, tab.cursor);
   }
   if (loadedTabs.length > 1) renderTabs();
 
