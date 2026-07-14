@@ -311,6 +311,14 @@ export class AssistantPanel {
     return this.panel.classList.contains('open');
   }
 
+  /** Open the panel (if needed) and submit a prompt as if the user typed it and
+   *  pressed Send — for automation/demos. No-op while a response streams. */
+  submitPrompt(prompt: string): void {
+    if (!this.isVisible()) this.show();
+    this.input.value = prompt;
+    void this.send();
+  }
+
   private registerEvents(): void {
     if (this.offs.length > 0) return;
     this.offs = [

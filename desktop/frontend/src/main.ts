@@ -232,6 +232,11 @@ async function init() {
     },
     // Set an entry-point parameter (drives the slider/control + re-eval).
     setParam: (name, value) => functionPreview.setParam(name, value),
+    // Drive the AI assistant drawer.
+    assistant: {
+      open: () => assistantPanel.show(),
+      send: (prompt) => assistantPanel.submitPrompt(prompt),
+    },
     editor: {
       insertAtCursor: (t) => requireEditor().insertAtCursor(t),
       moveCursorAfter: (f) => requireEditor().moveCursorAfter(f),

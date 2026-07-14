@@ -50,6 +50,11 @@ export interface AutomationDeps {
   setTheme: (name: string, dark?: DarkMode) => void;
   /** Set an entry-point parameter; false if the current entry lacks it. */
   setParam: (name: string, value: number | boolean | string) => boolean;
+  /** Drive the AI assistant drawer. */
+  assistant: {
+    open: () => void;
+    send: (prompt: string) => void;
+  };
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -69,6 +74,7 @@ export function initAutomation(deps: AutomationDeps): void {
   registerUICommands();
   registerThemeCommands(deps.setTheme);
   registerParamCommands(deps.setParam);
+  registerAssistantCommands(deps.assistant);
   registerEditorCommands(deps.editor);
   registerViewerCommands(deps.viewer, deps.setAutoRotate);
   registerAnimationCommands();
@@ -101,6 +107,22 @@ function registerUICommands(): void {
     const el = document.querySelector<HTMLElement>(selector);
     if (!el) throw new Error(`ui.click: no element for selector "${selector}"`);
     el.click();
+    return null;
+  });
+}
+
+function registerAssistantCommands(assistant: { open: () => void; send: (prompt: string) => void }): void {
+  // Open the AI assistant drawer.
+  registerCommand('assistant.open', async () => {
+    assistant.open();
+    return null;
+  });
+  // Open the drawer (if needed) and submit a prompt — the assistant streams a
+  // reply and writes code, so the demo records the response as it renders.
+  registerCommand('assistant.send', async (p) => {
+    const prompt = String(p.prompt ?? p.message ?? '');
+    if (!prompt) throw new Error('assistant.send: missing prompt');
+    assistant.send(prompt);
     return null;
   });
 }
