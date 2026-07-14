@@ -54,6 +54,7 @@ export interface AutomationDeps {
   assistant: {
     open: () => void;
     send: (prompt: string) => void;
+    isStreaming: () => boolean;
   };
   /** Show/hide the code editor panel (e.g. hidden for the AI demo). */
   setCodeVisible: (visible: boolean) => void;
@@ -123,20 +124,24 @@ function registerUICommands(setCodeVisible: (visible: boolean) => void): void {
   });
 }
 
-function registerAssistantCommands(assistant: { open: () => void; send: (prompt: string) => void }): void {
+function registerAssistantCommands(assistant: { open: () => void; send: (prompt: string) => void; isStreaming: () => boolean }): void {
   // Open the AI assistant drawer.
   registerCommand('assistant.open', async () => {
     assistant.open();
     return null;
   });
   // Open the drawer (if needed) and submit a prompt — the assistant streams a
-  // reply and writes code, so the demo records the response as it renders.
+  // reply and writes code. Fire-and-return; poll assistant.status to wait for
+  // the round to finish (responses can far exceed the per-command timeout).
   registerCommand('assistant.send', async (p) => {
     const prompt = String(p.prompt ?? p.message ?? '');
     if (!prompt) throw new Error('assistant.send: missing prompt');
     assistant.send(prompt);
     return null;
   });
+  // Report whether the assistant is mid-response — drivers poll this to do
+  // multi-round conversations, waiting for the agent between prompts.
+  registerCommand('assistant.status', async () => ({ streaming: assistant.isStreaming() }));
 }
 
 function registerParamCommands(setParam: (name: string, value: number | boolean | string) => boolean): void {

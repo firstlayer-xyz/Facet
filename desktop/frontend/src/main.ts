@@ -236,6 +236,7 @@ async function init() {
     assistant: {
       open: () => assistantPanel.show(),
       send: (prompt) => assistantPanel.submitPrompt(prompt),
+      isStreaming: () => assistantPanel.isStreaming(),
     },
     setCodeVisible: (visible) => setCodeVisible(visible),
     editor: {

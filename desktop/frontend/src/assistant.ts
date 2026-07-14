@@ -319,6 +319,12 @@ export class AssistantPanel {
     void this.send();
   }
 
+  /** True while a response is streaming — automation polls this to wait for the
+   *  agent to finish a round before sending the next. */
+  isStreaming(): boolean {
+    return this.streaming;
+  }
+
   private registerEvents(): void {
     if (this.offs.length > 0) return;
     this.offs = [
