@@ -237,6 +237,7 @@ async function init() {
       open: () => assistantPanel.show(),
       send: (prompt) => assistantPanel.submitPrompt(prompt),
     },
+    setCodeVisible: (visible) => setCodeVisible(visible),
     editor: {
       insertAtCursor: (t) => requireEditor().insertAtCursor(t),
       moveCursorAfter: (f) => requireEditor().moveCursorAfter(f),
@@ -747,13 +748,15 @@ function handleDebugToggle() {
 }
 debugBtn.addEventListener('click', handleDebugToggle);
 
-// CODE toggle — hides/shows the code editor panel.
-codeBtn.addEventListener('click', () => {
-  const hiding = !editorPanel.classList.contains('code-hidden');
-  editorPanel.classList.toggle('code-hidden', hiding);
-  codeBtn.classList.toggle('active', !hiding);
+// CODE toggle — hides/shows the code editor panel. setCodeVisible is the
+// idempotent primitive (used by the click toggle and by automation, which needs
+// to *set* a state, e.g. hide the editor for the AI demo, not flip it).
+function setCodeVisible(visible: boolean): void {
+  editorPanel.classList.toggle('code-hidden', !visible);
+  codeBtn.classList.toggle('active', visible);
   requestAnimationFrame(() => viewer.resize());
-});
+}
+codeBtn.addEventListener('click', () => setCodeVisible(editorPanel.classList.contains('code-hidden')));
 
 // Assistant toggle. AssistantPanel manages `.open` on its own panel;
 // the resizer's `.open` is in lockstep.

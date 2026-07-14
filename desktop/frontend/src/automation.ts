@@ -55,6 +55,8 @@ export interface AutomationDeps {
     open: () => void;
     send: (prompt: string) => void;
   };
+  /** Show/hide the code editor panel (e.g. hidden for the AI demo). */
+  setCodeVisible: (visible: boolean) => void;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -71,7 +73,7 @@ export function registerCommand(name: string, run: CommandFn): void {
 
 export function initAutomation(deps: AutomationDeps): void {
   registerWindowCommands();
-  registerUICommands();
+  registerUICommands(deps.setCodeVisible);
   registerThemeCommands(deps.setTheme);
   registerParamCommands(deps.setParam);
   registerAssistantCommands(deps.assistant);
@@ -96,7 +98,7 @@ export function initAutomation(deps: AutomationDeps): void {
   });
 }
 
-function registerUICommands(): void {
+function registerUICommands(setCodeVisible: (visible: boolean) => void): void {
   // Click any UI element by CSS selector (e.g. "#assistant-btn", "#export-btn").
   // Routes through the element's own click handler, so it drives real behavior
   // (open the assistant drawer, export, share, toggle a panel, …). Errors if the
@@ -107,6 +109,16 @@ function registerUICommands(): void {
     const el = document.querySelector<HTMLElement>(selector);
     if (!el) throw new Error(`ui.click: no element for selector "${selector}"`);
     el.click();
+    return null;
+  });
+
+  // Show/hide a named panel idempotently (unlike ui.click, which toggles). Only
+  // "code" today — hide the editor to focus a demo on the assistant + viewer.
+  registerCommand('ui.setPanel', async (p) => {
+    const panel = String(p.panel ?? '');
+    const visible = p.visible !== false;
+    if (panel === 'code') setCodeVisible(visible);
+    else throw new Error(`ui.setPanel: unknown panel "${panel}" (supported: code)`);
     return null;
   });
 }
