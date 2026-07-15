@@ -40,7 +40,7 @@ async function bootAndAsk(page: any, payload: unknown) {
   await page.click('#assistant-btn');
   await expect(page.locator('#assistant-panel.open')).toBeVisible();
   // Deliver the ask_user_question event the backend would emit.
-  await page.evaluate((p) => (window as any).__emit('assistant:question', p), payload);
+  await page.evaluate((p: unknown) => (window as any).__emit('assistant:question', p), payload);
   await expect(page.locator('.assistant-question-card')).toBeVisible();
 }
 
