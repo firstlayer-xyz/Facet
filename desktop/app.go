@@ -97,10 +97,10 @@ type App struct {
 	// never a torn two-word value.
 	ctx atomic.Pointer[context.Context]
 
-	config    *ConfigStore
-	logs      *LogCapture
-	assistant *AssistantService
-	libraries *LibraryManager
+	config        *ConfigStore
+	logs          *LogCapture
+	assistant     *AssistantService
+	libraries     *LibraryManager
 	eval          *EvalService
 	mcp           *MCPService
 	http          *HTTPServer

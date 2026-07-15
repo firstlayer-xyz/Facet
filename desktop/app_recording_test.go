@@ -60,12 +60,12 @@ func TestSaveRecordingUsesName(t *testing.T) {
 
 func TestSanitizeRecordingName(t *testing.T) {
 	cases := map[string]string{
-		"panda":       "panda",
-		"cube grid":   "cube-grid",
-		"a/b:c*d":     "a-b-c-d",
-		"  spaced  ":  "spaced",
-		"!!!":         "",
-		"v1.2_final":  "v1.2_final",
+		"panda":      "panda",
+		"cube grid":  "cube-grid",
+		"a/b:c*d":    "a-b-c-d",
+		"  spaced  ": "spaced",
+		"!!!":        "",
+		"v1.2_final": "v1.2_final",
 	}
 	for in, want := range cases {
 		if got := sanitizeRecordingName(in); got != want {
