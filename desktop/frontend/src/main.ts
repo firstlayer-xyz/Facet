@@ -238,6 +238,7 @@ async function init() {
       send: (prompt) => assistantPanel.submitPrompt(prompt),
       isStreaming: () => assistantPanel.isStreaming(),
       lastResponse: () => assistantPanel.lastResponse(),
+      currentQuestion: () => assistantPanel.currentQuestion(),
     },
     setCodeVisible: (visible) => setCodeVisible(visible),
     sendToSlicer: (id) => sendToSlicer(id),

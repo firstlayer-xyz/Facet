@@ -334,6 +334,14 @@ export class AssistantPanel {
     return last ? (last.textContent ?? '').trim() : '';
   }
 
+  /** The active ask_user_question payload (a multiple-choice card is showing on
+   *  camera), or null. A driver reads this to know what the AI asked, then answers
+   *  by cursor-clicking an option + Submit — a real interactive Q&A. */
+  private pendingQuestion: AssistantQuestionPayload | null = null;
+  currentQuestion(): AssistantQuestionPayload | null {
+    return this.pendingQuestion;
+  }
+
   private registerEvents(): void {
     if (this.offs.length > 0) return;
     this.offs = [
@@ -650,6 +658,7 @@ export class AssistantPanel {
   // until then, at which point the card locks into a read-only summary.
   private showQuestion(payload: AssistantQuestionPayload): void {
     if (!payload?.questions?.length) return;
+    this.pendingQuestion = payload;
     this.finalizeCurrentMessage();
     this.removeToolUseIndicator();
     this.removeThinking();
@@ -700,6 +709,7 @@ export class AssistantPanel {
     };
 
     const submitAll = async () => {
+      this.pendingQuestion = null; // answered — no longer pending for a driver
       const answers: Record<string, string> = {};
       const notes: Record<string, string> = {};
       questions.forEach((q, qi) => {

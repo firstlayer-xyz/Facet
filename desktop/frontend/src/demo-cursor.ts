@@ -19,6 +19,17 @@ const POINTER_SVG = `<svg width="26" height="30" viewBox="0 0 24 28" xmlns="http
 
 const TRAVEL_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
+// Resolve when the animation finishes OR after its duration elapses — WKWebView
+// pauses rAF (and thus animation.finished) when the window isn't frontmost, which
+// would otherwise hang an automation command awaiting the pointer. The timeout is
+// the safety net; normally .finished wins.
+function settle(anim: Animation, ms: number): Promise<void> {
+  return Promise.race([
+    anim.finished.then(() => undefined, () => undefined),
+    new Promise<void>((r) => setTimeout(r, ms + 100)),
+  ]);
+}
+
 export class DemoCursor {
   private el: HTMLDivElement | null = null;
   private x = 0;
@@ -58,7 +69,7 @@ export class DemoCursor {
       this.placed = true;
       el.style.opacity = '1';
       el.style.transform = this.restingTransform();
-      await el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 }).finished;
+      await settle(el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 }), 200);
       return;
     }
     const from = this.restingTransform();
@@ -66,10 +77,10 @@ export class DemoCursor {
     this.y = y;
     const to = this.restingTransform();
     el.style.transform = to; // inline holds the resting state; anim has no fill
-    await el.animate(
+    await settle(el.animate(
       [{ transform: from }, { transform: to }],
       { duration: ms, easing: TRAVEL_EASE },
-    ).finished;
+    ), ms);
   }
 
   /** Play a click: a ripple ring plus a brief press dip on the pointer. */
@@ -77,14 +88,14 @@ export class DemoCursor {
     const el = this.ensure();
     this.ripple();
     const rest = this.restingTransform();
-    await el.animate(
+    await settle(el.animate(
       [
         { transform: `${rest} scale(1)` },
         { transform: `${rest} scale(0.82)`, offset: 0.4 },
         { transform: `${rest} scale(1)` },
       ],
       { duration: 260, easing: 'ease-out' },
-    ).finished;
+    ), 260);
   }
 
   private ripple(): void {
@@ -118,7 +129,7 @@ export class DemoCursor {
     const el = this.el;
     this.el = null;
     this.placed = false;
-    await el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250 }).finished;
+    await settle(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250 }), 250);
     el.remove();
   }
 }

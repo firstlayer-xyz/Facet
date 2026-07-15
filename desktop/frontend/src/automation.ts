@@ -60,6 +60,8 @@ export interface AutomationDeps {
     isStreaming: () => boolean;
     /** Text of the assistant's latest message — read it to reply to questions. */
     lastResponse: () => string;
+    /** The active ask_user_question payload (or null) — read to answer on camera. */
+    currentQuestion: () => unknown;
   };
   /** Show/hide the code editor panel (e.g. hidden for the AI demo). */
   setCodeVisible: (visible: boolean) => void;
@@ -145,6 +147,11 @@ function registerUICommands(setCodeVisible: (visible: boolean) => void): void {
     const els = Array.from(document.querySelectorAll<HTMLElement>(selector));
     const el = text != null ? els.find((e) => (e.textContent ?? '').includes(text)) : els[0];
     if (!el) throw new Error(`ui.clickCursor: no element for "${selector}"${text ? ` with text "${text}"` : ''}`);
+    // Scroll it into view first — a tall question card can push options below the
+    // panel, and the pointer would otherwise travel to an off-screen rect (dead
+    // air) and the click wouldn't read on camera.
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    await sleep(200);
     const r = el.getBoundingClientRect();
     await demoCursor.moveTo(r.left + r.width / 2, r.top + r.height / 2);
     await demoCursor.click();
@@ -163,7 +170,7 @@ function registerUICommands(setCodeVisible: (visible: boolean) => void): void {
   });
 }
 
-function registerAssistantCommands(assistant: { open: () => void; send: (prompt: string) => void; isStreaming: () => boolean; lastResponse: () => string }): void {
+function registerAssistantCommands(assistant: { open: () => void; send: (prompt: string) => void; isStreaming: () => boolean; lastResponse: () => string; currentQuestion: () => unknown }): void {
   // Open the AI assistant drawer.
   registerCommand('assistant.open', async () => {
     assistant.open();
@@ -185,6 +192,9 @@ function registerAssistantCommands(assistant: { open: () => void; send: (prompt:
   // the AI's clarifying questions and hold a real back-and-forth (no need for a
   // "don't ask questions" prompt).
   registerCommand('assistant.response', async () => ({ text: assistant.lastResponse() }));
+  // Return the AI's active ask_user_question card (null if none) so a driver can
+  // read the question + options, then cursor-click an option and Submit to answer.
+  registerCommand('assistant.question', async () => ({ question: assistant.currentQuestion() }));
 }
 
 function registerParamCommands(setParam: (name: string, value: number | boolean | string) => boolean): void {
