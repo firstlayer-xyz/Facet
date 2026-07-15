@@ -68,6 +68,10 @@ jobs:
     environment:
       name: ${{ startsWith(github.ref, 'refs/tags/v') && 'signing-release' || 'signing-main' }}
     steps:
+      # Check out first: the Codesign step runs scripts/sign-app.sh from the repo,
+      # and checkout cleans the workspace, so it must precede the artifact download.
+      - uses: actions/checkout@v6
+
       - name: Download unsigned app from CI run
         uses: actions/download-artifact@v8
         with:
