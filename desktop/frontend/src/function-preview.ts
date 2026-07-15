@@ -98,6 +98,37 @@ export class FunctionPreview {
     return { ...this.overrides };
   }
 
+  /** Programmatically set a parameter override (for automation), re-render the
+   *  control so it reflects the value, and re-evaluate. Returns false if the
+   *  current entry has no such parameter. Drivers call this in steps to animate
+   *  a slider drag. */
+  setParam(name: string, value: number | boolean | string): boolean {
+    const param = this.selected?.params.find(p => p.name === name);
+    if (!param) return false;
+    // Snap numeric values to the constraint's step grid so a programmatic caller
+    // (e.g. the params.set automation ramp, which interpolates fractional values)
+    // can't land between steps and trip the checker's "not on step boundary"
+    // error — the same snap the mouse-drag path applies.
+    const snapped = typeof value === 'number' ? this.snapToConstraint(param, value) : value;
+    if (this.overrides[name] === snapped) return true; // no change → skip re-eval
+    this.overrides[name] = snapped;
+    this.render();
+    this.applyOverrides();
+    return true;
+  }
+
+  /** Snap a numeric value to a range param's step grid, clamped to [min, max].
+   *  Non-range params (bool, enum, unconstrained) return the value unchanged. */
+  private snapToConstraint(param: EntryPoint['params'][0], value: number): number {
+    const c = param.constraint;
+    if (c?.kind !== 'range' || c.min == null || c.max == null) return value;
+    const min = Number(c.min);
+    const max = Number(c.max);
+    const clamped = Math.max(min, Math.min(max, value));
+    const step = c.step != null ? Number(c.step) : 0;
+    return step > 0 ? Math.round((clamped - min) / step) * step + min : clamped;
+  }
+
   private render() {
     this.panel.innerHTML = '';
     if (!this.selected) {
@@ -275,8 +306,7 @@ export class FunctionPreview {
 
         const computeValue = (clientX: number): number => {
           const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-          const raw = min + pct * (max - min);
-          return step > 0 ? Math.round((raw - min) / step) * step + min : raw;
+          return this.snapToConstraint(param, min + pct * (max - min));
         };
 
         applyValue(computeValue(e.clientX));

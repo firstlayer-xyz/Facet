@@ -60,6 +60,12 @@ export interface AssistantNewFilePayload {
   code: string;
 }
 
+export interface AutomationInvokePayload {
+  id: string;
+  name: string;
+  params: unknown;
+}
+
 /**
  * The single source of truth for every Wails event the frontend
  * listens to. Tuple shape mirrors the positional args Wails emits.
@@ -84,6 +90,9 @@ export interface FacetEventMap {
   'assistant:task-plan': [payload: AssistantTaskPlanPayload];
   'assistant:replace-code': [code: string];
   'assistant:new-file': [payload: AssistantNewFilePayload];
+
+  // Remote GUI automation (behind --automation)
+  'automation:invoke': [payload: AutomationInvokePayload];
 
   // Native menu actions
   'menu:new': [];

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"facet/pkg/facet3mf"
 	"facet/pkg/fctlang/doc"
@@ -41,6 +43,12 @@ func libraryDir() (string, error) { return facetConfigSubdir("libraries") }
 
 // scratchDir returns the directory for unsaved scratch files.
 func scratchDir() (string, error) { return facetConfigSubdir("scratch") }
+
+// recordingsDir is the on-disk home for automation-captured demo videos.
+func recordingsDir() (string, error) { return facetConfigSubdir("recordings") }
+
+// screenshotsDir is the on-disk home for automation-captured still images.
+func screenshotsDir() (string, error) { return facetConfigSubdir("screenshots") }
 
 func (a *App) GetDefaultSource() string {
 	return examples.DefaultSource
@@ -89,13 +97,15 @@ type App struct {
 	// never a torn two-word value.
 	ctx atomic.Pointer[context.Context]
 
-	config    *ConfigStore
-	logs      *LogCapture
-	assistant *AssistantService
-	libraries *LibraryManager
-	eval      *EvalService
-	mcp       *MCPService
-	http      *HTTPServer
+	config        *ConfigStore
+	logs          *LogCapture
+	assistant     *AssistantService
+	libraries     *LibraryManager
+	eval          *EvalService
+	mcp           *MCPService
+	http          *HTTPServer
+	automation    *AutomationController
+	automationCfg AutomationConfig
 }
 
 // runtimeCtx returns the published Wails runtime context, or nil before startup
@@ -111,15 +121,17 @@ func (a *App) runtimeCtx() context.Context {
 func NewApp() *App {
 	assistant := NewAssistantService()
 	eval := NewEvalService()
-	mcp := NewMCPService(eval)
+	automation := NewAutomationController()
+	mcp := NewMCPService(eval, automation)
 	return &App{
-		config:    NewConfigStore(),
-		logs:      NewLogCapture(),
-		assistant: assistant,
-		libraries: NewLibraryManager(assistant),
-		eval:      eval,
-		mcp:       mcp,
-		http:      NewHTTPServer(eval, mcp),
+		config:     NewConfigStore(),
+		logs:       NewLogCapture(),
+		assistant:  assistant,
+		libraries:  NewLibraryManager(assistant),
+		eval:       eval,
+		mcp:        mcp,
+		http:       NewHTTPServer(eval, mcp, automation),
+		automation: automation,
 	}
 }
 
@@ -188,6 +200,7 @@ func (a *App) startup(ctx context.Context) {
 	a.libraries.SetContext(ctx)
 	a.assistant.SetEventContext(ctx)
 	a.assistant.RebuildSystemPrompt()
+	a.automation.SetEventContext(ctx)
 	a.logs.Start(ctx)
 
 	// Start the in-process HTTP server (eval/frame/check + the assistant's mcp).
@@ -195,6 +208,7 @@ func (a *App) startup(ctx context.Context) {
 	// dead the editor can only show a blank model, so surface a fatal dialog and
 	// quit rather than leaving a broken-looking app running (Wails startup can't
 	// return an error, so a dialog + Quit is the idiomatic fatal path).
+	a.http.SetAutomationConfig(a.automationCfg)
 	if err := a.http.Start(ctx); err != nil {
 		wailsRuntime.MessageDialog(ctx, wailsRuntime.MessageDialogOptions{
 			Type:    wailsRuntime.ErrorDialog,
@@ -239,6 +253,179 @@ var hasDirtyFiles atomic.Bool
 // SetDirtyState is called by the frontend to report whether any files have unsaved changes.
 func (a *App) SetDirtyState(dirty bool) {
 	hasDirtyFiles.Store(dirty)
+}
+
+// AutomationResult is called by the frontend automation module to resolve the
+// pending GUI command identified by id. valueJSON is the command's JSON result
+// ("" for none); errMsg is non-empty when the command failed. Bound via Wails.
+func (a *App) AutomationResult(id, valueJSON, errMsg string) error {
+	return a.automation.resolve(id, valueJSON, errMsg)
+}
+
+// AutomationEnabled reports whether the app was launched with --automation. The
+// frontend uses it to boot a blank slate (skipping session restore, and not
+// persisting tabs on close) so demo recordings start clean and don't clobber
+// the user's real last session. Bound via Wails.
+func (a *App) AutomationEnabled() bool {
+	return a.automationCfg.Enabled
+}
+
+// sanitizeRecordingName reduces a caller-supplied label to a filename-safe
+// prefix (letters, digits, _ and .; everything else becomes '-'), trimmed of
+// leading/trailing separators. Empty when nothing usable remains.
+func sanitizeRecordingName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-._")
+}
+
+// captureFilename builds "<name|demo>-<timestamp><ext>". The millisecond
+// timestamp keeps captures — even same-named, across app runs — from
+// overwriting each other; the optional name is a filename-safe label prefix.
+func captureFilename(name, ext string) string {
+	prefix := sanitizeRecordingName(name)
+	if prefix == "" {
+		prefix = "demo"
+	}
+	return prefix + "-" + time.Now().Format("2006-01-02_15-04-05.000") + ext
+}
+
+// newCapturePath returns a fresh timestamped path in dir, creating the dir.
+func newCapturePath(dir func() (string, error), ext, name string) (string, error) {
+	d, err := dir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(d, 0755); err != nil {
+		return "", err
+	}
+	return filepath.Join(d, captureFilename(name, ext)), nil
+}
+
+func newRecordingPath(ext, name string) (string, error) {
+	return newCapturePath(recordingsDir, ext, name)
+}
+
+// SaveImage writes a base64 PNG (from viewer.captureScreenshot) to the
+// screenshots dir and returns the path. name is an optional filename label.
+// Bound via Wails.
+func (a *App) SaveImage(dataURL, name string) (string, error) {
+	raw := dataURL
+	if i := strings.Index(raw, ","); i >= 0 && strings.HasPrefix(raw, "data:") {
+		raw = raw[i+1:]
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return "", fmt.Errorf("decode image: %w", err)
+	}
+	path, err := newCapturePath(screenshotsDir, ".png", name)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, decoded, 0644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// CaptureWindowImage grabs a still PNG of Facet's own window (the whole UI)
+// natively and returns the path. name is an optional filename label. Bound via
+// Wails.
+func (a *App) CaptureWindowImage(name string) (string, error) {
+	path, err := newCapturePath(screenshotsDir, ".png", name)
+	if err != nil {
+		return "", err
+	}
+	if err := captureWindowImage(path, os.Getpid()); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// SaveRecording persists a webm blob (base64, optionally a "data:...;base64,"
+// URL) captured by the frontend recorder and returns the absolute file path.
+// name is an optional label prefix for the file. Bound via Wails so the
+// record.stop command can hand the driver a path.
+func (a *App) SaveRecording(base64Webm, name string) (string, error) {
+	raw := base64Webm
+	if i := strings.Index(raw, ","); i >= 0 && strings.HasPrefix(raw, "data:") {
+		raw = raw[i+1:]
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return "", fmt.Errorf("decode recording: %w", err)
+	}
+	path, err := newRecordingPath(".webm", name)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, decoded, 0644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// activeWindowRecording holds the output path of the in-flight native window
+// recording so StopWindowCapture can return it. nil when not recording.
+var activeWindowRecording atomic.Pointer[string]
+
+// StartWindowCapture begins a native, window-scoped screen recording (page
+// mode) of Facet's own window and returns the .mp4 path it writes to. When
+// width and height are both > 0 the video is scaled to that pixel size;
+// otherwise the window's native size is used. name is an optional label prefix
+// for the file. Silent after the one-time macOS "Screen Recording" permission
+// grant — no per-record picker. Bound via Wails.
+func (a *App) StartWindowCapture(width, height int, name string) (string, error) {
+	path, err := newRecordingPath(".mp4", name)
+	if err != nil {
+		return "", err
+	}
+	if err := startWindowCapture(path, os.Getpid(), width, height); err != nil {
+		return "", err
+	}
+	activeWindowRecording.Store(&path)
+	return path, nil
+}
+
+// StartScreenCapture begins recording Facet's windows composited on a clean
+// background (no desktop) to a timestamped mp4, cursor visible — for shots that
+// hand a model off to an external app. Fold that app in with CaptureAddApp.
+// Stopped via StopWindowCapture (shared recording).
+func (a *App) StartScreenCapture(width, height int, name string) (string, error) {
+	path, err := newRecordingPath(".mp4", name)
+	if err != nil {
+		return "", err
+	}
+	if err := startCompositeCapture(path, os.Getpid(), width, height); err != nil {
+		return "", err
+	}
+	activeWindowRecording.Store(&path)
+	return path, nil
+}
+
+// CaptureAddApp folds a launched app's window into the active composite
+// recording (e.g. "BambuStudio" after SendToSlicer), so the handoff is captured
+// on the clean background. Blocks until the app's window appears (or times out).
+func (a *App) CaptureAddApp(appName string) error {
+	return captureAddApp(appName)
+}
+
+// StopWindowCapture finalizes the native window recording and returns its path.
+func (a *App) StopWindowCapture() (string, error) {
+	if err := stopWindowCapture(); err != nil {
+		return "", err
+	}
+	if p := activeWindowRecording.Swap(nil); p != nil {
+		return *p, nil
+	}
+	return "", nil
 }
 
 // beforeClose is called when the user tries to close the window.

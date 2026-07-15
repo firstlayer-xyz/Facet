@@ -657,6 +657,19 @@ export class Viewer {
     this.onFaceClickCb?.(entry.file, entry.line, entry.col);
   }
 
+  /** Pick a face at normalized canvas coords (0..1, default centre), as if the
+   *  user clicked there — highlights the face, navigates the editor to the op
+   *  that made it, and cycles through the ops on repeated same-face picks. For
+   *  automation (the face-click-navigation demo). */
+  pickFaceAt(nx = 0.5, ny = 0.5): void {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const e = new MouseEvent('click', {
+      clientX: rect.left + nx * rect.width,
+      clientY: rect.top + ny * rect.height,
+    });
+    this.handleFacePick(e);
+  }
+
   // -------------------------------------------------------------------------
   // Measurement / dimensioning
   // -------------------------------------------------------------------------
@@ -1268,15 +1281,17 @@ export class Viewer {
     return this.perspControls.autoRotate;
   }
 
-  toggleAutoRotate(): boolean {
-    if (this.perspControls.autoRotate) {
+  /** Enable/disable the auto-center & rotate turntable (enabling fits the model
+   *  to view first). Pure logic — the Toggle that owns this keeps the UI in
+   *  sync, so callers never touch button state by hand. */
+  setAutoRotate(on: boolean): void {
+    if (on) {
+      this.fitToView();
+      this.perspControls.autoRotate = true;
+      this.perspControls.autoRotateSpeed = 4;
+    } else {
       this.perspControls.autoRotate = false;
-      return false;
     }
-    this.fitToView();
-    this.perspControls.autoRotate = true;
-    this.perspControls.autoRotateSpeed = 4;
-    return true;
   }
 
   toggleGrid(): void {
@@ -1999,6 +2014,53 @@ export class Viewer {
     }
   }
 
+  /** The live WebGL canvas element. Used by the automation recorder, whose
+   *  captureStream() relies on the renderer's preserveDrawingBuffer. */
+  getCanvas(): HTMLCanvasElement {
+    return this.renderer.domElement;
+  }
+
+  /** Position the live perspective camera from an azimuth/elevation/distance
+   *  pose (degrees), using the same bed-basis framing as
+   *  captureScreenshotFromView but mutating the on-screen camera. The always-on
+   *  render loop shows the change on the next frame. Distance/target default to
+   *  the current framing so a caller can rotate without reframing. */
+  applyCameraPose(opts: {
+    azimuth: number;
+    elevation: number;
+    distance?: number;
+    target?: { x: number; y: number; z: number };
+  }): void {
+    const { up, front } = this.bedBasis();
+    const right = new THREE.Vector3().crossVectors(up, front).normalize();
+
+    let target: THREE.Vector3;
+    if (opts.target) {
+      target = new THREE.Vector3(opts.target.x, opts.target.y, opts.target.z);
+    } else {
+      const sphere = this._getMeshBoundingSphere();
+      target = sphere.radius > 0 ? sphere.center.clone() : this.perspControls.target.clone();
+    }
+
+    const distance = opts.distance ?? this.perspCamera.position.distanceTo(this.perspControls.target);
+
+    const az = THREE.MathUtils.degToRad(opts.azimuth);
+    const el = THREE.MathUtils.degToRad(opts.elevation);
+    const cosEl = Math.cos(el);
+    const offset = new THREE.Vector3()
+      .addScaledVector(front, cosEl * Math.cos(az))
+      .addScaledVector(right, cosEl * Math.sin(az))
+      .addScaledVector(up, Math.sin(el))
+      .multiplyScalar(distance);
+
+    this._activatePerspective();
+    this.perspCamera.up.copy(up);
+    this.perspCamera.position.copy(target).add(offset);
+    this.perspControls.target.copy(target);
+    this.perspCamera.lookAt(target);
+    this.perspControls.update();
+  }
+
   /** Up axis and front-view basis vectors for the active bed. */
   private bedBasis(): { up: THREE.Vector3; front: THREE.Vector3 } {
     switch (this.bed) {
@@ -2008,11 +2070,19 @@ export class Viewer {
     }
   }
 
+  private animClock = new THREE.Clock();
+
   private animate(): void {
     requestAnimationFrame(() => this.animate());
     if (!this._visible) return;
     this.applyKeyboardOrbit();
-    this.activeControls.update();
+    // Pass elapsed time so OrbitControls' auto-rotate is time-based, not
+    // per-frame: one turntable revolution takes a fixed wall-clock duration
+    // (60/autoRotateSpeed seconds) regardless of render framerate, so a screen
+    // recording captures a predictable number of rotations. Clamp the delta so a
+    // long stall (tab hidden) can't jump the camera on resume.
+    const dt = Math.min(this.animClock.getDelta(), 0.1);
+    this.activeControls.update(dt);
     this._updatePerspectiveClip();
     for (const cb of this.frameCallbacks) cb(this.activeCamera);
 

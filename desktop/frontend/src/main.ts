@@ -1,8 +1,10 @@
 import './style.css';
 import { createEditor, EditorHandle } from './editor';
 import { Viewer } from './viewer';
+import { initAutomation } from './automation';
+import { Toggle, bindToggleButton } from './toggle';
 import { Gnomon } from './gnomon';
-import { GetDefaultSource, GetExample, DetectSlicers, SetAssistantConfig, CreateLocalLibrary, CreateLibraryFolder, ListLibraryFolders, OpenRecentFile, OpenLibraryDir } from '../wailsjs/go/main/App';
+import { GetDefaultSource, GetExample, DetectSlicers, SetAssistantConfig, CreateLocalLibrary, CreateLibraryFolder, ListLibraryFolders, OpenRecentFile, OpenLibraryDir, AutomationEnabled, CreateScratchFile } from '../wailsjs/go/main/App';
 import { ClipboardSetText, ClipboardGetText, WindowToggleMaximise } from '../wailsjs/runtime/runtime';
 import { on } from './events';
 import { tabStore } from './tabs';
@@ -204,6 +206,53 @@ async function init() {
   // fields. Single property reference, code is in the bundle anyway.
   (window as unknown as { viewer: Viewer }).viewer = viewer;
 
+  // Auto-center & rotate turntable, owned by one Toggle: the toolbar button, the
+  // menu (future), and automation all drive the same instance, so they can't
+  // desync. bindToggleButton wires the button both ways (click → toggle, state
+  // → active class).
+  const autoRotate = new Toggle(false, (on) => viewer.setAutoRotate(on));
+  bindToggleButton(autoRotateBtn, autoRotate);
+
+  // Remote GUI automation: listen for automation:invoke commands (only emitted
+  // when the app runs with --automation). Registering the listener always is
+  // harmless — no events arrive without the flag.
+  const requireEditor = () => {
+    if (!editorRef) throw new Error('editor not ready');
+    return editorRef;
+  };
+  initAutomation({
+    viewer,
+    setAutoRotate: (on) => autoRotate.set(on),
+    // Apply a theme live (not persisted — a demo shouldn't overwrite the user's
+    // saved theme); reuses the same path as a settings change.
+    setTheme: (name, dark) => {
+      settings.appearance.uiTheme = name;
+      if (dark) settings.appearance.darkMode = dark;
+      applyCurrentTheme();
+    },
+    // Set an entry-point parameter (drives the slider/control + re-eval).
+    setParam: (name, value) => functionPreview.setParam(name, value),
+    // Drive the AI assistant drawer.
+    assistant: {
+      open: () => assistantPanel.show(),
+      send: (prompt) => assistantPanel.submitPrompt(prompt),
+      isStreaming: () => assistantPanel.isStreaming(),
+      lastResponse: () => assistantPanel.lastResponse(),
+      currentQuestion: () => assistantPanel.currentQuestion(),
+    },
+    setCodeVisible: (visible) => setCodeVisible(visible),
+    sendToSlicer: (id) => sendToSlicer(id),
+    editor: {
+      insertAtCursor: (t) => requireEditor().insertAtCursor(t),
+      moveCursorAfter: (f) => requireEditor().moveCursorAfter(f),
+      selectRange: (f) => requireEditor().selectRange(f),
+      deleteSelection: () => requireEditor().deleteSelection(),
+      setContentSilent: (t) => requireEditor().setContentSilent(t),
+      getContent: () => editorRef?.getContent() ?? '',
+      build: () => run(),
+    },
+  });
+
   // Gnomon — always-visible axis indicator bottom-left of viewport, drag to orbit
   const gnomon = new Gnomon(canvasContainer, (dTheta, dPhi) => viewer.orbitBy(dTheta, dPhi));
   viewer.onFrame((camera) => gnomon.update(camera));
@@ -216,6 +265,11 @@ async function init() {
   });
 
   // Initialize app module with all dependencies
+  // --automation: boot a clean blank slate and don't persist the throwaway
+  // session over the user's real tabs. The flag is Go-owned; the frontend just
+  // reads it here.
+  const automationMode = await AutomationEnabled();
+
   initApp({
     viewer,
     docsPanel,
@@ -226,6 +280,7 @@ async function init() {
     tabBar,
     statsBar,
     compilingOverlay,
+    automationMode,
     onEvalStatus: (state, ms) => applyEvalStatus?.(state, ms),
     onDebugBarChange: (visible) => {
       previewSelector.style.display = visible ? 'none' : '';
@@ -238,9 +293,12 @@ async function init() {
     app, fullCodeBtn,
   });
 
-  // Restore saved tab state or load default tutorial
-  const savedTabs = settings.savedTabs;
-  const savedActiveTab = settings.activeTab;
+  // Under --automation (fetched above) we assume a demo/recording session: boot
+  // a clean blank slate instead of restoring the user's last session (app.ts
+  // also skips persisting on close, so this throwaway session never clobbers
+  // their tabs).
+  const savedTabs = automationMode ? [] : settings.savedTabs;
+  const savedActiveTab = automationMode ? null : settings.activeTab;
 
   // Load a saved tab's source — handles both example: and filesystem paths.
   async function loadSavedTab(path: string): Promise<{ source: string; path: string; readOnly: boolean } | null> {
@@ -270,10 +328,17 @@ async function init() {
     }
   }
 
-  // Fall back to default tutorial when no saved tabs could be loaded
+  // With no tabs to restore: a blank editable scratch tab under automation (a
+  // clean canvas the demo script fills via editor.loadCode), otherwise the
+  // default tutorial.
   if (loadedTabs.length === 0) {
-    const source = await GetDefaultSource();
-    loadedTabs.push({ source, path: 'example:Tutorial.fct', readOnly: true, cursor: null });
+    if (automationMode) {
+      const key = await CreateScratchFile('Untitled-' + Date.now());
+      loadedTabs.push({ source: '', path: key, readOnly: false, cursor: null });
+    } else {
+      const source = await GetDefaultSource();
+      loadedTabs.push({ source, path: 'example:Tutorial.fct', readOnly: true, cursor: null });
+    }
   }
 
   // Wrap Monaco in an explicit flex:1 container so the status bar always
@@ -593,11 +658,8 @@ settingsBtn.addEventListener('click', () => {
 // Center model button
 centerBtn.addEventListener('click', () => viewer.fitToView());
 
-// Auto-rotate button
-autoRotateBtn.addEventListener('click', () => {
-  const active = viewer.toggleAutoRotate();
-  autoRotateBtn.classList.toggle('active', active);
-});
+// Auto-rotate button is wired in init() via a Toggle (bindToggleButton), so the
+// button, menu, and automation all stay in sync — see the autoRotate Toggle.
 
 // Head-tracking parallax button
 headTrackBtn.addEventListener('click', async () => {
@@ -690,13 +752,15 @@ function handleDebugToggle() {
 }
 debugBtn.addEventListener('click', handleDebugToggle);
 
-// CODE toggle — hides/shows the code editor panel.
-codeBtn.addEventListener('click', () => {
-  const hiding = !editorPanel.classList.contains('code-hidden');
-  editorPanel.classList.toggle('code-hidden', hiding);
-  codeBtn.classList.toggle('active', !hiding);
+// CODE toggle — hides/shows the code editor panel. setCodeVisible is the
+// idempotent primitive (used by the click toggle and by automation, which needs
+// to *set* a state, e.g. hide the editor for the AI demo, not flip it).
+function setCodeVisible(visible: boolean): void {
+  editorPanel.classList.toggle('code-hidden', !visible);
+  codeBtn.classList.toggle('active', visible);
   requestAnimationFrame(() => viewer.resize());
-});
+}
+codeBtn.addEventListener('click', () => setCodeVisible(editorPanel.classList.contains('code-hidden')));
 
 // Assistant toggle. AssistantPanel manages `.open` on its own panel;
 // the resizer's `.open` is in lockstep.

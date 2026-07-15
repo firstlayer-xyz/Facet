@@ -366,6 +366,10 @@ type MCPService struct {
 	// this session". Cleared on ClearHistory so a new conversation re-asks.
 	rememberedMu sync.Mutex
 	remembered   map[string]struct{}
+
+	// automation drives the GUI for the gui_* tools. Shared with the /control
+	// route so the assistant and external drivers use one command registry.
+	automation *AutomationController
 }
 
 // screenshotResult carries the captured viewport PNG (raw bytes) back
@@ -396,13 +400,14 @@ type permissionDecision struct {
 // recorder on the EvalService so every /eval response updates the lastRun slot
 // that the get_last_run tool reports. The MCP server itself is built lazily by
 // buildServer when the HTTPServer mounts /mcp.
-func NewMCPService(eval *EvalService) *MCPService {
+func NewMCPService(eval *EvalService, automation *AutomationController) *MCPService {
 	m := &MCPService{
 		state:       newMCPState(),
 		questions:   make(map[string]chan questionAnswer),
 		screenshots: make(map[string]chan screenshotResult),
 		permissions: make(map[string]chan permissionDecision),
 		remembered:  make(map[string]struct{}),
+		automation:  automation,
 	}
 	eval.SetRunRecorder(m.RecordRun)
 	return m
@@ -1064,6 +1069,10 @@ func (m *MCPService) buildServer(ctx context.Context) *mcp.Server {
 			Content: []mcp.Content{&mcp.TextContent{Text: res.Text}},
 		}, nil, nil
 	})
+
+	// GUI automation tools (gui_*) register here only in automation builds; the
+	// non-automation stub is a no-op, so a shipped app exposes none of them.
+	m.registerGUITools(server)
 
 	return server
 }

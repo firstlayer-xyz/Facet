@@ -556,7 +556,11 @@ jobs:
       - name: Build Facet.app (native arm64)
         # No -platform, no MACOSX_DEPLOYMENT_TARGET, no CGO_LDFLAGS dance.
         # macos-14 is arm64 native; the prior cross-compile machinery
-        # existed for x86 self-hosted hardware and is no longer needed.
+        # existed for x86 self-hosted hardware and is no longer needed. The
+        # dev-only demo-automation subsystem (which needs the macOS 15 SDK for
+        # ScreenCaptureKit's SCRecordingOutput) is compiled out of this build,
+        # so the shipped app has no macOS-15 dependency — see the separate
+        # build-macos-automation job for its compile coverage.
         #
         # /opt/homebrew/bin is required: the manifold target re-runs the
         # facet_cxx cmake build, and cmake on Apple Silicon runners lives
@@ -585,3 +589,51 @@ jobs:
           path: dist/Facet-macOS-arm64-app.tar.gz
           retention-days: 14
           if-no-files-found: error
+
+  build-macos-automation:
+    # Compile-coverage for the dev-only demo-automation subsystem (remote-
+    # control bus + ScreenCaptureKit recording), which `build-macos` compiles
+    # out. Not shipped: no artifact is uploaded. macos-15 for the macOS 15 SDK
+    # (SCRecordingOutput); it shares the toolchain/manifold caches with
+    # build-macos (both key on runner.os == "macOS").
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Cache custom Go toolchain
+        id: cache-go
+        uses: actions/cache@v5
+        continue-on-error: true
+        with:
+          path: .go-toolchain
+          key: go-toolchain-macOS-${{ hashFiles('scripts/setup-go.sh') }}
+
+      - name: Build custom Go toolchain
+        if: steps.cache-go.outputs.cache-hit != 'true'
+        run: bash scripts/setup-go.sh
+
+      - name: Cache manifold + third-party builds
+        id: cache-manifold
+        uses: actions/cache@v5
+        continue-on-error: true
+        with:
+          path: |
+            third_party
+            pkg/manifold/cxx/build-*
+          key: manifold-${{ runner.os }}-${{ hashFiles('scripts/_third-party-versions.sh', 'scripts/build-manifold.sh', 'pkg/manifold/cxx/CMakeLists.txt', 'pkg/manifold/cxx/include/**', 'pkg/manifold/cxx/src/**') }}
+
+      - name: Build manifold (native arm64)
+        if: steps.cache-manifold.outputs.cache-hit != 'true'
+        run: make manifold
+
+      - name: Build Facet.app with the automation tag
+        run: make build-automation
+        env:
+          GOROOT: ${{ github.workspace }}/.go-toolchain
+          PATH: ${{ github.workspace }}/.go-toolchain/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin

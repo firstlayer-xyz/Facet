@@ -311,6 +311,37 @@ export class AssistantPanel {
     return this.panel.classList.contains('open');
   }
 
+  /** Open the panel (if needed) and submit a prompt as if the user typed it and
+   *  pressed Send — for automation/demos. No-op while a response streams. */
+  submitPrompt(prompt: string): void {
+    if (!this.isVisible()) this.show();
+    this.input.value = prompt;
+    void this.send();
+  }
+
+  /** True while a response is streaming — automation polls this to wait for the
+   *  agent to finish a round before sending the next. */
+  isStreaming(): boolean {
+    return this.streaming;
+  }
+
+  /** Plain text of the most recent assistant message — lets a driver read what
+   *  the AI said (e.g. a clarifying question) and reply, instead of forcing a
+   *  no-questions one-shot. Empty if the assistant hasn't spoken yet. */
+  lastResponse(): string {
+    const msgs = this.messagesDiv.querySelectorAll('.assistant-msg-assistant');
+    const last = msgs[msgs.length - 1] as HTMLElement | undefined;
+    return last ? (last.textContent ?? '').trim() : '';
+  }
+
+  /** The active ask_user_question payload (a multiple-choice card is showing on
+   *  camera), or null. A driver reads this to know what the AI asked, then answers
+   *  by cursor-clicking an option + Submit — a real interactive Q&A. */
+  private pendingQuestion: AssistantQuestionPayload | null = null;
+  currentQuestion(): AssistantQuestionPayload | null {
+    return this.pendingQuestion;
+  }
+
   private registerEvents(): void {
     if (this.offs.length > 0) return;
     this.offs = [
@@ -627,6 +658,7 @@ export class AssistantPanel {
   // until then, at which point the card locks into a read-only summary.
   private showQuestion(payload: AssistantQuestionPayload): void {
     if (!payload?.questions?.length) return;
+    this.pendingQuestion = payload;
     this.finalizeCurrentMessage();
     this.removeToolUseIndicator();
     this.removeThinking();
@@ -677,6 +709,7 @@ export class AssistantPanel {
     };
 
     const submitAll = async () => {
+      this.pendingQuestion = null; // answered — no longer pending for a driver
       const answers: Record<string, string> = {};
       const notes: Record<string, string> = {};
       questions.forEach((q, qi) => {

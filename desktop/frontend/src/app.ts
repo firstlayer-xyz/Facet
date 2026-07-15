@@ -270,6 +270,9 @@ export interface AppDeps {
   compilingOverlay: HTMLElement;
   onEvalStatus?: (state: 'idle' | 'ready' | 'error', ms?: number) => void;
   onDebugBarChange?: (visible: boolean) => void;
+  /** True when launched with --automation: don't persist tabs on close, so a
+   *  blank demo session never overwrites the user's real saved session. */
+  automationMode?: boolean;
 }
 
 let onEvalStatusCb: AppDeps['onEvalStatus'];
@@ -287,8 +290,13 @@ export function initApp(deps: AppDeps) {
   onEvalStatusCb = deps.onEvalStatus;
   onDebugBarChangeCb = deps.onDebugBarChange ?? null;
 
-  // Persist tabs when app is about to close
-  on('app:before-close', () => persistOpenTabs());
+  // Persist tabs when app is about to close — but not in automation mode, where
+  // the session is a throwaway blank slate that must not clobber the user's
+  // real saved tabs.
+  const automationMode = deps.automationMode ?? false;
+  on('app:before-close', () => {
+    if (!automationMode) persistOpenTabs();
+  });
 
   // Wire the frame playback loop.
   initPlayback({
