@@ -10,7 +10,7 @@ export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
 WAILS_VERSION := v2.12.0
 WAILS := $(GO_TOOLCHAIN)/bin/wails
 
-.PHONY: all manifold lint dev run build sign clean cli scad2facet wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
+.PHONY: all manifold lint dev dev-automation run build build-automation sign clean cli scad2facet wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
 
 all: manifold build
 
@@ -43,6 +43,19 @@ run: build
 build: go-toolchain manifold wails-cli
 	cd desktop && $(WAILS) build
 	bash scripts/build-quicklook.sh
+
+# Demo-automation builds: compile in the dev-only remote-control bus + screen
+# recording (the `automation` build tag). Off in `build`/`dev` so the shipped
+# app never carries the /control endpoint, the gui_* MCP tools, or the macOS 15
+# ScreenCaptureKit dependency. Use these to script/record demo videos; launch
+# the built app with `open Facet.app --args --automation`. Requires the macOS 15
+# SDK on darwin (SCRecordingOutput).
+build-automation: go-toolchain manifold wails-cli
+	cd desktop && $(WAILS) build -tags automation
+	bash scripts/build-quicklook.sh
+
+dev-automation: go-toolchain manifold wails-cli
+	cd desktop && $(WAILS) dev -tags automation
 
 # Re-sign an already-built Facet.app (extensions + app, inside-out) without a
 # full rebuild — handy after tweaking entitlements. Ad-hoc by default; set
