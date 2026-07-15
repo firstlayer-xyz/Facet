@@ -4,6 +4,8 @@ Facet is a code-driven CAD application. You write code, Facet renders the 3D mod
 
 Pre-built binaries (macOS, Windows, Linux) are available from the [Releases page](https://github.com/firstlayer-xyz/Facet/releases). A live browser build of the latest main is at https://firstlayer-xyz.github.io/Facet/.
 
+**Community:** [Discord](https://discord.gg/XEEn6aD34) &middot; [r/facetcad on Reddit](https://www.reddit.com/r/facetcad/)
+
 The language is purpose-built for CAD: it has physical units (mm, in, deg), boolean operations (`+`, `-`), and interactive parameter sliders that let you tweak your design without editing code.
 
 ![Facet — tutorial rocket with interactive sliders](images/rocket.png)
