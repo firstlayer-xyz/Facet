@@ -1,4 +1,4 @@
-//go:build darwin && !crossbuild
+//go:build darwin && !crossbuild && automation
 
 package main
 

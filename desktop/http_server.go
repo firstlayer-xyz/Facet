@@ -158,7 +158,7 @@ func (s *HTTPServer) bind(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", handleMcp)
 	mux.Handle("/eval", s.eval.HTTPHandler(frameSessions))
-	mux.Handle("/control", controlHandler(s.automation))
+	registerControlRoute(mux, s.automation) // automation builds only; no-op otherwise
 	mux.HandleFunc("/check", handleCheck)
 	mux.HandleFunc("/frame", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

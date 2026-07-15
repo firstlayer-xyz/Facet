@@ -1,9 +1,18 @@
+//go:build automation
+
 package main
 
 import (
 	"encoding/json"
 	"net/http"
 )
+
+// registerControlRoute mounts the /control endpoint on mux. Automation-build
+// only; the non-automation stub is a no-op, so a shipped app never exposes the
+// remote-control bus.
+func registerControlRoute(mux *http.ServeMux, c *AutomationController) {
+	mux.Handle("/control", controlHandler(c))
+}
 
 // controlRequest is the /control body: a command name and opaque params.
 type controlRequest struct {

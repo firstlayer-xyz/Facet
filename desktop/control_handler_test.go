@@ -1,3 +1,5 @@
+//go:build automation
+
 package main
 
 import (
