@@ -513,7 +513,10 @@ jobs:
           if-no-files-found: error
 
   build-macos:
-    runs-on: macos-14  # arm64 native — no cross-compile needed
+    # macOS 15 SDK: the demo-recording backend (desktop/screencap_darwin.go)
+    # calls ScreenCaptureKit's SCRecordingOutput, which only exists in the
+    # macOS 15 SDK. arm64 native, so still no cross-compile.
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -554,9 +557,16 @@ jobs:
         run: make test
 
       - name: Build Facet.app (native arm64)
-        # No -platform, no MACOSX_DEPLOYMENT_TARGET, no CGO_LDFLAGS dance.
-        # macos-14 is arm64 native; the prior cross-compile machinery
+        # macos-15 is arm64 native; the prior cross-compile machinery
         # existed for x86 self-hosted hardware and is no longer needed.
+        #
+        # MACOSX_DEPLOYMENT_TARGET=14.0 while building against the macOS 15
+        # SDK: the SDK is needed to compile SCRecordingOutput (a macOS 15
+        # symbol used by the recording backend), but pinning the deployment
+        # target to 14 weak-links it so the shipped app still launches on
+        # macOS 14 — the @available(macOS 15) guards gate the actual calls,
+        # so recording just returns "requires macOS 15" on older systems
+        # instead of raising the whole app's minimum OS.
         #
         # /opt/homebrew/bin is required: the manifold target re-runs the
         # facet_cxx cmake build, and cmake on Apple Silicon runners lives
@@ -565,6 +575,7 @@ jobs:
         run: make build
         env:
           GOROOT: ${{ github.workspace }}/.go-toolchain
+          MACOSX_DEPLOYMENT_TARGET: '14.0'
           PATH: ${{ github.workspace }}/.go-toolchain/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
       # No ad-hoc re-sign here: `make build` runs scripts/build-quicklook.sh,
