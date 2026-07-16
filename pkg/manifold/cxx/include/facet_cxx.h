@@ -253,7 +253,8 @@ void facet_solid_from_mesh(float* verts, size_t n_verts,
 // ---------------------------------------------------------------------------
 
 // Extracts and merges display meshes from multiple solids into one.
-// Combines vertex data, offsets triangle indices, and offsets face group IDs.
+// Combines vertex data and offsets triangle indices; face group IDs are copied
+// as-is (already globally unique originalIDs).
 // Caller must free all output arrays.
 void facet_merge_extract_display_mesh(
     ManifoldPtr** solids, size_t count,
