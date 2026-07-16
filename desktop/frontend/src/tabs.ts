@@ -1,6 +1,4 @@
-// TabStore — single owner of tab state. Replaces three module-level
-// variables in app.ts (`tabs`, `tabOrder`, `activeTab`) plus the
-// scattered mutation sites that touched them. Tabs are peers; the
+// TabStore — single owner of tab state. Tabs are peers; the
 // store maintains the invariant that `active()` either points at an
 // existing tab or is the empty string (no privileged "main" tab).
 //

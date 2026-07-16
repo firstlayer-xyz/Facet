@@ -158,8 +158,8 @@ export class FunctionPreview {
     }
 
     // Params grid. A param gets a control when makeParamInput can render one:
-    // any Bool (a checkbox toggle, no `where` needed) or a constrained param
-    // (slider for a range, segmented buttons for an enum).
+    // any Bool (a checkbox toggle), any String (a text input), or a
+    // constrained param (slider for a range, segmented buttons for an enum).
     const configurableParams = this.selected.params.filter(p => p.type === 'Bool' || p.type === 'String' || p.constraint);
     if (configurableParams.length > 0) {
       const grid = document.createElement('div');

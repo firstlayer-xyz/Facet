@@ -1,15 +1,8 @@
-// EvalStore — single owner of the most recent eval result. Replaces
-// the module-level `lastResult` in app.ts plus the scattered mutation
-// sites that touched it. The architecture review flagged `lastResult`
-// as the second of three "holders of truth" — every read in app.ts
-// either reaches into it or pushes a slice of it into the editor /
-// viewer / docs panel. Centralising it sets up future consumers to
-// subscribe rather than be pushed to.
+// EvalStore — single owner of the most recent eval result; callers read
+// via current() and write via set().
 //
-// This refactor only moves the variable behind a store. Subscribers
-// are not yet wired up — that's a follow-up that gradually replaces
-// the explicit editor.updateXxx() / viewer.applyEvalResult() pushes
-// with EvalStore.subscribe() reactions.
+// The editor syncs via evalStore.subscribe(); the viewer is still pushed
+// explicitly via viewer.applyEvalResult().
 
 import type { EvalResult } from './eval-client';
 

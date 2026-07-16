@@ -598,7 +598,7 @@ func mcpArgs(configPath string) []string {
 // claudeEnv builds the child env: inherit ours, drop CLAUDECODE/CLAUDE_CODE so a
 // nested Claude Code session doesn't crash, and set the long MCP tool timeout so
 // interactive tools can block on the human. Reuses the package-level filterEnv
-// and mcpToolTimeoutMS from assistant_service.go.
+// (assistant.go) and the mcpToolTimeoutMS constant declared above.
 func claudeEnv() []string {
 	env := filterEnv(os.Environ(), "CLAUDECODE", "CLAUDE_CODE", "MCP_TOOL_TIMEOUT")
 	return append(env, fmt.Sprintf("MCP_TOOL_TIMEOUT=%d", mcpToolTimeoutMS))

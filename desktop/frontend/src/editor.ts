@@ -539,8 +539,8 @@ export function createEditor(
 
   // findDecl resolves the declaration at the cursor via the references map
   // built by the checker. The map is keyed by "file:line:col" of the
-  // referring token; currentSourceKey is normalized to "" for the main file
-  // to match the backend's DeclLocation.File convention.
+  // referring token; the key uses currentSourceKey verbatim (no privileged
+  // main).
   //
   // The checker pre-resolves every identifier, call, method, field access,
   // struct-lit name, and named arg at type-check time — so there is no
