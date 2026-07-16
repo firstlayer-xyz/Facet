@@ -105,8 +105,8 @@ func geometryStmts(body []ast.Stmt) []ast.Stmt {
 // inside of a Facet fn: leading local assignments become `const` declarations
 // and the remaining geometry is returned. A lone `if` becomes a return-bearing
 // if/else chain (writeGeomIf). Conditional geometry combined with other
-// geometry has no single-expression Facet form, so it is rejected. ctx names the
-// enclosing definition for error messages.
+// geometry is emitted as scad_union over a conditional list (see geomListExpr).
+// ctx names the enclosing definition for error messages.
 func (e *Emitter) emitGeomBody(w *writer, body []ast.Stmt, ctx string, pos ast.Pos) {
 	for _, s := range body {
 		if a, ok := s.(*ast.Assign); ok {
@@ -256,9 +256,9 @@ func isBooleanShaped(x ast.Expr) bool {
 // emitFunctionDef translates `function name(params) = expr;` into a Facet fn.
 // A top-level `let(...)` chain in the body becomes const declarations; the
 // remaining expression is returned. Parameters are classified scalar/vector and
-// the return type from the body shape. A whole-body ternary becomes an
-// if/else-if/else chain where every branch returns (Facet's conditional form);
-// a ternary buried inside a larger expression still errors (needs lowering).
+// the return type from the body shape. The body expression is returned directly;
+// a ternary maps to Facet's native ternary (expr handles *ast.Ternary), needing
+// no if/else lowering.
 func (e *Emitter) emitFunctionDef(d *ast.FunctionDef) string {
 	params := make([]string, 0, len(d.Params))
 	for _, p := range d.Params {

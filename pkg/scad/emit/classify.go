@@ -7,7 +7,7 @@ import "facet/pkg/scad/ast"
 // of lists) exceeds the binary scalar/vector model and is typed `Any`
 // (dynamic). A flat vector — from a vector default, in-body indexing/member
 // access, or a type propagated across call sites — is []Number. A parameter
-// forwarded as a String-position argument (e.g. `color(c)`, `text(name)`)
+// forwarded as a color() string argument (e.g. `color(c)`)
 // classifies as String. Everything else is scalar Number.
 func (e *Emitter) paramType(defName string, p ast.Param) string {
 	switch {

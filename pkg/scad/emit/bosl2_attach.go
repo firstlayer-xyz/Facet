@@ -599,8 +599,9 @@ func singleChildCall(n *ast.ModuleCall) (*ast.ModuleCall, bool) {
 
 // bosl2PrimitiveB2 emits a BOSL2 primitive as a B2 constructor call
 // (b2_cuboid/b2_cyl/b2_sphere). ok is false for shapes with no attachment
-// geometry. Options we don't translate (cones, rounding, chamfer, anchors) are
-// located errors via rejectExtraArgs.
+// geometry. For b2_cyl/b2_sphere, cones/rounding/chamfer/anchors are located
+// errors; b2_cuboid translates rounding/chamfer/edges and passes anchor/spin/orient
+// to the parent.
 func (e *Emitter) bosl2PrimitiveB2(mc *ast.ModuleCall) (string, bool) {
 	switch mc.Name {
 	case "cuboid":

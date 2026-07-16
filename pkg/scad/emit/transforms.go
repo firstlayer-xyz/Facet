@@ -172,8 +172,8 @@ func (e *Emitter) dimChanger(n *ast.ModuleCall) string {
 
 // linearExtrudeMethod builds `.Extrude(z: H mm[, twist: T deg][, slices: N]
 // [, taperX: S, taperY: S])`, plus a `.AlignCenter` when center=true. OpenSCAD's
-// `height` maps to Facet's `z`; `twist` and `slices` pass through (twist sign
-// matches: both wind clockwise looking down +Z); `scale` (scalar or [sx,sy])
+// `height` maps to Facet's `z`; `slices` passes through and `twist` is negated
+// because OpenSCAD and Facet wind opposite ways looking down +Z; `scale` (scalar or [sx,sy])
 // maps to taperX/taperY (Facet default 1 = OpenSCAD default scale 1); and
 // `center=true` centers the solid on z=0. `convexity` is a render-only hint with
 // no geometric effect and is intentionally dropped. Any other argument is an
@@ -254,8 +254,9 @@ func (e *Emitter) projectionMethod(n *ast.ModuleCall) string {
 }
 
 // offsetMethod builds `.Offset(delta: D mm)`. OpenSCAD's `delta` is a straight
-// (mitered) offset; `r` is a rounded offset. Facet's Offset is mitered, so a
-// rounded `r` request is approximated as mitered — the visual difference for
+// (mitered) offset; `r` is a rounded offset. Facet's Offset is rounded (the
+// kernel hardwires JoinType::Round), so a mitered `delta` request is approximated
+// as rounded; `r` is exact — the visual difference for
 // thin offsets (line outlines, fillets at small radii) is usually negligible.
 // `chamfer` is a geometric modifier (bevels corners) that is not supported;
 // it must error rather than be silently ignored.
@@ -432,8 +433,7 @@ func (e *Emitter) scaleMethod(n *ast.ModuleCall, is2D bool) string {
 // scaleComponents resolves an OpenSCAD scale factor to per-axis Facet factors. A
 // vector scales per axis, with omitted components defaulting to 1 (no scaling),
 // matching OpenSCAD — not 0, which would collapse the axis. A scalar scales every
-// axis uniformly; a vector-valued variable is indexed. (A scalar factor used to
-// fall through vecArg and be dropped entirely, silently removing the scale.)
+// axis uniformly; a vector-valued variable is indexed.
 func (e *Emitter) scaleComponents(v ast.Expr) (x, y, z string) {
 	if vec, ok := v.(*ast.Vector); ok {
 		x, y, z = "1", "1", "1"
@@ -469,7 +469,7 @@ func (e *Emitter) mirrorMethod(n *ast.ModuleCall, is2D bool) string {
 	}
 	// Non-literal normal (a variable or computed vector): index it per axis,
 	// exactly like translate. A missing arg is a hard error, not a dropped
-	// mirror — previously a non-literal fell through vecArg and vanished.
+	// mirror.
 	v, found := arg(n, "v", 0)
 	if !found {
 		return e.errf(n.Pos(), "mirror without a normal vector")
@@ -555,8 +555,7 @@ func (e *Emitter) colorMethod(n *ast.ModuleCall, is2D bool) string {
 		if alpha == "" {
 			return fmt.Sprintf("Color(hex: %s)", expr)
 		}
-		// With an explicit alpha, decompose the hex client-side at runtime is
-		// not currently supported. Fall back to the historical error.
+		// Non-literal color values cannot carry an explicit alpha, so this errors.
 		return e.errf(n.Pos(), "non-literal color value with alpha")
 	}
 }

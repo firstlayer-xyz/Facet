@@ -84,7 +84,7 @@ func (e *Emitter) bosl2Call(n *ast.ModuleCall) (string, bool) {
 		return e.bosl2Ellipse(n), true
 	case "position", "attach":
 		// Reached only outside a supported parent (top level, or under a
-		// transform); inside cuboid/cyl these are handled by withAttachments.
+		// transform); inside cuboid/cyl these are handled by bosl2AttachChain.
 		return e.errf(n.Pos(), "%s requires an attachable parent shape (cuboid/cyl)", n.Name), true
 	// single-axis translations (a scalar distance applied to one signed axis)
 	case "up":
@@ -914,8 +914,8 @@ func (e *Emitter) bosl2Spheroid(n *ast.ModuleCall) string {
 // bosl2Cuboid emits BOSL2's cuboid, which is centered on the origin by default
 // (anchor=CENTER) — unlike OpenSCAD's corner-origin cube. rounding/chamfer round
 // or bevel every edge, anchor= shifts the box so that anchor point lands on the
-// origin, and orient= reorients it. Per-edge selection (edges=/except=) is not
-// translated; rejectExtraArgs turns any such argument into a located error.
+// origin, and orient= reorients it. The axis-group edges= selector ("X"/"Y"/"Z")
+// is translated; individual edges, face groups, and except= are located errors.
 func (e *Emitter) bosl2Cuboid(n *ast.ModuleCall) string {
 	if len(n.Children) > 0 {
 		return e.bosl2AttachChain(n)
