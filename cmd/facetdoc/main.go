@@ -41,7 +41,7 @@ func usage() {
 func runGenerate(args []string) error {
 	fs := flag.NewFlagSet("generate", flag.ExitOnError)
 	docsDir := fs.String("docs", "docs", "Directory containing markdown guide files")
-	libDir := fs.String("libs", "", "Library directory (default: platform library dir)")
+	libDir := fs.String("libs", "", "Library directory (default: embedded standard library only)")
 	outDir := fs.String("out", "site", "Output directory for generated HTML")
 	fs.Parse(args)
 

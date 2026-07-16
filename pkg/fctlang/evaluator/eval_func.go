@@ -94,8 +94,7 @@ func (e *evaluator) execBody(stmts []parser.Stmt, retType string, locals map[str
 		retType:           retType,
 		// YieldStmt intentionally has no handler: yield at the top level of
 		// a function body is unexpected and dispatchStmt's default branch
-		// produces "unexpected yield statement in body" — same message the
-		// pre-unification switch emitted.
+		// produces "unexpected yield statement in body".
 		onReturn: func(s *parser.ReturnStmt, locals map[string]value) (bool, value, error) {
 			v, err := e.evalExpr(s.Value, locals)
 			if err != nil {

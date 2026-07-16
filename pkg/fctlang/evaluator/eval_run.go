@@ -294,7 +294,7 @@ func extractSolids(entryPoint string, arr array) ([]*manifold.Solid, error) {
 // would exceed the target row width. The target width is chosen so the
 // overall layout is roughly square. All solids are translated so Z=0 rests
 // on the build plate. The returned slice preserves the input order.
-// gap < 0 means auto (10% of the largest footprint dimension).
+// A nil gapOpt means auto (10% of the largest footprint dimension).
 func arrangeLayout(solids []*manifold.Solid, gapOpt *float64) []*manifold.Solid {
 	n := len(solids)
 	if n == 0 {

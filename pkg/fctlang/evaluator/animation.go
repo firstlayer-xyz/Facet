@@ -71,8 +71,7 @@ func (a *Animation) frameLocked(ctx context.Context, timeMs float64) (*manifold.
 	// per-iteration geometry) is cancelable — the eval loop polls e.ctx.Err()
 	// each iteration. Safe under a.mu: the lock serializes frame calls, and any
 	// sub-evaluator spawned during the frame snapshots e.ctx at creation, so it
-	// inherits this ctx. This replaces the old permanent detach to
-	// context.Background(); the build context that produced the handle is no
+	// inherits this ctx. The build context that produced the handle is no
 	// longer consulted at frame time, so a canceled build request can't kill
 	// playback while a live per-frame ctx keeps each frame cancelable.
 	a.e.ctx = ctx

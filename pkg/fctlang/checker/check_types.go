@@ -267,16 +267,6 @@ func (c *checker) resolveFuncTypeStr(parentStruct, typeName string) typeInfo {
 	return funcTI(paramTIs, nil, retTI) // fn-type syntax carries no param names
 }
 
-// resolveType turns a type string into a typeInfo, handling every form the
-// language allows: the dynamic `Any`, optional `T?`, array `[]T`, function
-// `fn(...)`, builtin scalars, and struct names (resolved exactly, then via the
-// parent struct's library prefix, then via any known library prefix).
-// parentStruct is the qualified name of the struct whose field/method type is
-// being resolved, or "" at top level.
-//
-// This is the single type resolver. It replaced three that disagreed on which
-// forms they handled — notably the field-access path dropped `?`, so an optional
-// struct field (`x Length?`) mistyped as Any and lost its ??/?./nil guarantees.
 // typeHasZeroValue reports whether an omitted struct field of typeName can be
 // zero-filled by the evaluator. It mirrors the evaluator's zeroValue +
 // zeroStructRec capability exactly, so the checker flags precisely the omissions
@@ -329,6 +319,14 @@ func (c *checker) typeHasZeroValue(parentStruct, typeName string, visiting []str
 	return true
 }
 
+// resolveType turns a type string into a typeInfo, handling every form the
+// language allows: the dynamic `Any`, optional `T?`, array `[]T`, function
+// `fn(...)`, builtin scalars, and struct names (resolved exactly, then via the
+// parent struct's library prefix, then via any known library prefix).
+// parentStruct is the qualified name of the struct whose field/method type is
+// being resolved, or "" at top level.
+//
+// This is the single type resolver.
 func (c *checker) resolveType(parentStruct, typeName string) typeInfo {
 	if typeName == "Any" {
 		return unknown()

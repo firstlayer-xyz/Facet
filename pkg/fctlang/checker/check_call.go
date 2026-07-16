@@ -134,9 +134,8 @@ func (c *checker) checkCall(call *parser.CallExpr, env *typeEnv) typeInfo {
 // It returns (type, true) whenever there was at least one candidate — a unique
 // match, the best overload, or a reported overload failure — and (unknown,
 // false) only when there were no candidates, so the caller can try the next
-// source. The fallback-for-arity path that once followed these blocks was dead:
-// the candidate lists here are collected with nArgs=-1, so a non-empty fallback
-// implies non-empty candidates, which these branches have already handled.
+// source. Candidate lists are collected with nArgs=-1, so any non-empty
+// candidate set is fully handled by the branches above.
 func (c *checker) resolveCandidates(name string, pos parser.Pos, cands []*parser.Function, args []parser.Expr, argTypes []typeInfo) (typeInfo, bool) {
 	switch {
 	case len(cands) == 1:
@@ -192,7 +191,7 @@ func (c *checker) checkBuiltinCall(call *parser.BuiltinCallExpr, env *typeEnv) t
 		return sig.ret
 	}
 
-	// Special-case polymorphic builtins: _min, _max, _abs, _lerp
+	// Special-case builtins whose return type or arity needs custom handling.
 	switch call.Name {
 	case "_min", "_max":
 		if len(argTypes) != 2 {
@@ -348,7 +347,7 @@ func (c *checker) resolveNamedArgs(name string, pos parser.Pos, fn *parser.Funct
 // checkFuncArgs validates arguments against a function definition and returns the return type.
 func (c *checker) checkFuncArgs(name string, pos parser.Pos, fn *parser.Function, callArgs []parser.Expr, argTypes []typeInfo) typeInfo {
 	// Record reference: callsite -> function declaration. Covers all call paths
-	// in checkCall (single/multi/fallback for user and stdlib candidates) and
+	// in checkCall (single- and multi-candidate resolution for user and stdlib candidates) and
 	// method-call paths in checkMethodCall, which also route here.
 	c.addRef(pos, DeclLocation{
 		Line:       fn.Pos.Line,

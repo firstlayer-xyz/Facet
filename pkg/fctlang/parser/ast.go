@@ -59,11 +59,11 @@ type Param struct {
 	Default    Expr // nil if required
 	Constraint Expr // nil if unconstrained
 	Pos        Pos  // position of the parameter name token
-	// GroupID identifies parameters declared together as `a, b var`.
+	// GroupID identifies parameters declared together as `a, b Any`.
 	// Zero means the param has its own type slot; positive IDs are shared
 	// across all params from one multi-name declaration so the checker can
 	// enforce that they resolve to the same concrete type for generic
-	// (`var`/`[]var`) groups.
+	// (`Any`/`[]Any`) groups.
 	GroupID int
 }
 
@@ -351,7 +351,7 @@ type NumberLit struct {
 func (*NumberLit) exprNode() {}
 
 // IsNumericLiteral reports whether expr is a bare numeric literal — i.e. a
-// NumberLit, or a unary +/- applied to a NumberLit.  Bare literals are
+// NumberLit, or a unary `-` applied to a NumberLit.  Bare literals are
 // "untyped" and coerce freely between Number and Length in mixed-unit
 // arithmetic; committed Number variables do not.
 func IsNumericLiteral(expr Expr) bool {
@@ -407,7 +407,8 @@ type ArrayLitExpr struct {
 func (*ArrayLitExpr) exprNode() {}
 
 // RangeExpr represents a range expression: [start:end] or [start:end:step].
-// Exclusive is true when < or > modifier is used on the end bound.
+// The end-bound modifier is stored in `Bound`; `IsExclusive()` reports true for
+// the one-character forms `<`/`>`.
 type RangeExpr struct {
 	Start, End Expr
 	Step       Expr   // nil when not specified (defaults to 1 or -1)
