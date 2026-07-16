@@ -95,10 +95,7 @@ func MergeExtractDisplayMeshes(solids []*Solid) *DisplayMesh {
 }
 
 // MergeExtractExpandedMeshes composes the solids and extracts one expanded mesh
-// in a single C call (via _mf_merge_extract_expanded_mesh), matching native. The
-// previous implementation faked the merge with a boolean Union — which welds
-// coincident faces and drops interior geometry — and built a *Solid bypassing
-// newSolid, leaking the ExternalAlloc/finalizer accounting.
+// in a single C call (via _mf_merge_extract_expanded_mesh), matching native.
 func MergeExtractExpandedMeshes(solids []*Solid, edgeThresholdDeg float32) *DisplayMesh {
 	if len(solids) == 0 {
 		return &DisplayMesh{}
