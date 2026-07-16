@@ -10,11 +10,20 @@ permissions:
   id-token: write
   actions: read  # await-ci uses gh CLI to inspect ci.yml runs
 
+concurrency:
+  # One release run per ref. A newer push to main supersedes the release for an
+  # older commit (its deploy/sign is already obsolete), so cancel the in-flight
+  # one instead of racing it. Tags get a group each (release-refs/tags/vX), so
+  # tag releases never cancel one another or the main release.
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   await-ci:
     runs-on: ubuntu-latest
     outputs:
       ci_run_id: ${{ steps.find.outputs.ci_run_id }}
+      should_release: ${{ steps.find.outputs.should_release }}
     steps:
       - name: Find and wait for ci.yml run for this SHA
         id: find
@@ -52,6 +61,15 @@ jobs:
             if [ "$STATUS" = "completed" ]; then
               if [ "$CONCL" = "success" ]; then
                 echo "ci_run_id=$ID" >> "$GITHUB_OUTPUT"
+                echo "should_release=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              elif [ "$CONCL" = "cancelled" ]; then
+                # A cancelled CI means a newer commit superseded this one (main's
+                # cancel-in-progress) or CI was cancelled by hand — either way there
+                # is nothing to release. Skip the downstream jobs (they gate on
+                # should_release) rather than failing the run red.
+                echo "::notice::CI run $ID was cancelled (superseded) — skipping release."
+                echo "should_release=false" >> "$GITHUB_OUTPUT"
                 exit 0
               else
                 echo "::error::CI run $ID concluded $CONCL — release aborted."
@@ -64,6 +82,7 @@ jobs:
 
   sign-macos:
     needs: [await-ci]
+    if: needs.await-ci.outputs.should_release == 'true'
     runs-on: macos-14
     environment:
       name: ${{ startsWith(github.ref, 'refs/tags/v') && 'signing-release' || 'signing-main' }}
@@ -138,6 +157,7 @@ jobs:
 
   deploy-pages:
     needs: [await-ci]
+    if: needs.await-ci.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     environment:
       name: ${{ startsWith(github.ref, 'refs/tags/v') && 'signing-release' || 'pages-preview' }}
@@ -180,7 +200,7 @@ jobs:
 
   github-release:
     needs: [await-ci, sign-macos]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && needs.await-ci.outputs.should_release == 'true' }}
     runs-on: ubuntu-latest
     environment: signing-release
     permissions:
