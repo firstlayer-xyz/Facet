@@ -133,12 +133,11 @@ function isDirty(): boolean {
 
 // The latest eval result lives in EvalStore (./eval-store.ts).
 // app.ts reads it via evalStore.current() and writes via
-// evalStore.set(). Direct `lastResult` references were removed when
-// the store was introduced.
+// evalStore.set().
 
 // Callbacks for external UI components.
-// onTabChange went away — subscribe to tabStore.onActiveChange()
-// directly from main.ts instead.
+// Active-tab transitions are delivered via tabStore.onActiveChange(),
+// subscribed from main.ts.
 let onSourceChangeCb: ((source: string) => void) | null = null;
 let onDebugFilesChangeCb: (() => void) | null = null;
 let onDebugExitCb: (() => void) | null = null;

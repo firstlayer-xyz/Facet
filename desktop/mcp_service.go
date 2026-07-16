@@ -332,15 +332,14 @@ type HTTPAuth struct {
 
 // MCPService builds the MCP server and registers the assistant tools that read
 // and write the editor's code/context and answer questions/permissions. The
-// HTTPServer hosts the resulting handler at /mcp (alongside /eval and /check);
-// this service no longer owns the listener or the bearer token.
+// HTTPServer hosts the resulting handler at /mcp (alongside /eval and /check).
 type MCPService struct {
 	state    *mcpState
 	eventCtx context.Context
 
 	// In-flight ask_user_question calls. Each tool invocation parks a
 	// goroutine on its channel until the frontend reports the answer via
-	// the AssistantAnswerQuestion Wails binding (which calls AnswerQuestion
+	// the AnswerAssistantQuestion Wails binding (which calls AnswerQuestion
 	// below). Keyed by a per-call ID emitted to the frontend in the
 	// assistant:question event payload — the frontend echoes it back on
 	// submit so we can route the answer to the right pending call.
@@ -574,8 +573,8 @@ func (m *MCPService) ClearRememberedPermissions() {
 }
 
 // SetContext latches the per-run editor state for MCP tools: current code,
-// the active tab's path, and whether that tab is read-only. Satisfies
-// AssistantMCPBridge.
+// the active tab's path, and whether that tab is read-only. Provides the
+// context half of AssistantMCPBridge.
 func (m *MCPService) SetContext(code, activeTabPath string, readOnly bool) {
 	m.state.setContext(code, activeTabPath, readOnly)
 }

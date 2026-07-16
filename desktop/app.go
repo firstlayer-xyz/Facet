@@ -137,7 +137,7 @@ func NewApp() *App {
 
 // GetHTTPAuth returns the port + bearer token for the localhost HTTP server.
 // The frontend must include `Authorization: Bearer <token>` on every request
-// to /eval, /check, or /mcp.  Exposed via Wails binding.
+// to /eval, /frame, /check, or /mcp.  Exposed via Wails binding.
 //
 // It blocks until the server has bound its listener. If the server failed to
 // start, it returns that error (surfaced to the frontend as a rejected promise)

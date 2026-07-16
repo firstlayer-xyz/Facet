@@ -361,9 +361,9 @@ export const docsResizer = document.createElement('div');
 docsResizer.id = 'docs-resizer';
 drawerStack.appendChild(docsResizer);
 
-// Assistant resizer (left edge of the assistant panel). The id is
-// `assistant-resizer`; the export name `panelResizer` is kept so the
-// existing resize-handler import in main.ts continues to work.
+// Assistant resizer (left edge of the assistant panel). Exported as
+// `panelResizer`; its DOM id is `assistant-resizer` (used by main.ts's
+// drawer resize handler).
 export const panelResizer = document.createElement('div');
 panelResizer.id = 'assistant-resizer';
 drawerStack.appendChild(panelResizer);

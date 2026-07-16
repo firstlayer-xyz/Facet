@@ -369,7 +369,7 @@ function worldToPixel(
 /**
  * Resolve the best snap target for a raycaster hit.
  *
- * Priority: circleCenter → vertex → edgeEnd → edgeMid → faceCentroid.
+ * Priority: circleEdge (pending center) → circleCenter → vertex → edgeEnd → edgePerp → angleLock → edgeMid → faceCentroid.
  * The first candidate whose screen-space distance to the cursor is ≤ tol wins;
  * faceCentroid is the always-available fallback.
  */

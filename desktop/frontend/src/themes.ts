@@ -360,7 +360,7 @@ export function registerThemes(): void {
 }
 
 /** Resolve UI theme ID from base uiTheme + darkMode to a palette key.
- *  e.g. ('facet', 'dark') → 'facet-dark', ('dracula', 'light') → 'dracula-light'. */
+ *  e.g. ('facet-orange', 'dark') → 'facet-orange-dark', ('dracula', 'light') → 'dracula-light'. */
 export function resolveUiTheme(uiTheme: string, darkMode: 'light' | 'dark' | 'auto'): string {
   const suffix = darkMode === 'auto'
     ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')

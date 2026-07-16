@@ -235,6 +235,8 @@ export function buildMeasurementGroup(
  *  - edgePerp     — a right-angle bracket with the dot at its corner (90° foot)
  *  - faceCentroid — outlined square with the dot at its center (planar patch)
  *  - circleCenter — circle with a crosshair at the dot (hub of a circle)
+ *  - circleEdge   — a circle outline with the dot on the perimeter (pending center)
+ *  - angleLock    — two rays from the dot with a connecting arc (locked angle)
  */
 const SNAP_GLYPH: Record<Snap['kind'], GlyphKind> = {
   vertex:       'corner',

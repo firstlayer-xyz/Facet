@@ -110,7 +110,7 @@ export class Viewer {
   // resize to setViewOffset on both cameras so the lookAt target
   // projects to the centre of the VISIBLE portion of the canvas
   // instead of the centre of the full canvas — which would put the
-  // model behind the drawer. Updated by main.ts via setRightInset.
+  // model behind the drawer. Currently always 0 — no caller sets it.
   private rightInset = 0;
   private ambientLight: THREE.AmbientLight;
   private savedAmbientIntensity: number = 0.8;
@@ -1070,10 +1070,8 @@ export class Viewer {
   /**
    * Load a fresh eval result. Owns the full sequence:
    *   clearMeshes → loadDecodedMesh → setPosMap → fitToView.
-   * Callers used to drive these calls imperatively from app.ts —
-   * forgetting one in a new code path left the viewer in a partial
-   * state. Now the viewer is the only place this sequence is spelled
-   * out, and the order can't accidentally drift.
+   * The viewer is the only place this sequence is spelled out, so the
+   * order can't accidentally drift.
    *
    * The mesh is rendered at the world coordinates the kernel returned
    * (the Solid's bounding box). The camera is fit to those coordinates;

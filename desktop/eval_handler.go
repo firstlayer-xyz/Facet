@@ -82,8 +82,7 @@ type evalResponseHeader struct {
 	EntryPoints  []entrypoints.EntryPoint `json:"entryPoints,omitempty"`
 	// Symbols is the editor symbol table the checker built for this
 	// program — the source of truth for completion, signature-help,
-	// and hover. Replaces the older docIndex (which was a parallel
-	// cache-walk that could drift from what the checker resolved).
+	// and hover.
 	Symbols []checker.Symbol `json:"symbols,omitempty"`
 
 	// Eval data
