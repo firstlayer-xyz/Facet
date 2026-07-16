@@ -65,7 +65,7 @@ fn Solid.RefineToLength(edgeLength Length) Solid {
 # Topological genus: 0 = sphere-like, 1 = torus-like (one through-hole), etc.
 fn Solid.Genus() Number { return _genus(self) }
 
-# Minimum gap (closest distance) between two solids. `searchLength` bounds the search.
+# Minimum gap (closest distance) between two solids. `reach` bounds the search.
 fn Solid.MinGap(with Solid, reach Length) Length {
     return _min_gap(self, with, reach)
 }
@@ -94,7 +94,7 @@ fn Layout(solids []Solid, gap Length?) []Solid { return _layout(solids, gap) }
 # ---------------------------------------------------------------------------
 # Pattern Operations
 # ---------------------------------------------------------------------------
-# The translational patterns (Linear/Grid/Hex) share one vocabulary: copies are
+# The translational patterns (Linear/Grid) share one vocabulary: copies are
 # spaced by their own bounding box plus a `gap` (edge-to-edge: 0 tiles seamlessly,
 # positive leaves walls, negative overlaps). Each comes in two forms — a count
 # form (`count`/`countX,countY`) and a region form (`length`/`width,depth`) that

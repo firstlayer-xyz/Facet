@@ -10,7 +10,9 @@ import (
 )
 
 // value represents a runtime value in the evaluator.
-// It is either a float64, a length, a *manifold.Solid, or a *manifold.Sketch.
+// It is one of: float64, length, angle, bool, string, array, *manifold.Solid,
+// *manifold.Sketch, *structVal, *optionalVal, *functionVal, or *libRef
+// (optionally wrapped in *constVal/*constrainedVal).
 type value any
 
 // constVal wraps a value to mark it as const (immutable binding).
@@ -166,8 +168,7 @@ type ModelStats struct {
 // animation frame, or any one-solid render. Triangle/vertex counts come from
 // the already-extracted display mesh; volume, surface area, and the bounding
 // box from the solid itself. Shared by the desktop /eval and /frame handlers
-// and the wasm preview so every per-solid frame reports stats identically
-// (including the bounding box, which the wasm path previously omitted).
+// and the wasm preview so every per-solid frame reports stats identically.
 func SolidFrameStats(solid *manifold.Solid, mesh *manifold.DisplayMesh) ModelStats {
 	s := ModelStats{
 		Triangles:   mesh.IndexCount / 3,
@@ -236,7 +237,7 @@ func newEvaluator(ctx context.Context, prog loader.Program, currentKey string, o
 	return e, nil
 }
 
-// Eval evaluates a parsed facet program. entryPoint must name a function that returns a Solid.
+// Eval evaluates a parsed facet program. entryPoint must name a function that returns a Solid, an Array of Solids, a PolyMesh, or an Animation.
 // Libraries must be resolved via ResolveLibraries before calling Eval.
 // The context can be used to cancel evaluation mid-execution.
 // overrides maps var names to raw values (JSON numbers/strings) for slider parameters.

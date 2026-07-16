@@ -35,7 +35,7 @@ func (p *parser) drainTrailingComment(s Stmt, line int) {
 	}
 }
 
-// parseProgram → { var_decl | function }
+// parseProgram → { var_decl | const_decl | struct_decl | function }
 func (p *parser) parseProgram() (*Source, error) {
 	prog := &Source{}
 	for p.cur.Type != TokenEOF {

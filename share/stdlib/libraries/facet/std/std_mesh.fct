@@ -86,7 +86,7 @@ fn Bounds(of []Vec3) Box {
 }
 
 # ---------------------------------------------------------------------------
-# Tri Type (triangle index triple)
+# Face Type (triangle index triple)
 # ---------------------------------------------------------------------------
 # Index triple referencing three vertices of a triangle.
 type Face {

@@ -6,7 +6,6 @@ import (
 	"strings"
 )
 
-// inferExpr infers the type of an expression.
 // checkTypedArrayElems recursively checks and infers the type of a typed array literal.
 // Untyped sub-arrays ([...]) inherit the outer type prefix, adding nesting levels.
 // e.g. Number[1,2] → []Number, Number[[1,2],[3,4]] → [][]Number
@@ -38,6 +37,7 @@ func (c *checker) checkTypedArrayElems(typeName string, leafType typeInfo, elems
 	return arrayOf(leafType)
 }
 
+// inferExpr infers the type of an expression.
 func (c *checker) inferExpr(expr parser.Expr, env *typeEnv) typeInfo {
 	switch ex := expr.(type) {
 	case *parser.NumberLit:
@@ -596,7 +596,6 @@ func (c *checker) lookupFieldType(recvType typeInfo, fieldName string, pos parse
 	return unknown()
 }
 
-// resolveStructName tries to determine the struct type name of an expression.
 // libGlobalEnv returns the cached global type-env of the library that the
 // receiver expression refers to (e.g. `L` in `L.GRID`), or nil if the
 // receiver is not a known library variable. Used to resolve and validate
@@ -613,6 +612,7 @@ func (c *checker) libGlobalEnv(recv parser.Expr) *typeEnv {
 	return c.srcEnvs[c.prog.Resolve(libPath)]
 }
 
+// resolveStructName tries to determine the struct type name of an expression.
 func (c *checker) resolveStructName(expr parser.Expr, env *typeEnv) string {
 	switch ex := expr.(type) {
 	case *parser.IdentExpr:

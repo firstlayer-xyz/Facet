@@ -39,13 +39,8 @@ func (e *evaluator) evalCompare(op string, lv, rv value, pos parser.Pos) (value,
 			}
 			return l != r, nil
 		}
-		// Bool vs Array (and Array vs Bool below) used to coerce the array
-		// to a "truthy" Bool via len > 0. That implicit conversion was a
-		// footgun — `true == [1, 2, 3]` would silently succeed — and is
-		// also rejected by the checker for typed code, so the runtime path
-		// was effectively a backdoor for `Any`-typed values. Removed: cross-
-		// type Bool/Array comparisons fall through to the incompatible-type
-		// error like every other unrelated pair.
+		// Bool compares only against Bool; a Bool/Array pair falls through
+		// to the incompatible-type error.
 	case array:
 	case string:
 		if r, rok := rv.(string); rok {

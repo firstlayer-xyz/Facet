@@ -58,7 +58,7 @@ const (
 	TokenString                            // string literal
 	TokenRawString                         // raw string literal (backtick)
 	TokenColon                             // :
-	TokenQuestion                          // ? — postfix marker on a type making it Optional
+	TokenQuestion                          // ? — ternary conditional operator; also a postfix marker making a type Optional
 	TokenQuestionQuestion                  // ?? — nullish coalescing: opt ?? fallback
 	TokenQuestionDot                       // ?. — optional chaining: opt?.field / opt?.method()
 	TokenNil                               // nil keyword — the None variant of an Optional

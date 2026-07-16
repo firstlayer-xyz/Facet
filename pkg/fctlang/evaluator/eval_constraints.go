@@ -309,8 +309,7 @@ func asNumber2(v value) float64 {
 // structural-equality predicate behind IndexOf/IndicesOf, `in`-set
 // constraints, and Optional comparison — and it must agree with the `==`
 // operator: Length↔Number compares like evalCompare does (5 mm == 5), structs
-// compare field-wise, arrays element-wise. (It used to return a silent false
-// for every struct and array, so IndexOf over struct arrays never matched.)
+// compare field-wise, arrays element-wise.
 func valuesEqual(a, b value) bool {
 	a, b = unwrap(a), unwrap(b)
 	switch av := a.(type) {

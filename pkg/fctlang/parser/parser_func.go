@@ -99,7 +99,7 @@ func (p *parser) parseFuncTypeStr() (string, error) {
 }
 
 // parseTypeStr parses a complete type expression.
-// Handles: ident, T.Type (qualified), var, []T (prefix array), fn(T...) R,
+// Handles: ident, T.Type (qualified), Any, []T (prefix array), fn(T...) R,
 // and a postfix `?` making the type Optional. The `?` is consumed once after
 // the base type, so `Number?` parses but `Number??` errors (double optional
 // is meaningless — Bind / Map flatten).
@@ -221,7 +221,7 @@ func isOperatorToken(t TokenType) bool {
 
 // parseFunction → "fn" name "(" [params] ")" [returnType] "{" { statement } "}"
 // name → IDENT | IDENT "." IDENT (receiver.method) | operator (for operator functions)
-// returnType → IDENT | IDENT "." IDENT | []T | fn(...) R | var
+// returnType → IDENT | IDENT "." IDENT | []T | fn(...) R | T?
 func (p *parser) parseFunction() (*Function, error) {
 	fnTok, err := p.expect(TokenFn)
 	if err != nil {
@@ -323,8 +323,6 @@ func (p *parser) parseFunction() (*Function, error) {
 //
 //	fn Foo(x, y, z Length)              →  all required
 //	fn Foo(radius Length, seg Number = 0)  →  seg has default
-//
-// Required params must come before optional params (across the entire signature).
 func (p *parser) parseParams() ([]*Param, error) {
 	var params []*Param
 	for {
