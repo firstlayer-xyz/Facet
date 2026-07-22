@@ -15,15 +15,14 @@ func TestRenderMeshFile_PNG(t *testing.T) {
 	out := filepath.Join(dir, "tri.png")
 
 	m := &meshio.Mesh{
-		Vertices:   []float32{0, 0, 0, 10, 0, 0, 0, 10, 0},
-		Indices:    []uint32{0, 1, 2},
+		Geometry:   meshio.Geometry{Vertices: []float32{0, 0, 0, 10, 0, 0, 0, 10, 0}, Indices: []uint32{0, 1, 2}},
 		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}},
 	}
 	f, err := os.Create(in)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Encode3MF(f); err != nil {
+	if err := meshio.Encode(f, m, "3mf"); err != nil {
 		t.Fatal(err)
 	}
 	f.Close()

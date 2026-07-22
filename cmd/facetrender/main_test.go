@@ -12,15 +12,14 @@ func TestPreviewBuffers_MeshPath(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "tri.3mf")
 	m := &meshio.Mesh{
-		Vertices:   []float32{0, 0, 0, 10, 0, 0, 0, 10, 0},
-		Indices:    []uint32{0, 1, 2},
+		Geometry:   meshio.Geometry{Vertices: []float32{0, 0, 0, 10, 0, 0, 0, 10, 0}, Indices: []uint32{0, 1, 2}},
 		FaceColors: []meshio.FaceColor{{Hex: "#00FF00"}},
 	}
 	f, err := os.Create(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Encode3MF(f); err != nil {
+	if err := meshio.Encode(f, m, "3mf"); err != nil {
 		t.Fatal(err)
 	}
 	f.Close()
@@ -48,10 +47,9 @@ func TestPreviewBuffers_MeshPathNoColor(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &meshio.Mesh{
-		Vertices: []float32{0, 0, 0, 10, 0, 0, 0, 10, 0},
-		Indices:  []uint32{0, 1, 2},
+		Geometry: meshio.Geometry{Vertices: []float32{0, 0, 0, 10, 0, 0, 0, 10, 0}, Indices: []uint32{0, 1, 2}},
 	}
-	if err := m.EncodeSTL(f); err != nil {
+	if err := meshio.Encode(f, m, "stl"); err != nil {
 		t.Fatal(err)
 	}
 	f.Close()

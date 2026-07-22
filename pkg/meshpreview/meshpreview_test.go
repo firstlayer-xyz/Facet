@@ -16,8 +16,7 @@ var triIdx = []uint32{0, 1, 2, 3, 4, 5}
 
 func TestMeshToPreview_Colors(t *testing.T) {
 	m := &meshio.Mesh{
-		Vertices:   triVerts,
-		Indices:    triIdx,
+		Geometry:   meshio.Geometry{Vertices: triVerts, Indices: triIdx},
 		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}, {Hex: "#00FF00"}},
 	}
 	pos, cols, err := meshToPreview(m)
@@ -43,7 +42,7 @@ func TestMeshToPreview_Colors(t *testing.T) {
 }
 
 func TestMeshToPreview_NoColors(t *testing.T) {
-	m := &meshio.Mesh{Vertices: triVerts, Indices: triIdx}
+	m := &meshio.Mesh{Geometry: meshio.Geometry{Vertices: triVerts, Indices: triIdx}}
 	pos, cols, err := meshToPreview(m)
 	if err != nil {
 		t.Fatal(err)
@@ -60,8 +59,7 @@ func TestMeshToPreview_NoColors(t *testing.T) {
 // decoders don't bounds-check indices and this runs over arbitrary files.
 func TestMeshToPreview_IndexOutOfRange(t *testing.T) {
 	m := &meshio.Mesh{
-		Vertices: triVerts,           // 6 vertices
-		Indices:  []uint32{0, 1, 99}, // 99 is out of range
+		Geometry: meshio.Geometry{Vertices: triVerts, Indices: []uint32{0, 1, 99}}, // 99 is out of range
 	}
 	if _, _, err := meshToPreview(m); err == nil {
 		t.Fatal("expected an out-of-range error, got nil")
@@ -72,9 +70,8 @@ func TestMeshToPreview_IndexOutOfRange(t *testing.T) {
 // than silently dropping color.
 func TestMeshToPreview_ColorCountMismatch(t *testing.T) {
 	m := &meshio.Mesh{
-		Vertices:   triVerts,
-		Indices:    triIdx,                               // 2 triangles
-		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}}, // only 1 color
+		Geometry:   meshio.Geometry{Vertices: triVerts, Indices: triIdx}, // 2 triangles
+		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}},                 // only 1 color
 	}
 	if _, _, err := meshToPreview(m); err == nil {
 		t.Fatal("expected a color-count mismatch error, got nil")
@@ -87,8 +84,8 @@ func TestLoadColored_STLHasNoColor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &meshio.Mesh{Vertices: triVerts, Indices: triIdx}
-	if err := m.EncodeSTL(f); err != nil {
+	m := &meshio.Mesh{Geometry: meshio.Geometry{Vertices: triVerts, Indices: triIdx}}
+	if err := meshio.Encode(f, m, "stl"); err != nil {
 		t.Fatal(err)
 	}
 	f.Close()
@@ -107,8 +104,7 @@ func TestLoadColored_STLHasNoColor(t *testing.T) {
 
 func TestMeshToPreview_DefaultFallback(t *testing.T) {
 	m := &meshio.Mesh{
-		Vertices:   triVerts,
-		Indices:    triIdx,
+		Geometry:   meshio.Geometry{Vertices: triVerts, Indices: triIdx},
 		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}, {Hex: ""}},
 	}
 	_, cols, err := meshToPreview(m)
@@ -132,11 +128,10 @@ func TestLoadColored_3MFHasColor(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &meshio.Mesh{
-		Vertices:   triVerts,
-		Indices:    triIdx,
+		Geometry:   meshio.Geometry{Vertices: triVerts, Indices: triIdx},
 		FaceColors: []meshio.FaceColor{{Hex: "#FF0000"}, {Hex: "#00FF00"}},
 	}
-	if err := m.Encode3MF(f); err != nil {
+	if err := meshio.Encode(f, m, "3mf"); err != nil {
 		t.Fatal(err)
 	}
 	f.Close()

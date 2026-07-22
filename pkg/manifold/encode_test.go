@@ -61,9 +61,9 @@ func TestEncodeSolidMesh_3MFCarriesAttachment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EncodeSolidMesh: %v", err)
 	}
-	m, err := meshio.Decode3MF(bytes.NewReader(data))
+	m, err := meshio.Decode(bytes.NewReader(data), "3mf")
 	if err != nil {
-		t.Fatalf("Decode3MF: %v", err)
+		t.Fatalf("Decode: %v", err)
 	}
 	if len(m.Attachments) != 1 || m.Attachments[0].Path != "Metadata/Facet/project.json" {
 		t.Fatalf("attachment not carried: %+v", m.Attachments)
