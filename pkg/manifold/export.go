@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/firstlayer-xyz/meshio"
+	"github.com/firstlayer-xyz/meshio/obj"
 )
 
 // RunMesh holds extracted triangle mesh data with run information
@@ -163,11 +164,10 @@ func ExportOBJ(s *Solid, path string) error {
 	}
 
 	m := &meshio.Mesh{
-		Vertices:   rm.Vertices,
-		Indices:    rm.Indices,
+		Geometry:   meshio.Geometry{Vertices: rm.Vertices, Indices: rm.Indices},
 		FaceColors: faceColorsFromHex(runTriangleHex(rm, s.FaceMap), len(rm.Indices)/3, ""),
 	}
-	return m.WriteOBJ(path)
+	return obj.Write(path, m)
 }
 
 // ExportOBJMulti unions multiple Solids and exports to OBJ with per-face colors.

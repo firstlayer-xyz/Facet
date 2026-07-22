@@ -29,17 +29,17 @@ func EncodeSolidMesh(vertices []float32, indices []uint32, faceHex []string, for
 	if len(attachments) > 0 && format != "3mf" {
 		return nil, fmt.Errorf("EncodeSolidMesh: attachments are only supported for 3mf, not %q", format)
 	}
-	m := &meshio.Mesh{Vertices: vertices, Indices: indices}
+	m := &meshio.Mesh{Geometry: meshio.Geometry{Vertices: vertices, Indices: indices}}
 	var buf bytes.Buffer
 	switch format {
 	case "stl":
-		if err := m.EncodeSTL(&buf); err != nil {
+		if err := meshio.Encode(&buf, m, "stl"); err != nil {
 			return nil, err
 		}
 	case "3mf":
 		m.FaceColors = faceColorsFromHex(faceHex, len(indices)/3, default3MFColor)
 		m.Attachments = attachments
-		if err := m.Encode3MF(&buf); err != nil {
+		if err := meshio.Encode(&buf, m, "3mf"); err != nil {
 			return nil, err
 		}
 	default:

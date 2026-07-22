@@ -292,7 +292,7 @@ func TestExport3MFMulti_EmbedsAttachment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := meshio.Decode3MF(bytes.NewReader(data))
+	m, err := meshio.Decode(bytes.NewReader(data), "3mf")
 	if err != nil {
 		t.Fatal(err)
 	}

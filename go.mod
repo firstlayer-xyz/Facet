@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/andybalholm/brotli v1.2.1
-	github.com/firstlayer-xyz/meshio v0.0.0-20260616165618-5c3701e5af58
+	github.com/firstlayer-xyz/meshio v0.0.0-20260721233120-20f45a1eb41f
 	github.com/go-git/go-billy/v5 v5.8.0
 	github.com/go-git/go-git/v5 v5.17.0
 	github.com/modelcontextprotocol/go-sdk v1.4.1

@@ -9,18 +9,18 @@ import (
 	"facet/pkg/facet3mf"
 
 	"github.com/firstlayer-xyz/meshio"
+	"github.com/firstlayer-xyz/meshio/threemf"
 )
 
 func write3MF(t *testing.T, atts []meshio.Attachment) string {
 	t.Helper()
 	m := &meshio.Mesh{
-		Vertices:    []float32{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0},
-		Indices:     []uint32{0, 1, 2, 0, 2, 3},
+		Geometry:    meshio.Geometry{Vertices: []float32{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0}, Indices: []uint32{0, 1, 2, 0, 2, 3}},
 		Attachments: atts,
 	}
 	path := filepath.Join(t.TempDir(), "m.3mf")
-	if err := m.Write3MF(path); err != nil {
-		t.Fatalf("Write3MF: %v", err)
+	if err := threemf.Write(path, m); err != nil {
+		t.Fatalf("Write: %v", err)
 	}
 	return path
 }
