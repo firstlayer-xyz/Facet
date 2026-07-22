@@ -10,7 +10,7 @@ export PATH := $(GO_TOOLCHAIN)/bin:$(PATH)
 WAILS_VERSION := v2.12.0
 WAILS := $(GO_TOOLCHAIN)/bin/wails
 
-.PHONY: all manifold lint dev dev-automation run build build-automation sign clean cli scad2facet wasm wasm-cxx serve-web check-shims test test-race test-web test-desktop test-desktop-go wails-cli
+.PHONY: all manifold lint dev dev-automation run build build-automation sign clean cli scad2facet wasm wasm-cxx serve-web check-shims test test-all test-race test-web test-desktop test-desktop-go wails-cli
 
 all: manifold build
 
@@ -190,6 +190,14 @@ test-desktop:
 		(cd desktop/frontend && npm ci && npx playwright install chromium); \
 	fi
 	cd desktop/frontend && npm test
+
+# Run every test suite in one command: the core Go tests (pkg + cmd), the
+# desktop Go package, the wasm browser Playwright suite, and the desktop
+# frontend Playwright suite. Prerequisites run in order, fastest first, and
+# make stops at the first failure. test-race (a slower -race re-run of the
+# core tests) is intentionally excluded — run it separately when chasing races.
+test-all: test test-desktop-go test-web test-desktop
+	@echo "All test suites passed."
 
 clean:
 	rm -rf $(GO_TOOLCHAIN)
